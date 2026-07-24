@@ -74,6 +74,7 @@ __pycache__/
 
 # Visual Studio Code
 .vscode/
+.vscode/c_cpp_properties.json
 
 # Visual Studio
 .vs/
