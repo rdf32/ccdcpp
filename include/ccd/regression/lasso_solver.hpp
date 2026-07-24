@@ -47,6 +47,49 @@ struct LassoScore {
     std::vector<scalar_t> residuals;
 };
 
+class LassoModel {
+public:
+    LassoModel(
+        index_t iter,
+        scalar_t bias,
+        const std::vector<scalar_t>& weights
+    )
+        : iter_(iter),
+        bias_(bias),
+        weights_(weights)
+    {}
+    //--------------------------------------------------------------------------
+    // Prediction
+    //--------------------------------------------------------------------------
+    // Computes:
+    //      y_hat = X * weights + bias
+    // Stores output into &preds
+    std::vector<scalar_t> predict(
+        ArrayView<const scalar_t, 2> X
+    ) const;
+
+    index_t iterations() const
+    {
+        return iter_;
+    }
+
+    scalar_t intercept() const
+    {
+        return bias_;
+    }
+
+    std::vector<scalar_t> coefficients() const
+    {
+        return weights_;
+    }
+
+private:
+    index_t  iter_  = 0;
+    scalar_t bias_  = 0.0;
+
+    std::vector<scalar_t> weights_;
+};
+
 //==============================================================================
 //
 // LassoSolver
@@ -111,10 +154,8 @@ public:
     void clear();
 
     void resize(
-        index_t num_features,
-        index_t num_samples
+        index_t num_features
     );
-
 
 private:
     static scalar_t soft_threshold(
@@ -125,35 +166,6 @@ private:
 private:
 
     const LassoOptions& options_;
-    std::vector<scalar_t> weights_;
-};
-
-class LassoModel {
-public:
-    LassoModel(
-        index_t iter,
-        scalar_t bias,
-        const std::vector<scalar_t>& weights
-    )
-        : iter_(iter),
-        bias_(bias),
-        weights_(weights)
-    {}
-    //--------------------------------------------------------------------------
-    // Prediction
-    //--------------------------------------------------------------------------
-    // Computes:
-    //      y_hat = X * weights + bias
-    // Stores output into &preds
-    void predict(
-        ArrayView<const scalar_t, 2> X,
-        std::vector<scalar_t>& preds
-    ) const;
-
-private:
-    index_t  iter_  = 0;
-    scalar_t bias_  = 0.0;
-
     std::vector<scalar_t> weights_;
 };
 

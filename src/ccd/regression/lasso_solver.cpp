@@ -4,7 +4,7 @@
 #include <algorithm>
 
 #include "ccd/maths.hpp"
-#include "lasso_solver.hpp"
+#include "ccd/regression/lasso_solver.hpp"
 
 
 namespace ccd
@@ -20,12 +20,13 @@ LassoSolver::LassoSolver(
 
 LassoModel LassoSolver::fit(
     ArrayView<const scalar_t, 2> X,
-    ArrayView<const scalar_t, 1> y)
+    ArrayView<const scalar_t, 1> y
+)
 {
     const index_t n_samples  = X.extent(0);
     const index_t n_features = X.extent(1);
 
-    resize(n_features, n_samples);
+    resize(n_features);
 
     auto& w = weights_;
 
@@ -205,15 +206,13 @@ void LassoSolver::clear() {
 }
 
 void LassoSolver::resize(
-    index_t num_features,
-    index_t num_samples
+    index_t num_features
 )
 {
     weights_.resize(
         num_features,
         static_cast<scalar_t>(0)
     );
-
     clear();
 }
 
@@ -231,15 +230,14 @@ scalar_t LassoSolver::soft_threshold(
     return 0.0;
 }
 
-void LassoModel::predict(
-    ccd::ArrayView<const scalar_t, 2> X,
-    std::vector<scalar_t>& preds
+std::vector<scalar_t> LassoModel::predict(
+    ccd::ArrayView<const scalar_t, 2> X
 ) const 
 {   
     const index_t num_samp = X.extent(0);
     const index_t num_feat = X.extent(1);
-
-    assert(preds.size() == num_samp);
+    std::vector<scalar_t> preds(num_samp);
+    
     assert(weights_.size() == num_feat);
 
     for (index_t i = 0; i < num_samp; ++i) {
@@ -250,13 +248,14 @@ void LassoModel::predict(
         }
         preds[i] = prediction;
     }
+    return preds;
 }
 
 LassoScore score(
     ArrayView<const scalar_t, 1> y,
     std::vector<scalar_t>& preds,
     index_t num_parameters,
-    bool unbiased_rmse = true
+    bool unbiased_rmse
 ) {
     assert(y.size() == preds.size());
     std::vector<scalar_t> residuals(preds.size());
@@ -276,7 +275,7 @@ LassoScore score(
     }
     return LassoScore{
         std::sqrt(rss / denominator), // rmse
-        median(residuals),            // magnitude
+        median_absolute(residuals),            // magnitude
         residuals                     // residuals
     };
 }
