@@ -5,7 +5,7 @@
 #include <iostream>
 #include <string>
 
-#include "ccd/core/array_view.hpp"
+#include "ccd/array_view.hpp"
 
 namespace ccd
 {

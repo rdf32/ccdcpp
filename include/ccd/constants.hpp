@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ccd/core/types.hpp"
+#include "ccd/types.hpp"
 
 
 namespace ccd
