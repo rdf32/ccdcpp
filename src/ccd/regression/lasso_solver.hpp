@@ -157,7 +157,7 @@ private:
     std::vector<scalar_t> weights_;
 };
 
-LassoScore pred_scores(
+LassoScore score(
     ArrayView<const scalar_t, 1> y,
     std::vector<scalar_t>& preds,
     index_t num_parameters,
