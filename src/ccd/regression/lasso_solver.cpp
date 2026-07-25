@@ -4,6 +4,9 @@
 #include <algorithm>
 
 #include "ccd/maths.hpp"
+#include "ccd/types.hpp"
+#include "ccd/constants.hpp"
+#include "ccd/array_view.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 
@@ -281,7 +284,7 @@ LassoScore score(
     };
 }
 
-static std::vector<scalar_t> lasso_basis(
+std::vector<scalar_t> lasso_basis(
     ArrayView<const std::int64_t, 1> dates,
     index_t num_coefficients
 )

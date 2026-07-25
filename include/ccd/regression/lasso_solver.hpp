@@ -176,4 +176,9 @@ LassoScore score(
     bool unbiased_rmse = true
 );
 
+std::vector<scalar_t> lasso_basis(
+    ArrayView<const std::int64_t, 1> dates,
+    index_t num_coefficients
+);
+
 } // namespace ccd

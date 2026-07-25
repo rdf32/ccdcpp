@@ -1,6 +1,8 @@
 
 #include <gtest/gtest.h>
 
+#include "ccd/types.hpp"
+#include "ccd/array_view.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 
@@ -26,17 +28,16 @@ TEST(LassoSolver, MultiBandRegression)
     // Design matrix
     //------------------------------------------------------------
     auto X_storage = lasso_basis(
-        ArrayView<const std::int64_t,1>(
+        ArrayView<const std::int64_t,1>::contiguous(
             dates.data(),
-            n_samples
+            {n_samples}
         ),
         4
     );
 
-    ArrayView<const scalar_t,2> X(
+    auto X = ArrayView<const scalar_t,2>::contiguous(
         X_storage.data(),
-        n_samples,
-        7
+        {n_samples, 7}
     );
 
     //------------------------------------------------------------
@@ -67,9 +68,9 @@ TEST(LassoSolver, MultiBandRegression)
     //------------------------------------------------------------
     for(index_t band = 0; band < n_bands; ++band)
     {
-        ArrayView<const scalar_t,1> y_band(
+        auto y_band = ArrayView<const scalar_t,1>::contiguous(
             y[band].data(),
-            n_samples
+            {n_samples}
         );
 
         auto model = solver.fit(X, y_band);
@@ -86,14 +87,14 @@ TEST(LassoSolver, MultiBandRegression)
         std::cout << "Band " << band << "\n";
 
         std::cout << "  Intercept : "
-                  << model.bias()
+                  << model.intercept()
                   << "\n";
 
         std::cout << "  Coefficients: ";
 
         std::size_t nonzero = 0;
 
-        for(auto w : model.weights())
+        for(auto w : model.coefficients())
         {
             std::cout << w << " ";
 
@@ -106,7 +107,7 @@ TEST(LassoSolver, MultiBandRegression)
         std::cout << "  Non-zero coefficients: "
                   << nonzero
                   << "/"
-                  << model.weights().size()
+                  << model.coefficients().size()
                   << "\n";
 
         std::cout << "  Iterations: "
@@ -125,12 +126,12 @@ TEST(LassoSolver, MultiBandRegression)
                   << "\n";
 
         std::cout << "--------------------------------------------------\n";
+
+        EXPECT_EQ(
+            model.coefficients().size(),
+            7
+        );
     }
-    
-    EXPECT_EQ(
-        model.coefficients().size(),
-        7
-    );
 
 }
 
