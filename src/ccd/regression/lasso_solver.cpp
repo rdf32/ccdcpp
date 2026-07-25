@@ -9,6 +9,7 @@
 
 namespace ccd
 {
+
 // per band solver
 // constructor
 LassoSolver::LassoSolver(
@@ -278,6 +279,66 @@ LassoScore score(
         median_absolute(residuals),            // magnitude
         residuals                     // residuals
     };
+}
+
+static std::vector<scalar_t> lasso_basis(
+    ArrayView<const std::int64_t, 1> dates,
+    index_t num_coefficients
+)
+{
+    const index_t num_observations = dates.size();
+
+    // Current CCD implementation:
+    //
+    // column layout:
+    //
+    // 0: time
+    // 1: cos(annual)
+    // 2: sin(annual)
+    // 3: cos(2 annual)
+    // 4: sin(2 annual)
+    // 5: cos(3 annual)
+    // 6: sin(3 annual)
+    //
+    constexpr index_t NUM_FEATURES = 7;
+
+    std::vector<scalar_t> matrix(
+        num_observations * NUM_FEATURES,
+        scalar_t{0}
+    );
+
+    const scalar_t omega = 2.0 * PI / AVG_DAYS_YR;
+
+    for(index_t i = 0; i < num_observations; ++i) {
+
+        const scalar_t t =
+            static_cast<scalar_t>(
+                dates(i)
+            );
+        const scalar_t wt = omega * t;
+
+        matrix[i * NUM_FEATURES + 0] = t;
+        matrix[i * NUM_FEATURES + 1] = std::cos(wt);
+        matrix[i * NUM_FEATURES + 2] = std::sin(wt);
+
+        if(num_coefficients >= 6) {
+            const scalar_t w2t =
+                static_cast<scalar_t>(2.0) * wt;
+
+            matrix[i * NUM_FEATURES + 3] = std::cos(w2t);
+            matrix[i * NUM_FEATURES + 4] = std::sin(w2t);
+        }
+
+        if(num_coefficients >= 8) {
+            const scalar_t w3t =
+                static_cast<scalar_t>(3.0) * wt;
+
+            matrix[i * NUM_FEATURES + 5] = std::cos(w3t);
+            matrix[i * NUM_FEATURES + 6] = std::sin(w3t);
+        }
+    }
+
+    return matrix;
 }
 
 } // namespace ccd
