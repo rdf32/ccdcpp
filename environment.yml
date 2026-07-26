@@ -3,12 +3,11 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - blas-devel=3.11.0=8_h85df5b5_mkl
   - blosc=1.21.6=h85f69ea_0
-  - boost=1.85.0=h7e22eef_4
+  - boost-cpp=1.78.0=h9f4b32c_4
   - bzip2=1.0.8=h2bbff1b_6
-  - ca-certificates=2026.7.22=h4c7d964_0
-  - certifi=2026.7.22=pyhd8ed1ab_0
+  - ca-certificates=2026.7.16=haa95532_0
+  - cmake=4.3.0=hdcbee5b_0
   - eigen=5.0.1=h5112557_0
   - expat=2.8.2=hd7fb8db_1
   - freeglut=3.8.0=hfcef157_0
@@ -17,17 +16,11 @@ dependencies:
   - geos=3.10.6=hd4c2148_0
   - geotiff=1.7.4=hfa75976_0
   - icu=78.3=h637d24d_0
-  - jedi=0.20.0=pyhcf101f3_0
   - jpeg=9f=ha349fce_0
   - krb5=1.22.2=h719d79b_1
   - lerc=4.1.0=hd936e49_0
   - libarchive=3.8.7=h8d653b7_0
   - libblas=3.11.0=8_h8455456_mkl
-  - libboost=1.85.0=h444863b_4
-  - libboost-devel=1.85.0=h91493d7_4
-  - libboost-headers=1.85.0=h57928b3_4
-  - libboost-python=1.85.0=py312hbaa7e33_4
-  - libboost-python-devel=1.85.0=py312h7e22eef_4
   - libcblas=3.11.0=8_h2a3cdd5_mkl
   - libcurl=8.21.0=h51a1c48_2
   - libdeflate=1.22=h2466b09_0
@@ -38,7 +31,6 @@ dependencies:
   - libiconv=1.18=hc1393d2_2
   - libkml=1.3.0=h68a222c_1023
   - liblapack=3.11.0=8_hf9ab0e9_mkl
-  - liblapacke=3.11.0=8_h3ae206f_mkl
   - liblzma=5.8.2=hfd05255_0
   - libpng=1.6.58=h7351971_0
   - libpsl=0.22.0=hc1744f7_0
@@ -46,6 +38,7 @@ dependencies:
   - libsqlite=3.53.3=hf5d6505_0
   - libssh2=1.11.1=h9aa295b_0
   - libtiff=4.7.1=h3a18249_0
+  - libuv=1.52.1=h6a83c73_0
   - libwebp-base=1.6.0=h4d5522a_0
   - libwinpthread=12.0.0.r4.gg4f2fc60ca=h57928b3_10
   - libxml2=2.14.6=h779ef1b_3
@@ -54,13 +47,12 @@ dependencies:
   - llvm-openmp=22.1.8=h4fa8253_0
   - lz4-c=1.9.4=hcfcfb64_0
   - minizip=4.0.10=h9fa1bad_0
-  - mkl=2026.0.0=hac47afa_908
-  - mkl-devel=2026.0.0=h57928b3_908
-  - mkl-include=2026.0.0=h57928b3_908
+  - mkl=2026.1.0=hac47afa_233
   - numpy=2.5.1=py312ha3f287d_0
-  - onemkl-license=2026.0.0=h57928b3_908
-  - openssl=3.6.3=hf411b9b_0
+  - onemkl-license=2026.1.0=h57928b3_233
+  - openssl=3.5.7=hbb43b14_0
   - packaging=26.0=py312haa95532_0
+  - pandas=3.0.3=py312hf6ff4c0_0
   - pathspec=1.0.4=py312haa95532_0
   - pcre2=10.46=h3402e2f_0
   - pip=26.1.2=pyhc872135_0
@@ -68,9 +60,12 @@ dependencies:
   - pybind11=3.0.4=py312h169ad4e_0
   - pybind11-global=3.0.4=py312h169ad4e_0
   - python=3.12.0=h1d929f7_0
+  - python-dateutil=2.9.0post0=py312haa95532_2
+  - python-tzdata=2026.2=pyhd3eb1b0_0
   - python_abi=3.12=4_cp312
   - scikit-build-core=0.12.2=py312hf6ff4c0_0
   - setuptools=82.0.1=py312haa95532_0
+  - six=1.17.0=py312haa95532_0
   - snappy=1.2.2=h7fa0ca8_1
   - sqlite=3.53.2=hee5a0db_0
   - tbb=2023.0.0=hd3d4ead_2
@@ -86,98 +81,98 @@ dependencies:
   - zlib=1.3.2=h1c6eee0_0
   - zstd=1.5.7=h534d264_6
   - pip:
-      - aniso8601==10.0.1
-      - anyio==4.14.2
-      - argon2-cffi==25.1.0
-      - argon2-cffi-bindings==25.1.0
-      - arrow==1.4.0
-      - asttokens==3.0.2
-      - async-lru==2.3.0
-      - attrs==26.1.0
-      - babel==2.18.0
-      - beautifulsoup4==4.15.0
-      - bleach==6.4.0
-      - cffi==2.1.0
-      - charset-normalizer==3.4.9
-      - colorama==0.4.6
-      - comm==0.2.3
-      - debugpy==1.8.21
-      - decorator==5.3.1
-      - defusedxml==0.7.1
-      - executing==2.2.1
-      - fastjsonschema==2.21.2
-      - fqdn==1.5.1
-      - h11==0.16.0
-      - httpcore==1.0.9
-      - httpx==0.28.1
-      - idna==3.18
-      - ipykernel==7.3.0
-      - ipython==9.15.0
-      - ipython-pygments-lexers==1.1.1
-      - isoduration==20.11.0
-      - jinja2==3.1.6
-      - joblib==1.5.3
-      - json5==0.15.0
-      - jsonpointer==3.1.1
-      - jsonschema==4.26.0
-      - jsonschema-specifications==2025.9.1
-      - jupyter-builder==1.1.0
-      - jupyter-client==8.9.1
-      - jupyter-core==5.9.1
-      - jupyter-events==0.12.1
-      - jupyter-lsp==2.3.1
-      - jupyter-server==2.20.0
-      - jupyter-server-terminals==0.5.4
-      - jupyterlab==4.6.1
-      - jupyterlab-pygments==0.3.0
-      - jupyterlab-server==2.28.0
-      - lark==1.3.1
-      - markupsafe==3.0.3
-      - matplotlib-inline==0.2.2
-      - mistune==3.3.3
-      - narwhals==2.24.0
-      - nbclient==0.11.0
-      - nbconvert==7.17.1
-      - nbformat==5.10.4
-      - nest-asyncio2==1.7.2
-      - notebook-shim==0.2.4
-      - pandocfilters==1.5.1
-      - parso==0.8.7
-      - platformdirs==4.10.0
-      - prometheus-client==0.25.0
-      - prompt-toolkit==3.0.52
-      - psutil==7.2.2
-      - pure-eval==0.2.3
-      - pycparser==3.0
-      - pygments==2.20.0
-      - python-dateutil==2.9.0.post0
-      - python-json-logger==4.1.0
-      - pywinpty==3.0.5
-      - pyyaml==6.0.3
-      - pyzmq==27.1.0
-      - referencing==0.37.0
-      - requests==2.34.2
-      - rfc3339-validator==0.1.4
-      - rfc3986-validator==0.1.1
-      - rfc3987-syntax==1.1.0
-      - rpds-py==2026.6.3
-      - scikit-learn==1.9.0
-      - scipy==1.18.0
-      - send2trash==2.1.0
-      - six==1.17.0
-      - soupsieve==2.8.4
-      - stack-data==0.6.3
-      - terminado==0.18.1
-      - threadpoolctl==3.6.0
-      - tinycss2==1.5.1
-      - tornado==6.5.7
-      - traitlets==5.15.1
-      - typing-extensions==4.16.0
-      - tzdata==2026.3
-      - uri-template==1.3.0
-      - urllib3==2.7.0
-      - wcwidth==0.8.2
-      - webcolors==25.10.0
-      - webencodings==0.5.1
-      - websocket-client==1.9.0
-prefix: C:\Users\rylie\miniconda3\envs\geo
+    - aniso8601==10.0.1
+    - anyio==4.14.2
+    - argon2-cffi==25.1.0
+    - argon2-cffi-bindings==25.1.0
+    - arrow==1.4.0
+    - asttokens==3.0.2
+    - async-lru==2.3.0
+    - attrs==26.1.0
+    - babel==2.18.0
+    - beautifulsoup4==4.15.0
+    - bleach==6.4.0
+    - certifi==2026.6.17
+    - cffi==2.1.0
+    - charset-normalizer==3.4.9
+    - colorama==0.4.6
+    - comm==0.2.3
+    - debugpy==1.8.21
+    - decorator==5.3.1
+    - defusedxml==0.7.1
+    - executing==2.2.1
+    - fastjsonschema==2.21.2
+    - fqdn==1.5.1
+    - h11==0.16.0
+    - httpcore==1.0.9
+    - httpx==0.28.1
+    - idna==3.18
+    - ipykernel==7.3.0
+    - ipython==9.15.0
+    - ipython-pygments-lexers==1.1.1
+    - isoduration==20.11.0
+    - jedi==0.20.0
+    - jinja2==3.1.6
+    - joblib==1.5.3
+    - json5==0.15.0
+    - jsonpointer==3.1.1
+    - jsonschema==4.26.0
+    - jsonschema-specifications==2025.9.1
+    - jupyter-builder==1.1.0
+    - jupyter-client==8.9.1
+    - jupyter-core==5.9.1
+    - jupyter-events==0.12.1
+    - jupyter-lsp==2.3.1
+    - jupyter-server==2.20.0
+    - jupyter-server-terminals==0.5.4
+    - jupyterlab==4.6.1
+    - jupyterlab-pygments==0.3.0
+    - jupyterlab-server==2.28.0
+    - lark==1.3.1
+    - markupsafe==3.0.3
+    - matplotlib-inline==0.2.2
+    - mistune==3.3.3
+    - narwhals==2.24.0
+    - nbclient==0.11.0
+    - nbconvert==7.17.1
+    - nbformat==5.10.4
+    - nest-asyncio2==1.7.2
+    - notebook-shim==0.2.4
+    - pandocfilters==1.5.1
+    - parso==0.8.7
+    - platformdirs==4.10.0
+    - prometheus-client==0.25.0
+    - prompt-toolkit==3.0.52
+    - psutil==7.2.2
+    - pure-eval==0.2.3
+    - pycparser==3.0
+    - pygments==2.20.0
+    - python-json-logger==4.1.0
+    - pywinpty==3.0.5
+    - pyyaml==6.0.3
+    - pyzmq==27.1.0
+    - referencing==0.37.0
+    - requests==2.34.2
+    - rfc3339-validator==0.1.4
+    - rfc3986-validator==0.1.1
+    - rfc3987-syntax==1.1.0
+    - rpds-py==2026.6.3
+    - scikit-learn==1.9.0
+    - scipy==1.18.0
+    - send2trash==2.1.0
+    - soupsieve==2.8.4
+    - stack-data==0.6.3
+    - terminado==0.18.1
+    - threadpoolctl==3.6.0
+    - tinycss2==1.5.1
+    - tornado==6.5.7
+    - traitlets==5.15.1
+    - typing-extensions==4.16.0
+    - tzdata==2026.3
+    - uri-template==1.3.0
+    - urllib3==2.7.0
+    - wcwidth==0.8.2
+    - webcolors==25.10.0
+    - webencodings==0.5.1
+    - websocket-client==1.9.0
+prefix: C:\Users\it\miniconda3\envs\geo
