@@ -258,7 +258,7 @@ std::vector<scalar_t> LassoModel::predict(
 LassoScore score(
     ArrayView<const scalar_t, 1> y,
     std::vector<scalar_t>& preds,
-    index_t num_parameters,
+    index_t num_coefficients,
     bool unbiased_rmse
 ) {
     assert(y.size() == preds.size());
@@ -274,8 +274,8 @@ LassoScore score(
     scalar_t denominator = static_cast<scalar_t>(y.size());
     if (unbiased_rmse) {
         // Degrees of freedom correction (matches Python calc_rmse)
-        assert(y.size() > num_parameters);
-        denominator -= static_cast<scalar_t>(num_parameters);
+        assert(y.size() > num_coefficients);
+        denominator -= static_cast<scalar_t>(num_coefficients);
     }
     return LassoScore{
         std::sqrt(rss / denominator), // rmse

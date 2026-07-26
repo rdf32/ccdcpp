@@ -12,6 +12,28 @@ using namespace ccd;
 TEST(LassoSolver, MultiBandRegression)
 {
 
+    // test arrays
+    const std::array<scalar_t, 7> INTERCEPTS = {
+        -296527.99093762523,
+        -395232.857874799,
+        -411029.30374343373,
+        -585952.2062047635,
+        -914268.7976719203,
+        -622692.5178031501,
+        479194.65813564847
+    };
+
+    const std::array<scalar_t, 7> RMSES = {
+        181.84648624168153,
+        192.94503508100618,
+        182.8515707332092,
+        433.8488202216504,
+        488.80761398069757,
+        454.6964408771335,
+        253.90127972733202
+    };
+
+
     //------------------------------------------------------------
     // Observation dates
     //------------------------------------------------------------
@@ -126,6 +148,9 @@ TEST(LassoSolver, MultiBandRegression)
                   << "\n";
 
         std::cout << "--------------------------------------------------\n";
+
+        EXPECT_FLOAT_EQ(model.intercept(), INTERCEPTS[band]);
+        EXPECT_FLOAT_EQ(metrics.rmse, RMSES[band]);
 
         EXPECT_EQ(
             model.coefficients().size(),

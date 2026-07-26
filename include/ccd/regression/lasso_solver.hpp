@@ -172,7 +172,7 @@ private:
 LassoScore score(
     ArrayView<const scalar_t, 1> y,
     std::vector<scalar_t>& preds,
-    index_t num_parameters,
+    index_t num_coefficients,
     bool unbiased_rmse = true
 );
 
