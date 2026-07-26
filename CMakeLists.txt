@@ -176,6 +176,13 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # Copy Python reference data into the build directory so the
+    # test can load it using a relative path.
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/regression/lasso_reference.csv
+        ${PROJECT_BINARY_DIR}/lasso_reference.csv
+        COPYONLY
+    )
 
     include(GoogleTest)
 

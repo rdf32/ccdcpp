@@ -1,3 +1,5 @@
+#include <fstream>
+#include <sstream>
 
 #include <gtest/gtest.h>
 
@@ -9,29 +11,75 @@
 using namespace ccd;
 
 
-TEST(LassoSolver, MultiBandRegression)
+struct LassoReference
 {
+    index_t band;
+    scalar_t intercept;
+    std::array<scalar_t, 4> coefficients;
+    index_t iterations;
+    index_t nonzero;
+    scalar_t rmse;
+    std::vector<scalar_t> residuals;
+};
 
-    // test arrays
-    const std::array<scalar_t, 7> INTERCEPTS = {
-        -296527.99093762523,
-        -395232.857874799,
-        -411029.30374343373,
-        -585952.2062047635,
-        -914268.7976719203,
-        -622692.5178031501,
-        479194.65813564847
-    };
+std::vector<LassoReference> load_reference(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open: " + filename);
+    }
 
-    const std::array<scalar_t, 7> RMSES = {
-        181.84648624168153,
-        192.94503508100618,
-        182.8515707332092,
-        433.8488202216504,
-        488.80761398069757,
-        454.6964408771335,
-        253.90127972733202
-    };
+
+    std::string line;
+    std::getline(file, line); // skip header
+
+    std::vector<LassoReference> refs;
+
+    while (std::getline(file, line))
+    {
+        std::stringstream ss(line);
+        std::string field;
+
+        LassoReference ref;
+
+        std::getline(ss, field, ',');
+        ref.band = std::stoi(field);
+
+        std::getline(ss, field, ',');
+        ref.intercept = std::stod(field);
+
+        for (int i = 0; i < 4; ++i)
+        {
+            std::getline(ss, field, ',');
+            ref.coefficients[i] = std::stod(field);
+        }
+
+        std::getline(ss, field, ',');
+        ref.iterations = std::stoi(field);
+
+        std::getline(ss, field, ',');
+        ref.nonzero = std::stoi(field);
+
+        std::getline(ss, field, ',');
+        ref.rmse = std::stod(field);
+
+        while (std::getline(ss, field, ','))
+            ref.residuals.push_back(std::stod(field));
+
+        refs.push_back(ref);
+    }
+
+    return refs;
+}
+
+
+TEST(LassoSolver, MultiBandRegression)
+{   
+    constexpr index_t n_samples = 12;
+    constexpr index_t n_bands   = 7;
+
+    auto reference = load_reference("lasso_reference.csv");
+    ASSERT_EQ(reference.size(), n_bands);
 
 
     //------------------------------------------------------------
@@ -42,9 +90,6 @@ TEST(LassoSolver, MultiBandRegression)
         724547, 724739, 724867, 724915,
         724931, 724947, 725075, 725091
     };
-
-    constexpr index_t n_samples = 12;
-    constexpr index_t n_bands   = 7;
 
     //------------------------------------------------------------
     // Design matrix
@@ -149,15 +194,33 @@ TEST(LassoSolver, MultiBandRegression)
 
         std::cout << "--------------------------------------------------\n";
 
-        EXPECT_FLOAT_EQ(model.intercept(), INTERCEPTS[band]);
-        std::cout << "tested intercept" << std::endl;
-        EXPECT_FLOAT_EQ(metrics.rmse, RMSES[band]);
-        std::cout << "tested rmse" << std::endl;
+        const auto& ref = reference[band];
 
-        EXPECT_EQ(
-            model.coefficients().size(),
-            7
-        );
+        EXPECT_NEAR(model.intercept(), ref.intercept, 1e-8);
+        ASSERT_EQ(model.coefficients().size(), ref.coefficients.size() + ref.nonzero);
+
+        for (std::size_t i = 0; i < ref.coefficients.size(); ++i)
+        {
+            EXPECT_NEAR(
+                model.coefficients()[i],
+                ref.coefficients[i],
+                1e-8
+            );
+        }
+
+        EXPECT_EQ(model.iterations(), ref.iterations);
+        EXPECT_NEAR(metrics.rmse, ref.rmse, 1e-8);
+        ASSERT_EQ(metrics.residuals.size(), ref.residuals.size());
+
+        for (std::size_t i = 0; i < ref.residuals.size(); ++i)
+        {
+            EXPECT_NEAR(
+                metrics.residuals[i],
+                ref.residuals[i],
+                1e-8
+            );
+        }
+
     }
 
 }
