@@ -150,7 +150,9 @@ TEST(LassoSolver, MultiBandRegression)
         std::cout << "--------------------------------------------------\n";
 
         EXPECT_FLOAT_EQ(model.intercept(), INTERCEPTS[band]);
+        std::cout << "tested intercept" << std::endl;
         EXPECT_FLOAT_EQ(metrics.rmse, RMSES[band]);
+        std::cout << "tested rmse" << std::endl;
 
         EXPECT_EQ(
             model.coefficients().size(),
