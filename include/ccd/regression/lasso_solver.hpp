@@ -151,9 +151,7 @@ public:
         ArrayView<const scalar_t, 1> y
     );
 
-    void clear();
-
-    void resize(
+    void reset(
         index_t num_features
     );
 

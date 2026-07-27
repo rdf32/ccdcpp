@@ -30,7 +30,7 @@ LassoModel LassoSolver::fit(
     const index_t n_samples  = X.extent(0);
     const index_t n_features = X.extent(1);
 
-    resize(n_features);
+    reset(n_features);
 
     auto& w = weights_;
 
@@ -199,25 +199,11 @@ LassoModel LassoSolver::fit(
     );
 }
 
-void LassoSolver::clear() {
-
-    std::fill(
-        weights_.begin(),
-        weights_.end(),
-        static_cast<scalar_t>(0)
-    );
-
-}
-
-void LassoSolver::resize(
+void LassoSolver::reset(
     index_t num_features
 )
 {
-    weights_.resize(
-        num_features,
-        static_cast<scalar_t>(0)
-    );
-    clear();
+    weights_.assign(num_features, scalar_t{0});
 }
 
 scalar_t LassoSolver::soft_threshold(
