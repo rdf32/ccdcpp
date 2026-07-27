@@ -171,7 +171,7 @@ LassoModel LassoSolver::fit(
                 l1 += std::abs(wi);
             }
 
-            scalar_t primal = residual_norm2 / (2.0 * n_samples) + options_.alpha*l1;
+            scalar_t primal = residual_norm2 / (2.0 * n_samples) + options_.alpha * l1;
 
             scalar_t dual = y_theta / n_samples - theta_norm2 / (2.0 * n_samples);
 
