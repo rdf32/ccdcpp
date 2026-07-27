@@ -68,17 +68,17 @@ public:
         ArrayView<const scalar_t, 2> X
     ) const;
 
-    index_t iterations() const
+    index_t iterations() const noexcept
     {
         return iter_;
     }
 
-    scalar_t intercept() const
+    scalar_t intercept() const noexcept
     {
         return bias_;
     }
 
-    std::vector<scalar_t> coefficients() const
+    const std::vector<scalar_t>& coefficients() const noexcept
     {
         return weights_;
     }
@@ -133,7 +133,7 @@ public:
     // Construction
     //--------------------------------------------------------------------------
     // LassoWorkspace& workspace,
-    LassoSolver(
+    explicit LassoSolver(
         const LassoOptions& options
     ) noexcept;
 
@@ -165,13 +165,13 @@ private:
 
 private:
 
-    const LassoOptions& options_;
+    LassoOptions options_;
     std::vector<scalar_t> weights_;
 };
 
 LassoScore score(
     ArrayView<const scalar_t, 1> y,
-    std::vector<scalar_t>& preds,
+    const std::vector<scalar_t>& preds,
     index_t num_coefficients,
     bool unbiased_rmse = true
 );

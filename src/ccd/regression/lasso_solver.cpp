@@ -257,7 +257,7 @@ std::vector<scalar_t> LassoModel::predict(
 
 LassoScore score(
     ArrayView<const scalar_t, 1> y,
-    std::vector<scalar_t>& preds,
+    const std::vector<scalar_t>& preds,
     index_t num_coefficients,
     bool unbiased_rmse
 ) {

@@ -6,12 +6,14 @@ from ccd.models.lasso import coefficient_matrix
 from ccd.math_utils import calc_rmse
 
 # num params / coef: 4
-X = coefficient_matrix(
-    np.array([
+dates = np.array([
         724387, 724419, 724451, 724483,
         724547, 724739, 724867, 724915,
         724931, 724947, 725075, 725091
-    ]),
+    ])
+
+X = coefficient_matrix(
+    dates,
     365.2425,
     4
 )
