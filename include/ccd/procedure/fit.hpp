@@ -40,7 +40,7 @@ struct ChangeModel {
 
     CurveQA curve_qa;
 
-    std::array<LassoModel, 7> bands;
+    std::array<LassoResult, 7> bands;
 };
 
 struct FitResult
@@ -61,7 +61,7 @@ public:
 
     FitResult run(
         HarmonicWorkspace& workspace,
-        LassoOptions& loptions
+        LassoSolver& solver
     );
 
 protected:
@@ -89,10 +89,6 @@ protected:
 
     virtual CurveQA curve_qa() const = 0;
 
-    //----------------------------------------------------------------------
-    // Save Result given solver workspace
-    //----------------------------------------------------------------------
-    // virtual SpectralModel save_band(LassoWorkspace& workspace) = 0;
 };
 
 } // namespace ccd

@@ -49,6 +49,9 @@ struct LassoScore {
 
 class LassoModel {
 public:
+
+    LassoModel() = default;
+
     LassoModel(
         index_t iter,
         scalar_t bias,
@@ -172,5 +175,10 @@ std::vector<scalar_t> lasso_basis(
     ArrayView<const std::int64_t, 1> dates,
     index_t num_coefficients
 );
+
+struct LassoResult {
+    LassoModel model;
+    LassoScore score;
+};
 
 } // namespace ccd

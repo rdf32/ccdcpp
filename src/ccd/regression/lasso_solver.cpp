@@ -256,7 +256,7 @@ LassoScore score(
     }
     return LassoScore{
         std::sqrt(rss / denominator), // rmse
-        median_absolute(residuals),            // magnitude
+        median_absolute(residuals),   // magnitude
         residuals                     // residuals
     };
 }

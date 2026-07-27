@@ -215,4 +215,34 @@ private:
 
 };
 
+struct MaskedData
+{
+    std::vector<std::int64_t> dates;
+    std::vector<scalar_t> spectral;
+
+    index_t bands;
+    index_t observations;
+
+    ArrayView<std::int64_t, 1> dates_view()
+    {
+        return ArrayView<std::int64_t,1>::contiguous(
+            dates.data(),
+            {observations}
+        );
+    }
+
+    ArrayView<scalar_t, 2> spectral_view()
+    {
+        return ArrayView<scalar_t,2>::contiguous(
+            spectral.data(),
+            {bands, observations}
+        );
+    }
+};
+
+MaskedData apply_mask(
+    const HarmonicWorkspace& workspace,
+    const ProcessingMask& mask
+);
+
 } // namespace ccd

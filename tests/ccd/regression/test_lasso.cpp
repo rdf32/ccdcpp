@@ -95,14 +95,14 @@ TEST(LassoSolver, MultiBandRegression)
     // Design matrix
     //------------------------------------------------------------
     auto X_storage = lasso_basis(
-        ArrayView<const std::int64_t,1>::contiguous(
+        ArrayView<const std::int64_t, 1>::contiguous(
             dates.data(),
             {n_samples}
         ),
         4
     );
 
-    auto X = ArrayView<const scalar_t,2>::contiguous(
+    auto X = ArrayView<const scalar_t, 2>::contiguous(
         X_storage.data(),
         {n_samples, 7}
     );
