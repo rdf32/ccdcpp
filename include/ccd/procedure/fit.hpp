@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "ccd/types.hpp"
+#include "ccd/array_view.hpp"
 #include "ccd/pmask.hpp"
 
 #include "ccd/harmonic/harmonic.hpp"
@@ -90,5 +91,81 @@ protected:
     virtual CurveQA curve_qa() const = 0;
 
 };
+
+struct Window
+{
+    index_t start = 0;
+    index_t stop  = 0;
+
+    Window() = default;
+
+    Window(index_t start_, index_t stop_)
+        : start(start_), stop(stop_){}
+
+    index_t size() const
+    {
+        return stop - start;
+    }
+
+    void grow()
+    {
+        ++stop;
+    }
+
+    void shift()
+    {
+        ++start;
+        ++stop;
+    }
+
+    void rewind(index_t amount)
+    {
+        start -= amount;
+    }
+
+    void extend(index_t amount)
+    {
+        stop += amount;
+    }
+};
+
+// full timeseries
+scalar_t adjust_change_threshold(
+    index_t peek,
+    index_t defpeek,
+    scalar_t defthresh
+);
+
+std::vector<scalar_t> calculate_variogram(
+    ArrayView<const scalar_t, 2> spectral
+);
+
+std::vector<scalar_t> adjusted_variogram(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral
+);
+
+bool check_variogram(
+    const std::vector<scalar_t>& variogram
+);
+
+// timeseries window operations
+bool enough_time(
+    ArrayView<const std::int64_t, 1> dates_window,
+    std::int64_t day_delta
+);
+
+bool enough_samples(
+    ArrayView<const std::int64_t, 1> dates_window,
+    index_t meow_size
+);
+
+bool stable(
+    ArrayView<const std::int64_t, 1> dates_window,
+    std::vector<scalar_t>& variogram,
+    std::vector<LassoResult>& results,
+    scalar_t change_threshold,
+    std::vector<index_t>& detection_bands
+);
 
 } // namespace ccd
