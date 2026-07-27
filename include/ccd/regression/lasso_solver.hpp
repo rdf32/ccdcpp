@@ -151,10 +151,6 @@ public:
         ArrayView<const scalar_t, 1> y
     );
 
-    void reset(
-        index_t num_features
-    );
-
 private:
     static scalar_t soft_threshold(
         scalar_t rho,
@@ -162,9 +158,7 @@ private:
     ) noexcept;
 
 private:
-
     LassoOptions options_;
-    std::vector<scalar_t> weights_;
 };
 
 LassoScore score(

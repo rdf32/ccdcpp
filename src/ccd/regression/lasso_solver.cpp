@@ -30,9 +30,7 @@ LassoModel LassoSolver::fit(
     const index_t n_samples  = X.extent(0);
     const index_t n_features = X.extent(1);
 
-    reset(n_features);
-
-    auto& w = weights_;
+    std::vector<scalar_t> weights(n_features, scalar_t{0});
 
     //----------------------------------------------------------
     // Allocate scratch
@@ -103,7 +101,7 @@ LassoModel LassoSolver::fit(
             //--------------------------------------------------
             // Add old contribution back into residual
             //--------------------------------------------------
-            scalar_t old_w = w[j];
+            scalar_t old_w = weights[j];
             if (old_w != 0.0) {
                 for(index_t i = 0; i < n_samples; ++i) {
                     residual[i] += Xc[i * n_features + j] * old_w;
@@ -120,7 +118,7 @@ LassoModel LassoSolver::fit(
             // Soft threshold
             //--------------------------------------------------
             scalar_t new_w = soft_threshold(rho, options_.alpha * n_samples) / column_norm2[j];
-            w[j] = new_w;
+            weights[j] = new_w;
             //--------------------------------------------------
             // Remove new contribution
             //--------------------------------------------------
@@ -169,7 +167,7 @@ LassoModel LassoSolver::fit(
             }
 
             scalar_t l1 = 0.0;
-            for(auto wi : w){
+            for(auto wi : weights){
                 l1 += std::abs(wi);
             }
 
@@ -189,21 +187,14 @@ LassoModel LassoSolver::fit(
     //----------------------------------------------------------
     scalar_t intercept = y_mean;
     for(index_t j = 0; j < n_features; ++j){
-        intercept -= X_mean[j] * w[j];
+        intercept -= X_mean[j] * weights[j];
     }
 
     return LassoModel(
         iter + 1,
         intercept,
-        weights_ // copy of weights
+        weights // copy of weights
     );
-}
-
-void LassoSolver::reset(
-    index_t num_features
-)
-{
-    weights_.assign(num_features, scalar_t{0});
 }
 
 scalar_t LassoSolver::soft_threshold(
