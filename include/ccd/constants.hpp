@@ -45,4 +45,6 @@ constexpr scalar_t KELVIN_OFFSET = 27315.0;
 constexpr scalar_t MIN_CELSIUS = -9320.0;
 constexpr scalar_t MAX_CELSIUS = 7070.0;
 
+constexpr index_t TMASK_FEATURES = 5;
+
 } // namespace ccd

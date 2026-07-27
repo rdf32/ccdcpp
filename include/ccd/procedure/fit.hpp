@@ -8,7 +8,10 @@
 #include "ccd/pmask.hpp"
 
 #include "ccd/harmonic/harmonic.hpp"
+
 #include "ccd/regression/lasso_solver.hpp"
+#include "ccd/regression/robust_solver.hpp"
+
 
 namespace ccd
 {
@@ -186,6 +189,14 @@ std::vector<scalar_t> change_magnitude(
     const std::vector<std::vector<scalar_t>>& residuals,
     const std::vector<scalar_t>& variogram,
     const std::vector<scalar_t>& rmse
+);
+
+ProcessingMask tmask(
+    ArrayView<const std::int64_t, 1> dates_window,
+    ArrayView<const scalar_t, 2> spect_window,
+    std::vector<scalar_t>& variogram,
+    const std::vector<index_t>& bands,
+    scalar_t t_const
 );
 
 } // namespace ccd

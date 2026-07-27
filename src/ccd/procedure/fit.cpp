@@ -4,6 +4,7 @@
 #include <boost/math/distributions/chi_squared.hpp>
 
 #include "ccd/maths.hpp"
+#include "ccd/constants.hpp"
 
 
 namespace ccd
@@ -456,6 +457,77 @@ std::vector<scalar_t> change_magnitude(
     }
 
     return magnitude;
+}
+
+ProcessingMask tmask(
+    ArrayView<const std::int64_t, 1> dates_window,
+    ArrayView<const scalar_t, 2> spect_window,
+    std::vector<scalar_t>& variogram,
+    const std::vector<index_t>& bands,
+    scalar_t t_const
+) {
+    const index_t n =
+        spect_window.extent(1);
+    //----------------------------------------------------------
+    // Output mask
+    // true = outlier
+    //----------------------------------------------------------
+    ProcessingMask outliers(n);
+
+    Eigen::MatrixXd X =
+        tmask_basis(dates_window);
+    
+    Eigen::VectorXd y(n);
+    
+    RobustOptions options;
+    options.max_iter = 5;
+    RobustSolver solver(options);
+
+    //----------------------------------------------------------
+    // Test each spectral band
+    //----------------------------------------------------------
+    for(const auto band : bands)
+    {
+
+        for (index_t i = 0; i < n; ++i)
+        {
+            y(i) =
+                spect_window(band, i);
+        }
+
+        //------------------------------------------------------
+        // Fit
+        //------------------------------------------------------
+        RobustModel model = solver.fit(
+            X,
+            y
+        );
+        const auto& beta =
+            model.coefficients();
+
+        //------------------------------------------------------
+        // Residual threshold
+        //------------------------------------------------------
+        const scalar_t threshold =
+            variogram[band] * t_const;
+
+        for(index_t i = 0; i < n; ++i)
+        {
+            scalar_t prediction =
+                X.row(i)
+                .dot(beta);
+            if(
+                std::abs(prediction - y(i))
+                >
+                threshold
+            )
+            {
+                outliers.set(i,true);
+            }
+        }
+    }
+
+    return outliers;
 }
 
 } // namespace ccd
