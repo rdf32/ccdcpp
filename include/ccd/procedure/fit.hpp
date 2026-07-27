@@ -168,4 +168,24 @@ bool stable(
     std::vector<index_t>& detection_bands
 );
 
+// window models
+bool detect_change(
+    const std::vector<scalar_t>& magnitudes,
+    scalar_t change_threshold
+);
+
+inline bool detect_outlier(
+    scalar_t magnitude,
+    scalar_t outlier_threshold
+)
+{
+    return magnitude > outlier_threshold;
+}
+
+std::vector<scalar_t> change_magnitude(
+    const std::vector<std::vector<scalar_t>>& residuals,
+    const std::vector<scalar_t>& variogram,
+    const std::vector<scalar_t>& rmse
+);
+
 } // namespace ccd

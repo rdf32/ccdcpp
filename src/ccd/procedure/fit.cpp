@@ -394,86 +394,69 @@ bool stable(
     return (euclidean_norm < change_threshold);
 }
 
-// //----------------------------------------------------------------------
-// // Returns true if every observation in the peek window exceeds the
-// // change threshold.
-// //
-// // Equivalent to:
-// //
-// //     np.min(magnitudes) > change_threshold
-// //----------------------------------------------------------------------
+//----------------------------------------------------------------------
+// Returns true if every observation in the peek window exceeds the
+// change threshold.
+//
+// Equivalent to:
+//
+//     np.min(magnitudes) > change_threshold
+//----------------------------------------------------------------------
+bool detect_change(
+    const std::vector<scalar_t>& magnitudes,
+    scalar_t change_threshold
+)
+{
+    if (magnitudes.empty())
+    {
+        return false;
+    }
 
-// inline bool detect_change(
-//     const std::vector<scalar_t>& magnitudes,
-//     scalar_t change_threshold
-// )
-// {
-//     if (magnitudes.empty())
-//     {
-//         return false;
-//     }
+    return *std::min_element(
+        magnitudes.begin(),
+        magnitudes.end()
+    ) > change_threshold;
+}
 
-//     return *std::min_element(
-//         magnitudes.begin(),
-//         magnitudes.end()
-//     ) > change_threshold;
-// }
+std::vector<scalar_t> change_magnitude(
+    const std::vector<std::vector<scalar_t>>& residuals,
+    const std::vector<scalar_t>& variogram,
+    const std::vector<scalar_t>& rmse
+)
+{
+    assert(residuals.size() == variogram.size());
+    assert(residuals.size() == rmse.size());
 
-// //----------------------------------------------------------------------
-// // Returns true if the current observation should be treated as an outlier.
-// //
-// // Equivalent to:
-// //
-// //     magnitude > outlier_threshold
-// //----------------------------------------------------------------------
+    if(residuals.empty())
+        return {};
 
-// inline bool detect_outlier(
-//     scalar_t magnitude,
-//     scalar_t outlier_threshold
-// )
-// {
-//     return magnitude > outlier_threshold;
-// }
+    const index_t count = 
+        residuals.front().size();
 
-// inline std::vector<scalar_t> change_magnitude(
-//     const std::vector<std::vector<scalar_t>>& residuals,
-//     const std::vector<scalar_t>& variogram,
-//     const std::vector<scalar_t>& rmse
-// )
-// {
-//     assert(residuals.size() == variogram.size());
-//     assert(residuals.size() == rmse.size());
+    std::vector<scalar_t> magnitude(count, 0.0);
 
-//     if(residuals.empty())
-//         return {};
+    for(index_t band = 0; band < residuals.size(); ++band)
+    {
+        const scalar_t norm =
+            std::max(
+                variogram[band],
+                rmse[band]
+            );
 
-//     const index_t count = 
-//         residuals.front().size();
+        if(norm <= 0.0)
+            continue;
 
-//     std::vector<scalar_t> magnitude(count, 0.0);
+        for (index_t i = 0; i < count; ++i)
+        {
+            const scalar_t value =
+                residuals[band][i] / norm;
 
-//     for(index_t band = 0; band < residuals.size(); ++band)
-//     {
-//         const scalar_t norm =
-//             std::max(
-//                 variogram[band],
-//                 rmse[band]
-//             );
+            magnitude[i] += value * value;
+        }
+    }
 
-//         if(norm <= 0.0)
-//             continue;
-
-//         for (index_t i = 0; i < count; ++i)
-//         {
-//             const scalar_t value =
-//                 residuals[band][i] / norm;
-
-//             magnitude[i] += value * value;
-//         }
-//     }
-
-//     return magnitude;
-// }
+    return magnitude;
+}
 
 } // namespace ccd
 
