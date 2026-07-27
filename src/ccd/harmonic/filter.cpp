@@ -97,7 +97,7 @@ ProcessingMask insufficientclear(
         workspace.spectral(),
         options.GREEN_IDX,
         options.STAT_ORD,
-        options.MEDIAN_GREEN_FILTER,
+        static_cast<scalar_t>(options.MEDIAN_GREEN_FILTER),
         mask
     );
 
