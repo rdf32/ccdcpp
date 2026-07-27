@@ -230,6 +230,33 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # -----------------------------
+    # Snow test executable
+    # -----------------------------
+
+    add_executable(
+        test_snow
+
+        tests/ccd/procedure/test_snow.cpp
+    )
+
+
+    target_link_libraries(
+        test_snow
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_snow
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
     configure_file(
@@ -262,11 +289,25 @@ if(CCD_BUILD_TESTS)
         COPYONLY
     )
 
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/snow_reference.csv
+        ${PROJECT_BINARY_DIR}/snow_reference.csv
+        COPYONLY
+    )
+
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/snow_mask_reference.csv
+        ${PROJECT_BINARY_DIR}/snow_mask_reference.csv
+        COPYONLY
+    )
+
     include(GoogleTest)
 
     gtest_discover_tests(test_lasso)
     gtest_discover_tests(test_robust)
     gtest_discover_tests(test_clear)
+    gtest_discover_tests(test_snow)
+
 
 
 endif()

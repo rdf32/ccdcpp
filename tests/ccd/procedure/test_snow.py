@@ -10,6 +10,17 @@ from ccd import (
     __sort_dates
 )
 
+
+params = {
+    'QA_BITPACKED': False,
+    'QA_FILL': 255,
+    'QA_CLEAR': 0,
+    'QA_WATER': 1,
+    'QA_SHADOW': 2,
+    'QA_SNOW': 3,
+    'QA_CLOUD': 4
+}
+
 def read_data(path):
     """Load a sample file containing acquisition days and spectral values.
 
@@ -23,17 +34,6 @@ def read_data(path):
         A 2D numpy array.
     """
     return np.genfromtxt(path, delimiter=',', dtype=np.int64).T
-
-params = {
-    'QA_BITPACKED': False,
-    'QA_FILL': 255,
-    'QA_CLEAR': 0,
-    'QA_WATER': 1,
-    'QA_SHADOW': 2,
-    'QA_SNOW': 3,
-    'QA_CLOUD': 4
-}
-
 
 # ---------------------------------------------------------
 # Load data
@@ -132,12 +132,12 @@ rows = []
 for model in results:
 
     row = {
-        "start_day": model.start_day,
-        "end_day": model.end_day,
-        "break_day": model.break_day,
-        "observation_count": model.observation_count,
-        "change_probability": model.change_probability,
-        "curve_qa": model.curve_qa,
+        "start_day": model['start_day'],
+        "end_day": model['end_day'],
+        "break_day": model['break_day'],
+        "observation_count": model['observation_count'],
+        "change_probability": model['change_probability'],
+        "curve_qa": model['curve_qa'],
     }
 
 
@@ -152,17 +152,14 @@ for model in results:
     ]
 
 
-    for name, band in zip(
-        band_names,
-        model.bands
-    ):
+    for name in band_names:
 
-        row[f"{name}_rmse"] = band.rmse
-        row[f"{name}_intercept"] = band.intercept
-        row[f"{name}_magnitude"] = band.magnitude
+        row[f"{name}_rmse"] = model[name]['rmse']
+        row[f"{name}_intercept"] = model[name]['intercept']
+        row[f"{name}_magnitude"] = model[name]['magnitude']
 
         for i, coef in enumerate(
-            band.coefficients
+            model[name]['coefficients']
         ):
             row[
                 f"{name}_coef_{i}"
@@ -176,7 +173,7 @@ for model in results:
 df = pd.DataFrame(rows)
 
 df.to_csv(
-    "clear_reference.csv",
+    "snow_reference.csv",
     index=False
 )
 
