@@ -83,10 +83,9 @@ add_library(
     src/ccd/regression/robust_solver.cpp
 
     src/ccd/harmonic/filter.cpp
+    src/ccd/harmonic/harmonic.cpp
 
-    # Future additions:
-    # src/ccd/harmonic/tmask.cpp
-    # src/ccd/harmonic/observation_filter.cpp
+    src/ccd/procedure/fit.cpp
 )
 
 
@@ -204,6 +203,33 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # -----------------------------
+    # Clear test executable
+    # -----------------------------
+
+    add_executable(
+        test_clear
+
+        tests/ccd/procedure/test_clear.cpp
+    )
+
+
+    target_link_libraries(
+        test_clear
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_clear
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
     configure_file(
@@ -218,10 +244,30 @@ if(CCD_BUILD_TESTS)
         COPYONLY
     )
 
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test_3657_3610_observations.csv
+        ${PROJECT_BINARY_DIR}/test_3657_3610_observations.csv
+        COPYONLY
+    )
+
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/clear_reference.csv
+        ${PROJECT_BINARY_DIR}/clear_reference.csv
+        COPYONLY
+    )
+
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/clear_mask_reference.csv
+        ${PROJECT_BINARY_DIR}/clear_mask_reference.csv
+        COPYONLY
+    )
+
     include(GoogleTest)
 
     gtest_discover_tests(test_lasso)
     gtest_discover_tests(test_robust)
+    gtest_discover_tests(test_clear)
+
 
 endif()
 

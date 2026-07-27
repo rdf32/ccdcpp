@@ -57,8 +57,8 @@ FitResult FitProcedure::run(
     //----------------------------------------------------------
     FitResult results;
     ChangeModel result;
-    result.start_day = masked_dates(0);
-    result.end_day   = masked_dates(masked_dates.size() - 1);
+    result.start_day = workspace.dates()(0);
+    result.end_day   = workspace.dates()(workspace.dates().size() - 1);
     result.break_day = result.end_day;
 
     result.observation_count = mask.count();
@@ -90,7 +90,7 @@ FitResult FitProcedure::run(
             num_coef,
             true
         );
-
+        metrics.magn = 0.0;
         LassoResult band_result = {
             model,
             metrics

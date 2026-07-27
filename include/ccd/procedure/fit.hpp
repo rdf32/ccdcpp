@@ -30,11 +30,11 @@ enum class CurveQA : std::uint8_t {
 
 struct ChangeModel {
 
-    int start_day;
-    int end_day;
-    int break_day;
+    std::int64_t start_day;
+    std::int64_t end_day;
+    std::int64_t break_day;
 
-    int observation_count;
+    index_t observation_count;
 
     scalar_t change_probability;
 
