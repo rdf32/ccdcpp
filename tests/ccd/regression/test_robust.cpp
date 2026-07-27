@@ -86,7 +86,7 @@ TEST(RobustSolver, MultiBandRegression)
     //------------------------------------------------------------
     // Design matrix
     //------------------------------------------------------------
-    auto X = build_tmask_matrix(
+    auto X = tmask_basis(
         ArrayView<const std::int64_t, 1>::contiguous(
             dates.data(),
             {n_samples}

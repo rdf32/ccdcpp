@@ -105,7 +105,7 @@ RobustScore score(
     bool unbiased_rmse = true
 );
 
-Eigen::MatrixXd build_tmask_matrix(
+Eigen::MatrixXd tmask_basis(
     ArrayView<const std::int64_t, 1> dates
 );
 
