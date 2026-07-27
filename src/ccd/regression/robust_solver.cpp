@@ -2,6 +2,8 @@
 #include <Eigen/Dense>
 
 #include "ccd/types.hpp"
+#include "ccd/maths.hpp"
+#include "ccd/constants.hpp"
 #include "ccd/array_view.hpp"
 #include "ccd/regression/robust_solver.hpp"
 
@@ -40,7 +42,7 @@ RobustModel RobustSolver::fit(
 
     if(scale < EPS)
         return RobustModel(
-            0,
+            1,
             coefficients
         );
 
@@ -66,7 +68,7 @@ RobustModel RobustSolver::fit(
     Eigen::VectorXd leverage =
         Eigen::VectorXd::Zero(X.rows());
 
-    for(index_t i=0;i<X.rows();i++)
+    for(index_t i = 0; i < static_cast<index_t>(X.rows()); ++i)
     {
         leverage[i] =
             E.row(i).squaredNorm();
@@ -85,7 +87,7 @@ RobustModel RobustSolver::fit(
             y.size()
         );
     
-    index_t iter = 0;
+    index_t iter = 1;
     for(; iter < options_.max_iter; iter++)
     {
         Eigen::VectorXd old =
@@ -145,22 +147,16 @@ Eigen::VectorXd RobustSolver::weighted_fit(
         w.array().sqrt();
 
     Eigen::MatrixXd Xw =
-        X.array().colwise()
-        * sqrt_w.array();
+        sqrt_w.asDiagonal() * X;
 
     Eigen::VectorXd yw =
         y.array() *
         sqrt_w.array();
 
-    // Eigen::VectorXd beta =
-    //     Xw.colPivHouseholderQr()
-    //     .solve(yw);
-
-    Eigen::BDCSVD<Eigen::MatrixXd> svd(
-        Xw,
-        Eigen::ComputeThinU |
-        Eigen::ComputeThinV
-    );
+    Eigen::BDCSVD<
+        Eigen::MatrixXd,
+        Eigen::ComputeThinU | Eigen::ComputeThinV
+    > svd(Xw);
 
     Eigen::VectorXd beta =
         svd.solve(yw);
@@ -227,7 +223,7 @@ Eigen::VectorXd RobustSolver::bisquare(
 {
     Eigen::VectorXd w(r.size());
 
-    for(index_t i = 0; i < r.size(); i++)
+    for(index_t i = 0; i < static_cast<index_t>(r.size()); ++i) 
     {
         scalar_t x = std::abs(r[i]);
 
@@ -257,6 +253,88 @@ Eigen::VectorXd RobustModel::predict(
     Eigen::Ref<const Eigen::MatrixXd> X
 ) const {
     return X * coefficients_;
+}
+
+RobustScore score(
+    Eigen::Ref<const Eigen::VectorXd> y,
+    Eigen::Ref<const Eigen::VectorXd> preds,
+    index_t num_coefficients,
+    bool unbiased_rmse
+)
+{
+    assert(y.size() == preds.size());
+
+    std::vector<scalar_t> residuals(y.size());
+
+    scalar_t rss = 0.0;
+
+    for (index_t i = 0; i < static_cast<index_t>(y.size()); ++i)
+    {
+        const scalar_t residual = y(i) - preds(i);
+        residuals[i] = residual;
+        rss += residual * residual;
+    }
+
+    scalar_t denominator = static_cast<scalar_t>(y.size());
+
+    if (unbiased_rmse)
+    {
+        assert(static_cast<index_t>(y.size()) > num_coefficients);
+        denominator -= static_cast<scalar_t>(num_coefficients);
+    }
+
+    return RobustScore{
+        std::sqrt(rss / denominator),
+        median_absolute(residuals),
+        std::move(residuals)
+    };
+}
+
+
+Eigen::MatrixXd build_tmask_matrix(
+    ArrayView<const std::int64_t, 1> dates
+)
+{      
+    const index_t n = dates.size();
+    constexpr index_t num_features = 5;
+
+    Eigen::MatrixXd matrix(n, num_features);
+    
+    const scalar_t annual_cycle =
+        2.0 * PI / AVG_DAYS_YR;
+
+    const scalar_t years =
+        std::ceil(
+            (static_cast<scalar_t>(dates(n - 1)) -
+            static_cast<scalar_t>(dates(0))) /
+            AVG_DAYS_YR
+        );
+
+    const scalar_t observation_cycle = 
+        annual_cycle / years;
+
+    for(index_t i = 0; i < n; ++i)
+    {
+        const scalar_t d =
+            static_cast<scalar_t>(dates(i));
+
+        matrix(i, 0) =
+            std::cos(annual_cycle * d);
+
+        matrix(i, 1) =
+            std::sin(annual_cycle * d);
+
+        matrix(i, 2) =
+            std::cos(observation_cycle * d);
+
+        matrix(i, 3) =
+            std::sin(observation_cycle * d);
+
+
+        matrix(i, 4) = 1.0;
+    }
+
+    return matrix;
 }
 
 } // namespace ccd

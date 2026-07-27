@@ -80,10 +80,9 @@ add_library(
     ccd_core
 
     src/ccd/regression/lasso_solver.cpp
+    src/ccd/regression/robust_solver.cpp
 
     # Future additions:
-    # src/ccd/regression/least_squares.cpp
-    # src/ccd/regression/robust_solver.cpp
     # src/ccd/harmonic/tmask.cpp
     # src/ccd/harmonic/observation_filter.cpp
 )
@@ -176,6 +175,33 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # -----------------------------
+    # Robust test executable
+    # -----------------------------
+
+    add_executable(
+        test_robust
+
+        tests/ccd/regression/test_robust.cpp
+    )
+
+
+    target_link_libraries(
+        test_robust
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_robust
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
     configure_file(
@@ -184,9 +210,16 @@ if(CCD_BUILD_TESTS)
         COPYONLY
     )
 
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/regression/robust_reference.csv
+        ${PROJECT_BINARY_DIR}/robust_reference.csv
+        COPYONLY
+    )
+
     include(GoogleTest)
 
     gtest_discover_tests(test_lasso)
+    gtest_discover_tests(test_robust)
 
 endif()
 

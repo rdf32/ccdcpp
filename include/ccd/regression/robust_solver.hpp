@@ -22,7 +22,8 @@ struct RobustOptions {
 
 struct RobustScore {
     scalar_t rmse;
-    Eigen::VectorXd residuals;
+    scalar_t magn;
+    std::vector<scalar_t> residuals;
 };
 
 class RobustModel {
@@ -96,6 +97,17 @@ private:
 private:
     RobustOptions options_;
 };
+
+RobustScore score(
+    Eigen::Ref<const Eigen::VectorXd> y,
+    Eigen::Ref<const Eigen::VectorXd> preds,
+    index_t num_coefficients,
+    bool unbiased_rmse = true
+);
+
+Eigen::MatrixXd build_tmask_matrix(
+    ArrayView<const std::int64_t, 1> dates
+);
 
 // score
 
