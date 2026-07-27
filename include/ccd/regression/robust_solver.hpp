@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <vector>
 #include <Eigen/Dense>
 
@@ -9,11 +10,14 @@
 namespace ccd
 {
 
+constexpr scalar_t EPS =
+    std::numeric_limits<scalar_t>::epsilon();
+
 struct RobustOptions {
     index_t max_iter = 50;
     scalar_t tol = 1e-8;
-    scalar_t tune_ = 4.685;
-    scalar_t scale_constant_ = 0.6745;
+    scalar_t tune = 4.685;
+    scalar_t scale_constant = 0.6745;
 };
 
 struct RobustScore {
@@ -56,7 +60,7 @@ class RobustSolver
 public:
 
     explicit RobustSolver(
-        RobustOptions& options
+        const RobustOptions& options
     ) noexcept;
 
     RobustModel fit(
@@ -92,5 +96,7 @@ private:
 private:
     RobustOptions options_;
 };
+
+// score
 
 }
