@@ -39,4 +39,10 @@ constexpr scalar_t EPSILON =
     static_cast<scalar_t>(1e-12);
 
 
+constexpr scalar_t KELVIN_SCALE = 10.0;
+constexpr scalar_t KELVIN_OFFSET = 27315.0;
+
+constexpr scalar_t MIN_CELSIUS = -9320.0;
+constexpr scalar_t MAX_CELSIUS = 7070.0;
+
 } // namespace ccd

@@ -1,13 +1,13 @@
+#include "ccd/regression/lasso_solver.hpp"
+
 #include <cmath>
 #include <cassert>
 #include <vector>
 #include <algorithm>
 
 #include "ccd/maths.hpp"
-#include "ccd/types.hpp"
 #include "ccd/constants.hpp"
-#include "ccd/array_view.hpp"
-#include "ccd/regression/lasso_solver.hpp"
+
 
 
 namespace ccd

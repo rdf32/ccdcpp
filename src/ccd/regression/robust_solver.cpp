@@ -1,11 +1,11 @@
+#include "ccd/regression/robust_solver.hpp"
+
 #include <vector>
 #include <Eigen/Dense>
 
-#include "ccd/types.hpp"
 #include "ccd/maths.hpp"
 #include "ccd/constants.hpp"
-#include "ccd/array_view.hpp"
-#include "ccd/regression/robust_solver.hpp"
+
 
 namespace ccd
 {

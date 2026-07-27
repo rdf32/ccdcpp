@@ -82,6 +82,8 @@ add_library(
     src/ccd/regression/lasso_solver.cpp
     src/ccd/regression/robust_solver.cpp
 
+    src/ccd/harmonic/filter.cpp
+
     # Future additions:
     # src/ccd/harmonic/tmask.cpp
     # src/ccd/harmonic/observation_filter.cpp
