@@ -33,7 +33,7 @@ static T median(
                 values.begin(),
                 middle
             );
-        result = (*lower + result) * 0.5;
+        result = (*lower + result) / static_cast<T>(2);
     }
     return result;
 }
