@@ -102,6 +102,15 @@ bool lookback(
     std::vector<LassoResult>& models,
     index_t prev_break
 );
+
+ChangeModel catch_model(
+    const HarmonicWorkspace& workspace,
+    LassoSolver& solver,
+    ProcessingMask& mask,
+    Window& window,
+    CurveQA curve_qa
+);
+
 // bool lookforward
 
 // bool catch

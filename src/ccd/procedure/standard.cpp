@@ -460,6 +460,103 @@ bool lookback(
     return false;
 }
 
+ChangeModel catch_model(
+    const HarmonicWorkspace& workspace,
+    LassoSolver& solver,
+    ProcessingMask& mask,
+    Window& window,
+    CurveQA curve_qa
+) {
+    ChangeModel result;
+    auto& options = workspace.options();
+    std::cout 
+        << "Catch model window: " 
+        << window.start 
+        << ", " 
+        << window.stop 
+        << std::endl;
+        
+    MaskedData masked_data = 
+        apply_mask(workspace, mask);
+    
+    auto masked_dates = 
+        masked_data.dates_view();
+
+    auto masked_spectral = 
+        masked_data.spectral_view();
+
+    auto masked_dates_window = 
+        masked_dates.slice(range(window.start, window.stop));
+
+    auto masked_spectral_window = 
+        masked_spectral.slice(all(), range(window.start, window.stop));
+
+    //----------------------------------------------------------
+    // Determine harmonic complexity
+    //----------------------------------------------------------
+    const index_t num_coef = options.COEFFICIENT_MIN;
+
+    //----------------------------------------------------------
+    // Build harmonic basis
+    //----------------------------------------------------------
+    auto X_storage = 
+        lasso_basis(masked_dates_window, num_coef);
+
+    auto X = ArrayView<const scalar_t, 2>::contiguous(
+        X_storage.data(),
+        {masked_dates_window.size(), 7} // always shape (num_obs, 7) for lasso basis
+    );
+
+    //----------------------------------------------------------
+    // Fit every spectral band
+    //----------------------------------------------------------
+    for (index_t band = 0; band < masked_spectral_window.extent(0); ++band)
+    {
+        auto y = masked_spectral_window.slice(
+            fixed(band), 
+            all()
+        );
+
+        LassoModel model = solver.fit(
+            X,
+            y
+        );
+
+        auto preds = model.predict(
+            X
+        );
+
+        auto metrics = score(
+            y,
+            preds,
+            num_coef,
+            true
+        );
+
+        metrics.magn = 0.0; // set magnitude to 0
+
+        LassoResult band_result = {
+            model,
+            metrics
+        };
+        result.bands[band] = band_result;
+    }
+
+    if (window.stop >= masked_dates.size()) {
+        result.break_day = masked_dates(masked_dates.size() - 1);
+    } else {
+        result.break_day = masked_dates(window.stop);
+    }
+    result.start_day = masked_dates(window.start);
+    result.end_day   = masked_dates(window.stop - 1);
+    
+    result.observation_count = window.stop - window.start;
+    result.change_probability = 0.0;
+    result.curve_qa = curve_qa;
+
+    return result;
+}
+
 
 FitResult StandardProcedure::run(
     HarmonicWorkspace& workspace,
