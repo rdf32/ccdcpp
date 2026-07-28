@@ -369,7 +369,10 @@ bool lookback(
                 {bands, samples}
             );
         
-        std::vector<std::vector<scalar_t>> residuals(masked_spectral.extent(0));
+        std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
+        std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
+        std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
+
         auto X_storage = 
             lasso_basis(masked_dates_window, 8);
 
@@ -377,7 +380,7 @@ bool lookback(
             X_storage.data(),
             {masked_dates_window.size(), 7} // always shape (num_obs, 7) for lasso basis
         );
-        for (index_t band = 0; band < masked_spectral.extent(0); ++band)
+        for (auto band: options.DETECTION_BANDS)
         {
             auto y = masked_spectral_window.slice(
                 fixed(band), 
@@ -391,21 +394,22 @@ bool lookback(
                 calc_residuals(y, preds);
             // use original model rmse like python code 
             // not sure if this is intended or python bug
-            // auto rmse = models[band].score.rmse; 
-            residuals.push_back(abs_resid);
+            comp_resids.push_back(abs_resid);
+            comp_rmses.push_back(models[band].score.rmse);
+            comp_vario.push_back(variogram[band]);
         }
 
-        // comp_rmse = [models[idx].rmse for idx in detection_bands]
-
         // log.debug('RMSE values for comparison: %s', comp_rmse)
+        auto magnitude = 
+            change_magnitude(comp_resids, comp_vario, comp_rmses);
 
-        // magnitude = change_magnitude(residuals[detection_bands, :],
-        //                              variogram[detection_bands],
-        //                              comp_rmse)
-
-
-
-
+        //----------------------------------------------------------------------
+        // Change detected
+        //----------------------------------------------------------------------
+        if (detect_change(magnitude, options.CHANGE_THRESHOLD))
+        {
+            return true;
+        }
         // if detect_change(magnitude, change_thresh):
         //     log.debug('Change detected for index: %s', peek_window.start)
         //     # change was detected, return to parent method
