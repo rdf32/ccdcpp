@@ -530,6 +530,43 @@ ProcessingMask tmask(
     return outliers;
 }
 
+ProcessingMask update_processing_mask(
+    const ProcessingMask& mask,
+    const ProcessingMask& outliers,
+    const Window& window
+) {
+    ProcessingMask result(mask);
+    //----------------------------------------------------------
+    // Build mapping:
+    // masked index -> original index
+    //----------------------------------------------------------
+    std::vector<index_t> active;
+    active.reserve(mask.count());
+
+    for (index_t i = 0; i < mask.size(); ++i)
+    {
+        if (mask[i])
+        {
+            active.push_back(i);
+        }
+    }
+    //----------------------------------------------------------
+    // Remove outliers
+    //----------------------------------------------------------
+    for (index_t i = 0; i < outliers.size(); ++i)
+    {
+        if (!outliers[i])
+            continue;
+
+        result.set(
+            active[window.start + i],
+            false
+        );
+    }
+
+    return result;
+}
+
 } // namespace ccd
 
 

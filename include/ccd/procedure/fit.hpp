@@ -97,38 +97,38 @@ protected:
 
 struct Window
 {
-    index_t start = 0;
-    index_t stop  = 0;
+    index_t start_ = 0;
+    index_t stop_  = 0;
 
     Window() = default;
 
-    Window(index_t start_, index_t stop_)
-        : start(start_), stop(stop_){}
+    Window(index_t start, index_t stop)
+        : start_(start), stop_(stop){}
 
     index_t size() const
     {
-        return stop - start;
+        return stop_ - start_;
     }
 
     void grow()
     {
-        ++stop;
+        ++stop_;
     }
 
     void shift()
     {
-        ++start;
-        ++stop;
+        ++start_;
+        ++stop_;
     }
 
     void rewind(index_t amount)
     {
-        start -= amount;
+        start_ -= amount;
     }
 
     void extend(index_t amount)
     {
-        stop += amount;
+        stop_ += amount;
     }
 };
 
@@ -197,6 +197,12 @@ ProcessingMask tmask(
     std::vector<scalar_t>& variogram,
     const std::vector<index_t>& bands,
     scalar_t t_const
+);
+
+ProcessingMask update_processing_mask(
+    const ProcessingMask& mask,
+    const ProcessingMask& outliers,
+    const Window& window
 );
 
 } // namespace ccd
