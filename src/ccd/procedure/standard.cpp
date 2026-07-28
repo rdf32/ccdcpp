@@ -11,8 +11,6 @@ namespace ccd
 
 inline void print_lasso_results(const std::vector<LassoResult>& results)
 {
-
-
     std::cout << "\nSpectral Models\n";
     std::cout << "----------------------------------------\n";
 
@@ -63,7 +61,9 @@ bool initialize(
     LassoSolver& solver,
     std::vector<scalar_t>& variogram,
     ProcessingMask& mask,
-    Window& window
+    Window& window,
+    std::vector<LassoResult>& models
+
 )
 {   
     auto& options = workspace.options();
@@ -220,12 +220,6 @@ bool initialize(
         );
 
         //----------------------------------------------------------
-        // Build result
-        //----------------------------------------------------------
-        std::vector<LassoResult> bands;
-        bands.reserve(masked_spectral.slice(all(), range(window.start, window.stop)).extent(0));
-
-        //----------------------------------------------------------
         // Fit every spectral band
         //----------------------------------------------------------
         for (index_t band = 0; band < masked_spectral.slice(all(), range(window.start, window.stop)).extent(0); ++band)
@@ -254,7 +248,7 @@ bool initialize(
                 model,
                 metrics
             };
-            bands.push_back(band_result);
+            models.push_back(band_result);
         }
 
         //----------------------------------------------------------------------
@@ -263,12 +257,12 @@ bool initialize(
         if (stable(
                 masked_dates.slice(range(window.start, window.stop)),
                 variogram,
-                bands,
+                models,
                 options.CHANGE_THRESHOLD,
                 options.DETECTION_BANDS))
         {
             std:: cout << "Stable start found: " << window.start << ", " << window.stop << std::endl;
-            print_lasso_results(bands);
+            print_lasso_results(models);
             return true;
         }
 
@@ -278,6 +272,163 @@ bool initialize(
 
     return false;
 }
+
+std::vector<scalar_t> calc_residuals(
+    ArrayView<const scalar_t, 1> y,
+    std::vector<scalar_t>& preds
+)
+{
+    assert(y.size() == preds.size());
+
+    std::vector<scalar_t> residuals(y.size());
+
+    for (index_t i = 0; i < static_cast<index_t>(y.size()); ++i)
+    {
+        residuals[i] =
+            std::abs(y(i) - preds[i]);
+    }
+
+    return residuals;
+}
+
+bool lookback(
+    const HarmonicWorkspace& workspace,
+    LassoSolver& solver,
+    std::vector<scalar_t>& variogram,
+    ProcessingMask& mask,
+    Window& window,
+    std::vector<LassoResult>& models,
+    index_t prev_break
+) {
+    auto& options = workspace.options();
+    std::cout 
+        << "Lookback model window: " 
+        << window.start 
+        << ", " 
+        << window.stop 
+        << std::endl;
+        
+    MaskedData masked_data = 
+        apply_mask(workspace, mask);
+    
+    auto masked_dates = 
+        masked_data.dates_view();
+
+    auto masked_spectral = 
+        masked_data.spectral_view();
+
+    while(window.start > prev_break) {
+
+        Window peek_window;
+        if (window.start - prev_break > options.PEEK_SIZE)
+        {
+            peek_window.start = window.start - options.PEEK_SIZE;
+            peek_window.stop  = window.start;
+        }
+        else if (window.start - options.PEEK_SIZE <= 0)
+        {
+            peek_window.start = 0;
+            peek_window.stop  = window.start;
+        }
+        else
+        {
+            peek_window.start = prev_break;
+            peek_window.stop  = window.start;
+        }
+
+        std::vector<std::int64_t> peek_dates;
+        peek_dates.reserve(peek_window.stop - peek_window.start);
+
+        for (index_t i = peek_window.stop; i-- > peek_window.start;)
+        {
+            peek_dates.push_back(masked_dates[i]);
+        }
+        auto masked_dates_window =
+            ArrayView<const std::int64_t, 1>::contiguous(
+                peek_dates.data(),
+                {peek_dates.size()}
+            );
+        
+        std::vector<scalar_t> peek_spectral;
+        const index_t bands   = masked_spectral.extent(0);
+        const index_t samples = peek_window.stop - peek_window.start;
+
+        peek_spectral.resize(bands * samples);
+        for (index_t band = 0; band < bands; ++band)
+        {
+            for (index_t j = 0; j < samples; ++j)
+            {
+                index_t source = peek_window.stop - 1 - j;
+                peek_spectral[band * samples + j] =
+                    masked_spectral(band, source);
+            }
+        }
+        auto masked_spectral_window =
+            ArrayView<const scalar_t, 2>::contiguous(
+                peek_spectral.data(),
+                {bands, samples}
+            );
+        
+        std::vector<std::vector<scalar_t>> residuals(masked_spectral.extent(0));
+        auto X_storage = 
+            lasso_basis(masked_dates_window, 8);
+
+        auto X = ArrayView<const scalar_t, 2>::contiguous(
+            X_storage.data(),
+            {masked_dates_window.size(), 7} // always shape (num_obs, 7) for lasso basis
+        );
+        for (index_t band = 0; band < masked_spectral.extent(0); ++band)
+        {
+            auto y = masked_spectral_window.slice(
+                fixed(band), 
+                all()
+            );
+
+            auto preds = 
+                models[band].model.predict(X);
+
+            auto abs_resid = 
+                calc_residuals(y, preds);
+            // use original model rmse like python code 
+            // not sure if this is intended or python bug
+            // auto rmse = models[band].score.rmse; 
+            residuals.push_back(abs_resid);
+        }
+
+        // comp_rmse = [models[idx].rmse for idx in detection_bands]
+
+        // log.debug('RMSE values for comparison: %s', comp_rmse)
+
+        // magnitude = change_magnitude(residuals[detection_bands, :],
+        //                              variogram[detection_bands],
+        //                              comp_rmse)
+
+
+
+
+        // if detect_change(magnitude, change_thresh):
+        //     log.debug('Change detected for index: %s', peek_window.start)
+        //     # change was detected, return to parent method
+        //     break
+        // elif detect_outlier(magnitude[0], outlier_thresh):
+        //     log.debug('Outlier detected for index: %s', peek_window.start)
+        //     processing_mask = update_processing_mask(processing_mask,
+        //                                              peek_window.start)
+
+        //     period = dates[processing_mask]
+        //     spectral_obs = observations[:, processing_mask]
+
+        //     # Because this location was used in determining the model_window
+        //     # passed in, we must now account for removing it.
+        //     model_window = slice(model_window.start - 1, model_window.stop - 1)
+        //     continue
+
+        // log.debug('Including index: %s', peek_window.start)
+        // model_window = slice(peek_window.start, model_window.stop)
+
+    }
+}
+
 
 FitResult StandardProcedure::run(
     HarmonicWorkspace& workspace,
@@ -312,6 +463,7 @@ FitResult StandardProcedure::run(
     const auto masked_spectral = 
         masked_data.spectral_view();
 
+    index_t num_bands = masked_spectral.extent(0);
 
     auto end =
         std::upper_bound(
@@ -361,13 +513,14 @@ FitResult StandardProcedure::run(
 
     // initialize processing context
     bool start = false;
-    index_t previous_break = 0;
+    index_t prev_break = 0;
     auto window = Window(0, options.MEOW_SIZE);
 
     while(window.stop <= masked_dates.size() - options.MEOW_SIZE)
-    {
+    {   
+        std::vector<LassoResult> init_models(num_bands);
         auto initialized = 
-            initialize(workspace, solver, variogram, mask, window);
+            initialize(workspace, solver, variogram, mask, window, init_models);
 
         if (!initialized) {
             break;
@@ -383,11 +536,16 @@ FitResult StandardProcedure::run(
         }
         std::cout << '\n';
 
-        break;
-        // if (ctx.window.start > ctx.previous_break)
-        // {
-        //     lookback(ctx);
-        // }
+        // if model_window.start > previous_end:
+        //     lb = lookback(dates, observations, model_window, init_models,
+        //                   previous_end, processing_mask, variogram, proc_params)
+
+        //     model_window, processing_mask = lb
+
+        if (window.start > prev_break)
+        {
+            lookback(workspace, solver, variogram, mask, window, init_models, prev_break);
+        }
 
         // if (ctx.window.start - ctx.previous_break > 
         //     options.PEEK_SIZE 

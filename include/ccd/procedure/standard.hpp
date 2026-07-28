@@ -85,7 +85,18 @@ bool initialize(
     LassoSolver& solver,
     std::vector<scalar_t>& variogram,
     ProcessingMask& mask,
-    Window& window
+    Window& window,
+    std::vector<LassoResult>& models
+);
+
+bool lookback(
+    const HarmonicWorkspace& workspace,
+    LassoSolver& solver,
+    std::vector<scalar_t>& variogram,
+    ProcessingMask& mask,
+    Window& window,
+    std::vector<LassoResult>& models,
+    index_t prev_break
 );
 
 } // namespace ccd
