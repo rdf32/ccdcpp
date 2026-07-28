@@ -80,6 +80,11 @@ protected:
 
 };
 
+std::vector<scalar_t> calc_residuals(
+    ArrayView<const scalar_t, 1> y,
+    std::vector<scalar_t>& preds
+);
+
 bool initialize(
     const HarmonicWorkspace& workspace,
     LassoSolver& solver,
