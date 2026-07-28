@@ -97,38 +97,38 @@ protected:
 
 struct Window
 {
-    index_t start_ = 0;
-    index_t stop_  = 0;
+    index_t start = 0;
+    index_t stop  = 0;
 
     Window() = default;
 
-    Window(index_t start, index_t stop)
-        : start_(start), stop_(stop){}
+    Window(index_t start_, index_t stop_)
+        : start(start_), stop(stop_){}
 
     index_t size() const
     {
-        return stop_ - start_;
+        return stop - start;
     }
 
     void grow()
     {
-        ++stop_;
+        ++stop;
     }
 
     void shift()
     {
-        ++start_;
-        ++stop_;
+        ++start;
+        ++stop;
     }
 
     void rewind(index_t amount)
     {
-        start_ -= amount;
+        start -= amount;
     }
 
     void extend(index_t amount)
     {
-        stop_ += amount;
+        stop += amount;
     }
 };
 
