@@ -332,7 +332,7 @@ std::vector<int> read_mask_reference(
 }
 
 
-TEST(CCD, DetectClear)
+TEST(CCD, DetectStandard)
 {
     auto data = read_data("test_3657_3610_observations.csv");
 

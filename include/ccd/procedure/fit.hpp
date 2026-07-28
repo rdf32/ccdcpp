@@ -211,4 +211,10 @@ ProcessingMask update_processing_mask(
     const Window& window
 );
 
+ProcessingMask update_processing_mask(
+    const ProcessingMask& mask,
+    index_t masked_index
+);
+
+
 } // namespace ccd

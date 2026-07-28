@@ -544,6 +544,42 @@ ProcessingMask update_processing_mask(
     return result;
 }
 
+ProcessingMask update_processing_mask(
+    const ProcessingMask& mask,
+    index_t masked_index
+)
+{
+    ProcessingMask result(mask);
+
+    //----------------------------------------------------------
+    // Build mapping:
+    // masked index -> original index
+    //----------------------------------------------------------
+    std::vector<index_t> active;
+    active.reserve(mask.count());
+
+    for (index_t i = 0; i < mask.size(); ++i)
+    {
+        if (mask[i])
+        {
+            active.push_back(i);
+        }
+    }
+
+    assert(masked_index < active.size());
+
+    //----------------------------------------------------------
+    // Disable the corresponding original observation
+    //----------------------------------------------------------
+    result.set(
+        active[masked_index],
+        false
+    );
+
+    return result;
+}
+
+
 } // namespace ccd
 
 
