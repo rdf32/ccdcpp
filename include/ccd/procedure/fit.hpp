@@ -133,6 +133,12 @@ struct Window
 };
 
 // full timeseries
+
+index_t adjust_peek(
+    ArrayView<const std::int64_t, 1> dates,
+    index_t defpeek
+);
+
 scalar_t adjust_change_threshold(
     index_t peek,
     index_t defpeek,
@@ -168,7 +174,7 @@ bool stable(
     std::vector<scalar_t>& variogram,
     std::vector<LassoResult>& results,
     scalar_t change_threshold,
-    std::vector<index_t>& detection_bands
+    const std::vector<index_t>& detection_bands
 );
 
 // window models

@@ -86,6 +86,7 @@ add_library(
     src/ccd/harmonic/harmonic.cpp
 
     src/ccd/procedure/fit.cpp
+    src/ccd/procedure/standard.cpp
 )
 
 
@@ -312,7 +313,34 @@ if(CCD_BUILD_TESTS)
 
 endif()
 
+add_executable(
+    test_scratch
 
+    tests/scratch.cpp
+)
+
+
+target_link_libraries(
+    test_scratch
+
+    PRIVATE
+        ccd_core
+)
+
+add_executable(
+    test_standard
+
+    tests/ccd/procedure/test_standard.cpp
+)
+
+
+target_link_libraries(
+    test_standard
+
+    PRIVATE
+        ccd_core
+        GTest::gtest_main
+)
 # --------------------------------------------------
 # Install (optional future support)
 # --------------------------------------------------

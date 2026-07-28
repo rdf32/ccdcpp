@@ -318,14 +318,6 @@ bool enough_time(
     ArrayView<const std::int64_t, 1> dates_window,
     std::int64_t day_delta
 ) {
-
-    // if (window.size() == 0)
-    //     return false;
-
-    // auto subset =
-    //     dates.slice(
-    //         range(window.start, window.stop)
-    //     );
     const auto first_date = dates_window(0);
     const auto last_date = dates_window(dates_window.size() - 1);
 
@@ -336,13 +328,6 @@ bool enough_samples(
     ArrayView<const std::int64_t, 1> dates_window,
     index_t meow_size
 ) {
-    // if(window.size() == 0)
-    //     return false;
-
-    // auto subset =
-    //     dates.slice(
-    //         range(window.start, window.stop)
-    //     );
     return dates_window.size() >= meow_size;
 }
 
@@ -351,16 +336,8 @@ bool stable(
     std::vector<scalar_t>& variogram,
     std::vector<LassoResult>& results,
     scalar_t change_threshold,
-    std::vector<index_t>& detection_bands
+    const std::vector<index_t>& detection_bands
 ) {
-
-    // if(window.size() == 0)
-    //     return false;
-
-    // auto dates_window =
-    //     dates.slice(
-    //         range(window.start, window.stop)
-    //     );
     
     scalar_t euclidean_norm = 0.0;
     for (const auto idx: detection_bands) {

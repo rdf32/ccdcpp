@@ -80,4 +80,12 @@ protected:
 
 };
 
+bool initialize(
+    const HarmonicWorkspace& workspace,
+    LassoSolver& solver,
+    std::vector<scalar_t>& variogram,
+    ProcessingMask& mask,
+    Window& window
+);
+
 } // namespace ccd
