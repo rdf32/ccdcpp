@@ -410,10 +410,35 @@ bool lookback(
         {
             return true;
         }
-        // if detect_change(magnitude, change_thresh):
-        //     log.debug('Change detected for index: %s', peek_window.start)
-        //     # change was detected, return to parent method
-        //     break
+        //----------------------------------------------------------------------
+        // Outlier detected
+        //----------------------------------------------------------------------
+        if(detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
+        {
+            //----------------------------------------------------------
+            // Remove the observation immediately before the window
+            //----------------------------------------------------------
+            mask = update_processing_mask()
+            remove_masked_observation(
+                    window.start - 1
+                );
+
+            masked_data = 
+                apply_mask(workspace, mask);
+    
+            masked_dates = 
+                masked_data.dates_view();
+
+            masked_spectral = 
+                masked_data.spectral_view();
+            //----------------------------------------------------------
+            // Account for coordinate shift
+            //----------------------------------------------------------
+            --window.start;
+            --window.stop;
+
+            continue;
+        }
         // elif detect_outlier(magnitude[0], outlier_thresh):
         //     log.debug('Outlier detected for index: %s', peek_window.start)
         //     processing_mask = update_processing_mask(processing_mask,
@@ -421,16 +446,10 @@ bool lookback(
 
         //     period = dates[processing_mask]
         //     spectral_obs = observations[:, processing_mask]
-
-        //     # Because this location was used in determining the model_window
-        //     # passed in, we must now account for removing it.
-        //     model_window = slice(model_window.start - 1, model_window.stop - 1)
-        //     continue
-
-        // log.debug('Including index: %s', peek_window.start)
-        // model_window = slice(peek_window.start, model_window.stop)
-
+      
+        window.start = peek_window.start;
     }
+    return false;
 }
 
 
@@ -530,26 +549,31 @@ FitResult StandardProcedure::run(
             break;
         }
 
-        std::cout << "window: " << std::endl;
+        std::cout << "after init window: " << std::endl;
         std::cout << window.start << ", " << window.stop << std::endl;
 
-        std::cout << "mask: " << std::endl;
+        std::cout << "after init mask: " << std::endl;
         for (ccd::index_t i = 0; i < mask.size(); ++i)
         {
             std::cout << static_cast<int>(mask[i]) << ", ";
         }
         std::cout << '\n';
 
-        // if model_window.start > previous_end:
-        //     lb = lookback(dates, observations, model_window, init_models,
-        //                   previous_end, processing_mask, variogram, proc_params)
-
-        //     model_window, processing_mask = lb
-
         if (window.start > prev_break)
         {
             lookback(workspace, solver, variogram, mask, window, init_models, prev_break);
         }
+
+        std::cout << "after lookback window: " << std::endl;
+        std::cout << window.start << ", " << window.stop << std::endl;
+
+        std::cout << "after lookback mask: " << std::endl;
+        for (ccd::index_t i = 0; i < mask.size(); ++i)
+        {
+            std::cout << static_cast<int>(mask[i]) << ", ";
+        }
+        std::cout << '\n';
+        break;
 
         // if (ctx.window.start - ctx.previous_break > 
         //     options.PEEK_SIZE 
