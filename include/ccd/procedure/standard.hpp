@@ -102,5 +102,8 @@ bool lookback(
     std::vector<LassoResult>& models,
     index_t prev_break
 );
+// bool lookforward
+
+// bool catch
 
 } // namespace ccd
