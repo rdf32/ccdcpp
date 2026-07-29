@@ -579,6 +579,102 @@ ProcessingMask update_processing_mask(
     return result;
 }
 
+std::vector<index_t> find_closest_doy(
+    ArrayView<const std::int64_t, 1> dates,
+    index_t date_index,
+    const Window& window,
+    index_t count
+)
+{
+    struct Candidate
+    {
+        scalar_t distance;
+        index_t index;
+    };
+
+    std::vector<Candidate> candidates;
+
+    candidates.reserve(window.size());
+
+    const scalar_t target =
+        static_cast<scalar_t>(
+            dates(date_index)
+        );
+
+    constexpr scalar_t DAYS_PER_YEAR = 365.25;
+
+    for(index_t i = window.start;
+        i < window.stop;
+        ++i)
+    {
+        const scalar_t delta =
+            static_cast<scalar_t>(
+                dates(i)
+            ) - target;
+
+        const scalar_t seasonal =
+            std::abs(
+                std::round(delta / DAYS_PER_YEAR) *
+                DAYS_PER_YEAR -
+                delta
+            );
+
+        candidates.push_back(
+            {
+                seasonal,
+                i - window.start
+            }
+        );
+    }
+
+    std::sort(
+        candidates.begin(),
+        candidates.end(),
+        [](const auto& a,
+           const auto& b)
+        {
+            return a.distance < b.distance;
+        });
+
+    count =
+        std::min(
+            count,
+            static_cast<index_t>(
+                candidates.size()
+            )
+        );
+
+    std::vector<index_t> indices;
+
+    indices.reserve(count);
+
+    for(index_t i = 0; i < count; ++i)
+    {
+        indices.push_back(
+            candidates[i].index
+        );
+    }
+
+    return indices;
+}
+
+scalar_t seasonal_rmse(
+    const LassoResult& model,
+    const std::vector<index_t>& indices
+)
+{
+    scalar_t sum = 0.0;
+
+    for(auto idx : indices)
+    {
+        const scalar_t r =
+            model.score.residuals[idx];
+
+        sum += r * r;
+    }
+
+    return std::sqrt(sum) / 4.0;
+}
 
 } // namespace ccd
 

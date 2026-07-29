@@ -31,6 +31,40 @@ public:
 
 protected:
 
+    // subfunctions
+    bool initialize(
+        const HarmonicWorkspace& workspace,
+        LassoSolver& solver,
+        std::vector<scalar_t>& variogram,
+        ProcessingMask& mask,
+        Window& window,
+        std::vector<LassoResult>& models
+    );
+
+    bool lookback(
+        const HarmonicWorkspace& workspace,
+        std::vector<scalar_t>& variogram,
+        ProcessingMask& mask,
+        Window& window,
+        std::vector<LassoResult>& models,
+        index_t prev_break
+    );
+
+    ChangeModel catch_model(
+        const HarmonicWorkspace& workspace,
+        LassoSolver& solver,
+        ProcessingMask& mask,
+        Window& window,
+        CurveQA curve_qa
+    );
+
+    ChangeModel lookforward(
+        const HarmonicWorkspace& workspace,
+        LassoSolver& solver,
+        std::vector<scalar_t>& variogram,
+        ProcessingMask& mask,
+        Window& window
+    );
     //----------------------------------------------------------------------
     // Select observations
     //
@@ -78,41 +112,24 @@ protected:
         return CurveQA::Start;
     }
 
+    // Results
+    std::vector<scalar_t> calc_residuals(
+        ArrayView<const scalar_t, 1> y,
+        std::vector<scalar_t>& preds
+    );
 };
 
-std::vector<scalar_t> calc_residuals(
-    ArrayView<const scalar_t, 1> y,
-    std::vector<scalar_t>& preds
-);
+inline scalar_t span(
+    ArrayView<const std::int64_t,1> dates,
+    const Window& window
+)
+{
+    assert(window.stop > window.start);
 
-bool initialize(
-    const HarmonicWorkspace& workspace,
-    LassoSolver& solver,
-    std::vector<scalar_t>& variogram,
-    ProcessingMask& mask,
-    Window& window,
-    std::vector<LassoResult>& models
-);
-
-bool lookback(
-    const HarmonicWorkspace& workspace,
-    std::vector<scalar_t>& variogram,
-    ProcessingMask& mask,
-    Window& window,
-    std::vector<LassoResult>& models,
-    index_t prev_break
-);
-
-ChangeModel catch_model(
-    const HarmonicWorkspace& workspace,
-    LassoSolver& solver,
-    ProcessingMask& mask,
-    Window& window,
-    CurveQA curve_qa
-);
-
-// bool lookforward
-
-// bool catch
+    return static_cast<scalar_t>(
+        dates(window.stop - 1) -
+        dates(window.start)
+    );
+}
 
 } // namespace ccd

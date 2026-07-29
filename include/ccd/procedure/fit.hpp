@@ -216,5 +216,16 @@ ProcessingMask update_processing_mask(
     index_t masked_index
 );
 
+std::vector<index_t> find_closest_doy(
+    ArrayView<const std::int64_t, 1> dates,
+    index_t date_index,
+    const Window& window,
+    index_t count
+);
+
+scalar_t seasonal_rmse(
+    const LassoResult& model,
+    const std::vector<index_t>& indices
+);
 
 } // namespace ccd

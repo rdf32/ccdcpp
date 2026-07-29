@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "ccd/maths.hpp"
 #include "ccd/array_print.hpp"
 
 namespace ccd
@@ -56,7 +57,7 @@ inline void print_lasso_results(const std::vector<LassoResult>& results)
     std::cout << "========================================\n";
 }
 
-bool initialize(
+bool StandardProcedure::initialize(
     const HarmonicWorkspace& workspace,
     LassoSolver& solver,
     std::vector<scalar_t>& variogram,
@@ -273,7 +274,7 @@ bool initialize(
     return false;
 }
 
-std::vector<scalar_t> calc_residuals(
+std::vector<scalar_t> StandardProcedure::calc_residuals(
     ArrayView<const scalar_t, 1> y,
     std::vector<scalar_t>& preds
 )
@@ -291,7 +292,7 @@ std::vector<scalar_t> calc_residuals(
     return residuals;
 }
 
-bool lookback(
+bool StandardProcedure::lookback(
     const HarmonicWorkspace& workspace,
     std::vector<scalar_t>& variogram,
     ProcessingMask& mask,
@@ -460,7 +461,7 @@ bool lookback(
     return false;
 }
 
-ChangeModel catch_model(
+ChangeModel StandardProcedure::catch_model(
     const HarmonicWorkspace& workspace,
     LassoSolver& solver,
     ProcessingMask& mask,
@@ -557,6 +558,220 @@ ChangeModel catch_model(
     return result;
 }
 
+ChangeModel StandardProcedure::lookforward(
+    const HarmonicWorkspace& workspace,
+    LassoSolver& solver,
+    std::vector<scalar_t>& variogram,
+    ProcessingMask& mask,
+    Window& window
+) {
+    ChangeModel result;
+    auto& options = workspace.options();
+    std::cout 
+        << "Catch model window: " 
+        << window.start 
+        << ", " 
+        << window.stop 
+        << std::endl;
+        
+    MaskedData masked_data = 
+        apply_mask(workspace, mask);
+    
+    auto masked_dates = 
+        masked_data.dates_view();
+
+    auto masked_spectral = 
+        masked_data.spectral_view();
+
+    std::cout << "lookforward initial model window: " 
+        << window.start << ", " << window.stop << std::endl;
+
+    index_t change = 0;
+    auto fit_window = window;
+    auto fit_span = span(masked_dates, window);
+    Window peek_window;
+    index_t num_coef;
+    auto num_bands = masked_spectral.extent(0);
+    std::vector<std::vector<scalar_t>> full_resids(num_bands);
+    std::vector<LassoResult> models;
+    // while model_window.stop + peek_size <= period.shape[0]:
+    while (window.stop + options.PEEK_SIZE <= mask.count()) {
+        
+        num_coef = coefficient_count(
+            masked_dates.slice(range(window.start, window.stop)), options);
+
+        peek_window = 
+            Window(window.stop, window.stop + options.PEEK_SIZE);
+
+        // # Used for comparison against fit_span
+        auto model_span = span(masked_dates, window);
+
+        std::cout << "detecting change for: : " 
+            << peek_window.start << ", " << peek_window.stop << std::endl;
+        
+        if (models.empty() || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
+        {   
+            models.clear();
+            fit_window = window;
+            fit_span = span(masked_dates, fit_window);
+            std::cout << "Retrain models" <<std::endl;
+
+            auto masked_dates_window = 
+                masked_dates.slice(range(fit_window.start, fit_window.stop));
+
+            auto masked_spectral_window = 
+                masked_spectral.slice(all(), range(fit_window.start, fit_window.stop));
+            //----------------------------------------------------------
+            // Build harmonic basis
+            //----------------------------------------------------------
+            auto X_storage = 
+                lasso_basis(masked_dates_window, num_coef);
+
+            auto X = ArrayView<const scalar_t, 2>::contiguous(
+                X_storage.data(),
+                {masked_dates_window.size(), 7} // always shape (num_obs, 7) for lasso basis
+            );
+
+            //----------------------------------------------------------
+            // Fit every spectral band
+            //----------------------------------------------------------
+            for (index_t band = 0; band < masked_spectral_window.extent(0); ++band)
+            {
+                auto y = masked_spectral_window.slice(
+                    fixed(band), 
+                    all()
+                );
+                LassoModel model = solver.fit(
+                    X,
+                    y
+                );
+                auto preds = model.predict(
+                    X
+                );
+
+                auto metrics = score(
+                    y,
+                    preds,
+                    num_coef,
+                    true
+                );
+
+                LassoResult band_result = {
+                    model,
+                    metrics
+                };
+                models.push_back(band_result);
+            }
+        }
+
+        full_resids.clear();
+        auto X_storage = 
+            lasso_basis(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
+
+        auto X = ArrayView<const scalar_t, 2>::contiguous(
+            X_storage.data(),
+            {masked_dates.slice(range(peek_window.start, peek_window.stop)).size(), 7} // always shape (num_obs, 7) for lasso basis
+        );
+        for (index_t band = 0; band < num_bands; ++band)
+        {
+            auto y = masked_spectral.slice(all(), range(peek_window.start, peek_window.stop)).slice(
+                fixed(band), 
+                all()
+            );
+
+            auto preds = 
+                models[band].model.predict(X);
+
+            auto abs_resid = 
+                calc_residuals(y, preds);
+    
+            full_resids[band] = abs_resid;
+        }
+
+        std::vector<scalar_t> comp_rmses;
+        std::vector<scalar_t> comp_vario;
+        std::vector<std::vector<scalar_t>> comp_resids;
+        if (window.stop - window.start <= 24) {
+            for (auto band: options.DETECTION_BANDS)
+            {
+                comp_rmses.push_back(models[band].score.rmse);
+                comp_vario.push_back(variogram[band]);
+            }
+        } else {
+            auto closest_indexes = 
+                find_closest_doy(masked_dates, peek_window.stop - 1, fit_window, 24);
+            
+            for (auto band : options.DETECTION_BANDS)
+            {   
+                comp_rmses.push_back(seasonal_rmse(models[band], closest_indexes));
+                comp_vario.push_back(variogram[band]);
+            }
+        }
+
+        std::cout << "RMSE values for comparison: " << std::endl;
+        std::cout << "[";
+        for (const auto num: comp_rmses) {
+            std::cout << num << ", ";
+        }
+        std::cout << "]\n";
+        auto magnitude = 
+            change_magnitude(comp_resids, comp_vario, comp_rmses);
+        std::cout << "Magnitudes of change: " << std::endl;
+        std::cout << "[";
+        for (const auto num: magnitude) {
+            std::cout << num << ", ";
+        }
+        std::cout << "]\n";
+
+        if (detect_change(magnitude, options.CHANGE_THRESHOLD))
+        {   
+            // log.debug('Change detected for index: %s', peek_window.start)
+            std::cout << "Change detected for index: " << peek_window.start << std::endl;
+            change = 1;
+            break;
+        } 
+        else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
+        {
+            std::cout << "Outlier detected for index: " << peek_window.start << std::endl;
+            //----------------------------------------------------------
+            // Remove the observation immediately before the window
+            //----------------------------------------------------------
+            mask = 
+                update_processing_mask(mask, peek_window.start);
+
+            masked_data = 
+                apply_mask(workspace, mask);
+    
+            masked_dates = 
+                masked_data.dates_view();
+
+            masked_spectral = 
+                masked_data.spectral_view();
+
+            continue;
+        }
+
+        if (window.stop + options.PEEK_SIZE > mask.count()) {
+            break;
+        }
+
+        window = Window(window.start, window.stop + 1);
+    }
+
+    result.start_day = masked_dates(window.start);
+    result.end_day = masked_dates(window.stop - 1);
+    result.break_day = masked_dates(peek_window.start);
+    result.observation_count = window.stop - window.start;
+    result.change_probability = change;
+    result.curve_qa = static_cast<CurveQA>(num_coef);
+
+    for (index_t band = 0; band < 7; ++band) {
+        result.bands[band] = std::move(models[band]);
+        result.bands[band].score.magn = median(full_resids[band]);
+    }
+
+    return result;
+}
 
 FitResult StandardProcedure::run(
     HarmonicWorkspace& workspace,
@@ -585,10 +800,10 @@ FitResult StandardProcedure::run(
     MaskedData masked_data = 
         apply_mask(workspace, mask);
 
-    const auto masked_dates = 
+    auto masked_dates = 
         masked_data.dates_view();
 
-    const auto masked_spectral = 
+    auto masked_spectral = 
         masked_data.spectral_view();
 
     auto end =
@@ -640,11 +855,12 @@ FitResult StandardProcedure::run(
     // initialize processing context
     bool start = false;
     index_t prev_break = 0;
+    index_t num_bands = masked_spectral.extent(0);
     auto window = Window(0, options.MEOW_SIZE);
 
-    while(window.stop <= masked_dates.size() - options.MEOW_SIZE)
+    while(window.stop <= mask.count() - options.MEOW_SIZE)
     {   
-        index_t num_bands = masked_spectral.extent(0);
+        
         std::vector<LassoResult> init_models(num_bands);
         auto initialized = 
             initialize(workspace, solver, variogram, mask, window, init_models);
@@ -678,58 +894,50 @@ FitResult StandardProcedure::run(
             std::cout << static_cast<int>(mask[i]) << ", ";
         }
         std::cout << '\n';
-        break;
 
-        // if (ctx.window.start - ctx.previous_break > 
-        //     options.PEEK_SIZE 
-        //     && ctx.start
-        // )
-        // {
-        //     ChangeModel result;
-        //     catch_model(
-        //         ctx,
-        //         Window(ctx.previous_break, ctx.window.start),
-        //         CurveQA::Start,
-        //         result
-        //     );
-        //     // append result
-        //     ctx.start = false;
-        //     results.models.push_back(result);
-        // }
+        break; ////////////////////////////////////////////////////
 
+        if (window.start - prev_break > options.PEEK_SIZE  && start)
+        {   
+            auto window_0 = Window(prev_break, window.start);
+            ChangeModel result = 
+                catch_model(workspace, solver, mask, window_0, CurveQA::Start);
+            // append result
+            start = false;
+            results.models.push_back(result);
+        }
+
+        if (window.stop + options.PEEK_SIZE > mask.count()) {
+            break;
+        }
+
+        std::cout << "Extend change model" << std::endl;
         // ChangeModel result;
         // lookforward(
         //     ctx, 
         //     result
         // );
-        // // store result
+        // store result
         // results.models.push_back(result);
 
-        // //--------------------------------------------------
-        // // iterate
-        // //--------------------------------------------------
-        // ctx.window = Window(
-        //     ctx.window.stop,
-        //     ctx.window.stop + options.MEOW_SIZE
-        // );
+        //--------------------------------------------------
+        // iterate
+        //--------------------------------------------------
+        window = 
+            Window(window.stop, window.stop + options.MEOW_SIZE);
 
-        // // --------------------------------
-        // // End catch
-        // // --------------------------------
-        // if (ctx.previous_break + options.PEEK_SIZE < workspace.active_count()) {
-            
-        //     ChangeModel result;
-        //     catch_model(
-        //         ctx, 
-        //         Window(ctx.previous_break, workspace.active_count()),
-        //         CurveQA::End,
-        //         result
-        //     );
-        //     results.models.push_back(result);
-        // }
+        // --------------------------------
+        // End catch
+        // --------------------------------
+        if (prev_break + options.PEEK_SIZE < mask.count()) {
+            auto window_1 = Window(prev_break, mask.count());
+            ChangeModel result = 
+                catch_model(workspace, solver, mask, window_1, CurveQA::End);
+            results.models.push_back(result);
+        }
     }
-    // results.mask = ctx.mask;
-    // return results;
+    results.mask = std::move(mask);
+    return results;
 }
 
 } // namespace ccd
