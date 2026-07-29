@@ -342,6 +342,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_robust)
     gtest_discover_tests(test_clear)
     gtest_discover_tests(test_snow)
+    gtest_discover_tests(test_standard)
 
 
 

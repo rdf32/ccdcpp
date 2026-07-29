@@ -590,7 +590,7 @@ ChangeModel StandardProcedure::lookforward(
     auto fit_window = window;
     auto fit_span = span(masked_dates, window);
     Window peek_window;
-    index_t num_coef;
+    index_t num_coef = options.COEFFICIENT_MIN;
     auto num_bands = masked_spectral.extent(0);
     std::vector<std::vector<scalar_t>> full_resids(num_bands);
     std::vector<LassoResult> models;
@@ -664,7 +664,6 @@ ChangeModel StandardProcedure::lookforward(
             }
         }
 
-        full_resids.clear();
         auto X_storage = 
             lasso_basis(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
 
@@ -693,7 +692,8 @@ ChangeModel StandardProcedure::lookforward(
         std::vector<std::vector<scalar_t>> comp_resids;
         if (window.stop - window.start <= 24) {
             for (auto band: options.DETECTION_BANDS)
-            {
+            {   
+                comp_resids.push_back(full_resids[band]);
                 comp_rmses.push_back(models[band].score.rmse);
                 comp_vario.push_back(variogram[band]);
             }
@@ -703,6 +703,7 @@ ChangeModel StandardProcedure::lookforward(
             
             for (auto band : options.DETECTION_BANDS)
             {   
+                comp_resids.push_back(full_resids[band]);
                 comp_rmses.push_back(seasonal_rmse(models[band], closest_indexes));
                 comp_vario.push_back(variogram[band]);
             }
@@ -762,7 +763,7 @@ ChangeModel StandardProcedure::lookforward(
     result.end_day = masked_dates(window.stop - 1);
     result.break_day = masked_dates(peek_window.start);
     result.observation_count = window.stop - window.start;
-    result.change_probability = change;
+    result.change_probability = static_cast<scalar_t>(change);
     result.curve_qa = static_cast<CurveQA>(num_coef);
 
     for (index_t band = 0; band < 7; ++band) {
@@ -853,14 +854,22 @@ FitResult StandardProcedure::run(
     }
 
     // initialize processing context
-    bool start = false;
+    bool start = true;
     index_t prev_break = 0;
     index_t num_bands = masked_spectral.extent(0);
     auto window = Window(0, options.MEOW_SIZE);
 
     while(window.stop <= mask.count() - options.MEOW_SIZE)
     {   
-        
+        // log.debug('Initialize for change model #: %s', len(results) + 1)
+        // if len(results) > 0:
+        //     start = False for when allowing previous results
+
+        std::cout << "Initialize for change model # " << results.models.size() + 1 << std::endl;
+        if (!results.models.empty()) {
+            start = false;
+        }
+
         std::vector<LassoResult> init_models(num_bands);
         auto initialized = 
             initialize(workspace, solver, variogram, mask, window, init_models);
@@ -895,9 +904,7 @@ FitResult StandardProcedure::run(
         }
         std::cout << '\n';
 
-        break; ////////////////////////////////////////////////////
-
-        if (window.start - prev_break > options.PEEK_SIZE  && start)
+        if ((window.start - prev_break > options.PEEK_SIZE)  && start)
         {   
             auto window_0 = Window(prev_break, window.start);
             ChangeModel result = 
@@ -912,29 +919,34 @@ FitResult StandardProcedure::run(
         }
 
         std::cout << "Extend change model" << std::endl;
-        // ChangeModel result;
-        // lookforward(
-        //     ctx, 
-        //     result
-        // );
-        // store result
-        // results.models.push_back(result);
+        ChangeModel result = lookforward(
+            workspace,
+            solver,
+            variogram,
+            mask,
+            window
+        );
+        results.models.push_back(result);
 
+        // log.debug('Accumulate results, {} so far'.format(len(results)))
+        std::cout << "prev_break: " << prev_break << std::endl;
+        std::cout << "window: " << window.start << ", " << window.stop << std::endl;
+        std::cout << "Accumulate results " << results.models.size() << " so far" << std::endl;
         //--------------------------------------------------
         // iterate
         //--------------------------------------------------
+        prev_break = window.stop;
         window = 
             Window(window.stop, window.stop + options.MEOW_SIZE);
-
-        // --------------------------------
-        // End catch
-        // --------------------------------
-        if (prev_break + options.PEEK_SIZE < mask.count()) {
-            auto window_1 = Window(prev_break, mask.count());
-            ChangeModel result = 
-                catch_model(workspace, solver, mask, window_1, CurveQA::End);
-            results.models.push_back(result);
-        }
+    }
+    // --------------------------------
+    // End catch
+    // --------------------------------
+    if (prev_break + options.PEEK_SIZE < mask.count()) {
+        auto window_1 = Window(prev_break, mask.count());
+        ChangeModel result = 
+            catch_model(workspace, solver, mask, window_1, CurveQA::End);
+        results.models.push_back(result);
     }
     results.mask = std::move(mask);
     return results;
