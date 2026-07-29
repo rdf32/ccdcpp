@@ -102,6 +102,11 @@ bool StandardProcedure::initialize(
         //----------------------------------------------------------------------
         // Run TMask
         //----------------------------------------------------------------------
+        std::cout << "tmask dates: " << std::endl;
+        print_array(masked_dates.slice(range(window.start, window.stop)));
+
+        std::cout << "tmask spectrl: " << std::endl;
+        print_array(masked_spectral.slice(all(), range(window.start, window.stop)));
         auto outliers =
             tmask(
                 masked_dates.slice(range(window.start, window.stop)),
@@ -300,7 +305,14 @@ bool StandardProcedure::lookback(
     std::vector<LassoResult>& models,
     index_t prev_break
 ) {
+    struct ReverseWindow
+    {
+        std::ptrdiff_t start;
+        std::ptrdiff_t stop;
+    };
+
     auto& options = workspace.options();
+    std::cout << "ENTERING LOOKBACK" << std::endl;
     std::cout << "previous break: " << prev_break << std::endl;
     std::cout 
         << "Lookback model window: " 
@@ -318,35 +330,68 @@ bool StandardProcedure::lookback(
     auto masked_spectral = 
         masked_data.spectral_view();
 
+    std::cout 
+        << "window 0 : " 
+        << window.start 
+        << ", " 
+        << window.stop 
+        << std::endl;
+
     while(window.start > prev_break) {
 
-        Window peek_window;
-        if (window.start - prev_break > options.PEEK_SIZE)
+        ReverseWindow peek_window;;
+        // if (window.start - prev_break > options.PEEK_SIZE)
+        // {
+        //     peek_window.start = window.start - options.PEEK_SIZE;
+        //     peek_window.stop  = window.start;
+        // }
+        // else if (window.start - options.PEEK_SIZE <= 0)
+        // {
+        //     peek_window.start = 0;
+        //     peek_window.stop  = window.start;
+        // }
+        // else
+        // {
+        //     peek_window.start = prev_break;
+        //     peek_window.stop  = window.start;
+        // }
+
+        // Python:
+        // slice(window.start - 1,
+        //       window.start - peek_size,
+        //       -1)
+
+        if ((window.start - prev_break) > options.PEEK_SIZE)
         {
-            peek_window.start = window.start - options.PEEK_SIZE;
-            peek_window.stop  = window.start;
+            peek_window.start = static_cast<std::ptrdiff_t>(window.start) - 1;
+            peek_window.stop  = static_cast<std::ptrdiff_t>(window.start) - options.PEEK_SIZE;
         }
-        else if (window.start - options.PEEK_SIZE <= 0)
+        else if (window.start <= options.PEEK_SIZE)
         {
-            peek_window.start = 0;
-            peek_window.stop  = window.start;
+            peek_window.start = static_cast<std::ptrdiff_t>(window.start) - 1;
+            peek_window.stop  = -1;
         }
         else
         {
-            peek_window.start = prev_break;
-            peek_window.stop  = window.start;
+            peek_window.start = static_cast<std::ptrdiff_t>(window.start) - 1;
+            peek_window.stop  = static_cast<std::ptrdiff_t>(prev_break) - 1;
         }
 
         std::cout << "Considering index: " << peek_window.start << " using peek window "
             << "(" << peek_window.start << ", " << peek_window.stop << ")" << std::endl;
 
         std::vector<std::int64_t> peek_dates;
-        peek_dates.reserve(peek_window.stop - peek_window.start);
+        peek_dates.reserve(options.PEEK_SIZE);
 
-        for (index_t i = peek_window.stop; i-- > peek_window.start;)
+        // for (index_t i = peek_window.stop; i-- > peek_window.start;)
+        // {
+        //     peek_dates.push_back(masked_dates[i]);
+        // }
+        for (std::ptrdiff_t i = peek_window.start; i > peek_window.stop; --i)
         {
             peek_dates.push_back(masked_dates[i]);
         }
+        
         auto masked_dates_window =
             ArrayView<const std::int64_t, 1>::contiguous(
                 peek_dates.data(),
@@ -355,16 +400,31 @@ bool StandardProcedure::lookback(
         
         std::vector<scalar_t> peek_spectral;
         const index_t bands   = masked_spectral.extent(0);
-        const index_t samples = peek_window.stop - peek_window.start;
+        // const index_t samples = peek_window.stop - peek_window.start;
+        const index_t samples = peek_dates.size();
 
         peek_spectral.resize(bands * samples);
+        // for (index_t band = 0; band < bands; ++band)
+        // {
+        //     for (index_t j = 0; j < samples; ++j)
+        //     {
+        //         index_t source = peek_window.stop - 1 - j;
+        //         peek_spectral[band * samples + j] =
+        //             masked_spectral(band, source);
+        //     }
+        // }
         for (index_t band = 0; band < bands; ++band)
         {
             for (index_t j = 0; j < samples; ++j)
             {
-                index_t source = peek_window.stop - 1 - j;
+                std::ptrdiff_t source =
+                    peek_window.start - static_cast<std::ptrdiff_t>(j);
+
+                assert(source >= 0);
+                assert(source < static_cast<std::ptrdiff_t>(masked_spectral.extent(1)));
+
                 peek_spectral[band * samples + j] =
-                    masked_spectral(band, source);
+                    masked_spectral(band, static_cast<index_t>(source));
             }
         }
         auto masked_spectral_window =
@@ -424,14 +484,17 @@ bool StandardProcedure::lookback(
         //----------------------------------------------------------------------
         if (detect_change(magnitude, options.CHANGE_THRESHOLD))
         {   
-            // log.debug('Change detected for index: %s', peek_window.start)
-            std::cout << "Change detected for index: " << peek_window.start << std::endl;
+
+            std::cout 
+                << "Change detected for index: "
+                << peek_window.start
+                << std::endl;
             return true;
         }
         //----------------------------------------------------------------------
         // Outlier detected
         //----------------------------------------------------------------------
-        if(detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
+        else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
         {
             std::cout << "Outlier detected for index: " << peek_window.start << std::endl;
             //----------------------------------------------------------
@@ -454,12 +517,27 @@ bool StandardProcedure::lookback(
             --window.start;
             --window.stop;
 
+            std::cout 
+                << "window 1 : " 
+                << window.start 
+                << ", " 
+                << window.stop 
+                << std::endl;
+
             continue;
         }
-        window.start = peek_window.start;
+        window.start = static_cast<index_t>(peek_window.start);
+
+        std::cout 
+            << "window 2 : " 
+            << window.start 
+            << ", " 
+            << window.stop 
+            << std::endl;
     }
     return false;
 }
+
 
 ChangeModel StandardProcedure::catch_model(
     const HarmonicWorkspace& workspace,

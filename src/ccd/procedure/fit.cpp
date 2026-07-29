@@ -1,5 +1,6 @@
 #include "ccd/procedure/fit.hpp"
 
+#include <iostream>
 #include <algorithm>
 #include <boost/math/distributions/chi_squared.hpp>
 
@@ -471,7 +472,13 @@ ProcessingMask tmask(
             y(i) =
                 spect_window(band, i);
         }
+        std::cout << "Band " << band << '\n';
+        std::cout << "y = ";
 
+        for (index_t i = 0; i < n; ++i)
+            std::cout << y(i) << " ";
+
+        std::cout << '\n';
         //------------------------------------------------------
         // Fit
         //------------------------------------------------------
@@ -479,22 +486,30 @@ ProcessingMask tmask(
             X,
             y
         );
-        const auto& beta =
-            model.coefficients();
-
+        // const auto& beta =
+        //     model.coefficients();
+        std::cout << "fit params: " << std::endl;
+        std::cout << model.coefficients().transpose() << '\n';
         //------------------------------------------------------
         // Residual threshold
         //------------------------------------------------------
         const scalar_t threshold =
             variogram[band] * t_const;
 
+        auto preds = model.predict(X);
+
         for(index_t i = 0; i < n; ++i)
         {
-            scalar_t prediction =
-                X.row(i)
-                .dot(beta);
+            const scalar_t residual = std::abs(preds[i] - y(i));
+            std::cout
+                << "band=" << band
+                << " sample=" << i
+                << " residual=" << residual
+                << " threshold=" << threshold
+                << " outlier=" << (residual > threshold)
+                << '\n';
             if(
-                std::abs(prediction - y(i))
+                residual
                 >
                 threshold
             )
@@ -502,6 +517,7 @@ ProcessingMask tmask(
                 outliers.set(i,true);
             }
         }
+        
     }
 
     return outliers;

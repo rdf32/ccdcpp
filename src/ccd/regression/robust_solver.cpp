@@ -1,5 +1,6 @@
 #include "ccd/regression/robust_solver.hpp"
 
+// #include <iostream>
 #include <vector>
 #include <Eigen/Dense>
 
@@ -89,7 +90,8 @@ RobustModel RobustSolver::fit(
     
     index_t iter = 1;
     for(; iter < options_.max_iter; iter++)
-    {
+    {   
+
         Eigen::VectorXd old =
             coefficients;
 
@@ -120,7 +122,10 @@ RobustModel RobustSolver::fit(
                 weights,
                 resid
             );
-
+        // std::cout << "iter " << iter << "\n";
+        // std::cout << "scale " << scale << "\n";
+        // std::cout << "weights " << weights.transpose() << "\n";
+        // std::cout << "coef " << coefficients.transpose() << "\n";
         if(converged(old, coefficients))
         {
             break;
