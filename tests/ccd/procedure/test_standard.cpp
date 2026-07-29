@@ -212,94 +212,73 @@ struct ExpectedModel
     std::array<ExpectedBand,7> bands;
 };
 
-ExpectedModel read_clear_reference(
+std::vector<ExpectedModel> read_reference(
     const std::string& filename
 )
 {
     std::ifstream file(filename);
 
-    if(!file)
+    if (!file)
+    {
         throw std::runtime_error(
-            "Unable to open clear_reference.csv"
+            "Unable to open standard_reference.csv"
         );
+    }
 
     std::string line;
 
-    // skip header
-    std::getline(file,line);
+    // Skip header
+    std::getline(file, line);
 
-    ExpectedModel result{};
+    std::vector<ExpectedModel> models;
 
-    if(!std::getline(file,line))
+    while (std::getline(file, line))
     {
-        throw std::runtime_error(
-            "Empty reference file"
-        );
-    }
+        if (line.empty())
+            continue;
 
-    std::stringstream ss(line);
-    std::string value;
+        std::stringstream ss(line);
+        std::string value;
 
-    auto next = [&]()
-    {
-        std::getline(ss,value,',');
-        return value;
-    };
-
-    result.start_day =
-        std::stoi(next());
-
-    result.end_day =
-        std::stoi(next());
-
-    result.break_day =
-        std::stoi(next());
-
-    result.observation_count =
-        std::stoi(next());
-
-    result.change_probability =
-        std::stod(next());
-
-    result.curve_qa =
-        std::stoi(next());
-
-    constexpr std::array<const char*,7> bands =
-    {
-        "blue",
-        "green",
-        "red",
-        "nir",
-        "swir1",
-        "swir2",
-        "thermal"
-    };
-
-    for(size_t b = 0; b < 7; ++b)
-    {
-        auto& band = result.bands[b];
-
-        band.rmse =
-            std::stod(next());
-
-        band.intercept =
-            std::stod(next());
-
-        band.magnitude =
-            std::stod(next());
-
-        band.coefficients.clear();
-
-        for(int i = 0; i < 7; i++)
+        auto next = [&]()
         {
-            band.coefficients.push_back(
-                std::stod(next())
-            );
+            std::getline(ss, value, ',');
+            return value;
+        };
+
+        ExpectedModel result{};
+
+        result.start_day          = std::stoi(next());
+        result.end_day            = std::stoi(next());
+        result.break_day          = std::stoi(next());
+        result.observation_count  = std::stoi(next());
+        result.change_probability = std::stod(next());
+        result.curve_qa           = std::stoi(next());
+
+        for (size_t b = 0; b < 7; ++b)
+        {
+            auto& band = result.bands[b];
+
+            band.rmse      = std::stod(next());
+            band.intercept = std::stod(next());
+            band.magnitude = std::stod(next());
+
+            band.coefficients.clear();
+
+            for (int i = 0; i < 7; ++i)
+            {
+                band.coefficients.push_back(
+                    std::stod(next())
+                );
+            }
         }
+
+        models.push_back(std::move(result));
     }
 
-    return result;
+    return models;
 }
+
 
 std::vector<int> read_mask_reference(
     const std::string& filename
@@ -309,7 +288,7 @@ std::vector<int> read_mask_reference(
 
     if(!file)
         throw std::runtime_error(
-            "Unable to open clear_mask_reference.csv"
+            "Unable to open standard_mask_reference.csv"
         );
 
     std::vector<int> mask;
@@ -375,122 +354,92 @@ TEST(CCD, DetectStandard)
         solver
     );
 
-    // print_change_models(result.models);
+    print_change_models(result.models);
 
-    // auto expected =
-    //     read_clear_reference(
-    //         "clear_reference.csv"
-    //     );
+    auto expected_models =
+        read_reference(
+            "standard_reference.csv"
+        );
 
-    // auto expected_mask =
-    //     read_mask_reference(
-    //         "clear_mask_reference.csv"
-    //     );
+    auto expected_mask =
+        read_mask_reference(
+            "standard_mask_reference.csv"
+        );
 
-    // ASSERT_EQ(
-    //     result.models.size(),
-    //     1
-    // );
+    ASSERT_EQ(result.models.size(), expected_models.size());
+    ASSERT_EQ(expected_models.size(), 5);
 
-    // const auto& actual =
-    //     result.models[0];
+    for (size_t m = 0; m < result.models.size(); ++m) {
+        const auto& actual   = result.models[m];
+        const auto& expected = expected_models[m];
 
-    // EXPECT_EQ(
-    //     actual.start_day,
-    //     expected.start_day
-    // );
+        EXPECT_EQ(actual.start_day, expected.start_day);
+        EXPECT_EQ(actual.end_day, expected.end_day);
+        EXPECT_EQ(actual.break_day, expected.break_day);
+        EXPECT_EQ(actual.observation_count, expected.observation_count);
 
-    // EXPECT_EQ(
-    //     actual.end_day,
-    //     expected.end_day
-    // );
+        EXPECT_NEAR(
+            actual.change_probability,
+            expected.change_probability,
+            1e-8
+        );
+        EXPECT_EQ(
+            static_cast<int>(actual.curve_qa),
+            expected.curve_qa
+        );
 
-    // EXPECT_EQ(
-    //     actual.break_day,
-    //     expected.break_day
-    // );
+        for(size_t b = 0; b < 7; b++)
+        {
+            const auto& actual_band = actual.bands[b];
+            const auto& expected_band = expected.bands[b];
 
-    // EXPECT_EQ(
-    //     actual.observation_count,
-    //     expected.observation_count
-    // );
+            EXPECT_NEAR(
+                actual_band.score.rmse,
+                expected_band.rmse,
+                1e-6
+            );
 
+            EXPECT_NEAR(
+                actual_band.model.intercept(),
+                expected_band.intercept,
+                1e-6
+            );
 
-    // EXPECT_NEAR(
-    //     actual.change_probability,
-    //     expected.change_probability,
-    //     1e-8
-    // );
+            EXPECT_NEAR(
+                actual_band.score.magn,
+                expected_band.magnitude,
+                1e-6
+            );
 
-    // EXPECT_EQ(
-    //     static_cast<int>(actual.curve_qa),
-    //     expected.curve_qa
-    // );
+            const auto& coef =
+                actual_band.model.coefficients();
 
-    // for(size_t b=0;b<7;b++)
-    // {
-    //     const auto& actual_band =
-    //         actual.bands[b];
+            ASSERT_EQ(
+                coef.size(),
+                expected_band.coefficients.size()
+            );
 
-    //     const auto& expected_band =
-    //         expected.bands[b];
+            for(size_t i = 0; i < coef.size(); i++)
+            {
+                EXPECT_NEAR(
+                    coef[i],
+                    expected_band.coefficients[i],
+                    1e-6
+                );
+            }
+        }
+    }
+    
 
+    ASSERT_EQ(result.mask.size(), expected_mask.size());
 
-    //     EXPECT_NEAR(
-    //         actual_band.score.rmse,
-    //         expected_band.rmse,
-    //         1e-6
-    //     );
-
-
-    //     EXPECT_NEAR(
-    //         actual_band.model.intercept(),
-    //         expected_band.intercept,
-    //         1e-6
-    //     );
-
-
-    //     EXPECT_NEAR(
-    //         actual_band.score.magn,
-    //         expected_band.magnitude,
-    //         1e-6
-    //     );
-
-
-    //     const auto& coef =
-    //         actual_band.model.coefficients();
-
-
-    //     ASSERT_EQ(
-    //         coef.size(),
-    //         expected_band.coefficients.size()
-    //     );
-
-
-    //     for(size_t i=0;i<coef.size();i++)
-    //     {
-    //         EXPECT_NEAR(
-    //             coef[i],
-    //             expected_band.coefficients[i],
-    //             1e-6
-    //         );
-    //     }
-    // }
-
-    // ASSERT_EQ(
-    //     result.mask.size(),
-    //     expected_mask.size()
-    // );
-
-
-    // for(size_t i=0;i<expected_mask.size();i++)
-    // {
-    //     EXPECT_EQ(
-    //         static_cast<int>(
-    //             result.mask.test(i)
-    //         ),
-    //         expected_mask[i]
-    //     );
-    // }
-
+    for(size_t i=0;i<expected_mask.size();i++)
+    {
+        EXPECT_EQ(
+            static_cast<int>(
+                result.mask.test(i)
+            ),
+            expected_mask[i]
+        );
+    }
 }

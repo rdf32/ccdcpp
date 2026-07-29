@@ -258,6 +258,29 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+
+    add_executable(
+        test_standard
+
+        tests/ccd/procedure/test_standard.cpp
+    )
+
+
+    target_link_libraries(
+        test_standard
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_standard
+
+        PRIVATE
+            cxx_std_17
+    )
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
     configure_file(
@@ -302,6 +325,17 @@ if(CCD_BUILD_TESTS)
         COPYONLY
     )
 
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/standard_reference.csv
+        ${PROJECT_BINARY_DIR}/standard_reference.csv
+        COPYONLY
+    )
+
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/standard_mask_reference.csv
+        ${PROJECT_BINARY_DIR}/standard_mask_reference.csv
+        COPYONLY
+    )
     include(GoogleTest)
 
     gtest_discover_tests(test_lasso)
@@ -327,20 +361,6 @@ target_link_libraries(
         ccd_core
 )
 
-add_executable(
-    test_standard
-
-    tests/ccd/procedure/test_standard.cpp
-)
-
-
-target_link_libraries(
-    test_standard
-
-    PRIVATE
-        ccd_core
-        GTest::gtest_main
-)
 # --------------------------------------------------
 # Install (optional future support)
 # --------------------------------------------------
