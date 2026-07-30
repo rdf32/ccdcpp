@@ -18,15 +18,41 @@ void bind_fit(py::module_& m)
         "MinCoefficients",
         ccd::CurveQA::MinCoefficients
     )
-
     .value(
         "MidCoefficients",
         ccd::CurveQA::MidCoefficients
     )
-
     .value(
         "MaxCoefficients",
         ccd::CurveQA::MaxCoefficients
+    )
+    .value(
+        "Start",
+        ccd::CurveQA::Start
+    )
+    .value(
+        "End",
+        ccd::CurveQA::End
+    )
+    .value(
+        "InsufficientClear",
+        ccd::CurveQA::InsufficientClear
+    )
+    .value(
+        "PersistentSnow",
+        ccd::CurveQA::PersistentSnow
+    )
+    .value(
+        "Stable",
+        ccd::CurveQA::Stable
+    )
+    .value(
+        "Recovery",
+        ccd::CurveQA::Recovery
+    )
+    .value(
+        "Disturbance",
+        ccd::CurveQA::Disturbance
     );
 
 

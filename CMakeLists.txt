@@ -514,18 +514,28 @@ endif()
 # Install (optional future support)
 # --------------------------------------------------
 
-include(GNUInstallDirs)
-
-install(
-    TARGETS ccd_core
-    EXPORT ccdTargets
+option(
+    CCD_INSTALL_CPP
+    "Install C++ library headers"
+    OFF
 )
 
 
-install(
-    DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+if(CCD_INSTALL_CPP)
+
+    include(GNUInstallDirs)
+
+    install(
+        TARGETS ccd_core
+        EXPORT ccdTargets
+    )
+
+    install(
+        DIRECTORY include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+
+endif()
 
 # cmake -S . -B build -G "Visual Studio 17 2022" `
 #     -DCMAKE_PREFIX_PATH=C:\Users\rylie\miniconda3\envs\geo\Library

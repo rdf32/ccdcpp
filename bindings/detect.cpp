@@ -120,7 +120,6 @@ ccd::FitResult detect_wrapper(
             }
         );
 
-
     return ccd::detect(
         dates_view,
         spectral_view,

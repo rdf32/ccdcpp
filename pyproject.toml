@@ -15,7 +15,9 @@ requires-python = ">=3.12"
 [tool.scikit-build]
 cmake.args = [
     "-DCCD_BUILD_PYTHON=ON",
-    "-DCCD_BUILD_TESTS=OFF"
+    "-DCCD_BUILD_TESTS=OFF",
+    "-DCCD_INSTALL_CPP=OFF",
+    "-DCMAKE_BUILD_TYPE=Release"
 ]
 [tool.scikit-build.wheel]
 packages = ["python/ccdcpp"]
