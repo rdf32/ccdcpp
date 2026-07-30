@@ -13,6 +13,7 @@
 namespace py = pybind11;
 
 
+
 //------------------------------------------------------------------------------
 // detect wrapper
 //
@@ -25,7 +26,7 @@ namespace py = pybind11;
 // ArrayViews simply wrap existing buffers.
 //------------------------------------------------------------------------------
 
-ccd::FitResult detect_wrapper(
+py::dict detect_wrapper(
     py::array_t<std::int64_t,
         py::array::c_style> dates,
 
@@ -35,10 +36,19 @@ ccd::FitResult detect_wrapper(
     py::array_t<std::uint8_t,
         py::array::c_style> qas,
 
-    ccd::HarmonicOptions& hoptions,
-    ccd::LassoOptions& loptions
+    ccd::HarmonicOptions hoptions,
+    ccd::LassoOptions loptions
 )
 {
+    if (!dates.flags() & py::array::c_style)
+        throw std::runtime_error("dates must be C contiguous");
+
+    if (!spectral.flags() & py::array::c_style)
+        throw std::runtime_error("spectral must be C contiguous");
+
+    if (!qas.flags() & py::array::c_style)
+        throw std::runtime_error("qas must be C contiguous");
+
     auto dates_buf = dates.request();
     auto spectral_buf = spectral.request();
     auto qas_buf = qas.request();
@@ -77,11 +87,9 @@ ccd::FitResult detect_wrapper(
             "spectral time dimension must match dates"
         );
 
-
     //--------------------------------------------------------------------------
     // Create zero-copy ArrayViews
     //--------------------------------------------------------------------------
-
     auto dates_view =
         ccd::ArrayView<const std::int64_t,1>::contiguous(
             static_cast<std::int64_t*>(
@@ -119,16 +127,106 @@ ccd::FitResult detect_wrapper(
                 timesteps
             }
         );
+    
+    //----------------------------------------------------------------------
+    // Run CCD WITHOUT Python GIL
+    //----------------------------------------------------------------------
 
-    return ccd::detect(
-        dates_view,
-        spectral_view,
-        qas_view,
-        hoptions,
-        loptions
+    ccd::FitResult final_result;
+    {
+        py::gil_scoped_release release;
+
+        final_result =
+            ccd::detect(
+                dates_view,
+                spectral_view,
+                qas_view,
+                hoptions,
+                loptions
+            );
+    }
+
+    //----------------------------------------------------------------------
+    // Python conversion (GIL restored)
+    //----------------------------------------------------------------------
+
+    py::dict output;
+    py::list models;
+
+    for (const auto& model : final_result.models)
+    {
+        py::dict m;
+
+        m["start_day"] =
+            model.start_day;
+
+        m["end_day"] =
+            model.end_day;
+
+        m["break_day"] =
+            model.break_day;
+
+        m["observation_count"] =
+            model.observation_count;
+
+        m["change_probability"] =
+            model.change_probability;
+
+        m["curve_qa"] =
+            static_cast<std::uint8_t>(model.curve_qa);
+
+        py::list bands;
+
+        for (const auto& band : model.bands)
+        {
+            py::dict b;
+
+            b["rmse"] =
+                band.score.rmse;
+
+            b["magnitude"] =
+                band.score.magn;
+
+            const auto& c = band.model.coefficients();
+            py::tuple coef(c.size());
+
+            for (size_t i = 0; i < c.size(); ++i)
+            {
+                coef[i] = c[i];
+            }
+            b["coefficients"] = coef;
+
+
+            b["intercept"] =
+                band.model.intercept();
+
+
+            bands.append(b);
+        }
+
+        m["bands"] = bands;
+        models.append(m);
+    }
+
+    output["models"] = models;
+
+    // processing mask
+    py::array_t<std::uint8_t> mask_array(
+        final_result.mask.size()
     );
-}
 
+    auto mask_buf = mask_array.mutable_unchecked<1>();
+    const auto& mask = final_result.mask.data();
+    for (size_t i = 0; i < mask.size(); ++i)
+    {
+        mask_buf(i) = mask[i];
+    }
+
+    output["processing_mask"] = mask_array;
+
+    return output;
+
+}
 
 
 //------------------------------------------------------------------------------

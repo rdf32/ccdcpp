@@ -19,8 +19,8 @@ FitResult detect(
     ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
     ArrayView<scalar_t, 2> spectral,  // shape -> (bands, timesteps)
     ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
-    HarmonicOptions& hoptions,
-    LassoOptions& loptions
+    HarmonicOptions hoptions,
+    LassoOptions loptions
 ) {
 
     Quality quality;

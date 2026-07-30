@@ -91,9 +91,38 @@ void bind_fit(py::module_& m)
         &ccd::ChangeModel::curve_qa
     )
 
-    .def_readonly(
+    // .def_readonly(
+    //     "bands",
+    //     &ccd::ChangeModel::bands
+    // );
+
+    .def(
         "bands",
-        &ccd::ChangeModel::bands
+        [](const ccd::ChangeModel& self)
+        {
+            py::list result;
+
+            for (const auto& band : self.bands)
+            {
+                py::dict b;
+
+                b["rmse"] =
+                    band.score.rmse;
+
+                b["magnitude"] =
+                    band.score.magn;
+
+                b["coefficients"] =
+                    band.model.coefficients();
+
+                b["intercept"] =
+                    band.model.intercept();
+
+                result.append(b);
+            }
+
+            return result;
+        }
     );
 
 
