@@ -11,6 +11,23 @@ cmake_policy(SET CMP0167 NEW)
 cmake_policy(SET CMP0135 NEW)
 
 
+# -----------------------------
+# Build options
+# -----------------------------
+
+option(
+    CCD_ENABLE_OPENMP
+    "Enable OpenMP support"
+    ON
+)
+
+
+option(
+    CCD_BUILD_PYTHON
+    "Build Python bindings"
+    ON
+)
+
 # --------------------------------------------------
 # Project
 # --------------------------------------------------
@@ -45,23 +62,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # --------------------------------------------------
 # Compiler warnings
 # --------------------------------------------------
-
-# if(MSVC)
-
-#     add_compile_options(
-#         /W4
-#         /permissive-
-#     )
-
-# else()
-
-#     add_compile_options(
-#         -Wall
-#         -Wextra
-#         -Wpedantic
-#     )
-
-# endif()
 
 if(MSVC)
 
@@ -133,6 +133,35 @@ target_link_libraries(
         Boost::boost
 )
 
+# -----------------------------
+# Optional OpenMP support
+# -----------------------------
+
+if(CCD_ENABLE_OPENMP)
+
+    find_package(OpenMP)
+
+    if(OpenMP_CXX_FOUND)
+
+        message(STATUS "CCD: OpenMP enabled")
+
+        target_link_libraries(
+            ccd_core
+            PUBLIC
+                OpenMP::OpenMP_CXX
+        )
+
+    else()
+
+        message(STATUS "CCD: OpenMP requested but not found")
+
+    endif()
+
+else()
+
+    message(STATUS "CCD: OpenMP disabled")
+
+endif()
 
 # --------------------------------------------------
 # Tests
@@ -402,6 +431,84 @@ target_compile_features(
     PRIVATE
         cxx_std_17
 )
+
+# --------------------------------------------------
+# Python bindings
+# --------------------------------------------------
+
+if(CCD_BUILD_PYTHON)
+
+    # Use modern Python discovery
+    set(PYBIND11_FINDPYTHON ON)
+
+    find_package(pybind11 CONFIG REQUIRED)
+
+
+    pybind11_add_module(
+        ccd_python
+
+        bindings/module.cpp
+        bindings/options.cpp
+        bindings/regression.cpp
+        bindings/fit.cpp
+        bindings/pmask.cpp
+        bindings/quality.cpp
+        bindings/detect.cpp
+    )
+
+    # Python import name:
+    # import ccdcpp
+    # produces:
+    # ccdcpp.cp312-win_amd64.pyd
+
+    set_target_properties(
+        ccd_python
+        PROPERTIES
+            OUTPUT_NAME "ccdcpp"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
+    )
+
+    target_link_libraries(
+        ccd_python
+
+        PRIVATE
+            ccd_core
+    )
+
+    target_include_directories(
+        ccd_python
+
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/include
+    )
+
+    target_compile_features(
+        ccd_python
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    # -----------------------------
+    # Install into Python package
+    #
+    # wheel layout:
+    # site-packages/
+    #   ccdcpp/
+    #       ccdcpp.cp312-win_amd64.pyd
+    #
+    # -----------------------------
+    install(
+        TARGETS
+            ccd_python
+        LIBRARY DESTINATION
+            ccdcpp
+        RUNTIME DESTINATION
+            ccdcpp
+    )
+
+endif()
+
 
 # --------------------------------------------------
 # Install (optional future support)

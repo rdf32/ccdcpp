@@ -6,15 +6,16 @@ requires = [
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "ccd"
+name = "ccdcpp"
 version = "0.0.1"
 description = "High-performance C++/Python implementation of Continuous Change Detection algorithm for Landsat."
 readme = "README.md"
 requires-python = ">=3.12"
 
 [tool.scikit-build]
-wheel.packages = ["python/ccd"]
 cmake.args = [
-    "-G",
-    "Visual Studio 17 2022"
+    "-DCCD_BUILD_PYTHON=ON",
+    "-DCCD_BUILD_TESTS=OFF"
 ]
+[tool.scikit-build.wheel]
+packages = ["python/ccdcpp"]

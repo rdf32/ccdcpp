@@ -108,11 +108,11 @@ inline void print_change_models(
 }
 
 FitResult detect(
-    ArrayView<const std::int64_t, 1>& dates, // shape -> (timesteps)
-    ArrayView<scalar_t, 2>& spectral,  // shape -> (bands, timesteps)
-    ArrayView<const std::uint8_t, 1>& qas,   // shape -> (timesteps)
-    HarmonicOptions hoptions,
-    LassoOptions loptions
+    ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
+    ArrayView<scalar_t, 2> spectral,  // shape -> (bands, timesteps)
+    ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
+    HarmonicOptions& hoptions,
+    LassoOptions& loptions
 );
 
 } // namespace ccd
