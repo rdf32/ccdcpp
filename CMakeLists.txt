@@ -46,19 +46,36 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Compiler warnings
 # --------------------------------------------------
 
+# if(MSVC)
+
+#     add_compile_options(
+#         /W4
+#         /permissive-
+#     )
+
+# else()
+
+#     add_compile_options(
+#         -Wall
+#         -Wextra
+#         -Wpedantic
+#     )
+
+# endif()
+
 if(MSVC)
 
     add_compile_options(
-        /W4
-        /permissive-
+        $<$<CONFIG:Debug>:/W4>
+        $<$<CONFIG:Debug>:/permissive->
     )
 
 else()
 
     add_compile_options(
-        -Wall
-        -Wextra
-        -Wpedantic
+        $<$<CONFIG:Debug>:-Wall>
+        $<$<CONFIG:Debug>:-Wextra>
+        $<$<CONFIG:Debug>:-Wpedantic>
     )
 
 endif()
@@ -87,6 +104,8 @@ add_library(
 
     src/ccd/procedure/fit.cpp
     src/ccd/procedure/standard.cpp
+
+    src/ccd/ccd.cpp
 )
 
 
@@ -360,6 +379,28 @@ target_link_libraries(
 
     PRIVATE
         ccd_core
+)
+
+add_executable(
+    test_ccd
+
+    tests/ccd/procedure/test_ccd.cpp
+)
+
+
+target_link_libraries(
+    test_ccd
+
+    PRIVATE
+        ccd_core
+)
+
+
+target_compile_features(
+    test_ccd
+
+    PRIVATE
+        cxx_std_17
 )
 
 # --------------------------------------------------

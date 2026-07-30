@@ -1,6 +1,6 @@
 #include "ccd/procedure/fit.hpp"
 
-#include <iostream>
+// #include <iostream>
 #include <algorithm>
 #include <boost/math/distributions/chi_squared.hpp>
 
@@ -472,13 +472,13 @@ ProcessingMask tmask(
             y(i) =
                 spect_window(band, i);
         }
-        std::cout << "Band " << band << '\n';
-        std::cout << "y = ";
+        // std::cout << "Band " << band << '\n';
+        // std::cout << "y = ";
 
-        for (index_t i = 0; i < n; ++i)
-            std::cout << y(i) << " ";
+        // for (index_t i = 0; i < n; ++i)
+        //     std::cout << y(i) << " ";
 
-        std::cout << '\n';
+        // std::cout << '\n';
         //------------------------------------------------------
         // Fit
         //------------------------------------------------------
@@ -486,11 +486,10 @@ ProcessingMask tmask(
             X,
             y
         );
-        // const auto& beta =
-        //     model.coefficients();
-        std::cout << "fit params: " << std::endl;
-        std::cout << model.coefficients().transpose() << '\n';
-        //------------------------------------------------------
+
+        // std::cout << "fit params: " << std::endl;
+        // std::cout << model.coefficients().transpose() << '\n';
+        // //------------------------------------------------------
         // Residual threshold
         //------------------------------------------------------
         const scalar_t threshold =
@@ -501,13 +500,13 @@ ProcessingMask tmask(
         for(index_t i = 0; i < n; ++i)
         {
             const scalar_t residual = std::abs(preds[i] - y(i));
-            std::cout
-                << "band=" << band
-                << " sample=" << i
-                << " residual=" << residual
-                << " threshold=" << threshold
-                << " outlier=" << (residual > threshold)
-                << '\n';
+            // std::cout
+            //     << "band=" << band
+            //     << " sample=" << i
+            //     << " residual=" << residual
+            //     << " threshold=" << threshold
+            //     << " outlier=" << (residual > threshold)
+            //     << '\n';
             if(
                 residual
                 >
