@@ -19,10 +19,12 @@ This project provides a C++ implementation of the PyCCD algorithm with:
 - additional testing infrastructure
 
 The goal of this project is to reproduce PyCCD outputs while enabling
-future performance improvements through native C++ execution.
+future performance improvements through native C++ execution. This work
+has been completed independently of the USGS and should not be attributed
+to them.
 
 
-U.S. Geological Survey Disclaimer
+U.S. Geological Survey Disclaimer for LCMAP PyCCD
 =================================
 
 This software has been approved for release by the U.S. Geological Survey
