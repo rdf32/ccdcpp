@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <vector>
 #include <algorithm>
 
 #include "ccd/types.hpp"
+#include "ccd/constants.hpp"
 #include "ccd/array_view.hpp"
 
 namespace ccd
@@ -41,10 +43,60 @@ struct LassoOptions {
     bool unbiased_rmse = true;
 };
 
-struct LassoScore {
-    scalar_t rmse;
-    scalar_t magn;
-    std::vector<scalar_t> residuals;
+//==============================================================================
+// CCD Lasso Workspace
+//
+// Reused for every fit.
+// No coefficient allocation.
+//==============================================================================
+struct LassoWorkspace
+{
+    std::array<scalar_t, CCD_MAX_COEFS> weights{}; // fit
+    std::vector<scalar_t> y_cent; // fit
+    std::vector<scalar_t> y_resi; // fit
+
+    std::vector<scalar_t> predictions; // prediction & score
+    std::vector<scalar_t> residuals; // score
+
+    explicit LassoWorkspace(index_t max_samples) // build outside loop
+    {
+        y_cent.resize(max_samples);
+        y_resi.resize(max_samples);
+        predictions.resize(max_samples);
+        residuals.resize(max_samples);
+    }
+
+    void resize(index_t samples) // call inside loop
+    {
+        y_cent.resize(samples);
+        y_resi.resize(samples);
+        predictions.resize(samples);
+        residuals.resize(samples);
+    }
+
+    void reset() // call inside loop
+    {
+        weights.fill(scalar_t(0));
+    }
+};
+
+struct LassoProblem
+{
+    std::vector<scalar_t> X_store;   // original harmonic basis
+    std::vector<scalar_t> X_center;  // centered copy for fitting
+
+    std::array<scalar_t, CCD_MAX_COEFS> X_mean{};
+    std::array<scalar_t, CCD_MAX_COEFS> column_norm2{};
+
+    index_t n_samples = 0;
+
+    ArrayView<const scalar_t, 2> X() const noexcept
+    {
+        return ArrayView<const scalar_t, 2>::contiguous(
+            X_store.data(),
+            {n_samples, CCD_MAX_COEFS}
+        );
+    }
 };
 
 class LassoModel {
@@ -55,7 +107,7 @@ public:
     LassoModel(
         index_t iter,
         scalar_t bias,
-        const std::vector<scalar_t>& weights
+        const std::array<scalar_t, CCD_MAX_COEFS>& weights
     )
         : iter_(iter),
         bias_(bias),
@@ -67,8 +119,9 @@ public:
     // Computes:
     //      y_hat = X * weights + bias
     // Stores output into &preds
-    std::vector<scalar_t> predict(
-        ArrayView<const scalar_t, 2> X
+    void predict(
+        ArrayView<const scalar_t, 2> X,
+        std::vector<scalar_t>& preds
     ) const;
 
     index_t iterations() const noexcept
@@ -81,7 +134,7 @@ public:
         return bias_;
     }
 
-    const std::vector<scalar_t>& coefficients() const noexcept
+    const std::array<scalar_t, CCD_MAX_COEFS>& coefficients() const noexcept
     {
         return weights_;
     }
@@ -90,11 +143,10 @@ private:
     index_t  iter_  = 0;
     scalar_t bias_  = 0.0;
 
-    std::vector<scalar_t> weights_;
+    std::array<scalar_t, CCD_MAX_COEFS> weights_{};
 };
 
 //==============================================================================
-//
 // LassoSolver
 //
 // Coordinate descent Lasso regression solver.
@@ -105,29 +157,6 @@ private:
 //          (1 / 2n) ||y - Xw||^2 + lambda ||w||_1
 //
 // using coordinate descent.
-//
-// The solver does not own memory.
-//
-// Workspace owns:
-//      - coefficients
-//      - predictions
-//      - residuals
-//
-// Solver owns:
-//      - references to workspace/options
-//
-// Typical usage:
-//
-//      LassoWorkspace workspace(features, samples);
-//
-//      LassoOptions options;
-//
-//      LassoSolver solver(workspace, options);
-//
-//      solver.fit(X, y);
-//
-//      solver.predict(X);
-//
 //==============================================================================
 
 class LassoSolver {
@@ -150,7 +179,8 @@ public:
     // y:
     //      shape = (samples)
     LassoModel fit(
-        ArrayView<const scalar_t, 2> X,
+        LassoWorkspace& workspace,
+        const LassoProblem& problem,
         ArrayView<const scalar_t, 1> y
     );
 
@@ -164,21 +194,29 @@ private:
     LassoOptions options_;
 };
 
-LassoScore score(
-    ArrayView<const scalar_t, 1> y,
-    const std::vector<scalar_t>& preds,
-    index_t num_coefficients,
-    bool unbiased_rmse = true
-);
-
-std::vector<scalar_t> lasso_basis(
+LassoProblem lasso_basis(
     ArrayView<const std::int64_t, 1> dates,
     index_t num_coefficients
 );
+
+struct LassoScore {
+    scalar_t rmse;
+    scalar_t magn;
+    std::vector<scalar_t> residuals;
+};
 
 struct LassoResult {
     LassoModel model;
     LassoScore score;
 };
+
+LassoScore score(
+    ArrayView<const scalar_t, 1> y,
+    const std::vector<scalar_t>& predictions,
+    std::vector<scalar_t>& residuals,
+    index_t num_coefficients,
+    bool unbiased_rmse = true
+);
+
 
 } // namespace ccd

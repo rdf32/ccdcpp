@@ -64,7 +64,8 @@ public:
     //----------------------------------------------------------------------
 
     FitResult run(
-        HarmonicWorkspace& workspace,
+        HarmonicWorkspace& hworkspace,
+        LassoWorkspace& lworkspace,
         LassoSolver& solver
     );
 

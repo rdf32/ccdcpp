@@ -22,43 +22,38 @@ LassoSolver::LassoSolver(
     options_(options)
 {}
 
+scalar_t LassoSolver::soft_threshold(
+    scalar_t rho, 
+    scalar_t lambda
+) noexcept 
+{
+    if (rho < -lambda) {
+        return rho + lambda;
+    }
+    if (rho > lambda) {
+        return rho - lambda;
+    }
+    return 0.0;
+}
+
 LassoModel LassoSolver::fit(
-    ArrayView<const scalar_t, 2> X,
+    LassoWorkspace& workspace,
+    const LassoProblem& problem,
     ArrayView<const scalar_t, 1> y
 )
-{
+{   
+    // workspace -> y_cent, y_resi, weights
+    // problem -> X, X_store, X_center, X_mean, column_norm2
+    auto X = problem.X();
     const index_t n_samples  = X.extent(0);
     const index_t n_features = X.extent(1);
 
-    std::vector<scalar_t> weights(n_features, scalar_t{0});
+    // workspace_.resize(n_samples); // resize scratch space maybe do this outside fit 
+    // workspace_.reset(); // reset scratch space (weights filled to 0) maybe do this outside fit
 
-    //----------------------------------------------------------
-    // Allocate scratch
-    //----------------------------------------------------------
-    std::vector<scalar_t> X_mean(n_features, 0.0);
-    std::vector<scalar_t> Xc(n_samples * n_features);
-
-    std::vector<scalar_t> yc(n_samples);
-    std::vector<scalar_t> residual(n_samples);
-
-    std::vector<scalar_t> column_norm2(n_features);
-
-    //----------------------------------------------------------
-    // Center X
-    //----------------------------------------------------------
-
-    for(index_t j = 0; j < n_features; ++j) {
-        scalar_t mean = 0.0;
-        for(index_t i = 0; i < n_samples; ++i) {
-            mean += X(i, j);
-        }
-        mean /= n_samples;
-        X_mean[j] = mean;
-
-        for(index_t i = 0; i < n_samples; ++i)
-            Xc[i * n_features + j] = X(i, j) - mean;
-    }
-
+    const auto& X_mean = problem.X_mean;
+    const auto& X_center = problem.X_center;
+    const auto& column_norm2 = problem.column_norm2;
     //----------------------------------------------------------
     // Center y
     //----------------------------------------------------------
@@ -70,22 +65,9 @@ LassoModel LassoSolver::fit(
     y_mean /= n_samples;
     scalar_t y_norm2 = 0.0;
     for(index_t i = 0; i < n_samples; ++i) {
-        yc[i] = y(i) - y_mean;
-        residual[i] = yc[i];
-        y_norm2 += yc[i] * yc[i];
-    }
-
-    //----------------------------------------------------------
-    // Column norms
-    //----------------------------------------------------------
-    for(index_t j = 0; j < n_features; ++j) {
-
-        scalar_t s = 0.0;
-        for(index_t i = 0; i < n_samples; ++i) {
-            scalar_t v = Xc[i * n_features + j];
-            s+= v * v;
-        }
-        column_norm2[j] = s;
+        workspace.y_cent[i] = y(i) - y_mean;
+        workspace.y_resi[i] = workspace.y_cent[i];
+        y_norm2 += workspace.y_cent[i] * workspace.y_cent[i];
     }
 
     //----------------------------------------------------------
@@ -101,10 +83,10 @@ LassoModel LassoSolver::fit(
             //--------------------------------------------------
             // Add old contribution back into residual
             //--------------------------------------------------
-            scalar_t old_w = weights[j];
+            scalar_t old_w = workspace.weights[j];
             if (old_w != 0.0) {
                 for(index_t i = 0; i < n_samples; ++i) {
-                    residual[i] += Xc[i * n_features + j] * old_w;
+                    workspace.y_resi[i] += X_center[i * n_features + j] * old_w;
                 }
             }
             //--------------------------------------------------
@@ -112,19 +94,19 @@ LassoModel LassoSolver::fit(
             //--------------------------------------------------
             scalar_t rho=0.0;
             for(index_t i = 0; i < n_samples; ++i) {
-                rho += Xc[i * n_features + j] * residual[i];
+                rho += X_center[i * n_features + j] * workspace.y_resi[i];
             }
             //--------------------------------------------------
             // Soft threshold
             //--------------------------------------------------
             scalar_t new_w = soft_threshold(rho, options_.alpha * n_samples) / column_norm2[j];
-            weights[j] = new_w;
+            workspace.weights[j] = new_w;
             //--------------------------------------------------
             // Remove new contribution
             //--------------------------------------------------
             if(new_w != 0.0) {
                 for(index_t i = 0; i < n_samples; ++i) {
-                    residual[i] -= Xc[i * n_features + j] * new_w;
+                    workspace.y_resi[i] -= X_center[i * n_features + j] * new_w;
                 }
             }
             max_update = std::max(max_update, std::abs(new_w - old_w));
@@ -140,14 +122,14 @@ LassoModel LassoSolver::fit(
             //--------------------------------------------------
             scalar_t residual_norm2 = 0.0;
             for(index_t i = 0; i < n_samples; ++i) {
-                residual_norm2 += residual[i] * residual[i];
+                residual_norm2 += workspace.y_resi[i] * workspace.y_resi[i];
             }
             scalar_t max_abs_XTr = 0.0;
             for(index_t j = 0; j < n_features; ++j) {
 
                 scalar_t v = 0.0;
                 for(index_t i = 0; i < n_samples; ++i) {
-                    v += Xc[i * n_features + j] * residual[i];
+                    v += X_center[i * n_features + j] * workspace.y_resi[i];
                 }
                 max_abs_XTr  = std::max(max_abs_XTr,std::abs(v));
             }
@@ -160,14 +142,14 @@ LassoModel LassoSolver::fit(
             scalar_t theta_norm2 = 0.0;
             scalar_t y_theta = 0.0;
             for(index_t i = 0; i < n_samples; ++i) {
-                scalar_t theta = residual[i] * dual_scale;
+                scalar_t theta = workspace.y_resi[i] * dual_scale;
 
                 theta_norm2 += theta * theta;
-                y_theta += yc[i] * theta;
+                y_theta += workspace.y_cent[i] * theta;
             }
 
             scalar_t l1 = 0.0;
-            for(auto wi : weights){
+            for(auto wi : workspace.weights){
                 l1 += std::abs(wi);
             }
 
@@ -187,37 +169,23 @@ LassoModel LassoSolver::fit(
     //----------------------------------------------------------
     scalar_t intercept = y_mean;
     for(index_t j = 0; j < n_features; ++j){
-        intercept -= X_mean[j] * weights[j];
+        intercept -= X_mean[j] * workspace.weights[j];
     }
 
     return LassoModel(
         iter + 1,
         intercept,
-        weights // copy of weights
+        workspace.weights // copy of weights
     );
 }
 
-scalar_t LassoSolver::soft_threshold(
-    scalar_t rho, 
-    scalar_t lambda
-) noexcept 
-{
-    if (rho < -lambda) {
-        return rho + lambda;
-    }
-    if (rho > lambda) {
-        return rho - lambda;
-    }
-    return 0.0;
-}
-
-std::vector<scalar_t> LassoModel::predict(
-    ccd::ArrayView<const scalar_t, 2> X
+void LassoModel::predict(
+    ccd::ArrayView<const scalar_t, 2> X,
+    std::vector<scalar_t>& predictions
 ) const 
 {   
     const index_t num_samp = X.extent(0);
     const index_t num_feat = X.extent(1);
-    std::vector<scalar_t> preds(num_samp);
     
     assert(weights_.size() == num_feat);
 
@@ -227,23 +195,23 @@ std::vector<scalar_t> LassoModel::predict(
         for (index_t j = 0; j < num_feat; ++j) {
             prediction += X(i, j) * weights_[j];
         }
-        preds[i] = prediction;
+        predictions[i] = prediction;
     }
-    return preds;
+    return;
 }
 
 LassoScore score(
     ArrayView<const scalar_t, 1> y,
-    const std::vector<scalar_t>& preds,
+    const std::vector<scalar_t>& predictions,
+    std::vector<scalar_t>& residuals,
     index_t num_coefficients,
     bool unbiased_rmse
 ) {
-    assert(y.size() == preds.size());
-    std::vector<scalar_t> residuals(preds.size());
+    assert(y.size() == predictions.size());
 
     scalar_t rss = 0.0;
     for (index_t i = 0; i < y.size(); ++i) {
-        const scalar_t residual = y(i) - preds[i];
+        const scalar_t residual = y(i) - predictions[i];
         residuals[i] = residual;
         rss += residual * residual;
     }
@@ -261,13 +229,11 @@ LassoScore score(
     };
 }
 
-std::vector<scalar_t> lasso_basis(
+LassoProblem lasso_basis(
     ArrayView<const std::int64_t, 1> dates,
     index_t num_coefficients
-)
-{
-    const index_t num_observations = dates.size();
-
+) {
+    const index_t n_samples = dates.size();
     // Current CCD implementation:
     //
     // column layout:
@@ -279,17 +245,14 @@ std::vector<scalar_t> lasso_basis(
     // 4: sin(2 annual)
     // 5: cos(3 annual)
     // 6: sin(3 annual)
-    //
-    constexpr index_t NUM_FEATURES = 7;
-
-    std::vector<scalar_t> matrix(
-        num_observations * NUM_FEATURES,
-        scalar_t{0}
-    );
+    LassoProblem problem;
+    problem.n_samples = n_samples;
+    problem.X_store.resize(n_samples * CCD_MAX_COEFS);
+    problem.X_center.resize(n_samples * CCD_MAX_COEFS);
 
     const scalar_t omega = 2.0 * PI / AVG_DAYS_YR;
 
-    for(index_t i = 0; i < num_observations; ++i) {
+    for(index_t i = 0; i < n_samples; ++i) {
 
         const scalar_t t =
             static_cast<scalar_t>(
@@ -297,28 +260,53 @@ std::vector<scalar_t> lasso_basis(
             );
         const scalar_t wt = omega * t;
 
-        matrix[i * NUM_FEATURES + 0] = t;
-        matrix[i * NUM_FEATURES + 1] = std::cos(wt);
-        matrix[i * NUM_FEATURES + 2] = std::sin(wt);
+        problem.X_store[i * CCD_MAX_COEFS + 0] = t;
+        problem.X_store[i * CCD_MAX_COEFS + 1] = std::cos(wt);
+        problem.X_store[i * CCD_MAX_COEFS + 2] = std::sin(wt);
+
+        // initialize 0 //
+        problem.X_store[i * CCD_MAX_COEFS + 3] = scalar_t{0};
+        problem.X_store[i * CCD_MAX_COEFS + 4] = scalar_t{0};
+        problem.X_store[i * CCD_MAX_COEFS + 5] = scalar_t{0};
+        problem.X_store[i * CCD_MAX_COEFS + 6] = scalar_t{0};
 
         if(num_coefficients >= 6) {
             const scalar_t w2t =
                 static_cast<scalar_t>(2.0) * wt;
 
-            matrix[i * NUM_FEATURES + 3] = std::cos(w2t);
-            matrix[i * NUM_FEATURES + 4] = std::sin(w2t);
+            problem.X_store[i * CCD_MAX_COEFS + 3] = std::cos(w2t);
+            problem.X_store[i * CCD_MAX_COEFS + 4] = std::sin(w2t);
         }
 
         if(num_coefficients >= 8) {
             const scalar_t w3t =
                 static_cast<scalar_t>(3.0) * wt;
 
-            matrix[i * NUM_FEATURES + 5] = std::cos(w3t);
-            matrix[i * NUM_FEATURES + 6] = std::sin(w3t);
+            problem.X_store[i * CCD_MAX_COEFS + 5] = std::cos(w3t);
+            problem.X_store[i * CCD_MAX_COEFS + 6] = std::sin(w3t);
         }
     }
+    //----------------------------------------------------------
+    // Center X & Column Norms
+    //----------------------------------------------------------
+    for(index_t j = 0; j < CCD_MAX_COEFS; ++j) {
+        scalar_t s = 0.0;
+        scalar_t mean = 0.0;
+        for(index_t i = 0; i < n_samples; ++i) {
+            mean += problem.X_store[i * CCD_MAX_COEFS + j];
+        }
+        mean /= n_samples;
+        problem.X_mean[j] = mean;
 
-    return matrix;
-}
+        for(index_t i = 0; i < n_samples; ++i) {
+            scalar_t val = problem.X_store[i * CCD_MAX_COEFS + j] - mean;
+            problem.X_center[i * CCD_MAX_COEFS + j] = val;
+            scalar_t v = val;
+            s += v * v;
+        }
+        problem.column_norm2[j] = s;
+    }
+    return problem;
+};
 
 } // namespace ccd

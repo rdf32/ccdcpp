@@ -94,18 +94,13 @@ TEST(LassoSolver, MultiBandRegression)
     //------------------------------------------------------------
     // Design matrix
     //------------------------------------------------------------
-    auto X_storage = lasso_basis(
-        ArrayView<const std::int64_t, 1>::contiguous(
+    auto dates_view = ArrayView<const std::int64_t, 1>::contiguous(
             dates.data(),
             {n_samples}
-        ),
-        4
-    );
-
-    auto X = ArrayView<const scalar_t, 2>::contiguous(
-        X_storage.data(),
-        {n_samples, 7}
-    );
+        );
+    LassoProblem input_storage = 
+        lasso_basis(dates_view, 4);
+    
 
     //------------------------------------------------------------
     // Band observations
@@ -129,24 +124,32 @@ TEST(LassoSolver, MultiBandRegression)
     options.tolerance = 1e-4;
 
     LassoSolver solver(options);
+    LassoWorkspace workspace(n_samples);
+    workspace.resize(n_samples);
 
     //------------------------------------------------------------
     // Fit each band
     //------------------------------------------------------------
     for(index_t band = 0; band < n_bands; ++band)
-    {
+    {   
+        workspace.reset();
         auto y_band = ArrayView<const scalar_t,1>::contiguous(
             y[band].data(),
             {n_samples}
         );
 
-        auto model = solver.fit(X, y_band);
+        auto model = 
+            solver.fit(workspace, input_storage, y_band);
 
-        auto predictions = model.predict(X);
+        model.predict(
+            input_storage.X(), 
+            workspace.predictions
+        );
 
         auto metrics = score(
             y_band,
-            predictions,
+            workspace.predictions,
+            workspace.residuals,
             4,
             true
         );

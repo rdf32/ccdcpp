@@ -361,10 +361,12 @@ TEST(CCD, DetectClear)
 
     ccd::LassoOptions loptions;
     ccd::LassoSolver solver(loptions);
+    ccd::LassoWorkspace lworkspace(data.dates.size());
 
     ccd::InsufficientClear fit_procedure;
     ccd::FitResult result = fit_procedure.run(
         hworkspace,
+        lworkspace,
         solver
     );
 

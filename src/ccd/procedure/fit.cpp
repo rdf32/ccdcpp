@@ -12,15 +12,16 @@ namespace ccd
 {
 
 FitResult FitProcedure::run(
-    HarmonicWorkspace& workspace,
+    HarmonicWorkspace& hworkspace,
+    LassoWorkspace& lworkspace,
     LassoSolver& solver
 ) { 
-    const auto& options = workspace.options();
+    const auto& options = hworkspace.options();
     //----------------------------------------------------------
     // Build processing mask
     //----------------------------------------------------------
     ProcessingMask mask =
-        select_observations(workspace);
+        select_observations(hworkspace);
 
     //----------------------------------------------------------
     // Not enough observations
@@ -34,7 +35,7 @@ FitResult FitProcedure::run(
     // Mask dates, spectral given ProcessingMask
     //----------------------------------------------------------
     MaskedData masked_data = 
-        apply_mask(workspace, mask);
+        apply_mask(hworkspace, mask);
 
     const auto masked_dates = 
         masked_data.dates_view();
@@ -51,21 +52,17 @@ FitResult FitProcedure::run(
     //----------------------------------------------------------
     // Build harmonic basis
     //----------------------------------------------------------
-    auto X_storage = 
+    LassoProblem input_storage = 
         lasso_basis(masked_dates, num_coef);
 
-    auto X = ArrayView<const scalar_t, 2>::contiguous(
-        X_storage.data(),
-        {masked_dates.size(), 7} // always shape (num_obs, 7) for lasso basis
-    );
-
+    lworkspace.resize(mask.count());
     //----------------------------------------------------------
     // Build result
     //----------------------------------------------------------
     FitResult results;
     ChangeModel result;
-    result.start_day = workspace.dates()(0);
-    result.end_day   = workspace.dates()(workspace.dates().size() - 1);
+    result.start_day = hworkspace.dates()(0);
+    result.end_day   = hworkspace.dates()(hworkspace.dates().size() - 1);
     result.break_day = result.end_day;
 
     result.observation_count = mask.count();
@@ -76,34 +73,37 @@ FitResult FitProcedure::run(
     // Fit every spectral band
     //----------------------------------------------------------
     for (index_t band = 0; band < masked_spectral.extent(0); ++band)
-    {
+    {   
+        lworkspace.reset();
         auto y = masked_spectral.slice(
             fixed(band), 
             all()
         );
 
         LassoModel model = solver.fit(
-            X,
+            lworkspace,
+            input_storage,
             y
         );
 
-        auto preds = model.predict(
-            X
+        model.predict(
+            input_storage.X(),
+            lworkspace.predictions
         );
 
         auto metrics = score(
             y,
-            preds,
+            lworkspace.predictions,
+            lworkspace.residuals,
             num_coef,
             true
         );
         metrics.magn = 0.0;
-        LassoResult band_result = {
-            model,
-            metrics
-        };
 
-        result.bands[band] = band_result;
+        result.bands[band] = LassoResult{
+            std::move(model),
+            std::move(metrics)
+        };
     }
 
     results.models.push_back(result);

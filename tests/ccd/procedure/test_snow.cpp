@@ -361,10 +361,12 @@ TEST(CCD, DetectSnow)
 
     ccd::LassoOptions loptions;
     ccd::LassoSolver solver(loptions);
+    ccd::LassoWorkspace lworkspace(data.dates.size());
 
     ccd::PermanentSnow fit_procedure;
     ccd::FitResult result = fit_procedure.run(
         hworkspace,
+        lworkspace,
         solver
     );
 
