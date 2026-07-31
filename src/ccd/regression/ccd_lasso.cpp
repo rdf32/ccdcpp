@@ -12,15 +12,14 @@ namespace ccd
 {
 
 CCDLassoSolver::CCDLassoSolver(
-    const CCDLassoOptions& options,
-    CCDLassoWorkspace& workspace
+    const CCDLassoOptions& options
 ) noexcept
     :
-    options_(options),
-    workspace_(workspace)
+    options_(options)
 {}
 
 CCDLassoModel CCDLassoSolver::fit(
+    CCDLassoWorkspace& workspace,
     const CCDLassoProblem& problem,
     ArrayView<const scalar_t, 1> y
 )
@@ -48,9 +47,9 @@ CCDLassoModel CCDLassoSolver::fit(
     y_mean /= n_samples;
     scalar_t y_norm2 = 0.0;
     for(index_t i = 0; i < n_samples; ++i) {
-        workspace_.y_cent[i] = y(i) - y_mean;
-        workspace_.y_resi[i] = workspace_.y_cent[i];
-        y_norm2 += workspace_.y_cent[i] * workspace_.y_cent[i];
+        workspace.y_cent[i] = y(i) - y_mean;
+        workspace.y_resi[i] = workspace.y_cent[i];
+        y_norm2 += workspace.y_cent[i] * workspace.y_cent[i];
     }
 
     //----------------------------------------------------------
@@ -66,10 +65,10 @@ CCDLassoModel CCDLassoSolver::fit(
             //--------------------------------------------------
             // Add old contribution back into residual
             //--------------------------------------------------
-            scalar_t old_w = workspace_.weights[j];
+            scalar_t old_w = workspace.weights[j];
             if (old_w != 0.0) {
                 for(index_t i = 0; i < n_samples; ++i) {
-                    workspace_.y_resi[i] += X_center[i * n_features + j] * old_w;
+                    workspace.y_resi[i] += X_center[i * n_features + j] * old_w;
                 }
             }
             //--------------------------------------------------
@@ -77,19 +76,19 @@ CCDLassoModel CCDLassoSolver::fit(
             //--------------------------------------------------
             scalar_t rho=0.0;
             for(index_t i = 0; i < n_samples; ++i) {
-                rho += X_center[i * n_features + j] * workspace_.y_resi[i];
+                rho += X_center[i * n_features + j] * workspace.y_resi[i];
             }
             //--------------------------------------------------
             // Soft threshold
             //--------------------------------------------------
             scalar_t new_w = soft_threshold(rho, options_.alpha * n_samples) / column_norm2[j];
-            workspace_.weights[j] = new_w;
+            workspace.weights[j] = new_w;
             //--------------------------------------------------
             // Remove new contribution
             //--------------------------------------------------
             if(new_w != 0.0) {
                 for(index_t i = 0; i < n_samples; ++i) {
-                    workspace_.y_resi[i] -= X_center[i * n_features + j] * new_w;
+                    workspace.y_resi[i] -= X_center[i * n_features + j] * new_w;
                 }
             }
             max_update = std::max(max_update, std::abs(new_w - old_w));
@@ -105,14 +104,14 @@ CCDLassoModel CCDLassoSolver::fit(
             //--------------------------------------------------
             scalar_t residual_norm2 = 0.0;
             for(index_t i = 0; i < n_samples; ++i) {
-                residual_norm2 += workspace_.y_resi[i] * workspace_.y_resi[i];
+                residual_norm2 += workspace.y_resi[i] * workspace.y_resi[i];
             }
             scalar_t max_abs_XTr = 0.0;
             for(index_t j = 0; j < n_features; ++j) {
 
                 scalar_t v = 0.0;
                 for(index_t i = 0; i < n_samples; ++i) {
-                    v += X_center[i * n_features + j] * workspace_.y_resi[i];
+                    v += X_center[i * n_features + j] * workspace.y_resi[i];
                 }
                 max_abs_XTr  = std::max(max_abs_XTr,std::abs(v));
             }
@@ -125,14 +124,14 @@ CCDLassoModel CCDLassoSolver::fit(
             scalar_t theta_norm2 = 0.0;
             scalar_t y_theta = 0.0;
             for(index_t i = 0; i < n_samples; ++i) {
-                scalar_t theta = workspace_.y_resi[i] * dual_scale;
+                scalar_t theta = workspace.y_resi[i] * dual_scale;
 
                 theta_norm2 += theta * theta;
-                y_theta += workspace_.y_cent[i] * theta;
+                y_theta += workspace.y_cent[i] * theta;
             }
 
             scalar_t l1 = 0.0;
-            for(auto wi : workspace_.weights){
+            for(auto wi : workspace.weights){
                 l1 += std::abs(wi);
             }
 
@@ -152,13 +151,13 @@ CCDLassoModel CCDLassoSolver::fit(
     //----------------------------------------------------------
     scalar_t intercept = y_mean;
     for(index_t j = 0; j < n_features; ++j){
-        intercept -= X_mean[j] * workspace_.weights[j];
+        intercept -= X_mean[j] * workspace.weights[j];
     }
 
     return CCDLassoModel(
         iter + 1,
         intercept,
-        workspace_.weights // copy of weights
+        workspace.weights // copy of weights
     );
 }
 
@@ -299,113 +298,4 @@ CCDLassoScore score(
     };
 }
 
-
-// // CCDLassoWorkspace lworkspace(dates.size());
-// FitResult FitProcedure::run(
-//     HarmonicWorkspace& workspace,
-//     LassoSolver& solver
-// ) { 
-//     const auto& options = workspace.options();
-//     //----------------------------------------------------------
-//     // Build processing mask
-//     //----------------------------------------------------------
-//     ProcessingMask mask =
-//         select_observations(workspace);
-
-//     //----------------------------------------------------------
-//     // Not enough observations
-//     //----------------------------------------------------------
-//     if (mask.count() < options.MEOW_SIZE)
-//     {
-//         return {};
-//     }
-
-//     //----------------------------------------------------------
-//     // Mask dates, spectral given ProcessingMask
-//     //----------------------------------------------------------
-//     MaskedData masked_data = 
-//         apply_mask(workspace, mask);
-
-//     const auto masked_dates = 
-//         masked_data.dates_view();
-
-//     const auto masked_spectral = 
-//         masked_data.spectral_view();
-
-//     //----------------------------------------------------------
-//     // Determine harmonic complexity
-//     //----------------------------------------------------------
-//     const index_t num_coef =
-//         coefficient_count(masked_dates, options);
-
-//     //----------------------------------------------------------
-//     // Build harmonic basis
-//     //----------------------------------------------------------
-//     // auto X_storage = 
-//     //     lasso_basis(masked_dates, num_coef);
-
-//     // auto X = ArrayView<const scalar_t, 2>::contiguous(
-//     //     X_storage.data(),
-//     //     {masked_dates.size(), 7} // always shape (num_obs, 7) for lasso basis
-//     // );
-
-//     CCDLassoProblem inputs = 
-//         ccd_lasso_basis(masked_dates, num_coef);
-//     CCDLassoWorkspace lworkspace(dates.size());
-//     //----------------------------------------------------------
-//     // Build result
-//     //----------------------------------------------------------
-//     FitResult results;
-//     ChangeModel result;
-//     result.start_day = workspace.dates()(0);
-//     result.end_day   = workspace.dates()(workspace.dates().size() - 1);
-//     result.break_day = result.end_day;
-
-//     result.observation_count = mask.count();
-//     result.change_probability = 0.0;
-//     result.curve_qa = curve_qa();
-
-//     //----------------------------------------------------------
-//     // Fit every spectral band
-//     //----------------------------------------------------------
-//     for (index_t band = 0; band < masked_spectral.extent(0); ++band)
-//     {   
-//         lworkspace.resize(samples)
-//         lworkspace.reset()
-
-//         auto y = masked_spectral.slice(
-//             fixed(band), 
-//             all()
-//         );
-
-//         LassoModel model = solver.fit(
-//             inputs,
-//             y
-//         );
-
-//         auto preds = model.predict(
-//             inputs.X()
-//         );
-
-//         auto metrics = score(
-//             y,
-//             lworkspace.predictions,
-//             lworkspace.residuals,
-//             num_coef,
-//             true
-//         );
-//         metrics.magn = 0.0;
-//         LassoResult band_result = {
-//             model,
-//             metrics
-//         };
-
-//         result.bands[band] = band_result;
-//     }
-
-//     results.models.push_back(result);
-//     results.mask = mask;
-
-//     return results;
-// }
 } // namespace ccd

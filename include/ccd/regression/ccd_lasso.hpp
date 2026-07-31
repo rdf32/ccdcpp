@@ -159,8 +159,7 @@ public:
     //--------------------------------------------------------------------------
     // LassoWorkspace& workspace,
     explicit CCDLassoSolver(
-        const CCDLassoOptions& options,
-        CCDLassoWorkspace& workspace
+        const CCDLassoOptions& options
     ) noexcept;
 
     //--------------------------------------------------------------------------
@@ -173,6 +172,7 @@ public:
     // y:
     //      shape = (samples)
     CCDLassoModel fit(
+        CCDLassoWorkspace& workspace,
         const CCDLassoProblem& problem,
         ArrayView<const scalar_t, 1> y
     );
@@ -185,7 +185,6 @@ private:
 
 private:
     CCDLassoOptions options_;
-    CCDLassoWorkspace& workspace_;
 };
 
 
@@ -203,7 +202,7 @@ struct CCDLassoScore {
 CCDLassoScore score(
     ArrayView<const scalar_t, 1> y,
     const std::vector<scalar_t>& predictions,
-    const std::vector<scalar_t>& residuals,
+    std::vector<scalar_t>& residuals,
     index_t num_coefficients,
     bool unbiased_rmse = true
 );

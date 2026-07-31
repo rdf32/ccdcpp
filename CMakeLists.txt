@@ -113,6 +113,9 @@ add_library(
     src/ccd/procedure/standard.cpp
 
     src/ccd/ccd.cpp
+
+    src/ccd/procedure/fit_ccd.cpp
+    src/ccd/regression/ccd_lasso.cpp
 )
 
 
@@ -336,6 +339,29 @@ if(CCD_BUILD_TESTS)
         PRIVATE
             cxx_std_17
     )
+
+    add_executable(
+        test_tclear
+
+        tests/ccd/procedure/test_clear_ccd.cpp
+    )
+
+
+    target_link_libraries(
+        test_tclear
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_tclear
+
+        PRIVATE
+            cxx_std_17
+    )
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
     configure_file(
@@ -398,6 +424,8 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_clear)
     gtest_discover_tests(test_snow)
     gtest_discover_tests(test_standard)
+    gtest_discover_tests(test_tclear)
+
 
 
 
