@@ -59,6 +59,7 @@ namespace ccd
 
 bool StandardProcedure::initialize(
     const HarmonicWorkspace& workspace,
+    LassoWorkspace& lworkspace,
     LassoSolver& solver,
     std::vector<scalar_t>& variogram,
     ProcessingMask& mask,
@@ -217,13 +218,10 @@ bool StandardProcedure::initialize(
         //----------------------------------------------------------
         // Build harmonic basis
         //----------------------------------------------------------
-        auto X_storage = 
+        LassoProblem input_storage = 
             lasso_basis(masked_dates.slice(range(window.start, window.stop)), num_coef);
 
-        auto X = ArrayView<const scalar_t, 2>::contiguous(
-            X_storage.data(),
-            {masked_dates.slice(range(window.start, window.stop)).size(), 7} // always shape (num_obs, 7) for lasso basis
-        );
+        lworkspace.resize(masked_dates.slice(range(window.start, window.stop)).size());
 
         //----------------------------------------------------------
         // Fit every spectral band
@@ -236,25 +234,28 @@ bool StandardProcedure::initialize(
             );
 
             LassoModel model = solver.fit(
-                X,
+                lworkspace,
+                input_storage,
                 y
             );
 
-            auto preds = model.predict(
-                X
+            model.predict(
+                input_storage.X(),
+                lworkspace.predictions
             );
 
             auto metrics = score(
                 y,
-                preds,
+                lworkspace.predictions,
+                lworkspace.residuals,
                 num_coef,
                 true
             );
-            LassoResult band_result = {
-                model,
-                metrics
+            
+            models[band] = LassoResult{
+                std::move(model),
+                std::move(metrics)
             };
-            models[band] = band_result;
         }
 
         //----------------------------------------------------------------------
@@ -299,6 +300,7 @@ std::vector<scalar_t> StandardProcedure::calc_residuals(
 
 bool StandardProcedure::lookback(
     const HarmonicWorkspace& workspace,
+    LassoWorkspace& lworkspace,
     std::vector<scalar_t>& variogram,
     ProcessingMask& mask,
     Window& window,
@@ -404,14 +406,12 @@ bool StandardProcedure::lookback(
         std::vector<scalar_t> comp_rmses;
         std::vector<std::vector<scalar_t>> comp_resids;
         std::vector<scalar_t> comp_vario;
-
-        auto X_storage = 
+        
+        LassoProblem input_storage = 
             lasso_basis(masked_dates_window, 8);
 
-        auto X = ArrayView<const scalar_t, 2>::contiguous(
-            X_storage.data(),
-            {masked_dates_window.size(), 7} // always shape (num_obs, 7) for lasso basis
-        );
+        lworkspace.resize(masked_dates_window.size());
+
         for (auto band: options.DETECTION_BANDS)
         {
             auto y = masked_spectral_window.slice(
@@ -419,11 +419,13 @@ bool StandardProcedure::lookback(
                 all()
             );
 
-            auto preds = 
-                models[band].model.predict(X);
+            models[band].model.predict(
+                input_storage.X(),
+                lworkspace.predictions
+            );
 
             auto abs_resid = 
-                calc_residuals(y, preds);
+                calc_residuals(y, lworkspace.predictions);
             // use original model rmse like python code 
             // not sure if this is intended or python bug
             comp_resids.push_back(abs_resid);
@@ -505,6 +507,7 @@ bool StandardProcedure::lookback(
 
 ChangeModel StandardProcedure::catch_model(
     const HarmonicWorkspace& workspace,
+    LassoWorkspace& lworkspace,
     LassoSolver& solver,
     ProcessingMask& mask,
     Window& window,
@@ -542,13 +545,10 @@ ChangeModel StandardProcedure::catch_model(
     //----------------------------------------------------------
     // Build harmonic basis
     //----------------------------------------------------------
-    auto X_storage = 
+    LassoProblem input_storage = 
         lasso_basis(masked_dates_window, num_coef);
 
-    auto X = ArrayView<const scalar_t, 2>::contiguous(
-        X_storage.data(),
-        {masked_dates_window.size(), 7} // always shape (num_obs, 7) for lasso basis
-    );
+    lworkspace.resize(masked_dates_window.size());
 
     //----------------------------------------------------------
     // Fit every spectral band
@@ -561,28 +561,30 @@ ChangeModel StandardProcedure::catch_model(
         );
 
         LassoModel model = solver.fit(
-            X,
+            lworkspace,
+            input_storage,
             y
         );
 
-        auto preds = model.predict(
-            X
+        model.predict(
+            input_storage.X(),
+            lworkspace.predictions
         );
 
         auto metrics = score(
             y,
-            preds,
+            lworkspace.predictions,
+            lworkspace.residuals,
             num_coef,
             true
         );
 
         metrics.magn = 0.0; // set magnitude to 0
 
-        LassoResult band_result = {
-            model,
-            metrics
+        result.bands[band] = LassoResult{
+            std::move(model),
+            std::move(metrics)
         };
-        result.bands[band] = band_result;
     }
 
     if (window.stop >= masked_dates.size()) {
@@ -602,6 +604,7 @@ ChangeModel StandardProcedure::catch_model(
 
 ChangeModel StandardProcedure::lookforward(
     const HarmonicWorkspace& workspace,
+    LassoWorkspace& lworkspace,
     LassoSolver& solver,
     std::vector<scalar_t>& variogram,
     ProcessingMask& mask,
@@ -666,14 +669,11 @@ ChangeModel StandardProcedure::lookforward(
             //----------------------------------------------------------
             // Build harmonic basis
             //----------------------------------------------------------
-            auto X_storage = 
+            LassoProblem input_storage = 
                 lasso_basis(masked_dates_window, num_coef);
 
-            auto X = ArrayView<const scalar_t, 2>::contiguous(
-                X_storage.data(),
-                {masked_dates_window.size(), 7} // always shape (num_obs, 7) for lasso basis
-            );
-
+            lworkspace.resize(masked_dates_window.size());
+           
             //----------------------------------------------------------
             // Fit every spectral band
             //----------------------------------------------------------
@@ -684,35 +684,35 @@ ChangeModel StandardProcedure::lookforward(
                     all()
                 );
                 LassoModel model = solver.fit(
-                    X,
+                    lworkspace,
+                    input_storage,
                     y
                 );
-                auto preds = model.predict(
-                    X
+                model.predict(
+                    input_storage.X(),
+                    lworkspace.predictions
                 );
-
                 auto metrics = score(
                     y,
-                    preds,
+                    lworkspace.predictions,
+                    lworkspace.residuals,
                     num_coef,
                     true
                 );
-
-                LassoResult band_result = {
-                    model,
-                    metrics
-                };
-                models.push_back(band_result);
+                models.push_back(
+                    LassoResult{
+                        std::move(model),
+                        std::move(metrics)
+                    }
+                );
             }
         }
 
-        auto X_storage = 
+        LassoProblem input_storage = 
             lasso_basis(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
 
-        auto X = ArrayView<const scalar_t, 2>::contiguous(
-            X_storage.data(),
-            {masked_dates.slice(range(peek_window.start, peek_window.stop)).size(), 7} // always shape (num_obs, 7) for lasso basis
-        );
+        lworkspace.resize(masked_dates.slice(range(peek_window.start, peek_window.stop)).size());
+
         for (index_t band = 0; band < num_bands; ++band)
         {
             auto y = masked_spectral.slice(all(), range(peek_window.start, peek_window.stop)).slice(
@@ -720,11 +720,13 @@ ChangeModel StandardProcedure::lookforward(
                 all()
             );
 
-            auto preds = 
-                models[band].model.predict(X);
+            models[band].model.predict(
+                input_storage.X(),
+                lworkspace.predictions
+            );
 
             auto abs_resid = 
-                calc_residuals(y, preds);
+                calc_residuals(y, lworkspace.predictions);
     
             full_resids[band] = abs_resid;
         }
@@ -816,17 +818,18 @@ ChangeModel StandardProcedure::lookforward(
 }
 
 FitResult StandardProcedure::run(
-    HarmonicWorkspace& workspace,
+    HarmonicWorkspace& hworkspace,
+    LassoWorkspace& lworkspace,
     LassoSolver& solver
 ) {
     FitResult results;
 
-    auto& options = workspace.options();
+    auto& options = hworkspace.options();
     //----------------------------------------------------------
     // Build processing mask
     //----------------------------------------------------------
     ProcessingMask mask =
-        select_observations(workspace);
+        select_observations(hworkspace);
 
     //----------------------------------------------------------
     // Not enough observations
@@ -840,7 +843,7 @@ FitResult StandardProcedure::run(
     // Mask dates, spectral given ProcessingMask
     //----------------------------------------------------------
     MaskedData masked_data = 
-        apply_mask(workspace, mask);
+        apply_mask(hworkspace, mask);
 
     auto masked_dates = 
         masked_data.dates_view();
@@ -910,7 +913,7 @@ FitResult StandardProcedure::run(
 
         std::vector<LassoResult> init_models(num_bands);
         auto initialized = 
-            initialize(workspace, solver, variogram, mask, window, init_models);
+            initialize(hworkspace, lworkspace, solver, variogram, mask, window, init_models);
 
         if (!initialized) {
             break;
@@ -929,7 +932,7 @@ FitResult StandardProcedure::run(
         if (window.start > prev_break)
         {
             // std::cout << "executing lookback: " << std::endl;
-            lookback(workspace, variogram, mask, window, init_models, prev_break);
+            lookback(hworkspace, lworkspace, variogram, mask, window, init_models, prev_break);
         }
 
         // std::cout << "after lookback window: " << std::endl;
@@ -946,7 +949,7 @@ FitResult StandardProcedure::run(
         {   
             auto window_0 = Window(prev_break, window.start);
             ChangeModel result = 
-                catch_model(workspace, solver, mask, window_0, CurveQA::Start);
+                catch_model(hworkspace, lworkspace, solver, mask, window_0, CurveQA::Start);
             // append result
             start = false;
             results.models.push_back(result);
@@ -958,7 +961,8 @@ FitResult StandardProcedure::run(
 
         // std::cout << "Extend change model" << std::endl;
         ChangeModel result = lookforward(
-            workspace,
+            hworkspace,
+            lworkspace,
             solver,
             variogram,
             mask,
@@ -982,7 +986,7 @@ FitResult StandardProcedure::run(
     if (prev_break + options.PEEK_SIZE < mask.count()) {
         auto window_1 = Window(prev_break, mask.count());
         ChangeModel result = 
-            catch_model(workspace, solver, mask, window_1, CurveQA::End);
+            catch_model(hworkspace, lworkspace, solver, mask, window_1, CurveQA::End);
         results.models.push_back(result);
     }
     results.mask = std::move(mask);

@@ -59,7 +59,7 @@ FitResult detect(
         qas,
         hoptions
     );
-
+    LassoWorkspace lworkspace(dates.size());
     LassoSolver solver(
         loptions
     );
@@ -73,6 +73,7 @@ FitResult detect(
             StandardProcedure fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
+                lworkspace,
                 solver
             );
             break;
@@ -84,6 +85,7 @@ FitResult detect(
             InsufficientClear fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
+                lworkspace,
                 solver
             );
             break;
@@ -95,6 +97,7 @@ FitResult detect(
             PermanentSnow fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
+                lworkspace,
                 solver
             );
             break;

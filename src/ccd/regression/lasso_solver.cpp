@@ -49,7 +49,7 @@ LassoModel LassoSolver::fit(
     const index_t n_features = X.extent(1);
 
     // workspace_.resize(n_samples); // resize scratch space maybe do this outside fit 
-    // workspace_.reset(); // reset scratch space (weights filled to 0) maybe do this outside fit
+    workspace.reset(); // reset scratch space (weights filled to 0)
 
     const auto& X_mean = problem.X_mean;
     const auto& X_center = problem.X_center;

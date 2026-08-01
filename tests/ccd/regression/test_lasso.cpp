@@ -132,7 +132,6 @@ TEST(LassoSolver, MultiBandRegression)
     //------------------------------------------------------------
     for(index_t band = 0; band < n_bands; ++band)
     {   
-        workspace.reset();
         auto y_band = ArrayView<const scalar_t,1>::contiguous(
             y[band].data(),
             {n_samples}

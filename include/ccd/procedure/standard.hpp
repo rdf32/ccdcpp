@@ -25,7 +25,8 @@ class StandardProcedure final : public FitProcedure
 
 public:
     FitResult run(
-        HarmonicWorkspace& workspace,
+        HarmonicWorkspace& hworkspace,
+        LassoWorkspace& lworkspace,
         LassoSolver& solver
     );
 
@@ -34,6 +35,7 @@ protected:
     // subfunctions
     bool initialize(
         const HarmonicWorkspace& workspace,
+        LassoWorkspace& lworkspace,
         LassoSolver& solver,
         std::vector<scalar_t>& variogram,
         ProcessingMask& mask,
@@ -43,6 +45,7 @@ protected:
 
     bool lookback(
         const HarmonicWorkspace& workspace,
+        LassoWorkspace& lworkspace,
         std::vector<scalar_t>& variogram,
         ProcessingMask& mask,
         Window& window,
@@ -52,6 +55,7 @@ protected:
 
     ChangeModel catch_model(
         const HarmonicWorkspace& workspace,
+        LassoWorkspace& lworkspace,
         LassoSolver& solver,
         ProcessingMask& mask,
         Window& window,
@@ -60,6 +64,7 @@ protected:
 
     ChangeModel lookforward(
         const HarmonicWorkspace& workspace,
+        LassoWorkspace& lworkspace,
         LassoSolver& solver,
         std::vector<scalar_t>& variogram,
         ProcessingMask& mask,

@@ -5,10 +5,10 @@ cmake_minimum_required(VERSION 3.20)
 # --------------------------------------------------
 
 # Use modern BoostConfig package behavior
-cmake_policy(SET CMP0167 NEW)
+#cmake_policy(SET CMP0167 NEW)
 
 # Use extracted archive timestamps for FetchContent
-cmake_policy(SET CMP0135 NEW)
+#cmake_policy(SET CMP0135 NEW)
 
 
 # -----------------------------
@@ -110,9 +110,9 @@ add_library(
     src/ccd/harmonic/harmonic.cpp
 
     src/ccd/procedure/fit.cpp
-    # src/ccd/procedure/standard.cpp
+    src/ccd/procedure/standard.cpp
 
-    # src/ccd/ccd.cpp
+    src/ccd/ccd.cpp
 )
 
 
@@ -314,28 +314,28 @@ if(CCD_BUILD_TESTS)
     )
 
 
-    # add_executable(
-    #     test_standard
+    add_executable(
+        test_standard
 
-    #     tests/ccd/procedure/test_standard.cpp
-    # )
-
-
-    # target_link_libraries(
-    #     test_standard
-
-    #     PRIVATE
-    #         ccd_core
-    #         GTest::gtest_main
-    # )
+        tests/ccd/procedure/test_standard.cpp
+    )
 
 
-    # target_compile_features(
-    #     test_standard
+    target_link_libraries(
+        test_standard
 
-    #     PRIVATE
-    #         cxx_std_17
-    # )
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_standard
+
+        PRIVATE
+            cxx_std_17
+    )
 
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
@@ -398,7 +398,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_robust)
     gtest_discover_tests(test_clear)
     gtest_discover_tests(test_snow)
-    # gtest_discover_tests(test_standard)
+    gtest_discover_tests(test_standard)
 
 endif()
 
@@ -416,27 +416,27 @@ endif()
 #         ccd_core
 # )
 
-# add_executable(
-#     test_ccd
+add_executable(
+    test_ccd
 
-#     tests/ccd/procedure/test_ccd.cpp
-# )
-
-
-# target_link_libraries(
-#     test_ccd
-
-#     PRIVATE
-#         ccd_core
-# )
+    tests/ccd/procedure/test_ccd.cpp
+)
 
 
-# target_compile_features(
-#     test_ccd
+target_link_libraries(
+    test_ccd
 
-#     PRIVATE
-#         cxx_std_17
-# )
+    PRIVATE
+        ccd_core
+)
+
+
+target_compile_features(
+    test_ccd
+
+    PRIVATE
+        cxx_std_17
+)
 
 # --------------------------------------------------
 # Python bindings
