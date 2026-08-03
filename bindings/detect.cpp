@@ -223,6 +223,10 @@ py::dict detect_wrapper(
     }
 
     output["processing_mask"] = mask_array;
+    output["cloud_prob"] = final_result.cloud_prob;
+    output["snow_prob"]  = final_result.snow_prob;
+    output["water_prob"] = final_result.water_prob;
+    output["clear_prob"] = final_result.clear_prob;
 
     return output;
 
