@@ -22,11 +22,6 @@ FitResult detect(
 ) {
 
     Quality quality;
-    Quality::Statistics quality_all = quality.compute(
-        qas,
-        dates,
-        hoptions
-    );
     Quality::Statistics quality_stat = quality.compute_until(
         qas,
         dates,
@@ -63,11 +58,6 @@ FitResult detect(
     );
 
     FitResult final_result;
-    final_result.cloud_prob = quality_all.cloud_probability;
-    final_result.snow_prob  = quality_all.snow_probability;
-    final_result.water_prob = quality_all.water_probability;
-    final_result.clear_prob = quality_all.clear_probability;
-
     switch(fit_type)
     {
         case FitProcedureType::Standard:

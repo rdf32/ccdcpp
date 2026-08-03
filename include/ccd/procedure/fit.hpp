@@ -51,10 +51,6 @@ struct FitResult
 {
     std::vector<ChangeModel> models;
     ProcessingMask mask;
-    scalar_t cloud_prob;
-    scalar_t snow_prob;
-    scalar_t water_prob;
-    scalar_t clear_prob;
 };
 
 class FitProcedure
