@@ -1,7 +1,5 @@
 #include "ccd/ccd.hpp"
 
-#include <iostream>
-
 #include "ccd/regression/lasso_solver.hpp"
 
 #include "ccd/harmonic/quality.hpp"
@@ -69,7 +67,6 @@ FitResult detect(
     {
         case FitProcedureType::Standard:
         {
-            std::cout << "standard procedure: " << std::endl;
             StandardProcedure fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -81,7 +78,6 @@ FitResult detect(
 
         case FitProcedureType::InsufficientClear:
         {   
-            std::cout << "insufficient clear: " << std::endl;
             InsufficientClear fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -93,7 +89,6 @@ FitResult detect(
 
         case FitProcedureType::PermanentSnow:
         {
-            std::cout << "permanent snow: " << std::endl;
             PermanentSnow fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -104,18 +99,6 @@ FitResult detect(
         }
   
     }
-
-    print_change_models(
-        final_result.models
-    );
-
-    std::cout << "Processing Mask: " << std::endl;
-    for (std::size_t obs = 0; obs < final_result.mask.size(); ++obs)
-    {
-        std::cout << static_cast<int>(final_result.mask[obs]) << ", ";
-    }
-    std::cout << "\n";
-    std::cout << "number of change models: " << final_result.models.size() << std::endl;
 
     return final_result;
 }

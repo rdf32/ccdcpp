@@ -131,6 +131,18 @@ int main() {
     );
 
     auto tf = ccd::Clock::now();
+
+    print_change_models(
+        results.models
+    );
+
+    std::cout << "Processing Mask: " << std::endl;
+    for (std::size_t obs = 0; obs < results.mask.size(); ++obs)
+    {
+        std::cout << static_cast<int>(results.mask[obs]) << ", ";
+    }
+    std::cout << "\n";
+    std::cout << "number of change models: " << results.models.size() << std::endl;
     std::cout << "Total CCD time: " 
         << ccd::elapsed_ms(t0, tf) 
         << " ms" << std::endl;

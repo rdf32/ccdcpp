@@ -549,3 +549,6 @@ endif()
 # cmake --build build --config Debug
 
 # ctest --test-dir build -C Debug --output-on-failure
+# pip install . ^
+#   --config-settings=cmake.args="-G;Visual Studio 17 2022;-A;x64;-DCMAKE_PREFIX_PATH=C:\Users\rylie\miniconda3\envs\geo\Library"
+# pip install . --config-settings=cmake.args="-G Visual Studio 17 2022 -A x64" --config-settings=cmake.build-type=Release
