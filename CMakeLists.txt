@@ -41,7 +41,7 @@ option(
 
 project(
     ccdcpp
-    VERSION 0.2.0
+    VERSION 0.1.1
     LANGUAGES CXX
 )
 

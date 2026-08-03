@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "ccdcpp"
-version = "0.2.0"
+version = "0.1.1"
 description = "High-performance C++/Python implementation of Continuous Change Detection algorithm for Landsat."
 readme = "README.md"
 requires-python = ">=3.12"
