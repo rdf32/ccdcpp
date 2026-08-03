@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <vector>
 #include <iostream>
 #include <chrono>
 
@@ -13,11 +14,19 @@
 namespace ccd
 {
 
+    
 enum class FitProcedureType
 {
     Standard,
     InsufficientClear,
     PermanentSnow
+};
+
+struct PixelResult
+{
+    index_t row;
+    index_t col;
+    FitResult result;
 };
 
 using Clock = std::chrono::high_resolution_clock;
@@ -96,62 +105,18 @@ inline void print_change_models(
     }
 }
 
-// class CCDWorkspace
-// {
-// public:
-
-//     void reserve(...)
-//     {
-//         lasso.reserve(...);
-//         masked.reserve(...);
-//         problem.reserve(...);
-//         processing_mask.reserve(...);
-//     }
-
-
-//     void bind(...)
-//     {
-//         dates_ = dates;
-//         spectral_ = spectral;
-//         qas_ = qas;
-//     }
-
-
-//     void resize()
-//     {
-//         const auto n = dates_.size();
-
-//         lasso.resize(n);
-//         problem.resize(n);
-//         masked.resize(...);
-//         processing_mask.resize(n);
-//     }
-
-
-//     void reset()
-//     {
-//         lasso.reset();
-//         problem.reset();
-//         masked.reset();
-//         processing_mask.reset();
-
-//         quality.reset();
-//     }
-
-
-// private:
-
-//     LassoWorkspace lasso;
-//     LassoProblem problem;
-//     MaskedData masked;
-
-// };
-
-
 FitResult detect(
     ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
     ArrayView<scalar_t, 2> spectral,  // shape -> (bands, timesteps)
     ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
+    HarmonicOptions hoptions,
+    LassoOptions loptions
+);
+
+std::vector<PixelResult> detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<scalar_t, 4> spectral,          // (H,W,B,T)
+    ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
     HarmonicOptions hoptions,
     LassoOptions loptions
 );
