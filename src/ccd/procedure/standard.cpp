@@ -1,61 +1,12 @@
 #include "ccd/procedure/standard.hpp"
 
-// #include <iostream>
 #include <algorithm>
 #include <vector>
 
 #include "ccd/maths.hpp"
-// #include "ccd/array_print.hpp"
 
 namespace ccd
 {
-
-// inline void print_lasso_results(const std::vector<LassoResult>& results)
-// {
-//     std::cout << "\nSpectral Models\n";
-//     std::cout << "----------------------------------------\n";
-
-//     for (std::size_t band = 0; band < results.size(); ++band)
-//     {
-//         const auto m = results[band].model;
-//         const auto s = results[band].score;
-
-   
-//         const auto& coef = m.coefficients();
-//         const auto& resi = s.residuals;
-
-//         std::cout << "Band " << band << '\n';
-//         std::cout << "  Iterations : " << m.iterations() << '\n';
-//         std::cout << "  Intercept  : " << m.intercept() << '\n';
-//         std::cout << "  RMSE       : " << s.rmse << '\n';
-//         std::cout << "  Magnitude  : " << s.magn << '\n';
-
-//         std::cout << "  Coefficients (" << coef.size() << "): ";
-
-//         for (std::size_t i = 0; i < coef.size(); ++i)
-//         {
-//             std::cout << coef[i];
-
-//             if (i + 1 != coef.size())
-//                 std::cout << ", ";
-//         }
-//         std::cout << "\n";
-
-//         std::cout << "  Residuals (" << resi.size() << "): ";
-
-//         for (std::size_t i = 0; i < resi.size(); ++i)
-//         {
-//             std::cout << resi[i];
-
-//             if (i + 1 != resi.size())
-//                 std::cout << ", ";
-//         }
-//         std::cout << "\n";
-
-//         std::cout << "\n\n";
-//     }
-//     std::cout << "========================================\n";
-// }
 
 bool StandardProcedure::initialize(
     const HarmonicWorkspace& workspace,
@@ -69,12 +20,6 @@ bool StandardProcedure::initialize(
 )
 {   
     auto& options = workspace.options();
-    // std::cout 
-    //     << "Initial model window: " 
-    //     << window.start 
-    //     << ", " 
-    //     << window.stop 
-    //     << std::endl;
         
     MaskedData masked_data = 
         apply_mask(workspace, mask);
@@ -99,15 +44,9 @@ bool StandardProcedure::initialize(
             window.grow();
             continue;
         }
-        // std:: cout << "Checking window: " << window.start << ", " << window.stop << std::endl;
         //----------------------------------------------------------------------
         // Run TMask
         //----------------------------------------------------------------------
-        // std::cout << "tmask dates: " << std::endl;
-        // print_array(masked_dates.slice(range(window.start, window.stop)));
-
-        // std::cout << "tmask spectrl: " << std::endl;
-        // print_array(masked_spectral.slice(all(), range(window.start, window.stop)));
         auto outliers =
             tmask(
                 masked_dates.slice(range(window.start, window.stop)),
@@ -116,13 +55,12 @@ bool StandardProcedure::initialize(
                 options.TMASK_BANDS,
                 options.T_CONST
             );
-        // std:: cout << "Number of Tmask outliers found: " << outliers.count() << std::endl;
+
         //----------------------------------------------------------------------
         // TMask removed everything
         //----------------------------------------------------------------------
         if (outliers.count() == window.size())
         {   
-            // std:: cout << "Tmask identified all values as outliers" << std::endl;
             window.grow();
             continue;
         }
@@ -176,11 +114,6 @@ bool StandardProcedure::initialize(
             if (!enough_time(candidate_dates_window, options.DAY_DELTA) ||
                 !enough_samples(candidate_dates_window, options.MEOW_SIZE))
             {
-                // std::cout
-                //     << "Insufficient time or observations after TMask, "
-                //     << "extending model window"
-                //     << std::endl;
-
                 window.grow();
                 continue;
             }
@@ -201,18 +134,6 @@ bool StandardProcedure::initialize(
         //----------------------------------------------------------------------
         // Fit models
         //----------------------------------------------------------------------
-        // std::cout << "Generating models to check for stability" << std::endl;
-        // std::cout << " window for stability: " << window.start << ", " << window.stop << std::endl;
-        // std::cout << "dates into fit models before stable: " << std::endl;
-        
-        // print_array(masked_dates.slice(range(window.start, window.stop)));
-        
-        // std::cout << "spectra into fit models before stable: " << std::endl;
-        // print_array(masked_spectral.slice(all(), range(window.start, window.stop)));
-
-        //----------------------------------------------------------
-        // Determine harmonic complexity
-        //----------------------------------------------------------
         const index_t num_coef = 4;
 
         //----------------------------------------------------------
@@ -268,13 +189,10 @@ bool StandardProcedure::initialize(
                 options.CHANGE_THRESHOLD,
                 options.DETECTION_BANDS))
         {
-            // std:: cout << "Stable start found: " << window.start << ", " << window.stop << std::endl;
-            // print_lasso_results(models);
             return true;
         }
 
         window.shift();
-        // std:: cout << "Unstable model, shift window to: " << window.start << ", " << window.stop << std::endl;
     }
 
     return false;
@@ -314,15 +232,7 @@ bool StandardProcedure::lookback(
     };
 
     auto& options = workspace.options();
-    // std::cout << "ENTERING LOOKBACK" << std::endl;
-    // std::cout << "previous break: " << prev_break << std::endl;
-    // std::cout 
-    //     << "Lookback model window: " 
-    //     << window.start 
-    //     << ", " 
-    //     << window.stop 
-    //     << std::endl;
-        
+
     MaskedData masked_data = 
         apply_mask(workspace, mask);
     
@@ -331,13 +241,6 @@ bool StandardProcedure::lookback(
 
     auto masked_spectral = 
         masked_data.spectral_view();
-
-    // std::cout 
-    //     << "window 0 : " 
-    //     << window.start 
-    //     << ", " 
-    //     << window.stop 
-    //     << std::endl;
 
     while(window.start > prev_break) {
 
@@ -361,9 +264,6 @@ bool StandardProcedure::lookback(
             peek_window.start = static_cast<std::ptrdiff_t>(window.start) - 1;
             peek_window.stop  = static_cast<std::ptrdiff_t>(prev_break) - 1;
         }
-
-        // std::cout << "Considering index: " << peek_window.start << " using peek window "
-        //     << "(" << peek_window.start << ", " << peek_window.stop << ")" << std::endl;
 
         std::vector<std::int64_t> peek_dates;
         peek_dates.reserve(options.PEEK_SIZE);
@@ -433,29 +333,14 @@ bool StandardProcedure::lookback(
             comp_vario.push_back(variogram[band]);
         }
 
-        // std::cout << "RMSE values for comparison: " << std::endl;
-        // std::cout << "[";
-        // for (const auto num: comp_rmses) {
-        //     std::cout << num << ", ";
-        // }
-        // std::cout << "]\n";
         auto magnitude = 
             change_magnitude(comp_resids, comp_vario, comp_rmses);
-        // std::cout << "Magnitudes of change: " << std::endl;
-        // std::cout << "[";
-        // for (const auto num: magnitude) {
-        //     std::cout << num << ", ";
-        // }
-        // std::cout << "]\n";
+
         //----------------------------------------------------------------------
         // Change detected
         //----------------------------------------------------------------------
         if (detect_change(magnitude, options.CHANGE_THRESHOLD))
         {   
-            // std::cout 
-            //     << "Change detected for index: "
-            //     << peek_window.start
-            //     << std::endl;
             return true;
         }
         //----------------------------------------------------------------------
@@ -463,7 +348,6 @@ bool StandardProcedure::lookback(
         //----------------------------------------------------------------------
         else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
         {
-            // std::cout << "Outlier detected for index: " << peek_window.start << std::endl;
             //----------------------------------------------------------
             // Remove the observation immediately before the window
             //----------------------------------------------------------
@@ -483,23 +367,9 @@ bool StandardProcedure::lookback(
             //----------------------------------------------------------
             --window.start;
             --window.stop;
-
-            // std::cout 
-            //     << "window 1 : " 
-            //     << window.start 
-            //     << ", " 
-            //     << window.stop 
-            //     << std::endl;
-
             continue;
         }
         window.start = static_cast<index_t>(peek_window.start);
-        // std::cout 
-        //     << "window 2 : " 
-        //     << window.start 
-        //     << ", " 
-        //     << window.stop 
-        //     << std::endl;
     }
     return false;
 }
@@ -515,12 +385,6 @@ ChangeModel StandardProcedure::catch_model(
 ) {
     ChangeModel result;
     auto& options = workspace.options();
-    // std::cout 
-    //     << "Catch model window: " 
-    //     << window.start 
-    //     << ", " 
-    //     << window.stop 
-    //     << std::endl;
         
     MaskedData masked_data = 
         apply_mask(workspace, mask);
@@ -612,12 +476,6 @@ ChangeModel StandardProcedure::lookforward(
 ) {
     ChangeModel result;
     auto& options = workspace.options();
-    // std::cout 
-    //     << "Catch model window: " 
-    //     << window.start 
-    //     << ", " 
-    //     << window.stop 
-    //     << std::endl;
         
     MaskedData masked_data = 
         apply_mask(workspace, mask);
@@ -627,9 +485,6 @@ ChangeModel StandardProcedure::lookforward(
 
     auto masked_spectral = 
         masked_data.spectral_view();
-
-    // std::cout << "lookforward initial model window: " 
-    //     << window.start << ", " << window.stop << std::endl;
 
     index_t change = 0;
     auto fit_window = window;
@@ -651,9 +506,6 @@ ChangeModel StandardProcedure::lookforward(
         // # Used for comparison against fit_span
         auto model_span = span(masked_dates, window);
 
-        // std::cout << "detecting change for: : " 
-        //     << peek_window.start << ", " << peek_window.stop << std::endl;
-        
         if (models.empty() || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
         {   
             models.clear();
@@ -753,30 +605,16 @@ ChangeModel StandardProcedure::lookforward(
             }
         }
 
-        // std::cout << "RMSE values for comparison: " << std::endl;
-        // std::cout << "[";
-        // for (const auto num: comp_rmses) {
-        //     std::cout << num << ", ";
-        // }
-        // std::cout << "]\n";
         auto magnitude = 
             change_magnitude(comp_resids, comp_vario, comp_rmses);
-        // std::cout << "Magnitudes of change: " << std::endl;
-        // std::cout << "[";
-        // for (const auto num: magnitude) {
-        //     std::cout << num << ", ";
-        // }
-        // std::cout << "]\n";
 
         if (detect_change(magnitude, options.CHANGE_THRESHOLD))
         {   
-            // std::cout << "Change detected for index: " << peek_window.start << std::endl;
             change = 1;
             break;
         } 
         else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
         {
-            // std::cout << "Outlier detected for index: " << peek_window.start << std::endl;
             //----------------------------------------------------------
             // Remove the observation immediately before the window
             //----------------------------------------------------------
@@ -869,13 +707,11 @@ FitResult StandardProcedure::run(
     auto stat_spectral = 
         masked_spectral.slice(all(), range(index_t{0}, max_idx)); // just view subsets
     
-    // std::cout << "mask count: " << mask.count() << std::endl;
     options.PEEK_SIZE =
         adjust_peek(
             stat_dates,
             options.PEEK_SIZE
         );
-    // std::cout << "peek size: " << options.PEEK_SIZE << std::endl;
     
     options.CHANGE_THRESHOLD =
         adjust_change_threshold(
@@ -883,7 +719,6 @@ FitResult StandardProcedure::run(
             options.PEEK_SIZE,
             options.CHANGE_THRESHOLD
         );
-    // std::cout << "change threshold: " << options.CHANGE_THRESHOLD << std::endl;
 
     std::vector<scalar_t> variogram =
         adjusted_variogram(
@@ -893,7 +728,6 @@ FitResult StandardProcedure::run(
 
     if(!check_variogram(variogram))
     {   
-        // std::cout << "Variogram failed check" << std::endl;
         return {};
     }
 
@@ -905,8 +739,6 @@ FitResult StandardProcedure::run(
 
     while(window.stop <= mask.count() - options.MEOW_SIZE)
     {   
-
-        // std::cout << "Initialize for change model # " << results.models.size() + 1 << std::endl;
         if (!results.models.empty()) {
             start = false;
         }
@@ -919,31 +751,10 @@ FitResult StandardProcedure::run(
             break;
         }
 
-        // std::cout << "after init window: " << std::endl;
-        // std::cout << window.start << ", " << window.stop << std::endl;
-
-        // std::cout << "after init mask: " << std::endl;
-        // for (ccd::index_t i = 0; i < mask.size(); ++i)
-        // {
-        //     std::cout << static_cast<int>(mask[i]) << ", ";
-        // }
-        // std::cout << '\n';
-
         if (window.start > prev_break)
         {
-            // std::cout << "executing lookback: " << std::endl;
             lookback(hworkspace, lworkspace, variogram, mask, window, init_models, prev_break);
         }
-
-        // std::cout << "after lookback window: " << std::endl;
-        // std::cout << window.start << ", " << window.stop << std::endl;
-
-        // std::cout << "after lookback mask: " << std::endl;
-        // for (ccd::index_t i = 0; i < mask.size(); ++i)
-        // {
-        //     std::cout << static_cast<int>(mask[i]) << ", ";
-        // }
-        // std::cout << '\n';
 
         if ((window.start - prev_break > options.PEEK_SIZE)  && start)
         {   
@@ -959,7 +770,6 @@ FitResult StandardProcedure::run(
             break;
         }
 
-        // std::cout << "Extend change model" << std::endl;
         ChangeModel result = lookforward(
             hworkspace,
             lworkspace,
@@ -969,16 +779,11 @@ FitResult StandardProcedure::run(
             window
         );
         results.models.push_back(result);
-
-        // std::cout << "prev_break: " << prev_break << std::endl;
-        // std::cout << "window: " << window.start << ", " << window.stop << std::endl;
-        // std::cout << "Accumulate results " << results.models.size() << " so far" << std::endl;
         //--------------------------------------------------
         // iterate
         //--------------------------------------------------
         prev_break = window.stop;
-        window = 
-            Window(window.stop, window.stop + options.MEOW_SIZE);
+        window = Window(window.stop, window.stop + options.MEOW_SIZE);
     }
     // --------------------------------
     // End catch
