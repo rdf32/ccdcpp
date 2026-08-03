@@ -94,7 +94,7 @@ struct LassoProblem
     {
         return ArrayView<const scalar_t, 2>::contiguous(
             X_store.data(),
-            {n_samples, CCD_MAX_COEFS}
+            {CCD_MAX_COEFS, n_samples}
         );
     }
 };
