@@ -139,10 +139,8 @@ bool StandardProcedure::initialize(
         //----------------------------------------------------------
         // Build harmonic basis
         //----------------------------------------------------------
-        LassoProblem input_storage = 
-            lasso_basis(masked_dates.slice(range(window.start, window.stop)), num_coef);
-
         lworkspace.resize(masked_dates.slice(range(window.start, window.stop)).size());
+        lworkspace.build_basis(masked_dates.slice(range(window.start, window.stop)), num_coef);
 
         //----------------------------------------------------------
         // Fit every spectral band
@@ -156,12 +154,11 @@ bool StandardProcedure::initialize(
 
             LassoModel model = solver.fit(
                 lworkspace,
-                input_storage,
                 y
             );
 
             model.predict(
-                input_storage.X(),
+                lworkspace.X(),
                 lworkspace.predictions
             );
 
@@ -307,10 +304,8 @@ bool StandardProcedure::lookback(
         std::vector<std::vector<scalar_t>> comp_resids;
         std::vector<scalar_t> comp_vario;
         
-        LassoProblem input_storage = 
-            lasso_basis(masked_dates_window, 8);
-
         lworkspace.resize(masked_dates_window.size());
+        lworkspace.build_basis(masked_dates_window, 8);
 
         for (auto band: options.DETECTION_BANDS)
         {
@@ -320,7 +315,7 @@ bool StandardProcedure::lookback(
             );
 
             models[band].model.predict(
-                input_storage.X(),
+                lworkspace.X(),
                 lworkspace.predictions
             );
 
@@ -409,10 +404,8 @@ ChangeModel StandardProcedure::catch_model(
     //----------------------------------------------------------
     // Build harmonic basis
     //----------------------------------------------------------
-    LassoProblem input_storage = 
-        lasso_basis(masked_dates_window, num_coef);
-
     lworkspace.resize(masked_dates_window.size());
+    lworkspace.build_basis(masked_dates_window, num_coef);
 
     //----------------------------------------------------------
     // Fit every spectral band
@@ -426,12 +419,11 @@ ChangeModel StandardProcedure::catch_model(
 
         LassoModel model = solver.fit(
             lworkspace,
-            input_storage,
             y
         );
 
         model.predict(
-            input_storage.X(),
+            lworkspace.X(),
             lworkspace.predictions
         );
 
@@ -521,10 +513,8 @@ ChangeModel StandardProcedure::lookforward(
             //----------------------------------------------------------
             // Build harmonic basis
             //----------------------------------------------------------
-            LassoProblem input_storage = 
-                lasso_basis(masked_dates_window, num_coef);
-
             lworkspace.resize(masked_dates_window.size());
+            lworkspace.build_basis(masked_dates_window, num_coef);
            
             //----------------------------------------------------------
             // Fit every spectral band
@@ -537,11 +527,10 @@ ChangeModel StandardProcedure::lookforward(
                 );
                 LassoModel model = solver.fit(
                     lworkspace,
-                    input_storage,
                     y
                 );
                 model.predict(
-                    input_storage.X(),
+                    lworkspace.X(),
                     lworkspace.predictions
                 );
                 auto metrics = score(
@@ -560,10 +549,8 @@ ChangeModel StandardProcedure::lookforward(
             }
         }
 
-        LassoProblem input_storage = 
-            lasso_basis(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
-
         lworkspace.resize(masked_dates.slice(range(peek_window.start, peek_window.stop)).size());
+        lworkspace.build_basis(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
 
         for (index_t band = 0; band < num_bands; ++band)
         {
@@ -573,7 +560,7 @@ ChangeModel StandardProcedure::lookforward(
             );
 
             models[band].model.predict(
-                input_storage.X(),
+                lworkspace.X(),
                 lworkspace.predictions
             );
 

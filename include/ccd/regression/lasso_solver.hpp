@@ -50,10 +50,18 @@ struct LassoOptions {
 // No coefficient allocation.
 //==============================================================================
 struct LassoWorkspace
-{
+{   
+    index_t n_samples = 0;
+
     std::array<scalar_t, CCD_MAX_COEFS> weights{}; // fit
     std::vector<scalar_t> y_cent; // fit
     std::vector<scalar_t> y_resi; // fit
+
+    std::vector<scalar_t> X_store;   // prediction
+    std::vector<scalar_t> X_center;  // prediction
+
+    std::array<scalar_t, CCD_MAX_COEFS> X_mean{}; // prediction
+    std::array<scalar_t, CCD_MAX_COEFS> column_norm2{}; // prediction
 
     std::vector<scalar_t> predictions; // prediction & score
     std::vector<scalar_t> residuals; // score
@@ -62,6 +70,10 @@ struct LassoWorkspace
     {
         y_cent.resize(max_samples);
         y_resi.resize(max_samples);
+
+        X_store.resize(max_samples);
+        X_center.resize(max_samples);
+
         predictions.resize(max_samples);
         residuals.resize(max_samples);
     }
@@ -70,6 +82,7 @@ struct LassoWorkspace
     {
         y_cent.resize(samples);
         y_resi.resize(samples);
+
         predictions.resize(samples);
         residuals.resize(samples);
     }
@@ -78,17 +91,11 @@ struct LassoWorkspace
     {
         weights.fill(scalar_t(0));
     }
-};
 
-struct LassoProblem
-{
-    std::vector<scalar_t> X_store;   // original harmonic basis
-    std::vector<scalar_t> X_center;  // centered copy for fitting
-
-    std::array<scalar_t, CCD_MAX_COEFS> X_mean{};
-    std::array<scalar_t, CCD_MAX_COEFS> column_norm2{};
-
-    index_t n_samples = 0;
+    void build_basis(
+        ArrayView<const std::int64_t, 1> dates,
+        index_t num_coefficients
+    );
 
     ArrayView<const scalar_t, 2> X() const noexcept
     {
@@ -180,7 +187,6 @@ public:
     //      shape = (samples)
     LassoModel fit(
         LassoWorkspace& workspace,
-        const LassoProblem& problem,
         ArrayView<const scalar_t, 1> y
     );
 
@@ -193,11 +199,6 @@ private:
 private:
     LassoOptions options_;
 };
-
-LassoProblem lasso_basis(
-    ArrayView<const std::int64_t, 1> dates,
-    index_t num_coefficients
-);
 
 struct LassoScore {
     scalar_t rmse;

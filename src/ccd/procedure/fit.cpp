@@ -51,10 +51,9 @@ FitResult FitProcedure::run(
     //----------------------------------------------------------
     // Build harmonic basis
     //----------------------------------------------------------
-    LassoProblem input_storage = 
-        lasso_basis(masked_dates, num_coef);
-
     lworkspace.resize(mask.count());
+    lworkspace.build_basis(masked_dates, num_coef);
+
     //----------------------------------------------------------
     // Build result
     //----------------------------------------------------------
@@ -81,12 +80,11 @@ FitResult FitProcedure::run(
 
         LassoModel model = solver.fit(
             lworkspace,
-            input_storage,
             y
         );
 
         model.predict(
-            input_storage.X(),
+            lworkspace.X(),
             lworkspace.predictions
         );
 

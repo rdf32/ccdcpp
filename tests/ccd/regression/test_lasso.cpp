@@ -98,9 +98,6 @@ TEST(LassoSolver, MultiBandRegression)
             dates.data(),
             {n_samples}
         );
-    LassoProblem input_storage = 
-        lasso_basis(dates_view, 4);
-    
 
     //------------------------------------------------------------
     // Band observations
@@ -125,7 +122,9 @@ TEST(LassoSolver, MultiBandRegression)
 
     LassoSolver solver(options);
     LassoWorkspace workspace(n_samples);
+
     workspace.resize(n_samples);
+    workspace.build_basis(dates_view, 4);
 
     //------------------------------------------------------------
     // Fit each band
@@ -138,10 +137,10 @@ TEST(LassoSolver, MultiBandRegression)
         );
 
         auto model = 
-            solver.fit(workspace, input_storage, y_band);
+            solver.fit(workspace, y_band);
 
         model.predict(
-            input_storage.X(), 
+            workspace.X(), 
             workspace.predictions
         );
 

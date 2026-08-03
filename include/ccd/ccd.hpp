@@ -73,17 +73,6 @@ inline void print_change_model(const ChangeModel& model)
         }
         std::cout << "\n";
 
-        // std::cout << "  Residuals (" << resi.size() << "): ";
-
-        // for (std::size_t i = 0; i < resi.size(); ++i)
-        // {
-        //     std::cout << resi[i];
-
-        //     if (i + 1 != resi.size())
-        //         std::cout << ", ";
-        // }
-        // std::cout << "\n";
-
         std::cout << "\n\n";
     }
     std::cout << "========================================\n";
@@ -106,6 +95,58 @@ inline void print_change_models(
         );
     }
 }
+
+// class CCDWorkspace
+// {
+// public:
+
+//     void reserve(...)
+//     {
+//         lasso.reserve(...);
+//         masked.reserve(...);
+//         problem.reserve(...);
+//         processing_mask.reserve(...);
+//     }
+
+
+//     void bind(...)
+//     {
+//         dates_ = dates;
+//         spectral_ = spectral;
+//         qas_ = qas;
+//     }
+
+
+//     void resize()
+//     {
+//         const auto n = dates_.size();
+
+//         lasso.resize(n);
+//         problem.resize(n);
+//         masked.resize(...);
+//         processing_mask.resize(n);
+//     }
+
+
+//     void reset()
+//     {
+//         lasso.reset();
+//         problem.reset();
+//         masked.reset();
+//         processing_mask.reset();
+
+//         quality.reset();
+//     }
+
+
+// private:
+
+//     LassoWorkspace lasso;
+//     LassoProblem problem;
+//     MaskedData masked;
+
+// };
+
 
 FitResult detect(
     ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
