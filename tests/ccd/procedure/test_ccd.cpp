@@ -143,10 +143,6 @@ int main() {
     }
     std::cout << "\n";
     std::cout << "number of change models: " << results.models.size() << std::endl;
-    std::cout << "cloud prob: " << results.cloud_prob << std::endl;
-    std::cout << "snow prob: " << results.snow_prob << std::endl;
-    std::cout << "water prob: " << results.water_prob << std::endl;
-    std::cout << "clear prob: " << results.clear_prob << std::endl;
 
     std::cout << "Total CCD time: " 
         << ccd::elapsed_ms(t0, tf) 
