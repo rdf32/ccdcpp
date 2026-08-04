@@ -1,5 +1,6 @@
 #include "ccd/harmonic/filter.hpp"
 
+// #include <iostream>
 #include <vector>
 #include <algorithm>
 #include <optional>
@@ -35,23 +36,42 @@ ProcessingMask standard(
             mask.set(i, true);
         }
     }
-
+    // std::cout << "Processing Mask after QA: " << std::endl;
+    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
+    // {
+    //     std::cout << static_cast<int>(mask[obs]) << ", ";
+    // }
+    // std::cout << "\n";
     apply_thermal_filter(
         workspace.spectral(),
         options.THERMAL_IDX,
         mask
     );
-
+    // std::cout << "Processing Mask after thermal: " << std::endl;
+    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
+    // {
+    //     std::cout << static_cast<int>(mask[obs]) << ", ";
+    // }
+    // std::cout << "\n";
     apply_saturation_filter(
         workspace.spectral(),
         mask
     );
-
+    // std::cout << "Processing Mask after saturation: " << std::endl;
+    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
+    // {
+    //     std::cout << static_cast<int>(mask[obs]) << ", ";
+    // }
+    // std::cout << "\n";
     remove_duplicate_dates(
         dates,
         mask
     );
-
+    // std::cout << "Processing Mask after duplicates: " << std::endl;
+    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
+    // {
+    //     std::cout << static_cast<int>(mask[obs]) << ", ";
+    // }
     return mask;
 }
 

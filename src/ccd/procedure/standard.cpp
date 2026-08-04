@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <vector>
+// #include <iostream>
 
 #include "ccd/maths.hpp"
 
@@ -659,8 +660,16 @@ FitResult StandardProcedure::run(
     //----------------------------------------------------------
     // Not enough observations
     //----------------------------------------------------------
-    if (mask.count() < options.MEOW_SIZE)
-    {
+    if (mask.count() <= options.MEOW_SIZE)
+    {     
+        // std::cout << "Processing Mask: " << std::endl;
+        // for (std::size_t obs = 0; obs < mask.size(); ++obs)
+        // {
+        //     std::cout << static_cast<int>(mask[obs]) << ", ";
+        // }
+        // std::cout << "\n";
+        
+        // std::cout << "mask count < meow size" << mask.count() << std::endl;
         return {};
     }
 
@@ -715,6 +724,7 @@ FitResult StandardProcedure::run(
 
     if(!check_variogram(variogram))
     {   
+        // std::cout << "variogram has nans" << std::endl;
         return {};
     }
 
