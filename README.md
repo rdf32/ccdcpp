@@ -40,6 +40,62 @@ Key advantages include:
 
 The mathematical algorithm remains equivalent to PyCCD, but the implementation was redesigned from the ground up to improve computational efficiency while maintaining output compatibility.
 
+---
+
+# Data Layout
+
+For best performance, input arrays should be **C-contiguous** and use the expected memory layout. The library is designed around cache-friendly access patterns and avoids unnecessary data copies by operating directly on NumPy memory whenever possible.
+
+## Single Pixel
+
+The `detect()` API expects a single pixel time series in the following layout:
+
+| Array | Shape | Description |
+|-------|--------|-------------|
+| `dates` | `(timesteps,)` | Acquisition dates |
+| `spectral` | `(bands, timesteps)` | Spectral observations for one pixel |
+| `qas` | `(timesteps,)` | Quality assessment values |
+
+For example:
+
+```python
+dates.shape      # (T,)
+spectral.shape   # (7, T)
+qas.shape        # (T,)
+```
+
+The spectral array stores each band as a contiguous time series, allowing the regression routines to efficiently access observations for each band with minimal cache misses.
+
+---
+
+## Image Cubes
+
+The `detect_cube()` API expects image cubes in the following layout:
+
+| Array | Shape | Description |
+|-------|--------|-------------|
+| `dates` | `(timesteps,)` | Shared acquisition dates |
+| `spectral` | `(height, width, bands, timesteps)` | Spectral observations |
+| `qas` | `(height, width, timesteps)` | QA observations |
+
+For example:
+
+```python
+dates.shape      # (T,)
+spectral.shape   # (H, W, 7, T)
+qas.shape        # (H, W, T)
+```
+
+Each pixel's complete time series is stored contiguously in memory. This layout provides several advantages:
+
+- Improved CPU cache locality during time-series processing
+- Efficient sequential access by the CCD algorithm
+- Minimal pointer arithmetic and memory indirection
+- Zero-copy interoperability with NumPy
+- Efficient OpenMP parallelization across pixels
+
+Using C-contiguous arrays with these layouts maximizes performance and minimizes unnecessary memory copies.
+
 ## Native C++ Implementation
 
 The core CCD algorithm was translated into modern C++17 to eliminate the overhead associated with Python execution.
