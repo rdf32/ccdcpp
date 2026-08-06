@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <vector>
-// #include <iostream>
+#include <iostream>
 
 #include "ccd/maths.hpp"
 
@@ -20,6 +20,11 @@ bool StandardProcedure::initialize(
 
 )
 {   
+    std::cout << "Initial model window (" 
+        << window.start << ", " 
+        << window.stop << ")" 
+        << std::endl;
+
     auto& options = workspace.options();
         
     MaskedData masked_data = 
@@ -45,6 +50,10 @@ bool StandardProcedure::initialize(
             window.grow();
             continue;
         }
+        std::cout << "Checking window (" 
+            << window.start << ", " 
+            << window.stop << ")" 
+            << std::endl;
         //----------------------------------------------------------------------
         // Run TMask
         //----------------------------------------------------------------------
@@ -56,7 +65,7 @@ bool StandardProcedure::initialize(
                 options.TMASK_BANDS,
                 options.T_CONST
             );
-
+        std::cout << "Number of Tmask outliers found: " << outliers.count() << std::endl;
         //----------------------------------------------------------------------
         // TMask removed everything
         //----------------------------------------------------------------------
@@ -131,7 +140,11 @@ bool StandardProcedure::initialize(
             window = candidate_window;
         }
 
-
+        std::cout << "Generating models to check for stability" << std::endl;
+        std::cout << "window for stability: (" 
+            << window.start << ", " 
+            << window.stop << ")" 
+            << std::endl;
         //----------------------------------------------------------------------
         // Fit models
         //----------------------------------------------------------------------
@@ -187,10 +200,11 @@ bool StandardProcedure::initialize(
                 options.CHANGE_THRESHOLD,
                 options.DETECTION_BANDS))
         {
+            std::cout << "Stable start found: (" << window.start << ", " << window.stop << ")" << std::endl;
             return true;
         }
-
         window.shift();
+        std::cout << "Unstable model, shift window to: (" << window.start << ", " << window.stop << ")" << std::endl; 
     }
 
     return false;
@@ -301,15 +315,16 @@ bool StandardProcedure::lookback(
                 {bands, samples}
             );
         
-        std::vector<scalar_t> comp_rmses;
-        std::vector<std::vector<scalar_t>> comp_resids;
-        std::vector<scalar_t> comp_vario;
+        std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
+        std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
+        std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
         
         lworkspace.resize(masked_dates_window.size());
         lworkspace.build_basis(masked_dates_window, 8);
 
-        for (auto band: options.DETECTION_BANDS)
+        for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
         {
+            auto band = options.DETECTION_BANDS[i];
             auto y = masked_spectral_window.slice(
                 fixed(band), 
                 all()
@@ -324,9 +339,9 @@ bool StandardProcedure::lookback(
                 calc_residuals(y, lworkspace.predictions);
             // use original model rmse like python code 
             // not sure if this is intended or python bug
-            comp_resids.push_back(abs_resid);
-            comp_rmses.push_back(models[band].score.rmse);
-            comp_vario.push_back(variogram[band]);
+            comp_resids[i] = abs_resid;
+            comp_rmses[i] = models[band].score.rmse;
+            comp_vario[i] = variogram[band];
         }
 
         auto magnitude = 
@@ -467,6 +482,7 @@ ChangeModel StandardProcedure::lookforward(
     ProcessingMask& mask,
     Window& window
 ) {
+    std::cout << "initial model window lookforward: " << window.start << ", " << window.stop <<  std::endl;
     ChangeModel result;
     auto& options = workspace.options();
         
@@ -498,13 +514,15 @@ ChangeModel StandardProcedure::lookforward(
 
         // # Used for comparison against fit_span
         auto model_span = span(masked_dates, window);
+        
+        std::cout << "detecting change for: " << peek_window.start << ", " << peek_window.stop <<  std::endl;
 
         if (models.empty() || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
         {   
             models.clear();
             fit_window = window;
             fit_span = span(masked_dates, fit_window);
-            // std::cout << "Retrain models" <<std::endl;
+            std::cout << "Retrain models" <<std::endl;
 
             auto masked_dates_window = 
                 masked_dates.slice(range(fit_window.start, fit_window.stop));
@@ -571,25 +589,35 @@ ChangeModel StandardProcedure::lookforward(
             full_resids[band] = abs_resid;
         }
 
-        std::vector<scalar_t> comp_rmses;
-        std::vector<scalar_t> comp_vario;
-        std::vector<std::vector<scalar_t>> comp_resids;
+        std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
+        std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
+        std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
         if (window.stop - window.start <= 24) {
-            for (auto band: options.DETECTION_BANDS)
+            std::cout << "normal residuals and rmse" << std::endl;
+            for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
-                comp_resids.push_back(full_resids[band]);
-                comp_rmses.push_back(models[band].score.rmse);
-                comp_vario.push_back(variogram[band]);
+                auto band = options.DETECTION_BANDS[i];
+                comp_resids[i] = full_resids[band];
+                comp_rmses[i] = models[band].score.rmse;
+                comp_vario[i] = variogram[band];
             }
         } else {
+
+            std::cout << "closest day residuals and rmse" << std::endl;
             auto closest_indexes = 
                 find_closest_doy(masked_dates, peek_window.stop - 1, fit_window, 24);
             
-            for (auto band : options.DETECTION_BANDS)
+            std::cout << "closest inds" << std::endl;
+            for (auto num: closest_indexes) {
+                std::cout << num << ", ";
+            }
+            std::cout << "\n";
+            for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
-                comp_resids.push_back(full_resids[band]);
-                comp_rmses.push_back(seasonal_rmse(models[band], closest_indexes));
-                comp_vario.push_back(variogram[band]);
+                auto band = options.DETECTION_BANDS[i];
+                comp_resids[i] = full_resids[band];
+                comp_rmses[i] = seasonal_rmse(models[band], closest_indexes);
+                comp_vario[i] = variogram[band];
             }
         }
 
@@ -598,11 +626,15 @@ ChangeModel StandardProcedure::lookforward(
 
         if (detect_change(magnitude, options.CHANGE_THRESHOLD))
         {   
+            std::cout << "Change detected at: " << peek_window.start << std::endl;
             change = 1;
             break;
         } 
         else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
-        {
+        {   
+            std::cout << "Outlier detected at: " << peek_window.start << std::endl;
+            std::cout << "mag: " << magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD << std::endl;
+            std::cout << "Updating processing mask lookforward" << std::endl;
             //----------------------------------------------------------
             // Remove the observation immediately before the window
             //----------------------------------------------------------
@@ -656,7 +688,7 @@ FitResult StandardProcedure::run(
     //----------------------------------------------------------
     ProcessingMask mask =
         select_observations(hworkspace);
-
+    std::cout << "Processing mask initial count: " << mask.count() << std::endl;
     //----------------------------------------------------------
     // Not enough observations
     //----------------------------------------------------------
@@ -696,7 +728,7 @@ FitResult StandardProcedure::run(
         static_cast<index_t>(
             end - masked_dates.data()
         );
-
+    std::cout << "Stat mask count: " << max_idx << std::endl;
     auto stat_dates = 
         masked_dates.slice(range(index_t{0}, max_idx)); // just view subsets
 
@@ -715,6 +747,10 @@ FitResult StandardProcedure::run(
             options.PEEK_SIZE,
             options.CHANGE_THRESHOLD
         );
+    
+    std::cout << "Peek size: " << options.PEEK_SIZE << std::endl;
+    std::cout << "Chng thresh: " << options.CHANGE_THRESHOLD << std::endl;
+
 
     std::vector<scalar_t> variogram =
         adjusted_variogram(
@@ -736,6 +772,7 @@ FitResult StandardProcedure::run(
 
     while(window.stop <= mask.count() - options.MEOW_SIZE)
     {   
+        std::cout << "Initialize for change model #: " << results.models.size() << std::endl;
         if (!results.models.empty()) {
             start = false;
         }

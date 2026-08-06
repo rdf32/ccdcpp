@@ -100,7 +100,9 @@ TestData read_data(
 
 int main() {
 
-    auto data = read_data("test_3657_3610_observations.csv");
+    // auto data = read_data("test_3657_3610_observations.csv");
+    auto data = read_data("test_c2.csv");
+
 
     auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
         data.dates.data(),
