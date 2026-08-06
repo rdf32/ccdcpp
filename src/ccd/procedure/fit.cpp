@@ -623,7 +623,7 @@ std::vector<index_t> find_closest_doy(
         );
     }
 
-    std::sort(
+    std::stable_sort(
         candidates.begin(),
         candidates.end(),
         [](const auto& a,
