@@ -1,6 +1,6 @@
 #include "ccd/procedure/fit.hpp"
 
-// #include <iostream>
+#include <iostream>
 #include <algorithm>
 #include <boost/math/distributions/chi_squared.hpp>
 
@@ -410,25 +410,25 @@ std::vector<scalar_t> change_magnitude(
     const index_t count = 
         residuals.front().size();
 
-    // std::cout << "residuals: " << std::endl;
-    // for (const auto res: residuals) {
-    //     std::cout << "[";
-    //     for (const auto num: res) {
-    //         std::cout << num << ", ";
-    //     }
-    //     std::cout << "]";
-    //     std::cout << "\n";
-    // }   
-    // std::cout << "rmses: " << std::endl;
-    // std::cout << "[";
-    // for (const auto num: rmse) {
-    //     std::cout << num << ", ";
-    // }
-    // std::cout << "]";
-    // std::cout << "\n";
+    std::cout << "residuals: " << std::endl;
+    for (const auto res: residuals) {
+        std::cout << "[";
+        for (const auto num: res) {
+            std::cout << num << ", ";
+        }
+        std::cout << "]";
+        std::cout << "\n";
+    }   
+    std::cout << "rmses: " << std::endl;
+    std::cout << "[";
+    for (const auto num: rmse) {
+        std::cout << num << ", ";
+    }
+    std::cout << "]";
+    std::cout << "\n";
 
     std::vector<scalar_t> magnitude(count, 0.0);
-    // std::cout << "Magnitudes of change: " << std::endl;
+    std::cout << "Magnitudes of change: " << std::endl;
     for(index_t band = 0; band < residuals.size(); ++band)
     {
         const scalar_t norm =
@@ -448,10 +448,10 @@ std::vector<scalar_t> change_magnitude(
             magnitude[i] += value * value;
         }
     }
-    // for (const auto num: magnitude) {
-    //     std::cout << num << ", ";
-    // }
-    // std::cout << "\n";
+    for (const auto num: magnitude) {
+        std::cout << num << ", ";
+    }
+    std::cout << "\n";
     return magnitude;
 }
 
@@ -681,16 +681,16 @@ scalar_t seasonal_rmse(
 )
 {
     scalar_t sum = 0.0;
-    // std::cout << "closest resids" << std::endl;
-    // for(auto idx : indices)
-    // {   
+    std::cout << "closest resids" << std::endl;
+    for(auto idx : indices)
+    {   
     
-    //     const scalar_t r =
-    //         model.score.residuals[idx];
-    //     std::cout << r << ", ";
-    //     sum += r * r;
-    // }
-    // std::cout << "\n";
+        const scalar_t r =
+            model.score.residuals[idx];
+        std::cout << r << ", ";
+        sum += r * r;
+    }
+    std::cout << "\n";
     return std::sqrt(sum) / 4.0;
 }
 

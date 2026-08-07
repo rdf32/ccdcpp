@@ -1,7 +1,7 @@
 #include "ccd/ccd.hpp"
 
 #include <omp.h>
-// #include <iostream>
+#include <iostream>
 
 #include "ccd/array_view.hpp"
 #include "ccd/regression/lasso_solver.hpp"
@@ -66,7 +66,7 @@ FitResult detect(
     {
         case FitProcedureType::Standard:
         {   
-            // std::cout << "Standard" << std::endl;
+            std::cout << "Standard" << std::endl;
             StandardProcedure fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -78,7 +78,7 @@ FitResult detect(
 
         case FitProcedureType::InsufficientClear:
         {   
-            // std::cout << "Clear" << std::endl;
+            std::cout << "Clear" << std::endl;
             InsufficientClear fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -90,7 +90,7 @@ FitResult detect(
 
         case FitProcedureType::PermanentSnow:
         {   
-            // std::cout << "Snow" << std::endl;
+            std::cout << "Snow" << std::endl;
             PermanentSnow fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -155,11 +155,11 @@ std::vector<PixelResult> detect_cube(
             auto spect_view = 
                 spectral.slice(fixed(row), fixed(col), all(), all()); // B, T
 
-            // std::cout 
-            //     << spect_view.extent(0)
-            //     << " "
-            //     << spect_view.extent(1)
-            //     << std::endl;
+            std::cout 
+                << spect_view.extent(0)
+                << " "
+                << spect_view.extent(1)
+                << std::endl;
 
             //------------------------------------------------------------------
             // QA view
@@ -167,14 +167,14 @@ std::vector<PixelResult> detect_cube(
             auto qa_view =
                 qas.slice(fixed(row), fixed(col), all()); // T
 
-            // std::cout << qa_view.extent(0) << std::endl;
+            std::cout << qa_view.extent(0) << std::endl;
 
-            // std::cout 
-            //     << "thread " 
-            //     << omp_get_thread_num()
-            //     << " pixel "
-            //     << row << "," << col
-            //     << std::endl;
+            std::cout 
+                << "thread " 
+                << omp_get_thread_num()
+                << " pixel "
+                << row << "," << col
+                << std::endl;
             //------------------------------------------------------------------
             // Run CCD
             //------------------------------------------------------------------
@@ -186,12 +186,12 @@ std::vector<PixelResult> detect_cube(
                     hoptions,
                     loptions
                 );
-            // std::cout 
-            //     << "before move models="
-            //     << result.models.size()
-            //     << " mask="
-            //     << result.mask.size()
-            //     << std::endl;
+            std::cout 
+                << "before move models="
+                << result.models.size()
+                << " mask="
+                << result.mask.size()
+                << std::endl;
             output.emplace_back(
                 PixelResult{
                     row,
