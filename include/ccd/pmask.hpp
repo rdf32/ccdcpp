@@ -194,6 +194,18 @@ public:
         return mask_;
     }
 
+    std::vector<int> as_ints() const
+    {
+        std::vector<int> result;
+        result.reserve(mask_.size());
+
+        for (std::uint8_t value : mask_)
+        {
+            result.push_back(static_cast<int>(value));
+        }
+
+        return result;
+    }
 private:
 
     std::vector<std::uint8_t> mask_;

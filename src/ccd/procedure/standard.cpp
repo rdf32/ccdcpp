@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "ccd/maths.hpp"
+#include "ccd/logger.hpp"
 
 namespace ccd
 {
@@ -20,10 +21,13 @@ bool StandardProcedure::initialize(
 
 )
 {   
-    std::cout << "Initial model window (" 
-        << window.start << ", " 
-        << window.stop << ")" 
-        << std::endl;
+    LOG_DEBUG(
+        "Initial model window (" 
+        << window.start 
+        << ", " 
+        << window.stop 
+        << ")"
+    );
 
     auto& options = workspace.options();
         
@@ -50,10 +54,14 @@ bool StandardProcedure::initialize(
             window.grow();
             continue;
         }
-        std::cout << "Checking window (" 
-            << window.start << ", " 
-            << window.stop << ")" 
-            << std::endl;
+
+        LOG_DEBUG(
+            "Checking window (" 
+            << window.start 
+            << ", " 
+            << window.stop 
+            << ")"
+        );
         //----------------------------------------------------------------------
         // Run TMask
         //----------------------------------------------------------------------
@@ -65,7 +73,7 @@ bool StandardProcedure::initialize(
                 options.TMASK_BANDS,
                 options.T_CONST
             );
-        std::cout << "Number of Tmask outliers found: " << outliers.count() << std::endl;
+        LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
         //----------------------------------------------------------------------
         // TMask removed everything
         //----------------------------------------------------------------------
@@ -140,11 +148,14 @@ bool StandardProcedure::initialize(
             window = candidate_window;
         }
 
-        std::cout << "Generating models to check for stability" << std::endl;
-        std::cout << "window for stability: (" 
-            << window.start << ", " 
-            << window.stop << ")" 
-            << std::endl;
+        LOG_DEBUG("Generating models to check for stability");
+        LOG_DEBUG(
+            "window for stability: (" 
+            << window.start 
+            << ", " 
+            << window.stop 
+            << ")"
+        );
         //----------------------------------------------------------------------
         // Fit models
         //----------------------------------------------------------------------
@@ -200,11 +211,11 @@ bool StandardProcedure::initialize(
                 options.CHANGE_THRESHOLD,
                 options.DETECTION_BANDS))
         {
-            std::cout << "Stable start found: (" << window.start << ", " << window.stop << ")" << std::endl;
+            LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
             return true;
         }
         window.shift();
-        std::cout << "Unstable model, shift window to: (" << window.start << ", " << window.stop << ")" << std::endl; 
+        LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
     }
 
     return false;
@@ -482,7 +493,7 @@ ChangeModel StandardProcedure::lookforward(
     ProcessingMask& mask,
     Window& window
 ) {
-    std::cout << "initial model window lookforward: " << window.start << ", " << window.stop <<  std::endl;
+    LOG_DEBUG("initial model window lookforward: " << window.start << ", " << window.stop);
     ChangeModel result;
     auto& options = workspace.options();
         
@@ -515,14 +526,14 @@ ChangeModel StandardProcedure::lookforward(
         // # Used for comparison against fit_span
         auto model_span = span(masked_dates, window);
         
-        std::cout << "detecting change for: " << peek_window.start << ", " << peek_window.stop <<  std::endl;
+        LOG_DEBUG("detecting change for: " << peek_window.start << ", " << peek_window.stop);
 
         if (models.empty() || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
         {   
             models.clear();
             fit_window = window;
             fit_span = span(masked_dates, fit_window);
-            std::cout << "Retrain models" <<std::endl;
+            LOG_DEBUG("Retrain models");
 
             auto masked_dates_window = 
                 masked_dates.slice(range(fit_window.start, fit_window.stop));
@@ -593,7 +604,7 @@ ChangeModel StandardProcedure::lookforward(
         std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
         std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
         if (window.stop - window.start <= 24) {
-            std::cout << "normal residuals and rmse" << std::endl;
+            LOG_DEBUG("normal residuals and rmse");
             for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
                 auto band = options.DETECTION_BANDS[i];
@@ -603,15 +614,15 @@ ChangeModel StandardProcedure::lookforward(
             }
         } else {
 
-            std::cout << "closest day residuals and rmse" << std::endl;
+            LOG_DEBUG("closest day residuals and rmse");
             auto closest_indexes = 
                 find_closest_doy(masked_dates, peek_window.stop - 1, fit_window, 24);
             
-            std::cout << "closest inds" << std::endl;
-            for (auto num: closest_indexes) {
-                std::cout << num << ", ";
-            }
-            std::cout << "\n";
+            LOG_DEBUG("period: " << masked_dates);
+            LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
+            LOG_DEBUG("fit window: (" << fit_window.start << ", " << fit_window.stop << ")");
+            LOG_DEBUG("closest inds: " << closest_indexes);
+   
             for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
                 auto band = options.DETECTION_BANDS[i];
@@ -626,15 +637,15 @@ ChangeModel StandardProcedure::lookforward(
 
         if (detect_change(magnitude, options.CHANGE_THRESHOLD))
         {   
-            std::cout << "Change detected at: " << peek_window.start << std::endl;
+            LOG_DEBUG("Change detected at: " << peek_window.start);
             change = 1;
             break;
         } 
         else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
         {   
-            std::cout << "Outlier detected at: " << peek_window.start << std::endl;
-            std::cout << "mag: " << magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD << std::endl;
-            std::cout << "Updating processing mask lookforward" << std::endl;
+            LOG_DEBUG("Outlier detected at: " << peek_window.start);
+            LOG_DEBUG("mag: " << magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD);
+            LOG_DEBUG("Updating processing mask lookforward");
             //----------------------------------------------------------
             // Remove the observation immediately before the window
             //----------------------------------------------------------
@@ -686,22 +697,20 @@ FitResult StandardProcedure::run(
     //----------------------------------------------------------
     // Build processing mask
     //----------------------------------------------------------
+    
+    LOG_DEBUG("num obs: " << hworkspace.dates().size());
     ProcessingMask mask =
         select_observations(hworkspace);
-    std::cout << "Processing mask initial count: " << mask.count() << std::endl;
+    // std::cout << "\n";
+
+    LOG_DEBUG("Processing mask initial count: " << mask.count());
     //----------------------------------------------------------
     // Not enough observations
     //----------------------------------------------------------
     if (mask.count() <= options.MEOW_SIZE)
     {     
-        std::cout << "Processing Mask: " << std::endl;
-        for (std::size_t obs = 0; obs < mask.size(); ++obs)
-        {
-            std::cout << static_cast<int>(mask[obs]) << ", ";
-        }
-        std::cout << "\n";
-        
-        std::cout << "mask count < meow size" << mask.count() << std::endl;
+        LOG_DEBUG("Processing Mask: " << mask.data());        
+        LOG_DEBUG("mask count < meow size" << mask.count());
         return {};
     }
 
@@ -728,13 +737,15 @@ FitResult StandardProcedure::run(
         static_cast<index_t>(
             end - masked_dates.data()
         );
-    std::cout << "Stat mask count: " << max_idx << std::endl;
+    LOG_DEBUG("Stat mask count: " << max_idx);
     auto stat_dates = 
         masked_dates.slice(range(index_t{0}, max_idx)); // just view subsets
 
     auto stat_spectral = 
         masked_spectral.slice(all(), range(index_t{0}, max_idx)); // just view subsets
     
+    LOG_DEBUG("stat dates: " << stat_dates);
+
     options.PEEK_SIZE =
         adjust_peek(
             stat_dates,
@@ -748,8 +759,8 @@ FitResult StandardProcedure::run(
             options.CHANGE_THRESHOLD
         );
     
-    std::cout << "Peek size: " << options.PEEK_SIZE << std::endl;
-    std::cout << "Chng thresh: " << options.CHANGE_THRESHOLD << std::endl;
+    LOG_DEBUG("Peek size: " << options.PEEK_SIZE);
+    LOG_DEBUG("Chng thresh: " << options.CHANGE_THRESHOLD);
 
 
     std::vector<scalar_t> variogram =
@@ -760,9 +771,10 @@ FitResult StandardProcedure::run(
 
     if(!check_variogram(variogram))
     {   
-        std::cout << "variogram has nans" << std::endl;
+        LOG_DEBUG("variogram has nans");
         return {};
     }
+    LOG_DEBUG("Variogram values: " << variogram);
 
     // initialize processing context
     bool start = true;
@@ -772,7 +784,7 @@ FitResult StandardProcedure::run(
 
     while(window.stop <= mask.count() - options.MEOW_SIZE)
     {   
-        std::cout << "Initialize for change model #: " << results.models.size() << std::endl;
+        LOG_DEBUG("Initialize for change model #: " << results.models.size());
         if (!results.models.empty()) {
             start = false;
         }
