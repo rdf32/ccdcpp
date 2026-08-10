@@ -1,11 +1,12 @@
 #include "ccd/harmonic/filter.hpp"
 
-// #include <iostream>
+#include <iostream>
 #include <vector>
 #include <algorithm>
 #include <optional>
 
 #include "ccd/constants.hpp"
+#include "ccd/logger.hpp"
 
 namespace ccd
 {
@@ -36,42 +37,30 @@ ProcessingMask standard(
             mask.set(i, true);
         }
     }
-    // std::cout << "Processing Mask after QA: " << std::endl;
-    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
-    // {
-    //     std::cout << static_cast<int>(mask[obs]) << ", ";
-    // }
-    // std::cout << "\n";
+    LOG_DEBUG("Processing Mask after QA: " << mask.as_ints());
+
     apply_thermal_filter(
         workspace.spectral(),
         options.THERMAL_IDX,
         mask
     );
-    // std::cout << "Processing Mask after thermal: " << std::endl;
-    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
-    // {
-    //     std::cout << static_cast<int>(mask[obs]) << ", ";
-    // }
-    // std::cout << "\n";
+
+    LOG_DEBUG("Processing Mask after thermal: " << mask.as_ints());
+
     apply_saturation_filter(
         workspace.spectral(),
         mask
     );
-    // std::cout << "Processing Mask after saturation: " << std::endl;
-    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
-    // {
-    //     std::cout << static_cast<int>(mask[obs]) << ", ";
-    // }
-    // std::cout << "\n";
+
+    LOG_DEBUG("Processing Mask after saturation: " << mask.as_ints());
+
     remove_duplicate_dates(
         dates,
         mask
     );
-    // std::cout << "Processing Mask after duplicates: " << std::endl;
-    // for (std::size_t obs = 0; obs < mask.size(); ++obs)
-    // {
-    //     std::cout << static_cast<int>(mask[obs]) << ", ";
-    // }
+
+    LOG_DEBUG("Processing Mask after duplicates: " << mask.as_ints());
+
     return mask;
 }
 
@@ -171,10 +160,14 @@ void apply_saturation_filter(
         for(index_t band = 0; band < NUM_SATURATION_BANDS; ++band) {
             const scalar_t value = spectral(band, obs);
 
-            if (value <= 0.0 || value >= 10000.0) {
+            if (value < 0.0 || value > 10000.0) {
                 valid = false;
                 break;
-            }
+            } // collection-1 filter from pyccd
+            // if (value < 7273.0 || value > 43636.0) {
+            //     valid = false;
+            //     break;
+            // } // collection-2 filter
         }
         // This is an Intersection (AND) operation so set false where 
         // conditional is not valid retains original mask

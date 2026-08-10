@@ -1,10 +1,12 @@
 #include "ccd/procedure/fit.hpp"
 
+#include <iostream>
 #include <algorithm>
 #include <boost/math/distributions/chi_squared.hpp>
 
 #include "ccd/maths.hpp"
 #include "ccd/constants.hpp"
+#include "ccd/logger.hpp"
 
 
 namespace ccd
@@ -247,12 +249,23 @@ std::vector<scalar_t> adjusted_variogram(
             const index_t freq =
                 ++histogram[delta];
 
-            if (freq > majority_count)
+            // if (freq > majority_count)
+            // {
+            //     majority_count = freq;
+            //     majority_value = delta;
+            // }
+            if (freq > majority_count || (freq == majority_count && delta < majority_value))
             {
                 majority_count = freq;
                 majority_value = delta;
             }
         }
+
+        LOG_DEBUG(
+            "lag = " << lag 
+            << ", majority = " << majority_value 
+            << ", count = " << majority_count
+        );
 
         if (majority_value <= 30) {
             continue;
@@ -260,6 +273,8 @@ std::vector<scalar_t> adjusted_variogram(
         //------------------------------------------------------------------
         // Recompute variogram using only pairs >30 days apart.
         //------------------------------------------------------------------
+        LOG_DEBUG("SELECTED LAG: " << lag);
+
         std::vector<scalar_t> scratch;
         for (index_t band = 0; band < bands; ++band)
         {
@@ -409,8 +424,10 @@ std::vector<scalar_t> change_magnitude(
     const index_t count = 
         residuals.front().size();
 
-    std::vector<scalar_t> magnitude(count, 0.0);
+    LOG_DEBUG("residuals: " << residuals);
+    LOG_DEBUG("rmses: " << rmse);
 
+    std::vector<scalar_t> magnitude(count, 0.0);
     for(index_t band = 0; band < residuals.size(); ++band)
     {
         const scalar_t norm =
@@ -430,6 +447,7 @@ std::vector<scalar_t> change_magnitude(
             magnitude[i] += value * value;
         }
     }
+    LOG_DEBUG("Magnitudes of change: " << magnitude);
 
     return magnitude;
 }
@@ -660,15 +678,17 @@ scalar_t seasonal_rmse(
 )
 {
     scalar_t sum = 0.0;
-
+    LOG_DEBUG("closest resids");
     for(auto idx : indices)
-    {
+    {   
         const scalar_t r =
             model.score.residuals[idx];
-
+        LOG_DEBUG("idx=" << idx << " residual=" << r);
         sum += r * r;
     }
-
+    LOG_DEBUG("C++ sum_sq: " << sum);
+    LOG_DEBUG("C++ norm:   " << std::sqrt(sum));
+    LOG_DEBUG("C++ rmse:   " << std::sqrt(sum) / 4.0);
     return std::sqrt(sum) / 4.0;
 }
 

@@ -2,9 +2,10 @@
 
 #include <algorithm>
 #include <vector>
-// #include <iostream>
+#include <iostream>
 
 #include "ccd/maths.hpp"
+#include "ccd/logger.hpp"
 
 namespace ccd
 {
@@ -20,6 +21,14 @@ bool StandardProcedure::initialize(
 
 )
 {   
+    LOG_DEBUG(
+        "Initial model window (" 
+        << window.start 
+        << ", " 
+        << window.stop 
+        << ")"
+    );
+
     auto& options = workspace.options();
         
     MaskedData masked_data = 
@@ -45,6 +54,14 @@ bool StandardProcedure::initialize(
             window.grow();
             continue;
         }
+
+        LOG_DEBUG(
+            "Checking window (" 
+            << window.start 
+            << ", " 
+            << window.stop 
+            << ")"
+        );
         //----------------------------------------------------------------------
         // Run TMask
         //----------------------------------------------------------------------
@@ -56,7 +73,7 @@ bool StandardProcedure::initialize(
                 options.TMASK_BANDS,
                 options.T_CONST
             );
-
+        LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
         //----------------------------------------------------------------------
         // TMask removed everything
         //----------------------------------------------------------------------
@@ -131,7 +148,14 @@ bool StandardProcedure::initialize(
             window = candidate_window;
         }
 
-
+        LOG_DEBUG("Generating models to check for stability");
+        LOG_DEBUG(
+            "window for stability: (" 
+            << window.start 
+            << ", " 
+            << window.stop 
+            << ")"
+        );
         //----------------------------------------------------------------------
         // Fit models
         //----------------------------------------------------------------------
@@ -187,10 +211,11 @@ bool StandardProcedure::initialize(
                 options.CHANGE_THRESHOLD,
                 options.DETECTION_BANDS))
         {
+            LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
             return true;
         }
-
         window.shift();
+        LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
     }
 
     return false;
@@ -301,15 +326,16 @@ bool StandardProcedure::lookback(
                 {bands, samples}
             );
         
-        std::vector<scalar_t> comp_rmses;
-        std::vector<std::vector<scalar_t>> comp_resids;
-        std::vector<scalar_t> comp_vario;
+        std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
+        std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
+        std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
         
         lworkspace.resize(masked_dates_window.size());
         lworkspace.build_basis(masked_dates_window, 8);
 
-        for (auto band: options.DETECTION_BANDS)
+        for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
         {
+            auto band = options.DETECTION_BANDS[i];
             auto y = masked_spectral_window.slice(
                 fixed(band), 
                 all()
@@ -324,9 +350,9 @@ bool StandardProcedure::lookback(
                 calc_residuals(y, lworkspace.predictions);
             // use original model rmse like python code 
             // not sure if this is intended or python bug
-            comp_resids.push_back(abs_resid);
-            comp_rmses.push_back(models[band].score.rmse);
-            comp_vario.push_back(variogram[band]);
+            comp_resids[i] = abs_resid;
+            comp_rmses[i] = models[band].score.rmse;
+            comp_vario[i] = variogram[band];
         }
 
         auto magnitude = 
@@ -467,6 +493,7 @@ ChangeModel StandardProcedure::lookforward(
     ProcessingMask& mask,
     Window& window
 ) {
+    LOG_DEBUG("initial model window lookforward: " << window.start << ", " << window.stop);
     ChangeModel result;
     auto& options = workspace.options();
         
@@ -498,13 +525,15 @@ ChangeModel StandardProcedure::lookforward(
 
         // # Used for comparison against fit_span
         auto model_span = span(masked_dates, window);
+        
+        LOG_DEBUG("detecting change for: " << peek_window.start << ", " << peek_window.stop);
 
         if (models.empty() || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
         {   
             models.clear();
             fit_window = window;
             fit_span = span(masked_dates, fit_window);
-            // std::cout << "Retrain models" <<std::endl;
+            LOG_DEBUG("Retrain models");
 
             auto masked_dates_window = 
                 masked_dates.slice(range(fit_window.start, fit_window.stop));
@@ -571,25 +600,35 @@ ChangeModel StandardProcedure::lookforward(
             full_resids[band] = abs_resid;
         }
 
-        std::vector<scalar_t> comp_rmses;
-        std::vector<scalar_t> comp_vario;
-        std::vector<std::vector<scalar_t>> comp_resids;
+        std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
+        std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
+        std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
         if (window.stop - window.start <= 24) {
-            for (auto band: options.DETECTION_BANDS)
+            LOG_DEBUG("normal residuals and rmse");
+            for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
-                comp_resids.push_back(full_resids[band]);
-                comp_rmses.push_back(models[band].score.rmse);
-                comp_vario.push_back(variogram[band]);
+                auto band = options.DETECTION_BANDS[i];
+                comp_resids[i] = full_resids[band];
+                comp_rmses[i] = models[band].score.rmse;
+                comp_vario[i] = variogram[band];
             }
         } else {
+
+            LOG_DEBUG("closest day residuals and rmse");
             auto closest_indexes = 
                 find_closest_doy(masked_dates, peek_window.stop - 1, fit_window, 24);
             
-            for (auto band : options.DETECTION_BANDS)
+            LOG_DEBUG("period: " << masked_dates);
+            LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
+            LOG_DEBUG("fit window: (" << fit_window.start << ", " << fit_window.stop << ")");
+            LOG_DEBUG("closest inds: " << closest_indexes);
+   
+            for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
-                comp_resids.push_back(full_resids[band]);
-                comp_rmses.push_back(seasonal_rmse(models[band], closest_indexes));
-                comp_vario.push_back(variogram[band]);
+                auto band = options.DETECTION_BANDS[i];
+                comp_resids[i] = full_resids[band];
+                comp_rmses[i] = seasonal_rmse(models[band], closest_indexes);
+                comp_vario[i] = variogram[band];
             }
         }
 
@@ -598,11 +637,15 @@ ChangeModel StandardProcedure::lookforward(
 
         if (detect_change(magnitude, options.CHANGE_THRESHOLD))
         {   
+            LOG_DEBUG("Change detected at: " << peek_window.start);
             change = 1;
             break;
         } 
         else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
-        {
+        {   
+            LOG_DEBUG("Outlier detected at: " << peek_window.start);
+            LOG_DEBUG("mag: " << magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD);
+            LOG_DEBUG("Updating processing mask lookforward");
             //----------------------------------------------------------
             // Remove the observation immediately before the window
             //----------------------------------------------------------
@@ -654,22 +697,20 @@ FitResult StandardProcedure::run(
     //----------------------------------------------------------
     // Build processing mask
     //----------------------------------------------------------
+    
+    LOG_DEBUG("num obs: " << hworkspace.dates().size());
     ProcessingMask mask =
         select_observations(hworkspace);
+    // std::cout << "\n";
 
+    LOG_DEBUG("Processing mask initial count: " << mask.count());
     //----------------------------------------------------------
     // Not enough observations
     //----------------------------------------------------------
     if (mask.count() <= options.MEOW_SIZE)
     {     
-        // std::cout << "Processing Mask: " << std::endl;
-        // for (std::size_t obs = 0; obs < mask.size(); ++obs)
-        // {
-        //     std::cout << static_cast<int>(mask[obs]) << ", ";
-        // }
-        // std::cout << "\n";
-        
-        // std::cout << "mask count < meow size" << mask.count() << std::endl;
+        LOG_DEBUG("Processing Mask: " << mask.data());        
+        LOG_DEBUG("mask count < meow size" << mask.count());
         return {};
     }
 
@@ -696,13 +737,15 @@ FitResult StandardProcedure::run(
         static_cast<index_t>(
             end - masked_dates.data()
         );
-
+    LOG_DEBUG("Stat mask count: " << max_idx);
     auto stat_dates = 
         masked_dates.slice(range(index_t{0}, max_idx)); // just view subsets
 
     auto stat_spectral = 
         masked_spectral.slice(all(), range(index_t{0}, max_idx)); // just view subsets
     
+    LOG_DEBUG("stat dates: " << stat_dates);
+
     options.PEEK_SIZE =
         adjust_peek(
             stat_dates,
@@ -715,6 +758,10 @@ FitResult StandardProcedure::run(
             options.PEEK_SIZE,
             options.CHANGE_THRESHOLD
         );
+    
+    LOG_DEBUG("Peek size: " << options.PEEK_SIZE);
+    LOG_DEBUG("Chng thresh: " << options.CHANGE_THRESHOLD);
+
 
     std::vector<scalar_t> variogram =
         adjusted_variogram(
@@ -724,9 +771,10 @@ FitResult StandardProcedure::run(
 
     if(!check_variogram(variogram))
     {   
-        // std::cout << "variogram has nans" << std::endl;
+        LOG_DEBUG("variogram has nans");
         return {};
     }
+    LOG_DEBUG("Variogram values: " << variogram);
 
     // initialize processing context
     bool start = true;
@@ -736,6 +784,7 @@ FitResult StandardProcedure::run(
 
     while(window.stop <= mask.count() - options.MEOW_SIZE)
     {   
+        LOG_DEBUG("Initialize for change model #: " << results.models.size());
         if (!results.models.empty()) {
             start = false;
         }

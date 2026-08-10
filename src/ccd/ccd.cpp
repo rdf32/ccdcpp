@@ -46,7 +46,8 @@ FitResult detect(
         const index_t thermal_idx = hoptions.THERMAL_IDX;
         for (index_t t = 0; t < T; ++t) {
             spectral(thermal_idx, t) = 
-                spectral(thermal_idx, t) * 10.0 - 27315.0;
+                // spectral(thermal_idx, t) * 0.00341802 + 149.0 - 273.15; // collection-2 transform
+                spectral(thermal_idx, t) * 10.0 - 27315.0; // collection-1 transform from pyccd
         }
     }
 
@@ -167,14 +168,14 @@ std::vector<PixelResult> detect_cube(
             auto qa_view =
                 qas.slice(fixed(row), fixed(col), all()); // T
 
-            std::cout << qa_view.extent(0) << std::endl;
+            // std::cout << qa_view.extent(0) << std::endl;
 
-            std::cout 
-                << "thread " 
-                << omp_get_thread_num()
-                << " pixel "
-                << row << "," << col
-                << std::endl;
+            // std::cout 
+            //     << "thread " 
+            //     << omp_get_thread_num()
+            //     << " pixel "
+            //     << row << "," << col
+            //     << std::endl;
             //------------------------------------------------------------------
             // Run CCD
             //------------------------------------------------------------------
@@ -186,12 +187,12 @@ std::vector<PixelResult> detect_cube(
                     hoptions,
                     loptions
                 );
-            std::cout 
-                << "before move models="
-                << result.models.size()
-                << " mask="
-                << result.mask.size()
-                << std::endl;
+            // std::cout 
+            //     << "before move models="
+            //     << result.models.size()
+            //     << " mask="
+            //     << result.mask.size()
+            //     << std::endl;
             output.emplace_back(
                 PixelResult{
                     row,

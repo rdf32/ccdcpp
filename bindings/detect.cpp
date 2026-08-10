@@ -327,21 +327,21 @@ py::list detect_cube_wrapper(
                 loptions
             );
     }
-    std::cout << "wrapper results "
-        << results.size()
-        << std::endl;
+    // std::cout << "wrapper results "
+    //     << results.size()
+    //     << std::endl;
 
-    for(auto& p : results)
-    {
-        std::cout 
-        << p.row << ","
-        << p.col
-        << " models="
-        << p.result.models.size()
-        << " mask="
-        << p.result.mask.size()
-        << std::endl;
-    }
+    // for(auto& p : results)
+    // {
+    //     std::cout 
+    //     << p.row << ","
+    //     << p.col
+    //     << " models="
+    //     << p.result.models.size()
+    //     << " mask="
+    //     << p.result.mask.size()
+    //     << std::endl;
+    // }
     //----------------------------------------------------------------------
     // Convert to Python
     //----------------------------------------------------------------------
