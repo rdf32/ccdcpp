@@ -106,3 +106,34 @@ std::ostream& operator<<(
 
     return os << "]";
 }
+
+template <typename T>
+std::ostream& operator<<(
+    std::ostream& os,
+    const ccd::ArrayView<T, 2>& values
+)
+{
+    os << "[\n";
+
+    for (std::size_t i = 0; i < values.extent(0); ++i)
+    {
+        os << "    [";
+
+        for (std::size_t j = 0; j < values.extent(1); ++j)
+        {
+            if (j > 0)
+                os << ", ";
+
+            os << values(i, j);
+        }
+
+        os << "]";
+
+        if (i + 1 < values.extent(0))
+            os << ",";
+
+        os << "\n";
+    }
+
+    return os << "]";
+}

@@ -212,12 +212,13 @@ bool StandardProcedure::initialize(
                 options.DETECTION_BANDS))
         {
             LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
+            LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
             return true;
         }
         window.shift();
         LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
     }
-
+    LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
     return false;
 }
 
@@ -405,6 +406,13 @@ ChangeModel StandardProcedure::catch_model(
     Window& window,
     CurveQA curve_qa
 ) {
+    LOG_DEBUG(
+        "Catching observations: (" 
+        << window.start 
+        << ", " 
+        << window.stop 
+        << ")"
+    );
     ChangeModel result;
     auto& options = workspace.options();
         
@@ -417,11 +425,14 @@ ChangeModel StandardProcedure::catch_model(
     auto masked_spectral = 
         masked_data.spectral_view();
 
+    LOG_DEBUG("masked spectral catch: " << masked_spectral);
     auto masked_dates_window = 
         masked_dates.slice(range(window.start, window.stop));
 
     auto masked_spectral_window = 
         masked_spectral.slice(all(), range(window.start, window.stop));
+
+    LOG_DEBUG("masked spectral window catch: " << masked_spectral_window);
 
     //----------------------------------------------------------
     // Determine harmonic complexity
@@ -437,12 +448,17 @@ ChangeModel StandardProcedure::catch_model(
     //----------------------------------------------------------
     // Fit every spectral band
     //----------------------------------------------------------
+    LOG_DEBUG("catch model training: ");
     for (index_t band = 0; band < masked_spectral_window.extent(0); ++band)
     {
         auto y = masked_spectral_window.slice(
             fixed(band), 
             all()
         );
+
+        LOG_DEBUG("band: " << band);
+        LOG_DEBUG("y: " << y);
+        LOG_DEBUG("X: " << lworkspace.X());
 
         LassoModel model = solver.fit(
             lworkspace,
@@ -794,6 +810,7 @@ FitResult StandardProcedure::run(
             initialize(hworkspace, lworkspace, solver, variogram, mask, window, init_models);
 
         if (!initialized) {
+            LOG_DEBUG("Model initialization failed");
             break;
         }
 
