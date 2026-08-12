@@ -1,7 +1,6 @@
 #include "ccd/ccd.hpp"
 
 #include <omp.h>
-#include <iostream>
 
 #include "ccd/array_view.hpp"
 #include "ccd/regression/lasso_solver.hpp"
@@ -58,7 +57,12 @@ FitResult detect(
         qas,
         hoptions
     );
-    LOG_DEBUG("initial spectral: " << hworkspace.spectral());
+
+    LOG_DEBUG(
+        "initial spectral: " 
+        << hworkspace.spectral()
+    );
+
     LassoWorkspace lworkspace(dates.size());
     LassoSolver solver(
         loptions
@@ -69,7 +73,7 @@ FitResult detect(
     {
         case FitProcedureType::Standard:
         {   
-            std::cout << "Standard" << std::endl;
+            LOG_DEBUG("Standard");
             StandardProcedure fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -81,7 +85,7 @@ FitResult detect(
 
         case FitProcedureType::InsufficientClear:
         {   
-            std::cout << "Clear" << std::endl;
+            LOG_DEBUG("Clear");
             InsufficientClear fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -93,7 +97,7 @@ FitResult detect(
 
         case FitProcedureType::PermanentSnow:
         {   
-            std::cout << "Snow" << std::endl;
+            LOG_DEBUG("Snow");
             PermanentSnow fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
@@ -102,7 +106,6 @@ FitResult detect(
             );
             break;
         }
-  
     }
 
     return final_result;
@@ -126,7 +129,7 @@ std::vector<PixelResult> detect_cube(
         qas.extent(2) != T)
     {
         throw std::runtime_error(
-            "qas shape must be (height,width,timesteps)"
+            "qas shape must be (height, width, timesteps)"
         );
     }
 
@@ -158,26 +161,19 @@ std::vector<PixelResult> detect_cube(
             auto spect_view = 
                 spectral.slice(fixed(row), fixed(col), all(), all()); // B, T
 
-            std::cout 
-                << spect_view.extent(0)
-                << " "
-                << spect_view.extent(1)
-                << std::endl;
-
             //------------------------------------------------------------------
             // QA view
             //------------------------------------------------------------------
             auto qa_view =
                 qas.slice(fixed(row), fixed(col), all()); // T
 
-            // std::cout << qa_view.extent(0) << std::endl;
+            LOG_DEBUG( 
+                << "thread " 
+                << omp_get_thread_num()
+                << " pixel "
+                << row << "," << col
+            );
 
-            // std::cout 
-            //     << "thread " 
-            //     << omp_get_thread_num()
-            //     << " pixel "
-            //     << row << "," << col
-            //     << std::endl;
             //------------------------------------------------------------------
             // Run CCD
             //------------------------------------------------------------------
@@ -189,12 +185,7 @@ std::vector<PixelResult> detect_cube(
                     hoptions,
                     loptions
                 );
-            // std::cout 
-            //     << "before move models="
-            //     << result.models.size()
-            //     << " mask="
-            //     << result.mask.size()
-            //     << std::endl;
+
             output.emplace_back(
                 PixelResult{
                     row,
