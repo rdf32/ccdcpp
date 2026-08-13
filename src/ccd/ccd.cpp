@@ -46,8 +46,8 @@ FitResult detect(
         const index_t thermal_idx = hoptions.THERMAL_IDX;
         for (index_t t = 0; t < T; ++t) {
             spectral(thermal_idx, t) = 
-                spectral(thermal_idx, t) * 0.00341802 + 149.0 - 273.15; // collection-2 transform
-                // spectral(thermal_idx, t) * 10.0 - 27315.0; // collection-1 transform from pyccd
+                // spectral(thermal_idx, t) * 0.00341802 + 149.0 - 273.15; // collection-2 transform
+                spectral(thermal_idx, t) * 10.0 - 27315.0; // collection-1 transform from pyccd
         }
     }
 

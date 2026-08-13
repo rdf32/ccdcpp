@@ -160,14 +160,14 @@ void apply_saturation_filter(
         for(index_t band = 0; band < NUM_SATURATION_BANDS; ++band) {
             const scalar_t value = spectral(band, obs);
 
-            // if (value < 0.0 || value > 10000.0) {
-            //     valid = false;
-            //     break;
-            // } // collection-1 filter from pyccd
-            if (value < 7273.0 || value > 43636.0) {
+            if (value < 0.0 || value > 10000.0) {
                 valid = false;
                 break;
-            } // collection-2 filter
+            } // collection-1 filter from pyccd
+            // if (value < 7273.0 || value > 43636.0) {
+            //     valid = false;
+            //     break;
+            // } // collection-2 filter
         }
         // This is an Intersection (AND) operation so set false where 
         // conditional is not valid retains original mask
