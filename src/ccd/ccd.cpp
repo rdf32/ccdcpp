@@ -41,13 +41,40 @@ FitResult detect(
         }
     } else {
         fit_type = FitProcedureType::Standard;
-        // convert thermal from kelvin to celsius for standard_procedure
-        const index_t T = dates.size();
-        const index_t thermal_idx = hoptions.THERMAL_IDX;
-        for (index_t t = 0; t < T; ++t) {
-            spectral(thermal_idx, t) = 
-                // spectral(thermal_idx, t) * 0.00341802 + 149.0 - 273.15; // collection-2 transform
-                spectral(thermal_idx, t) * 10.0 - 27315.0; // collection-1 transform from pyccd
+
+        //------------------------------------------------------------------
+        // Put the thermal band into the unit apply_thermal_filter tests.
+        //
+        //     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
+        //
+        // The defaults are pyccd's collection-1 transform, Kelvin x 10 ->
+        // Celsius x 100 (the collection-2 form this replaced was
+        // `* 0.00341802 + 149.0 - 273.15`, which yields plain Celsius -- one
+        // of the two units these options exist to name explicitly).
+        //
+        // Two things this loop is careful about:
+        //
+        //  * `spectral` is a non-const view onto the CALLER's buffer, so this
+        //    is a destructive write. Under the identity transform we skip it
+        //    entirely, which makes detect() idempotent on the same array --
+        //    it was not, before.
+        //  * It runs for Standard ONLY, matching pyccd, where
+        //    kelvin_to_celsius() is called inside standard_procedure(). See
+        //    harmonic.hpp's "Input unit convention" block for the
+        //    consequences for the other two procedures.
+        //------------------------------------------------------------------
+        const bool identity =
+            hoptions.THERMAL_SCALE  == scalar_t(1.0) &&
+            hoptions.THERMAL_OFFSET == scalar_t(0.0);
+
+        if (!identity) {
+            const index_t T = dates.size();
+            const index_t thermal_idx = hoptions.THERMAL_IDX;
+            for (index_t t = 0; t < T; ++t) {
+                spectral(thermal_idx, t) =
+                    spectral(thermal_idx, t) * hoptions.THERMAL_SCALE
+                    + hoptions.THERMAL_OFFSET;
+            }
         }
     }
 
@@ -111,12 +138,13 @@ FitResult detect(
     return final_result;
 }
 
-std::vector<PixelResult> detect_cube(
+CubeResult detect_cube(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<scalar_t, 4> spectral,          // (H,W,B,T)
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
     HarmonicOptions hoptions,
-    LassoOptions loptions
+    LassoOptions loptions,
+    int threads
 )
 {
     const index_t H = spectral.extent(0);
@@ -133,14 +161,27 @@ std::vector<PixelResult> detect_cube(
         );
     }
 
-    const int nthreads = omp_get_max_threads();
-    std::vector<std::vector<PixelResult>> thread_results(nthreads);
+    // threads == 0 keeps the historical behaviour: let the OpenMP runtime
+    // decide, which is OMP_NUM_THREADS or the core count. A positive value is
+    // a request, not a guarantee -- the runtime may still hand back fewer, so
+    // the count reported below is read from inside the region.
+    const int requested =
+        threads > 0 ? threads : omp_get_max_threads();
 
-    #pragma omp parallel
+    std::vector<std::vector<PixelResult>> thread_results(requested);
+    std::vector<std::vector<CubeFailure>> thread_failures(requested);
+
+    int used = requested;
+
+    #pragma omp parallel num_threads(requested)
     {
         const int tid = omp_get_thread_num();
 
-        auto& output = thread_results[tid];
+        #pragma omp single
+        used = omp_get_num_threads();
+
+        auto& output   = thread_results[tid];
+        auto& failures = thread_failures[tid];
 
         const std::int64_t npixels =
             static_cast<std::int64_t>(H) *
@@ -176,46 +217,98 @@ std::vector<PixelResult> detect_cube(
 
             //------------------------------------------------------------------
             // Run CCD
+            //
+            // The try/catch is load-bearing, not defensive habit: an
+            // exception that escapes an OpenMP region terminates the process,
+            // so without this one pathological time series destroys every
+            // other pixel's result in the cube and reports nothing about
+            // which pixel did it. Catching per pixel turns that into a
+            // recorded address plus a message, and the other 249,999 pixels
+            // still come back.
+            //
+            // Nothing is swallowed -- every catch lands in
+            // CubeResult::failures, and it is the caller's job to surface the
+            // count.
             //------------------------------------------------------------------
-            FitResult result =
-                detect(
-                    dates,
-                    spect_view,
-                    qa_view,
-                    hoptions,
-                    loptions
-                );
+            try
+            {
+                FitResult result =
+                    detect(
+                        dates,
+                        spect_view,
+                        qa_view,
+                        hoptions,
+                        loptions
+                    );
 
-            output.emplace_back(
-                PixelResult{
-                    row,
-                    col,
-                    std::move(result)
-                }
-            );
+                output.emplace_back(
+                    PixelResult{
+                        row,
+                        col,
+                        std::move(result)
+                    }
+                );
+            }
+            catch (const std::exception& e)
+            {
+                failures.emplace_back(
+                    CubeFailure{
+                        row,
+                        col,
+                        std::string(e.what())
+                    }
+                );
+            }
+            catch (...)
+            {
+                failures.emplace_back(
+                    CubeFailure{
+                        row,
+                        col,
+                        std::string("unknown non-std exception")
+                    }
+                );
+            }
         }
     }
 
     //----------------------------------------------------------------------
     // Merge thread-local vectors
     //----------------------------------------------------------------------
+    CubeResult merged;
+    merged.threads = used;
+
     std::size_t total = 0;
     for (const auto& v : thread_results)
         total += v.size();
 
-    std::vector<PixelResult> output;
-    output.reserve(total);
+    merged.pixels.reserve(total);
 
     for (auto& v : thread_results)
     {
         std::move(
             v.begin(),
             v.end(),
-            std::back_inserter(output)
+            std::back_inserter(merged.pixels)
         );
     }
 
-    return output;
+    std::size_t total_failed = 0;
+    for (const auto& v : thread_failures)
+        total_failed += v.size();
+
+    merged.failures.reserve(total_failed);
+
+    for (auto& v : thread_failures)
+    {
+        std::move(
+            v.begin(),
+            v.end(),
+            std::back_inserter(merged.failures)
+        );
+    }
+
+    return merged;
 }
 
 } // namespace ccd

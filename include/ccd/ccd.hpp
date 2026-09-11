@@ -2,6 +2,7 @@
 #pragma once
 
 #include <vector>
+#include <string>
 #include <iostream>
 #include <chrono>
 
@@ -27,6 +28,49 @@ struct PixelResult
     index_t row;
     index_t col;
     FitResult result;
+};
+
+//==============================================================================
+//
+// One pixel that threw.
+//
+// An exception cannot propagate out of an OpenMP parallel region -- the
+// runtime terminates the process. So a single bad time series used to take
+// down a whole cube, losing every other pixel's result and printing nothing
+// useful. detect_cube catches per pixel instead and records the failure here.
+//
+// The message is std::exception::what() copied at catch time. Copying a string
+// inside the region is safe; letting the exception escape is not.
+//
+//==============================================================================
+
+struct CubeFailure
+{
+    index_t row;
+    index_t col;
+    std::string message;
+};
+
+//==============================================================================
+//
+// Everything detect_cube learned about one cube.
+//
+// `failures` is deliberately not a bare count: a caller reporting "12,000
+// pixels failed" wants to say WHY, and the addresses are what make a failure
+// reproducible on a single pixel. It is empty in the normal case, so the extra
+// member costs nothing.
+//
+// `threads` is the thread count actually used, which is not necessarily the
+// one requested -- the OpenMP runtime may cap it. Recording what ran, rather
+// than what was asked for, is what makes a timing comparable later.
+//
+//==============================================================================
+
+struct CubeResult
+{
+    std::vector<PixelResult> pixels;
+    std::vector<CubeFailure> failures;
+    int threads = 0;
 };
 
 using Clock = std::chrono::high_resolution_clock;
@@ -113,12 +157,29 @@ FitResult detect(
     LassoOptions loptions
 );
 
-std::vector<PixelResult> detect_cube(
+//------------------------------------------------------------------------------
+//
+// Run detect() over every pixel of a cube, in parallel over H*W.
+//
+// `threads` is the OpenMP thread count. 0 means "whatever the runtime would
+// have chosen", i.e. omp_get_max_threads(), which is what this function used
+// unconditionally before -- so 0 reproduces the old behaviour exactly. Passing
+// it explicitly matters because omp_get_max_threads() is fixed from
+// OMP_NUM_THREADS at library load, which means a caller embedding this in a
+// scheduler cannot honour its own allocation without setting an environment
+// variable before the shared library is imported.
+//
+// This never throws on account of a pixel; see CubeResult::failures.
+//
+//------------------------------------------------------------------------------
+
+CubeResult detect_cube(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<scalar_t, 4> spectral,          // (H,W,B,T)
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
     HarmonicOptions hoptions,
-    LassoOptions loptions
+    LassoOptions loptions,
+    int threads = 0
 );
 
 } // namespace ccd

@@ -188,7 +188,10 @@ LassoModel LassoSolver::fit(
         //------------------------------------------------------
         // First stopping criterion
         //------------------------------------------------------
-        if(max_update <= options_.tolerance * std::max(max_coef, scalar_t(1.0))) {
+        // `coef_floor` defaults to 1.0, the value that used to be a literal
+        // here. It is an absolute magnitude, so it is a statement about the
+        // unit of y -- see LassoOptions::coef_floor.
+        if(max_update <= options_.tolerance * std::max(max_coef, options_.coef_floor)) {
             //--------------------------------------------------
             // Compute dual gap
             //--------------------------------------------------

@@ -6,6 +6,7 @@
 
 #include "ccd/types.hpp"
 #include "ccd/pmask.hpp"
+#include "ccd/constants.hpp"
 #include "ccd/array_view.hpp"
 
 namespace ccd
@@ -63,7 +64,138 @@ struct HarmonicOptions
 
     scalar_t T_CONST = 4.89;
 
-    index_t MEDIAN_GREEN_FILTER = 400;
+    //--------------------------------------------------------------------------
+    // Input unit convention
+    //
+    // Every value in this block is an ABSOLUTE threshold, which makes each one
+    // a statement about the unit of the caller's `spectral` array. They are
+    // gathered here because they were previously spread across three files as
+    // literals and two commented-out "collection-1 / collection-2" branches,
+    // and switching collection meant editing C++.
+    //
+    // The DEFAULTS ARE UNCHANGED: Collection-1 DN exactly as pyccd consumed
+    // it, so a caller that sets nothing gets the historical numbers and the
+    // regression references in tests/ still hold.
+    //
+    // THE PHYSICAL-UNIT PRESET
+    //
+    // One divisor, 10000, applied to every band of the input and to every
+    // absolute threshold below. Nothing else.
+    //
+    //     THERMAL_SCALE = 1.0       THERMAL_OFFSET = 0.0    (identity)
+    //     REFL_MIN      = 0.0       REFL_MAX       = 1.0
+    //     THERM_MIN     = -0.9320   THERM_MAX      = 0.7070
+    //     MEDIAN_GREEN_FILTER = 0.04
+    //     LassoOptions::alpha = 1e-4    LassoOptions::coef_floor = 1e-4
+    //
+    // and the caller pre-divides its own array by 10000:
+    //
+    //     optical  DN / 10000                  -> reflectance 0..1
+    //     thermal  (K*10 - 27315) / 10000      -> degrees Celsius / 100
+    //
+    // The coefficients then come out in those same units, which is the whole
+    // point: no descaling pass on the way out, at any scale, for any band.
+    //
+    // MEASURED, on the pyccd reference pixel in
+    // tests/ccd/procedure/test_3657_3610_observations.csv (443 observations,
+    // 5 segments): against the DN defaults, this preset reproduces the
+    // processing mask bit for bit, the same 5 segments with identical
+    // start/end/break days, observation counts and curve_qa, change
+    // probabilities equal to 0.0e+00 absolute, and every coefficient,
+    // intercept, rmse and magnitude equal after multiplying by 10000 to a
+    // worst relative difference of 4.4e-13. It is the same fit.
+    //
+    // WHY DEGREES CELSIUS ITSELF IS NOT THE PRESET
+    //
+    // Feeding plain Celsius is the obvious choice and it is wrong, for a
+    // reason that is invisible from here: LassoOptions::alpha is ONE value
+    // shared by all seven band fits, and it is an absolute soft-threshold, so
+    // the preset can only hold if every band shares one scale factor. Optical
+    // DN is 10000x reflectance; the DN thermal path lands on Celsius x 100, so
+    // plain Celsius would be a 100x factor -- two scales, one alpha. Measured
+    // on the same pixel, the Celsius variant leaves the six optical bands
+    // exact (1e-13) and breaks thermal alone: 2 extra nonzero coefficients,
+    // rmse off by 1.7e-2 relative, intercept by 4.0e-2. Celsius/100 looks like
+    // a strange unit to ask a caller for, and it is exactly the unit the
+    // downstream change-detection archive already stores, so nothing is lost.
+    //
+    // Two more things are worth knowing before changing any of these.
+    //
+    // 1. The two collection variants of the saturation bound are ONE
+    //    predicate. Collection-1's [0, 10000] and Collection-2's
+    //    [7273, 43636] both mean "reflectance in [0, 1]" -- C2 surface
+    //    reflectance is DN * 2.75e-5 - 0.2, which maps 7273 -> 0.0000 and
+    //    43636 -> 1.0000. So in physical units there is no collection branch
+    //    left to choose between; it collapses.
+    //
+    // 2. THERM_MIN/THERM_MAX are tested AFTER the transform above, and the
+    //    transform runs for the Standard procedure ONLY. That asymmetry is
+    //    inherited from pyccd, not introduced here: kelvin_to_celsius() is
+    //    called inside standard_procedure() while snow_procedure_filter()
+    //    applies filter_thermal_celsius() to values nothing converted. The
+    //    consequence is that the thermal filter is a silent no-op for the
+    //    PermanentSnow and InsufficientClear procedures -- Kelvin x 10 is
+    //    ~2200..3300, comfortably inside [-9320, 7070]. It is preserved
+    //    deliberately, because ccdcpp is a recreation of pyccd and the
+    //    regression references encode it. Under the preset the bounds are
+    //    scaled by the same 10000, so the no-op holds there too and the
+    //    equivalence measured above covers it.
+    //
+    // Where the guard lives, and what each part of it is for.
+    // tests/ccd/procedure/test_units.cpp asserts the equivalence above and
+    // then, one constant at a time, that leaving it behind is DETECTED. The
+    // three shapes of detection there are not interchangeable:
+    //
+    //   alpha, coef_floor    caught by the equivalence test directly. alpha
+    //                        also moves the segment count; coef_floor does
+    //                        not and leaves sparsity identical, so only the
+    //                        value comparison catches it.
+    //   REFL_*, THERM_*      NOT caught by it. The preset makes these bounds
+    //                        narrower, so leaving them at the DN value merely
+    //                        loosens a screen, and a screen that rejects
+    //                        nothing is indistinguishable from a correct one.
+    //                        The guard runs them the other way -- DN input,
+    //                        physical bound -- where the mask empties and the
+    //                        pixel returns 0 segments instead of 5.
+    //   MEDIAN_GREEN_FILTER  unreachable through detect() on the reference
+    //                        pixel, because apply_green_median_filter is
+    //                        called from filter::insufficientclear only and
+    //                        that pixel takes the Standard procedure. Even 0.0
+    //                        changes nothing. Its guard drives
+    //                        ccd::InsufficientClear directly.
+    //
+    // If you add a constant to this block, add its guard in that file and work
+    // out which of the three shapes it is. Two of the five are invisible to
+    // the obvious test.
+    //--------------------------------------------------------------------------
+
+    // Applied to the thermal band in place before the Standard procedure runs:
+    //
+    //     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
+    //
+    // The default is pyccd's Kelvin x 10 -> Celsius x 100. The identity
+    // (1.0, 0.0) skips the pass entirely, which matters for more than speed:
+    // `spectral` is a view onto the CALLER's buffer, so skipping the write
+    // makes detect() idempotent on the same array.
+    scalar_t THERMAL_SCALE  = KELVIN_SCALE;
+    scalar_t THERMAL_OFFSET = -KELVIN_OFFSET;
+
+    // Saturation bound for the six optical bands, inclusive on both ends
+    // (an observation is rejected on value < REFL_MIN || value > REFL_MAX).
+    scalar_t REFL_MIN = 0.0;
+    scalar_t REFL_MAX = 10000.0;
+
+    // Valid range for the thermal band, exclusive on both ends, tested after
+    // the THERMAL_SCALE/THERMAL_OFFSET transform. Defaults are Celsius x 100;
+    // the preset's are those divided by 10000, i.e. [-0.9320, 0.7070].
+    scalar_t THERM_MIN = MIN_CELSIUS;
+    scalar_t THERM_MAX = MAX_CELSIUS;
+
+    // Offset added to the median green value in the InsufficientClear
+    // procedure's cloud screen. 400 is Collection-1 DN; the reflectance
+    // equivalent is 0.04, which is why this is scalar_t and not index_t --
+    // as an integer it could not represent the preset's value at all.
+    scalar_t MEDIAN_GREEN_FILTER = 400.0;
 
     //--------------------------------------------------------------------------
     // Statistics

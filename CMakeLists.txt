@@ -337,6 +337,31 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The unit-convention guard. Shares test_standard's input file, which the
+    # configure_file below already copies into the build directory.
+    add_executable(
+        test_units
+
+        tests/ccd/procedure/test_units.cpp
+    )
+
+
+    target_link_libraries(
+        test_units
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_units
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
     configure_file(
@@ -399,6 +424,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_clear)
     gtest_discover_tests(test_snow)
     gtest_discover_tests(test_standard)
+    gtest_discover_tests(test_units)
 
 endif()
 

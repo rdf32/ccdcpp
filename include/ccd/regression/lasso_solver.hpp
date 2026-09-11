@@ -22,11 +22,53 @@ struct LassoOptions {
 
     // L1 regularization strength.
     // Larger values produce more sparse coefficients.
+    //
+    // THIS IS ALSO A UNIT CONSTANT, which is not obvious from its name. The
+    // objective is `||r||^2/(2n) + alpha*||w||_1` and y is centered but never
+    // scaled, so the soft-threshold `soft_threshold(rho, alpha * n)` is an
+    // ABSOLUTE cutoff while `rho` scales with y. 1.0 is calibrated for
+    // Collection-1 DN; feeding reflectance (a 10,000x smaller y) without
+    // changing alpha multiplies the effective regularization by 10,000. A
+    // single band's fit in isolation then zeroes all 7 coefficients on the
+    // first sweep, leaving intercept = mean(y) and rmse = std(y). Reflectance
+    // wants alpha = 1e-4.
+    //
+    // What that looks like from outside is worth knowing, because it is not
+    // the clean failure the paragraph above suggests. Measured through the
+    // whole Standard procedure on the pyccd reference pixel: 89 % of
+    // coefficients zero rather than 100 %, and the segment count drops from 5
+    // to 4, because collapsed fits change the change-detection residuals. So
+    // the symptom is "mostly zeros and a different segmentation", it does not
+    // raise, and since everything zeroes at once it CONVERGES FASTER -- the
+    // wall clock says the run improved.
+    //
+    // The substitution y -> y/s, alpha -> alpha/s gives w -> w/s exactly, so
+    // fitting reflectance at 1e-4 is identical to fitting DN at 1.0 and
+    // dividing the coefficients by 10,000.
     scalar_t alpha = static_cast<scalar_t>(1.0);
 
     // Convergence tolerance.
     // Used for coefficient updates and dual gap stopping criteria.
     scalar_t tolerance = static_cast<scalar_t>(1e-4);
+
+    // Floor on the coefficient magnitude that `tolerance` is measured
+    // against: the coefficient-update stopping test is
+    //
+    //     max_update <= tolerance * max(max_coef, coef_floor)
+    //
+    // so this is an absolute scale, like `alpha`. At 1.0 (the historical
+    // value) a fit whose coefficients are all well below 1 -- which is every
+    // reflectance fit -- has its tolerance interpreted as absolute rather
+    // than relative, and stops early. Reflectance wants 1e-4, matching alpha.
+    //
+    // This is NOT a rounding-level concern, which is what it looks like.
+    // Measured on the pyccd reference pixel: with the reflectance preset
+    // otherwise correct and only coef_floor left at 1.0, the coefficients move
+    // by up to 4.0e-2 relative on blue, 2.8e-2 on swir1 and 1.6e+0 on swir2,
+    // while the nonzero counts stay identical -- so it degrades the fit
+    // without producing any of the signals that would make you look. Setting
+    // it to 1e-4 brings the whole fit back to 1e-13 of the DN answer.
+    scalar_t coef_floor = static_cast<scalar_t>(1.0);
 
     bool fit_intercept = true;
 
