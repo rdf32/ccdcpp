@@ -192,18 +192,18 @@ bool StandardProcedure::initialize(
                 lworkspace.predictions
             );
 
-            auto metrics = score(
+            // stable() and lookback() read the RMSE and the residuals; the
+            // magnitude of these models is never read.
+            models[band].model = std::move(model);
+            models[band].score.rmse = rmse(
                 y,
                 lworkspace.predictions,
                 lworkspace.residuals,
                 num_coef,
                 true
             );
-            
-            models[band] = LassoResult{
-                std::move(model),
-                std::move(metrics)
-            };
+            models[band].score.magn = 0.0;
+            models[band].score.residuals = lworkspace.residuals;
         }
 
         //----------------------------------------------------------------------
@@ -475,18 +475,19 @@ ChangeModel StandardProcedure::catch_model(
             lworkspace.predictions
         );
 
-        auto metrics = score(
-            y,
-            lworkspace.predictions,
-            lworkspace.residuals,
-            num_coef,
-            true
-        );
-
-        metrics.magn = 0.0; // set magnitude to 0
-
-        // Nothing reads a returned segment's residuals.
-        metrics.residuals = std::vector<scalar_t>();
+        // Magnitude is 0 for a caught segment and nothing reads a returned
+        // segment's residuals, so only the RMSE is computed.
+        LassoScore metrics{
+            rmse(
+                y,
+                lworkspace.predictions,
+                lworkspace.residuals,
+                num_coef,
+                true
+            ),
+            0.0,
+            {}
+        };
 
         result.bands[band] = LassoResult{
             std::move(model),
@@ -587,13 +588,19 @@ ChangeModel StandardProcedure::lookforward(
                     lworkspace.X(),
                     lworkspace.predictions
                 );
-                auto metrics = score(
-                    y,
-                    lworkspace.predictions,
-                    lworkspace.residuals,
-                    num_coef,
-                    true
-                );
+                // seasonal_rmse() reads the residuals; the magnitude is
+                // set from the peek residuals when the segment is returned.
+                LassoScore metrics{
+                    rmse(
+                        y,
+                        lworkspace.predictions,
+                        lworkspace.residuals,
+                        num_coef,
+                        true
+                    ),
+                    0.0,
+                    lworkspace.residuals
+                };
                 models.push_back(
                     LassoResult{
                         std::move(model),

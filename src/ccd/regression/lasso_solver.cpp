@@ -275,7 +275,7 @@ void LassoModel::predict(
     return;
 }
 
-LassoScore score(
+scalar_t rmse(
     ArrayView<const scalar_t, 1> y,
     const std::vector<scalar_t>& predictions,
     std::vector<scalar_t>& residuals,
@@ -297,8 +297,26 @@ LassoScore score(
         assert(y.size() > num_coefficients);
         denominator -= static_cast<scalar_t>(num_coefficients);
     }
+    return std::sqrt(rss / denominator);
+}
+
+LassoScore score(
+    ArrayView<const scalar_t, 1> y,
+    const std::vector<scalar_t>& predictions,
+    std::vector<scalar_t>& residuals,
+    index_t num_coefficients,
+    bool unbiased_rmse
+) {
+    const scalar_t r = rmse(
+        y,
+        predictions,
+        residuals,
+        num_coefficients,
+        unbiased_rmse
+    );
+
     return LassoScore{
-        std::sqrt(rss / denominator), // rmse
+        r,                            // rmse
         median_absolute(residuals),   // magnitude
         residuals                     // residuals
     };

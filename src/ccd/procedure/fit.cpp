@@ -90,18 +90,19 @@ FitResult FitProcedure::run(
             lworkspace.predictions
         );
 
-        auto metrics = score(
-            y,
-            lworkspace.predictions,
-            lworkspace.residuals,
-            num_coef,
-            true
-        );
-        metrics.magn = 0.0;
-
-        // Nothing reads a returned segment's residuals; keeping them would
-        // hold n doubles per band per segment for the life of the result.
-        metrics.residuals = std::vector<scalar_t>();
+        // The magnitude of these segments is 0 and nothing reads a returned
+        // segment's residuals, so only the RMSE is computed.
+        LassoScore metrics{
+            rmse(
+                y,
+                lworkspace.predictions,
+                lworkspace.residuals,
+                num_coef,
+                true
+            ),
+            0.0,
+            {}
+        };
 
         result.bands[band] = LassoResult{
             std::move(model),

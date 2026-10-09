@@ -261,5 +261,20 @@ LassoScore score(
     bool unbiased_rmse = true
 );
 
+//------------------------------------------------------------------------------
+// The RMSE half of score().
+//
+// Writes y - predictions into `residuals` and returns the same RMSE score()
+// returns, without the median absolute residual or the copy of `residuals`
+// that score() puts in LassoScore. For callers that read neither.
+//------------------------------------------------------------------------------
+scalar_t rmse(
+    ArrayView<const scalar_t, 1> y,
+    const std::vector<scalar_t>& predictions,
+    std::vector<scalar_t>& residuals,
+    index_t num_coefficients,
+    bool unbiased_rmse = true
+);
+
 
 } // namespace ccd
