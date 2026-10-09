@@ -1,0 +1,192 @@
+#pragma once
+
+//==============================================================================
+//
+// Canonical text form of detect() output, for bit-exact comparison.
+//
+// Every floating point field is written with "%a" (hexfloat), so two dumps are
+// byte-equal exactly when every value is bit-equal. The processing mask is
+// written as hex nibbles, four observations per character.
+//
+// The fixture these dumps are compared against is a property of the platform
+// that produced it: libm, the compiler's floating point contraction and Eigen's
+// kernels all reach the low bits. platform() names that platform so a
+// mismatch on a different one can be reported as such instead of as a
+// regression.
+//
+//==============================================================================
+
+#include <cstdarg>
+#include <cstdio>
+#include <string>
+
+#include <Eigen/Core>
+
+#include "ccd/ccd.hpp"
+
+namespace golden
+{
+
+inline void append(std::string& out, const char* fmt, ...)
+{
+    char buf[256];
+    va_list args;
+    va_start(args, fmt);
+    const int n = std::vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    out.append(buf, static_cast<std::size_t>(n));
+}
+
+inline void dump_models(std::string& out, const ccd::FitResult& result)
+{
+    for (const auto& m : result.models)
+    {
+        append(out, "M %lld %lld %lld %zu %a %d\n",
+            static_cast<long long>(m.start_day),
+            static_cast<long long>(m.end_day),
+            static_cast<long long>(m.break_day),
+            static_cast<std::size_t>(m.observation_count),
+            m.change_probability,
+            static_cast<int>(m.curve_qa));
+
+        for (const auto& b : m.bands)
+        {
+            append(out, " %zu %a %a %a",
+                static_cast<std::size_t>(b.model.iterations()),
+                b.model.intercept(),
+                b.score.rmse,
+                b.score.magn);
+
+            for (const auto c : b.model.coefficients())
+                append(out, " %a", c);
+
+            out.push_back('\n');
+        }
+    }
+}
+
+inline void dump_mask(std::string& out, const ccd::ProcessingMask& mask)
+{
+    static const char* HEX = "0123456789abcdef";
+
+    append(out, "K %zu ", static_cast<std::size_t>(mask.size()));
+
+    const auto& bits = mask.data();
+    for (std::size_t i = 0; i < bits.size(); i += 4)
+    {
+        unsigned nibble = 0;
+        for (std::size_t j = 0; j < 4 && i + j < bits.size(); ++j)
+            nibble |= (bits[i + j] ? 1u : 0u) << j;
+        out.push_back(HEX[nibble]);
+    }
+    out.push_back('\n');
+}
+
+inline void dump_pixel(
+    std::string& out,
+    const std::string& label,
+    const ccd::FitResult& result,
+    bool with_mask = true
+)
+{
+    append(out, "P %s %zu\n", label.c_str(), result.models.size());
+    dump_models(out, result);
+    if (with_mask)
+        dump_mask(out, result.mask);
+}
+
+//------------------------------------------------------------------------------
+// Option sets the corpus is run under.
+//------------------------------------------------------------------------------
+
+// The physical-unit preset of harmonic.hpp: input pre-divided by 10000.
+constexpr double SCALE = 10000.0;
+
+inline ccd::HarmonicOptions physical_harmonic()
+{
+    ccd::HarmonicOptions h;
+    h.THERMAL_SCALE = 1.0;
+    h.THERMAL_OFFSET = 0.0;
+    h.REFL_MIN = 0.0 / SCALE;
+    h.REFL_MAX = 10000.0 / SCALE;
+    h.THERM_MIN = ccd::MIN_CELSIUS / SCALE;
+    h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;
+    h.MEDIAN_GREEN_FILTER = 400.0 / SCALE;
+    return h;
+}
+
+inline ccd::LassoOptions physical_lasso()
+{
+    ccd::LassoOptions lo;
+    lo.alpha = 1.0 / SCALE;
+    lo.coef_floor = 1.0 / SCALE;
+    return lo;
+}
+
+// DN (7, T) block -> the preset's units, in place.
+inline void to_physical(double* block, std::size_t T)
+{
+    for (std::size_t b = 0; b < 6; ++b)
+        for (std::size_t t = 0; t < T; ++t)
+            block[b * T + t] = block[b * T + t] / SCALE;
+
+    for (std::size_t t = 0; t < T; ++t)
+        block[6 * T + t] =
+            (block[6 * T + t] * ccd::KELVIN_SCALE - ccd::KELVIN_OFFSET) / SCALE;
+}
+
+// Collection-2 style bounds, for the two C2 reference files.
+inline ccd::HarmonicOptions c2_harmonic()
+{
+    ccd::HarmonicOptions h;
+    h.THERMAL_SCALE = 1.0;
+    h.THERMAL_OFFSET = 0.0;
+    h.REFL_MIN = 7273.0;
+    h.REFL_MAX = 43636.0;
+    h.THERM_MIN = -1.0e6;
+    h.THERM_MAX = 1.0e6;
+    return h;
+}
+
+//------------------------------------------------------------------------------
+// The platform a fixture belongs to.
+//------------------------------------------------------------------------------
+
+inline std::string platform()
+{
+    std::string p;
+
+#if defined(__clang__)
+    p += "clang " __clang_version__;
+#elif defined(_MSC_VER)
+    p += "msvc " + std::to_string(_MSC_VER);
+#elif defined(__GNUC__)
+    p += "gcc " __VERSION__;
+#else
+    p += "unknown-compiler";
+#endif
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+    p += " / arm64";
+#elif defined(__x86_64__) || defined(_M_X64)
+    p += " / x86_64";
+#else
+    p += " / other-arch";
+#endif
+
+#if defined(__APPLE__)
+    p += " / apple";
+#elif defined(_WIN32)
+    p += " / windows";
+#elif defined(__linux__)
+    p += " / linux";
+#endif
+
+    p += " / eigen " + std::to_string(EIGEN_WORLD_VERSION) + "."
+        + std::to_string(EIGEN_MAJOR_VERSION) + "."
+        + std::to_string(EIGEN_MINOR_VERSION);
+
+    return p;
+}
+
+} // namespace golden

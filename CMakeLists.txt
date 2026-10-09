@@ -362,6 +362,44 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The bit-exact gate: detect() and detect_cube() against a committed
+    # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
+    add_executable(
+        test_golden
+
+        tests/ccd/golden/test_golden.cpp
+    )
+
+
+    target_link_libraries(
+        test_golden
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_golden
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    target_compile_definitions(
+        test_golden
+
+        PRIVATE
+            CCD_GOLDEN_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/golden_fixture.txt"
+    )
+
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv
+        ${PROJECT_BINARY_DIR}/test002_c2.csv
+        COPYONLY
+    )
+
     # Copy Python reference data into the build directory so the
     # test can load it using a relative path.
     configure_file(
@@ -425,6 +463,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_snow)
     gtest_discover_tests(test_standard)
     gtest_discover_tests(test_units)
+    gtest_discover_tests(test_golden)
 
 endif()
 
