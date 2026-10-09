@@ -2,6 +2,7 @@
 
 #include <omp.h>
 
+#include <algorithm>
 #include <type_traits>
 
 #include "ccd/array_view.hpp"
@@ -219,7 +220,16 @@ CubeResult detect_cube_impl(
     const int requested =
         threads > 0 ? threads : omp_get_max_threads();
 
-    std::vector<std::vector<PixelResult>> thread_results(requested);
+    //----------------------------------------------------------------------
+    // One slot per pixel, written by whichever thread runs it, so the
+    // result comes back in raster order whatever the schedule did.
+    //----------------------------------------------------------------------
+    const std::int64_t npixels =
+        static_cast<std::int64_t>(H) *
+        static_cast<std::int64_t>(W);
+
+    std::vector<PixelResult> by_pixel(static_cast<std::size_t>(npixels));
+    std::vector<std::uint8_t> succeeded(static_cast<std::size_t>(npixels), 0);
     std::vector<std::vector<CubeFailure>> thread_failures(requested);
 
     int used = requested;
@@ -231,14 +241,9 @@ CubeResult detect_cube_impl(
         #pragma omp single
         used = omp_get_num_threads();
 
-        auto& output   = thread_results[tid];
         auto& failures = thread_failures[tid];
 
         DetectScratch scratch;
-
-        const std::int64_t npixels =
-            static_cast<std::int64_t>(H) *
-            static_cast<std::int64_t>(W);
 
         #pragma omp for schedule(dynamic)
         for (std::int64_t pixel = 0; pixel < npixels; ++pixel)
@@ -298,13 +303,14 @@ CubeResult detect_cube_impl(
                 if (!keep_masks)
                     result.mask = ProcessingMask();
 
-                output.emplace_back(
+                by_pixel[static_cast<std::size_t>(pixel)] =
                     PixelResult{
                         row,
                         col,
                         std::move(result)
-                    }
-                );
+                    };
+
+                succeeded[static_cast<std::size_t>(pixel)] = 1;
             }
             catch (const std::exception& e)
             {
@@ -330,25 +336,24 @@ CubeResult detect_cube_impl(
     }
 
     //----------------------------------------------------------------------
-    // Merge thread-local vectors
+    // Collect, in raster order
     //----------------------------------------------------------------------
     CubeResult merged;
     merged.threads = used;
 
     std::size_t total = 0;
-    for (const auto& v : thread_results)
-        total += v.size();
+    for (const auto ok : succeeded)
+        total += ok;
 
     merged.pixels.reserve(total);
 
-    for (auto& v : thread_results)
+    for (std::size_t pixel = 0; pixel < by_pixel.size(); ++pixel)
     {
-        std::move(
-            v.begin(),
-            v.end(),
-            std::back_inserter(merged.pixels)
-        );
+        if (succeeded[pixel])
+            merged.pixels.push_back(std::move(by_pixel[pixel]));
     }
+
+    by_pixel = std::vector<PixelResult>();
 
     std::size_t total_failed = 0;
     for (const auto& v : thread_failures)
@@ -364,6 +369,14 @@ CubeResult detect_cube_impl(
             std::back_inserter(merged.failures)
         );
     }
+
+    std::sort(
+        merged.failures.begin(),
+        merged.failures.end(),
+        [](const CubeFailure& a, const CubeFailure& b)
+        {
+            return a.row != b.row ? a.row < b.row : a.col < b.col;
+        });
 
     return merged;
 }

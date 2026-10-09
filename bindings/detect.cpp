@@ -764,9 +764,8 @@ py::dict detect_cube_columns_wrapper(
     // Pass 2 -- fill
     //
     // Segment order is pixel-major and, within a pixel, chronological, which
-    // is the order the procedures produced them. Pixel order is whatever the
-    // dynamic OpenMP schedule produced -- it is NOT raster order, and a
-    // caller that needs raster order must sort.
+    // is the order the procedures produced them. Pixel order is raster order
+    // (row-major), whatever the thread count.
     //----------------------------------------------------------------------
 
     py::ssize_t i = 0;

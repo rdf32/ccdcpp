@@ -234,6 +234,12 @@ std::string run_corpus()
                 EXPECT_TRUE(cube.failures.empty());
                 EXPECT_EQ(cube.pixels.size(), N);
 
+                for (std::size_t i = 0; i < cube.pixels.size(); ++i)
+                {
+                    EXPECT_EQ(cube.pixels[i].row * c.W + cube.pixels[i].col, i)
+                        << "detect_cube(threads=" << threads << ") is not in raster order";
+                }
+
                 std::sort(
                     cube.pixels.begin(),
                     cube.pixels.end(),

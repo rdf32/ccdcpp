@@ -67,6 +67,8 @@ struct CubeFailure
 //
 //==============================================================================
 
+// `pixels` and `failures` are in raster order (row-major over H x W),
+// independent of the thread count and schedule.
 struct CubeResult
 {
     std::vector<PixelResult> pixels;
