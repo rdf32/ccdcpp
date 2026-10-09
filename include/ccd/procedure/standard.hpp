@@ -122,6 +122,21 @@ protected:
         ArrayView<const scalar_t, 1> y,
         std::vector<scalar_t>& preds
     );
+
+private:
+
+    //----------------------------------------------------------------------
+    // Per-pixel workspace.
+    //
+    // masked_ is apply_mask(workspace, mask) for the mask the subfunctions
+    // share. run() builds it, and every subfunction that changes the mask
+    // updates it in the same step, so none of them re-masks the full time
+    // series on entry. candidate_ holds initialize()'s tentative outlier
+    // removal until it is accepted. The buffers keep their capacity, so a
+    // procedure object reused across pixels stops allocating them.
+    //----------------------------------------------------------------------
+    MaskedData masked_;
+    MaskedData candidate_;
 };
 
 inline scalar_t span(

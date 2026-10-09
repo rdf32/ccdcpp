@@ -10,6 +10,51 @@
 namespace ccd
 {
 
+//------------------------------------------------------------------------------
+// `src` without the observations at masked positions offset + i for which
+// outliers[i] is set, into `out`.
+//
+// This is apply_mask() of the mask remove_outliers() would produce, taken
+// from the already-masked data instead of the full time series.
+//------------------------------------------------------------------------------
+static void drop_outliers(
+    const MaskedData& src,
+    const ProcessingMask& outliers,
+    index_t offset,
+    MaskedData& out
+)
+{
+    const index_t n = src.observations;
+
+    auto dropped = [&](index_t i)
+    {
+        return i >= offset &&
+            i - offset < outliers.size() &&
+            outliers[i - offset];
+    };
+
+    out.bands = src.bands;
+    out.dates.clear();
+    out.spectral.clear();
+
+    for (index_t i = 0; i < n; ++i)
+    {
+        if (!dropped(i))
+            out.dates.push_back(src.dates[i]);
+    }
+
+    out.observations = out.dates.size();
+
+    for (index_t b = 0; b < src.bands; ++b)
+    {
+        for (index_t i = 0; i < n; ++i)
+        {
+            if (!dropped(i))
+                out.spectral.push_back(src.spectral[b * n + i]);
+        }
+    }
+}
+
 bool StandardProcedure::initialize(
     const HarmonicWorkspace& workspace,
     LassoWorkspace& lworkspace,
@@ -30,15 +75,12 @@ bool StandardProcedure::initialize(
     );
 
     auto& options = workspace.options();
-        
-    MaskedData masked_data = 
-        apply_mask(workspace, mask);
-    
+
     auto masked_dates = 
-        masked_data.dates_view();
+        masked_.dates_view();
 
     auto masked_spectral = 
-        masked_data.spectral_view();
+        masked_.spectral_view();
     
 
     while (window.stop + options.MEOW_SIZE < masked_dates.size())
@@ -91,26 +133,17 @@ bool StandardProcedure::initialize(
             const index_t removed = outliers.count();
 
             //--------------------------------------------------------------
-            // Build a candidate mask first (don't commit yet)
+            // Build the candidate data first (don't commit yet)
             //--------------------------------------------------------------
-            ProcessingMask candidate_mask =
-                update_processing_mask(
-                    mask,
-                    outliers,
-                    window
-                );
-
-            auto candidate_data =
-                apply_mask(
-                    workspace,
-                    candidate_mask
-                );
+            drop_outliers(
+                masked_,
+                outliers,
+                window.start,
+                candidate_
+            );
 
             auto candidate_dates =
-                candidate_data.dates_view();
-
-            auto candidate_spectral =
-                candidate_data.spectral_view();
+                candidate_.dates_view();
 
             //--------------------------------------------------------------
             // Window is now in the candidate masked coordinate space
@@ -139,11 +172,11 @@ bool StandardProcedure::initialize(
             //--------------------------------------------------------------
             // Candidate accepted -> commit everything
             //--------------------------------------------------------------
-            mask = std::move(candidate_mask);
-            masked_data = std::move(candidate_data);
+            remove_outliers(mask, outliers, window);
+            std::swap(masked_, candidate_);
 
-            masked_dates = masked_data.dates_view();
-            masked_spectral = masked_data.spectral_view();
+            masked_dates = masked_.dates_view();
+            masked_spectral = masked_.spectral_view();
 
             window = candidate_window;
         }
@@ -262,14 +295,11 @@ bool StandardProcedure::lookback(
 
     auto& options = workspace.options();
 
-    MaskedData masked_data = 
-        apply_mask(workspace, mask);
-    
     auto masked_dates = 
-        masked_data.dates_view();
+        masked_.dates_view();
 
     auto masked_spectral = 
-        masked_data.spectral_view();
+        masked_.spectral_view();
 
     while(window.start > prev_break) {
 
@@ -379,17 +409,14 @@ bool StandardProcedure::lookback(
             //----------------------------------------------------------
             // Remove the observation immediately before the window
             //----------------------------------------------------------
-            mask = 
-                update_processing_mask(mask, peek_window.start);
-
-            masked_data = 
-                apply_mask(workspace, mask);
+            remove_observation(mask, peek_window.start);
+            masked_.erase(peek_window.start);
     
             masked_dates = 
-                masked_data.dates_view();
+                masked_.dates_view();
 
             masked_spectral = 
-                masked_data.spectral_view();
+                masked_.spectral_view();
             //----------------------------------------------------------
             // Account for coordinate shift
             //----------------------------------------------------------
@@ -420,15 +447,12 @@ ChangeModel StandardProcedure::catch_model(
     );
     ChangeModel result;
     auto& options = workspace.options();
-        
-    MaskedData masked_data = 
-        apply_mask(workspace, mask);
-    
+
     auto masked_dates = 
-        masked_data.dates_view();
+        masked_.dates_view();
 
     auto masked_spectral = 
-        masked_data.spectral_view();
+        masked_.spectral_view();
 
     LOG_DEBUG("masked spectral catch: " << masked_spectral);
     auto masked_dates_window = 
@@ -521,15 +545,12 @@ ChangeModel StandardProcedure::lookforward(
     LOG_DEBUG("initial model window lookforward: " << window.start << ", " << window.stop);
     ChangeModel result;
     auto& options = workspace.options();
-        
-    MaskedData masked_data = 
-        apply_mask(workspace, mask);
-    
+
     auto masked_dates = 
-        masked_data.dates_view();
+        masked_.dates_view();
 
     auto masked_spectral = 
-        masked_data.spectral_view();
+        masked_.spectral_view();
 
     index_t change = 0;
     auto fit_window = window;
@@ -680,17 +701,14 @@ ChangeModel StandardProcedure::lookforward(
             //----------------------------------------------------------
             // Remove the observation immediately before the window
             //----------------------------------------------------------
-            mask = 
-                update_processing_mask(mask, peek_window.start);
-
-            masked_data = 
-                apply_mask(workspace, mask);
+            remove_observation(mask, peek_window.start);
+            masked_.erase(peek_window.start);
     
             masked_dates = 
-                masked_data.dates_view();
+                masked_.dates_view();
 
             masked_spectral = 
-                masked_data.spectral_view();
+                masked_.spectral_view();
 
             continue;
         }
@@ -752,14 +770,13 @@ FitResult StandardProcedure::run(
     //----------------------------------------------------------
     // Mask dates, spectral given ProcessingMask
     //----------------------------------------------------------
-    MaskedData masked_data = 
-        apply_mask(hworkspace, mask);
+    apply_mask(hworkspace, mask, masked_);
 
     auto masked_dates = 
-        masked_data.dates_view();
+        masked_.dates_view();
 
     auto masked_spectral = 
-        masked_data.spectral_view();
+        masked_.spectral_view();
 
     auto end =
         std::upper_bound(

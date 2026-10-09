@@ -217,6 +217,19 @@ ProcessingMask update_processing_mask(
     index_t masked_index
 );
 
+// update_processing_mask(mask, outliers, window), in place.
+void remove_outliers(
+    ProcessingMask& mask,
+    const ProcessingMask& outliers,
+    const Window& window
+);
+
+// update_processing_mask(mask, masked_index), in place.
+void remove_observation(
+    ProcessingMask& mask,
+    index_t masked_index
+);
+
 std::vector<index_t> find_closest_doy(
     ArrayView<const std::int64_t, 1> dates,
     index_t date_index,

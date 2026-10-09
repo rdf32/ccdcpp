@@ -370,11 +370,46 @@ struct MaskedData
             {bands, observations}
         );
     }
+
+    //----------------------------------------------------------------------
+    // Remove the observation at masked position `index`, in place.
+    //
+    // The result is what apply_mask() gives for the mask with that
+    // observation cleared: the same values, in the same order.
+    //----------------------------------------------------------------------
+    void erase(index_t index)
+    {
+        assert(index < observations);
+
+        dates.erase(dates.begin() + index);
+
+        // Compacting forward never overwrites an unread value: the write
+        // position trails the read position.
+        index_t out = 0;
+        for (index_t b = 0; b < bands; ++b)
+        {
+            for (index_t i = 0; i < observations; ++i)
+            {
+                if (i != index)
+                    spectral[out++] = spectral[b * observations + i];
+            }
+        }
+
+        --observations;
+        spectral.resize(bands * observations);
+    }
 };
 
 MaskedData apply_mask(
     const HarmonicWorkspace& workspace,
     const ProcessingMask& mask
+);
+
+// apply_mask() into `out`, reusing its storage.
+void apply_mask(
+    const HarmonicWorkspace& workspace,
+    const ProcessingMask& mask,
+    MaskedData& out
 );
 
 } // namespace ccd

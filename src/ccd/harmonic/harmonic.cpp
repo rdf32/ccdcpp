@@ -9,16 +9,28 @@ MaskedData apply_mask(
     const ProcessingMask& mask
 )
 {   
+    MaskedData out;
+    apply_mask(workspace, mask, out);
+    return out;
+}
+
+void apply_mask(
+    const HarmonicWorkspace& workspace,
+    const ProcessingMask& mask,
+    MaskedData& out
+)
+{   
     const auto dates    = workspace.dates();
     const auto spectral = workspace.spectral();
 
     const index_t count = mask.count();
     const index_t bands = spectral.extent(0);
 
-    MaskedData out;
-
     out.bands = bands;
     out.observations = count;
+
+    out.dates.clear();
+    out.spectral.clear();
 
     out.dates.reserve(count);
     out.spectral.reserve(bands * count);
@@ -41,8 +53,6 @@ MaskedData apply_mask(
                 );
         }
     }
-
-    return out;
 }
 
 

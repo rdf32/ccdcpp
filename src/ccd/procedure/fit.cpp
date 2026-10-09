@@ -601,6 +601,54 @@ ProcessingMask update_processing_mask(
     return result;
 }
 
+void remove_outliers(
+    ProcessingMask& mask,
+    const ProcessingMask& outliers,
+    const Window& window
+)
+{
+    //----------------------------------------------------------
+    // Walk the active observations, counting masked positions;
+    // clear the ones outliers marks. Clearing the current entry
+    // after testing it leaves the count of the rest unchanged.
+    //----------------------------------------------------------
+    index_t masked = 0;
+    for (index_t i = 0; i < mask.size(); ++i)
+    {
+        if (!mask[i])
+            continue;
+
+        if (masked >= window.start &&
+            masked - window.start < outliers.size() &&
+            outliers[masked - window.start])
+        {
+            mask.set(i, false);
+        }
+        ++masked;
+    }
+}
+
+void remove_observation(
+    ProcessingMask& mask,
+    index_t masked_index
+)
+{
+    index_t masked = 0;
+    for (index_t i = 0; i < mask.size(); ++i)
+    {
+        if (!mask[i])
+            continue;
+
+        if (masked == masked_index)
+        {
+            mask.set(i, false);
+            return;
+        }
+        ++masked;
+    }
+    assert(false && "masked_index out of range");
+}
+
 std::vector<index_t> find_closest_doy(
     ArrayView<const std::int64_t, 1> dates,
     index_t date_index,
