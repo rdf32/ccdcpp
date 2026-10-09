@@ -171,6 +171,10 @@ FitResult detect(
 //
 // This never throws on account of a pixel; see CubeResult::failures.
 //
+// `keep_masks` false drops each pixel's processing mask (T bytes per pixel)
+// as soon as the pixel is done, for callers that do not read it; the
+// returned FitResult::mask is then empty.
+//
 //------------------------------------------------------------------------------
 
 CubeResult detect_cube(
@@ -179,7 +183,8 @@ CubeResult detect_cube(
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
     HarmonicOptions hoptions,
     LassoOptions loptions,
-    int threads = 0
+    int threads = 0,
+    bool keep_masks = true
 );
 
 } // namespace ccd

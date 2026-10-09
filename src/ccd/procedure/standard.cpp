@@ -480,6 +480,9 @@ ChangeModel StandardProcedure::catch_model(
 
         metrics.magn = 0.0; // set magnitude to 0
 
+        // Nothing reads a returned segment's residuals.
+        metrics.residuals = std::vector<scalar_t>();
+
         result.bands[band] = LassoResult{
             std::move(model),
             std::move(metrics)
@@ -697,6 +700,10 @@ ChangeModel StandardProcedure::lookforward(
     for (index_t band = 0; band < 7; ++band) {
         result.bands[band] = std::move(models[band]);
         result.bands[band].score.magn = median(full_resids[band]);
+
+        // The fit-window residuals were for seasonal_rmse(); nothing reads
+        // a returned segment's residuals.
+        result.bands[band].score.residuals = std::vector<scalar_t>();
     }
 
     return result;

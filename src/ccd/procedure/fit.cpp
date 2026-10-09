@@ -99,6 +99,10 @@ FitResult FitProcedure::run(
         );
         metrics.magn = 0.0;
 
+        // Nothing reads a returned segment's residuals; keeping them would
+        // hold n doubles per band per segment for the life of the result.
+        metrics.residuals = std::vector<scalar_t>();
+
         result.bands[band] = LassoResult{
             std::move(model),
             std::move(metrics)

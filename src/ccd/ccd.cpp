@@ -144,7 +144,8 @@ CubeResult detect_cube(
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
     HarmonicOptions hoptions,
     LassoOptions loptions,
-    int threads
+    int threads,
+    bool keep_masks
 )
 {
     const index_t H = spectral.extent(0);
@@ -240,6 +241,9 @@ CubeResult detect_cube(
                         hoptions,
                         loptions
                     );
+
+                if (!keep_masks)
+                    result.mask = ProcessingMask();
 
                 output.emplace_back(
                     PixelResult{

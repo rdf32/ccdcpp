@@ -601,7 +601,8 @@ py::dict detect_cube_columns_wrapper(
                 views.qas,
                 hoptions,
                 loptions,
-                threads
+                threads,
+                false   // no column holds the mask; see above
             );
     }
 
