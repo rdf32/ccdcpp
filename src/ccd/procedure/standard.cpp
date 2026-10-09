@@ -168,9 +168,14 @@ bool StandardProcedure::initialize(
         lworkspace.build_basis(masked_dates.slice(range(window.start, window.stop)), num_coef);
 
         //----------------------------------------------------------
-        // Fit every spectral band
+        // Fit the detection bands
+        //
+        // Only these are read: stable() here and lookback() after, and
+        // run() discards the initialization models once lookforward()
+        // retrains. Each fit is independent of the others (fit() resets
+        // the workspace), so skipping the rest changes nothing.
         //----------------------------------------------------------
-        for (index_t band = 0; band < masked_spectral.slice(all(), range(window.start, window.stop)).extent(0); ++band)
+        for (const index_t band : options.DETECTION_BANDS)
         {
             auto y = masked_spectral.slice(all(), range(window.start, window.stop)).slice(
                 fixed(band), 
