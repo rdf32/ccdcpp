@@ -46,6 +46,8 @@ The mathematical algorithm remains equivalent to PyCCD, but the implementation w
 
 For best performance, input arrays should be **C-contiguous** and use the expected memory layout. The library is designed around cache-friendly access patterns and avoids unnecessary data copies by operating directly on NumPy memory whenever possible.
 
+Input arrays are never modified. `detect_cube` and `detect_cube_columns` read the spectral cube as `float64`, `float32` or `uint16` in any layout with non-negative strides, converting one pixel at a time inside each worker thread, so a `uint16` cube is never widened to `float64` as a whole; the results are those of the same values passed as `float64`. Other dtypes are converted to a C-contiguous `float64` array first, as long as numpy can do so safely.
+
 ## Single Pixel
 
 The `detect()` API expects a single pixel time series in the following layout:

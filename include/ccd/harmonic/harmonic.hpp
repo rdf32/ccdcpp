@@ -169,14 +169,14 @@ struct HarmonicOptions
     // the obvious test.
     //--------------------------------------------------------------------------
 
-    // Applied to the thermal band in place before the Standard procedure runs:
+    // Applied to the thermal band of detect()'s per-pixel copy before the
+    // Standard procedure runs:
     //
     //     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
     //
-    // The default is pyccd's Kelvin x 10 -> Celsius x 100. The identity
-    // (1.0, 0.0) skips the pass entirely, which matters for more than speed:
-    // `spectral` is a view onto the CALLER's buffer, so skipping the write
-    // makes detect() idempotent on the same array.
+    // The default is pyccd's Kelvin x 10 -> Celsius x 100. The caller's
+    // buffer is never written. The identity (1.0, 0.0) skips the pass, and
+    // with it the copy when the pixel is already contiguous float64.
     scalar_t THERMAL_SCALE  = KELVIN_SCALE;
     scalar_t THERMAL_OFFSET = -KELVIN_OFFSET;
 

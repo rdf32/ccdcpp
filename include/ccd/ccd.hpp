@@ -164,11 +164,26 @@ struct DetectScratch
 {
     LassoWorkspace lasso{0};
     StandardProcedure standard;
+
+    // The pixel's (B, T) as scalar_t, when it has to be converted or its
+    // thermal band transformed.
+    std::vector<scalar_t> spectral;
 };
+
+//------------------------------------------------------------------------------
+//
+// Run CCD on one pixel.
+//
+// `spectral` is read, never written: the thermal transform of the Standard
+// procedure (HarmonicOptions::THERMAL_SCALE/THERMAL_OFFSET) is applied to a
+// private copy, so calling detect() twice on the same buffer gives the same
+// result twice. `spectral` may be strided.
+//
+//------------------------------------------------------------------------------
 
 FitResult detect(
     ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
-    ArrayView<scalar_t, 2> spectral,  // shape -> (bands, timesteps)
+    ArrayView<const scalar_t, 2> spectral,  // shape -> (bands, timesteps)
     ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions
@@ -177,7 +192,7 @@ FitResult detect(
 // detect() with caller-held scratch.
 FitResult detect(
     ArrayView<const std::int64_t, 1> dates,
-    ArrayView<scalar_t, 2> spectral,
+    ArrayView<const scalar_t, 2> spectral,
     ArrayView<const std::uint8_t, 1> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
@@ -202,12 +217,38 @@ FitResult detect(
 // as soon as the pixel is done, for callers that do not read it; the
 // returned FitResult::mask is then empty.
 //
+// The cube is read, never written (see detect()), in any strides, as
+// float64, float32 or uint16. Each pixel is converted to scalar_t in a
+// per-thread buffer -- static_cast, which is exact for all three -- so a
+// uint16 or float32 cube gives the results of the same values widened to
+// float64 beforehand, without a float64 copy of the cube.
+//
 //------------------------------------------------------------------------------
 
 CubeResult detect_cube(
     ArrayView<const std::int64_t, 1> dates,
-    ArrayView<scalar_t, 4> spectral,          // (H,W,B,T)
+    ArrayView<const double, 4> spectral,      // (H,W,B,T)
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads = 0,
+    bool keep_masks = true
+);
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads = 0,
+    bool keep_masks = true
+);
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads = 0,

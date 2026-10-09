@@ -332,3 +332,105 @@ TEST(Golden, BitIdenticalToFixture)
     }
     FAIL() << differing << " of " << actual_px.size() << " pixels differ from the fixture";
 }
+
+//------------------------------------------------------------------------------
+// detect_cube reads float64, float32 and uint16, in any strides, and gives
+// the results of the same values as contiguous float64. Nothing writes to
+// the input.
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+std::string cube_dump(ccd::CubeResult cube)
+{
+    std::sort(
+        cube.pixels.begin(),
+        cube.pixels.end(),
+        [](const ccd::PixelResult& a, const ccd::PixelResult& b)
+        {
+            return a.row != b.row ? a.row < b.row : a.col < b.col;
+        });
+
+    std::string out;
+    for (const auto& px : cube.pixels)
+        golden::dump_pixel(
+            out,
+            std::to_string(px.row) + "," + std::to_string(px.col),
+            px.result);
+    return out;
+}
+
+} // namespace
+
+TEST(Golden, CubeDtypesAndLayouts)
+{
+    golden::Cube c = golden::make_cube(21, golden::Regime::Cadence16, 4, 6);
+    const std::size_t H = c.H, W = c.W, T = c.T;
+
+    // Values every input type represents exactly.
+    for (auto& v : c.spectral)
+        v = std::min(std::max(v, 0.0), 65535.0);
+
+    const std::vector<double> original = c.spectral;
+
+    const auto dates =
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});
+    const auto qas =
+        ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {H, W, T});
+    const ccd::HarmonicOptions h;
+    const ccd::LassoOptions l;
+
+    const std::string reference = cube_dump(ccd::detect_cube(
+        dates,
+        ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
+        qas, h, l, 2));
+
+    EXPECT_EQ(c.spectral, original) << "detect_cube wrote to its input";
+    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+        dates,
+        ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
+        qas, h, l, 2))) << "a second call on the same buffer differs";
+
+    std::vector<float> f32(c.spectral.begin(), c.spectral.end());
+    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+        dates,
+        ccd::ArrayView<const float, 4>::contiguous(f32.data(), {H, W, 7, T}),
+        qas, h, l, 2))) << "float32";
+
+    std::vector<std::uint16_t> u16(c.spectral.size());
+    for (std::size_t i = 0; i < u16.size(); ++i)
+        u16[i] = static_cast<std::uint16_t>(c.spectral[i]);
+    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+        dates,
+        ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {H, W, 7, T}),
+        qas, h, l, 2))) << "uint16";
+
+    // (H, W, T, B) storage seen as (H, W, B, T).
+    std::vector<double> hwtb(c.spectral.size());
+    for (std::size_t p = 0; p < H * W; ++p)
+        for (std::size_t b = 0; b < 7; ++b)
+            for (std::size_t t = 0; t < T; ++t)
+                hwtb[(p * T + t) * 7 + b] = c.spectral[(p * 7 + b) * T + t];
+    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+        dates,
+        ccd::ArrayView<const double, 4>::strided(hwtb.data(), {H, W, 7, T}, {W * T * 7, T * 7, 1, 7}),
+        qas, h, l, 2))) << "strided float64";
+}
+
+TEST(Golden, DetectDoesNotWriteItsInput)
+{
+    const Pixel p = read_csv("test_3657_3610_observations.csv");
+    const std::size_t T = p.dates.size();
+
+    std::vector<double> buffer = p.spectral;
+    const auto view = ccd::ArrayView<const double, 2>::contiguous(buffer.data(), {7, T});
+    const auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T});
+    const auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T});
+
+    std::string first, second;
+    golden::dump_pixel(first, "", ccd::detect(dates, view, qas, ccd::HarmonicOptions{}, ccd::LassoOptions{}));
+    EXPECT_EQ(buffer, p.spectral);
+    golden::dump_pixel(second, "", ccd::detect(dates, view, qas, ccd::HarmonicOptions{}, ccd::LassoOptions{}));
+    EXPECT_EQ(first, second);
+}

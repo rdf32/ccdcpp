@@ -1,7 +1,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
+#include <array>
 #include <stdexcept>
+#include <string>
+#include <tuple>
 
 #include "ccd/types.hpp"
 #include "ccd/array_view.hpp"
@@ -23,7 +26,9 @@ namespace py = pybind11;
 //   qas      -> uint8 numpy memory
 //
 // No allocations are performed here.
-// ArrayViews simply wrap existing buffers.
+// ArrayViews simply wrap existing buffers. The array_t casters hand over
+// C-contiguous arrays of these dtypes, converting when needed, and detect()
+// reads `spectral` without writing to it.
 //------------------------------------------------------------------------------
 
 py::dict detect_wrapper(
@@ -40,15 +45,6 @@ py::dict detect_wrapper(
     ccd::LassoOptions loptions
 )
 {
-    if (!dates.flags() & py::array::c_style)
-        throw std::runtime_error("dates must be C contiguous");
-
-    if (!spectral.flags() & py::array::c_style)
-        throw std::runtime_error("spectral must be C contiguous");
-
-    if (!qas.flags() & py::array::c_style)
-        throw std::runtime_error("qas must be C contiguous");
-
     auto dates_buf = dates.request();
     auto spectral_buf = spectral.request();
     auto qas_buf = qas.request();
@@ -102,8 +98,8 @@ py::dict detect_wrapper(
 
 
     auto spectral_view =
-        ccd::ArrayView<ccd::scalar_t,2>::contiguous(
-            static_cast<ccd::scalar_t*>(
+        ccd::ArrayView<const ccd::scalar_t,2>::contiguous(
+            static_cast<const ccd::scalar_t*>(
                 spectral_buf.ptr
             ),
             {
@@ -229,18 +225,30 @@ py::dict detect_wrapper(
 }
 
 //------------------------------------------------------------------------------
-// Shape checking, shared by both cube wrappers.
+// Cube input, shared by both cube wrappers.
 //
 // Extracted rather than duplicated because the two wrappers differ only in how
 // they hand results back, and two copies of a shape check is two chances for
 // them to disagree about what a valid cube is.
+//
+// `spectral` is taken as it is when it is float64, float32 or uint16 in native
+// byte order with non-negative strides -- any layout, C-contiguous or not --
+// and read through a strided ArrayView. Each pixel is converted to float64
+// inside detect_cube, per thread, so a uint16 cube is never widened as a
+// whole. Anything else is converted to a C-contiguous float64 array first,
+// under the same rule the float64 argument used to apply (numpy safe casting),
+// so the accepted inputs are a superset of before. `qas` is uint8 under the
+// same two rules.
+//
+// Nothing is written to `spectral`: the thermal transform happens in the
+// per-pixel copy.
 //------------------------------------------------------------------------------
 
-struct CubeViews
+struct CubeInput
 {
-    ccd::ArrayView<const std::int64_t, 1> dates;
-    ccd::ArrayView<ccd::scalar_t, 4> spectral;
-    ccd::ArrayView<const std::uint8_t, 3> qas;
+    py::array_t<std::int64_t, py::array::c_style> dates;
+    py::array spectral;
+    py::array qas;
 
     ccd::index_t H = 0;
     ccd::index_t W = 0;
@@ -248,72 +256,172 @@ struct CubeViews
     ccd::index_t T = 0;
 };
 
-static CubeViews check_cube(
-    py::buffer_info& dates_buf,
-    py::buffer_info& spectral_buf,
-    py::buffer_info& qas_buf
+static bool usable_strides(const py::array& a)
+{
+    for (py::ssize_t d = 0; d < a.ndim(); ++d)
+    {
+        if (a.strides(d) < 0 || a.strides(d) % a.itemsize() != 0)
+            return false;
+    }
+    return true;
+}
+
+template<typename T>
+static bool takes_as_is(const py::array& a)
+{
+    return py::isinstance<py::array_t<T>>(a) && usable_strides(a);
+}
+
+template<typename T>
+static py::array as_c_array(const py::object& obj, const char* name)
+{
+    auto converted = py::array_t<T, py::array::c_style>::ensure(obj);
+
+    if (!converted)
+        throw py::type_error(
+            std::string(name) + " cannot be converted to " +
+            py::str(py::dtype::of<T>()).cast<std::string>() +
+            " without an unsafe cast"
+        );
+
+    return std::move(converted);
+}
+
+template<typename T, std::size_t Rank>
+static ccd::ArrayView<const T, Rank> strided_view(const py::array& a)
+{
+    std::array<std::size_t, Rank> shape{};
+    std::array<std::size_t, Rank> strides{};
+
+    for (std::size_t d = 0; d < Rank; ++d)
+    {
+        shape[d] = static_cast<std::size_t>(a.shape(d));
+        strides[d] = static_cast<std::size_t>(a.strides(d)) / sizeof(T);
+    }
+
+    return ccd::ArrayView<const T, Rank>::strided(
+        static_cast<const T*>(a.data()),
+        shape,
+        strides
+    );
+}
+
+//------------------------------------------------------------------------------
+// `obj` as it is if it is an ndarray of one of the types Ts in a layout
+// takes_as_is accepts, else converted to a C-contiguous array of the first.
+//------------------------------------------------------------------------------
+template<typename... Ts>
+static py::array accept(const py::object& obj, const char* name)
+{
+    if (py::isinstance<py::array>(obj))
+    {
+        auto a = py::reinterpret_borrow<py::array>(obj);
+
+        if ((takes_as_is<Ts>(a) || ...))
+            return a;
+    }
+
+    using First = std::tuple_element_t<0, std::tuple<Ts...>>;
+    return as_c_array<First>(obj, name);
+}
+
+static CubeInput check_cube(
+    py::array_t<std::int64_t, py::array::c_style> dates,
+    const py::object& spectral_obj,
+    const py::object& qas_obj
 )
 {
-    if (dates_buf.ndim != 1)
+    py::array spectral =
+        accept<double, float, std::uint16_t>(spectral_obj, "spectral");
+
+    py::array qas =
+        accept<std::uint8_t>(qas_obj, "qas");
+
+    if (dates.ndim() != 1)
         throw std::runtime_error(
             "dates must have shape (timesteps)"
         );
 
-    if (spectral_buf.ndim != 4)
+    if (spectral.ndim() != 4)
         throw std::runtime_error(
             "spectral must have shape (height,width,bands,timesteps)"
         );
 
-    if (qas_buf.ndim != 3)
+    if (qas.ndim() != 3)
         throw std::runtime_error(
             "qas must have shape (height,width,timesteps)"
         );
 
     const ccd::index_t H =
-        static_cast<ccd::index_t>(spectral_buf.shape[0]);
+        static_cast<ccd::index_t>(spectral.shape(0));
 
     const ccd::index_t W =
-        static_cast<ccd::index_t>(spectral_buf.shape[1]);
+        static_cast<ccd::index_t>(spectral.shape(1));
 
     const ccd::index_t B =
-        static_cast<ccd::index_t>(spectral_buf.shape[2]);
+        static_cast<ccd::index_t>(spectral.shape(2));
 
     const ccd::index_t T =
-        static_cast<ccd::index_t>(spectral_buf.shape[3]);
+        static_cast<ccd::index_t>(spectral.shape(3));
 
-    if (static_cast<ccd::index_t>(dates_buf.shape[0]) != T)
+    if (static_cast<ccd::index_t>(dates.shape(0)) != T)
         throw std::runtime_error(
             "dates length must equal spectral time dimension"
         );
 
-    if (static_cast<ccd::index_t>(qas_buf.shape[0]) != H ||
-        static_cast<ccd::index_t>(qas_buf.shape[1]) != W ||
-        static_cast<ccd::index_t>(qas_buf.shape[2]) != T)
+    if (static_cast<ccd::index_t>(qas.shape(0)) != H ||
+        static_cast<ccd::index_t>(qas.shape(1)) != W ||
+        static_cast<ccd::index_t>(qas.shape(2)) != T)
     {
         throw std::runtime_error(
             "qas must have shape (height,width,timesteps)"
         );
     }
 
-    //----------------------------------------------------------------------
-    // Zero-copy ArrayViews
-    //----------------------------------------------------------------------
-
-    return CubeViews{
-        ccd::ArrayView<const std::int64_t,1>::contiguous(
-            static_cast<std::int64_t*>(dates_buf.ptr),
-            {T}
-        ),
-        ccd::ArrayView<ccd::scalar_t,4>::contiguous(
-            static_cast<ccd::scalar_t*>(spectral_buf.ptr),
-            {H,W,B,T}
-        ),
-        ccd::ArrayView<const std::uint8_t,3>::contiguous(
-            static_cast<std::uint8_t*>(qas_buf.ptr),
-            {H,W,T}
-        ),
+    return CubeInput{
+        std::move(dates),
+        std::move(spectral),
+        std::move(qas),
         H, W, B, T
     };
+}
+
+//------------------------------------------------------------------------------
+// detect_cube on a checked input, dispatched on the spectral dtype.
+//
+// Called with the GIL released: it only reads buffers that `in` keeps alive.
+//------------------------------------------------------------------------------
+
+static ccd::CubeResult run_cube(
+    const CubeInput& in,
+    const ccd::HarmonicOptions& hoptions,
+    const ccd::LassoOptions& loptions,
+    int threads,
+    bool keep_masks
+)
+{
+    const auto dates =
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(
+            in.dates.data(),
+            {in.T}
+        );
+
+    const auto qas =
+        strided_view<std::uint8_t, 3>(in.qas);
+
+    if (takes_as_is<std::uint16_t>(in.spectral))
+        return ccd::detect_cube(
+            dates, strided_view<std::uint16_t, 4>(in.spectral), qas,
+            hoptions, loptions, threads, keep_masks);
+
+    if (takes_as_is<float>(in.spectral))
+        return ccd::detect_cube(
+            dates, strided_view<float, 4>(in.spectral), qas,
+            hoptions, loptions, threads, keep_masks);
+
+    return ccd::detect_cube(
+        dates, strided_view<double, 4>(in.spectral), qas,
+        hoptions, loptions, threads, keep_masks);
 }
 
 //------------------------------------------------------------------------------
@@ -347,23 +455,17 @@ py::list detect_cube_wrapper(
     py::array_t<std::int64_t,
         py::array::c_style> dates,
 
-    py::array_t<ccd::scalar_t,
-        py::array::c_style> spectral,
+    py::object spectral,
 
-    py::array_t<std::uint8_t,
-        py::array::c_style> qas,
+    py::object qas,
 
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
     int threads
 )
 {
-    auto dates_buf    = dates.request();
-    auto spectral_buf = spectral.request();
-    auto qas_buf      = qas.request();
-
-    const CubeViews views =
-        check_cube(dates_buf, spectral_buf, qas_buf);
+    const CubeInput views =
+        check_cube(dates, spectral, qas);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -375,13 +477,12 @@ py::list detect_cube_wrapper(
         py::gil_scoped_release release;
 
         cube =
-            ccd::detect_cube(
-                views.dates,
-                views.spectral,
-                views.qas,
+            run_cube(
+                views,
                 hoptions,
                 loptions,
-                threads
+                threads,
+                true
             );
     }
 
@@ -567,23 +668,17 @@ py::dict detect_cube_columns_wrapper(
     py::array_t<std::int64_t,
         py::array::c_style> dates,
 
-    py::array_t<ccd::scalar_t,
-        py::array::c_style> spectral,
+    py::object spectral,
 
-    py::array_t<std::uint8_t,
-        py::array::c_style> qas,
+    py::object qas,
 
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
     int threads
 )
 {
-    auto dates_buf    = dates.request();
-    auto spectral_buf = spectral.request();
-    auto qas_buf      = qas.request();
-
-    const CubeViews views =
-        check_cube(dates_buf, spectral_buf, qas_buf);
+    const CubeInput views =
+        check_cube(dates, spectral, qas);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -595,10 +690,8 @@ py::dict detect_cube_columns_wrapper(
         py::gil_scoped_release release;
 
         cube =
-            ccd::detect_cube(
-                views.dates,
-                views.spectral,
-                views.qas,
+            run_cube(
+                views,
                 hoptions,
                 loptions,
                 threads,

@@ -178,8 +178,7 @@ ccd::HarmonicOptions physical_harmonic()
 {
     ccd::HarmonicOptions h;
 
-    // Identity: the caller already applied the transform, and the identity
-    // also stops detect() writing into the caller's buffer.
+    // Identity: the caller already applied the transform.
     h.THERMAL_SCALE = 1.0;
     h.THERMAL_OFFSET = 0.0;
 
@@ -206,7 +205,7 @@ ccd::LassoOptions physical_lasso()
 
 ccd::FitResult run(
     const Observations& obs,
-    std::vector<ccd::scalar_t> spectral,      // by value: detect() may write
+    std::vector<ccd::scalar_t> spectral,
     const ccd::HarmonicOptions& h,
     const ccd::LassoOptions& lo
 )

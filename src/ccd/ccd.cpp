@@ -2,6 +2,8 @@
 
 #include <omp.h>
 
+#include <type_traits>
+
 #include "ccd/array_view.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
@@ -16,21 +18,21 @@
 namespace ccd 
 {
 
-// single pixel timeseries detection
-FitResult detect(
-    ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
-    ArrayView<scalar_t, 2> spectral,  // shape -> (bands, timesteps)
-    ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
-    const HarmonicOptions& hoptions,
-    const LassoOptions& loptions
-) {
-    DetectScratch scratch;
-    return detect(dates, spectral, qas, hoptions, loptions, scratch);
-}
+namespace
+{
 
-FitResult detect(
+//------------------------------------------------------------------------------
+// One pixel, from a (B, T) view of any supported element type.
+//
+// The procedures read a contiguous scalar_t (B, T) block. When the input is
+// already that and no thermal transform applies, it is read in place;
+// otherwise it is converted into scratch.spectral, and the thermal transform
+// is applied there. The caller's buffer is never written.
+//------------------------------------------------------------------------------
+template<typename Value>
+FitResult detect_pixel(
     ArrayView<const std::int64_t, 1> dates,
-    ArrayView<scalar_t, 2> spectral,
+    ArrayView<const Value, 2> spectral,
     ArrayView<const std::uint8_t, 1> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
@@ -43,6 +45,8 @@ FitResult detect(
         dates,
         hoptions
     );
+
+    bool transform_thermal = false;
 
     FitProcedureType fit_type;
     if (!quality_stat.enough_clear(hoptions.CLEAR_PCT_THRESHOLD)) {
@@ -64,35 +68,69 @@ FitResult detect(
         // `* 0.00341802 + 149.0 - 273.15`, which yields plain Celsius -- one
         // of the two units these options exist to name explicitly).
         //
-        // Two things this loop is careful about:
-        //
-        //  * `spectral` is a non-const view onto the CALLER's buffer, so this
-        //    is a destructive write. Under the identity transform we skip it
-        //    entirely, which makes detect() idempotent on the same array --
-        //    it was not, before.
-        //  * It runs for Standard ONLY, matching pyccd, where
-        //    kelvin_to_celsius() is called inside standard_procedure(). See
-        //    harmonic.hpp's "Input unit convention" block for the
-        //    consequences for the other two procedures.
+        // It is applied to the per-pixel copy below, never to the caller's
+        // buffer, and it runs for Standard ONLY, matching pyccd, where
+        // kelvin_to_celsius() is called inside standard_procedure(). See
+        // harmonic.hpp's "Input unit convention" block for the consequences
+        // for the other two procedures. The identity transform is skipped.
         //------------------------------------------------------------------
         const bool identity =
             hoptions.THERMAL_SCALE  == scalar_t(1.0) &&
             hoptions.THERMAL_OFFSET == scalar_t(0.0);
 
-        if (!identity) {
-            const index_t T = dates.size();
+        transform_thermal = !identity;
+    }
+
+    const index_t B = spectral.extent(0);
+    const index_t T = spectral.extent(1);
+
+    ArrayView<const scalar_t, 2> pixel =
+        ArrayView<const scalar_t, 2>::contiguous(
+            scratch.spectral.data(),
+            {B, T}
+        );
+
+    bool in_place = false;
+    if constexpr (std::is_same_v<Value, scalar_t>)
+    {
+        in_place = !transform_thermal && spectral.is_contiguous();
+        if (in_place)
+            pixel = spectral;
+    }
+
+    if (!in_place)
+    {
+        auto& block = scratch.spectral;
+        block.resize(B * T);
+
+        for (index_t b = 0; b < B; ++b)
+        {
+            for (index_t t = 0; t < T; ++t)
+            {
+                block[b * T + t] =
+                    static_cast<scalar_t>(spectral(b, t));
+            }
+        }
+
+        if (transform_thermal)
+        {
             const index_t thermal_idx = hoptions.THERMAL_IDX;
             for (index_t t = 0; t < T; ++t) {
-                spectral(thermal_idx, t) =
-                    spectral(thermal_idx, t) * hoptions.THERMAL_SCALE
+                block[thermal_idx * T + t] =
+                    block[thermal_idx * T + t] * hoptions.THERMAL_SCALE
                     + hoptions.THERMAL_OFFSET;
             }
         }
+
+        pixel = ArrayView<const scalar_t, 2>::contiguous(
+            block.data(),
+            {B, T}
+        );
     }
 
     HarmonicWorkspace hworkspace(
         dates,
-        spectral,
+        pixel,
         qas,
         hoptions
     );
@@ -150,9 +188,10 @@ FitResult detect(
     return final_result;
 }
 
-CubeResult detect_cube(
+template<typename Value>
+CubeResult detect_cube_impl(
     ArrayView<const std::int64_t, 1> dates,
-    ArrayView<scalar_t, 4> spectral,          // (H,W,B,T)
+    ArrayView<const Value, 4> spectral,       // (H,W,B,T)
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
@@ -162,7 +201,6 @@ CubeResult detect_cube(
 {
     const index_t H = spectral.extent(0);
     const index_t W = spectral.extent(1);
-    const index_t B = spectral.extent(2);
     const index_t T = spectral.extent(3);
 
     if (qas.extent(0) != H ||
@@ -248,7 +286,7 @@ CubeResult detect_cube(
             try
             {
                 FitResult result =
-                    detect(
+                    detect_pixel<Value>(
                         dates,
                         spect_view,
                         qa_view,
@@ -328,6 +366,66 @@ CubeResult detect_cube(
     }
 
     return merged;
+}
+
+} // namespace
+
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions
+) {
+    DetectScratch scratch;
+    return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
+}
+
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    DetectScratch& scratch
+) {
+    return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
+}
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const double, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads,
+    bool keep_masks
+) {
+    return detect_cube_impl<double>(dates, spectral, qas, hoptions, loptions, threads, keep_masks);
+}
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads,
+    bool keep_masks
+) {
+    return detect_cube_impl<float>(dates, spectral, qas, hoptions, loptions, threads, keep_masks);
+}
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads,
+    bool keep_masks
+) {
+    return detect_cube_impl<std::uint16_t>(dates, spectral, qas, hoptions, loptions, threads, keep_masks);
 }
 
 } // namespace ccd
