@@ -123,6 +123,13 @@ protected:
         std::vector<scalar_t>& preds
     );
 
+    // calc_residuals() into `residuals`, reusing its storage.
+    void calc_residuals(
+        ArrayView<const scalar_t, 1> y,
+        const std::vector<scalar_t>& preds,
+        std::vector<scalar_t>& residuals
+    );
+
 private:
 
     //----------------------------------------------------------------------

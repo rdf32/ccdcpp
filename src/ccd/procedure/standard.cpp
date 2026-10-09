@@ -278,6 +278,69 @@ std::vector<scalar_t> StandardProcedure::calc_residuals(
     return residuals;
 }
 
+void StandardProcedure::calc_residuals(
+    ArrayView<const scalar_t, 1> y,
+    const std::vector<scalar_t>& preds,
+    std::vector<scalar_t>& residuals
+)
+{
+    assert(y.size() == preds.size());
+
+    residuals.resize(y.size());
+
+    for (index_t i = 0; i < static_cast<index_t>(y.size()); ++i)
+    {
+        residuals[i] =
+            std::abs(y(i) - preds[i]);
+    }
+}
+
+//------------------------------------------------------------------------------
+// change_magnitude() over residuals[bands[i]], into `magnitude`.
+//
+// The same sum in the same band order as change_magnitude() given the
+// per-detection-band copies, without making the copies.
+//------------------------------------------------------------------------------
+static void detection_magnitude(
+    const std::vector<std::vector<scalar_t>>& residuals,
+    const std::vector<index_t>& bands,
+    const std::vector<scalar_t>& variogram,
+    const std::vector<scalar_t>& rmse,
+    std::vector<scalar_t>& magnitude
+)
+{
+    magnitude.clear();
+
+    if (bands.empty())
+        return;
+
+    const index_t count =
+        residuals[bands.front()].size();
+
+    magnitude.assign(count, 0.0);
+    for (index_t i = 0; i < bands.size(); ++i)
+    {
+        const scalar_t norm =
+            std::max(
+                variogram[i],
+                rmse[i]
+            );
+
+        if (norm <= 0.0)
+            continue;
+
+        const auto& band_residuals = residuals[bands[i]];
+
+        for (index_t j = 0; j < count; ++j)
+        {
+            const scalar_t value =
+                band_residuals[j] / norm;
+
+            magnitude[j] += value * value;
+        }
+    }
+}
+
 bool StandardProcedure::lookback(
     const HarmonicWorkspace& workspace,
     LassoWorkspace& lworkspace,
@@ -300,6 +363,13 @@ bool StandardProcedure::lookback(
 
     auto masked_spectral = 
         masked_.spectral_view();
+
+    std::vector<std::int64_t> peek_dates;
+    std::vector<scalar_t> peek_spectral;
+
+    std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
+    std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
+    std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
 
     while(window.start > prev_break) {
 
@@ -324,7 +394,7 @@ bool StandardProcedure::lookback(
             peek_window.stop  = static_cast<std::ptrdiff_t>(prev_break) - 1;
         }
 
-        std::vector<std::int64_t> peek_dates;
+        peek_dates.clear();
         peek_dates.reserve(options.PEEK_SIZE);
         for (std::ptrdiff_t i = peek_window.start; i > peek_window.stop; --i)
         {
@@ -337,7 +407,6 @@ bool StandardProcedure::lookback(
                 {peek_dates.size()}
             );
         
-        std::vector<scalar_t> peek_spectral;
         const index_t bands   = masked_spectral.extent(0);
         const index_t samples = peek_dates.size();
 
@@ -362,10 +431,6 @@ bool StandardProcedure::lookback(
                 {bands, samples}
             );
         
-        std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
-        std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
-        std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
-        
         lworkspace.resize(masked_dates_window.size());
         lworkspace.build_basis(masked_dates_window, 8);
 
@@ -382,11 +447,9 @@ bool StandardProcedure::lookback(
                 lworkspace.predictions
             );
 
-            auto abs_resid = 
-                calc_residuals(y, lworkspace.predictions);
+            calc_residuals(y, lworkspace.predictions, comp_resids[i]);
             // use original model rmse like python code 
             // not sure if this is intended or python bug
-            comp_resids[i] = abs_resid;
             comp_rmses[i] = models[band].score.rmse;
             comp_vario[i] = variogram[band];
         }
@@ -559,9 +622,17 @@ ChangeModel StandardProcedure::lookforward(
     index_t num_coef = options.COEFFICIENT_MIN;
     auto num_bands = masked_spectral.extent(0);
     std::vector<std::vector<scalar_t>> full_resids(num_bands);
-    std::vector<LassoResult> models;
+    std::vector<LassoResult> models(num_bands);
+    bool trained = false;
+
+    std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
+    std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
+    std::vector<scalar_t> magnitude;
+
+    // masked_.observations is mask.count(): masked_ follows every change
+    // to the mask.
     // while model_window.stop + peek_size <= period.shape[0]:
-    while (window.stop + options.PEEK_SIZE <= mask.count()) {
+    while (window.stop + options.PEEK_SIZE <= masked_.observations) {
         
         num_coef = coefficient_count(
             masked_dates.slice(range(window.start, window.stop)), options);
@@ -574,9 +645,9 @@ ChangeModel StandardProcedure::lookforward(
         
         LOG_DEBUG("detecting change for: " << peek_window.start << ", " << peek_window.stop);
 
-        if (models.empty() || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
+        if (!trained || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
         {   
-            models.clear();
+            trained = true;
             fit_window = window;
             fit_span = span(masked_dates, fit_window);
             LOG_DEBUG("Retrain models");
@@ -611,22 +682,19 @@ ChangeModel StandardProcedure::lookforward(
                 );
                 // seasonal_rmse() reads the residuals; the magnitude is
                 // set from the peek residuals when the segment is returned.
-                LassoScore metrics{
-                    rmse(
-                        y,
-                        lworkspace.predictions,
-                        lworkspace.residuals,
-                        num_coef,
-                        true
-                    ),
-                    0.0,
-                    lworkspace.residuals
-                };
-                models.push_back(
-                    LassoResult{
-                        std::move(model),
-                        std::move(metrics)
-                    }
+                auto& fitted = models[band];
+                fitted.model = std::move(model);
+                fitted.score.rmse = rmse(
+                    y,
+                    lworkspace.predictions,
+                    lworkspace.residuals,
+                    num_coef,
+                    true
+                );
+                fitted.score.magn = 0.0;
+                fitted.score.residuals.assign(
+                    lworkspace.residuals.begin(),
+                    lworkspace.residuals.end()
                 );
             }
         }
@@ -646,21 +714,14 @@ ChangeModel StandardProcedure::lookforward(
                 lworkspace.predictions
             );
 
-            auto abs_resid = 
-                calc_residuals(y, lworkspace.predictions);
-    
-            full_resids[band] = abs_resid;
+            calc_residuals(y, lworkspace.predictions, full_resids[band]);
         }
 
-        std::vector<scalar_t> comp_rmses(options.DETECTION_BANDS.size());
-        std::vector<scalar_t> comp_vario(options.DETECTION_BANDS.size());
-        std::vector<std::vector<scalar_t>> comp_resids(options.DETECTION_BANDS.size());
         if (window.stop - window.start <= 24) {
             LOG_DEBUG("normal residuals and rmse");
             for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
                 auto band = options.DETECTION_BANDS[i];
-                comp_resids[i] = full_resids[band];
                 comp_rmses[i] = models[band].score.rmse;
                 comp_vario[i] = variogram[band];
             }
@@ -678,14 +739,18 @@ ChangeModel StandardProcedure::lookforward(
             for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
                 auto band = options.DETECTION_BANDS[i];
-                comp_resids[i] = full_resids[band];
                 comp_rmses[i] = seasonal_rmse(models[band], closest_indexes);
                 comp_vario[i] = variogram[band];
             }
         }
 
-        auto magnitude = 
-            change_magnitude(comp_resids, comp_vario, comp_rmses);
+        detection_magnitude(
+            full_resids,
+            options.DETECTION_BANDS,
+            comp_vario,
+            comp_rmses,
+            magnitude
+        );
 
         if (detect_change(magnitude, options.CHANGE_THRESHOLD))
         {   
@@ -713,7 +778,7 @@ ChangeModel StandardProcedure::lookforward(
             continue;
         }
 
-        if (window.stop + options.PEEK_SIZE > mask.count()) {
+        if (window.stop + options.PEEK_SIZE > masked_.observations) {
             break;
         }
 
@@ -829,12 +894,15 @@ FitResult StandardProcedure::run(
     LOG_DEBUG("Variogram values: " << variogram);
 
     // initialize processing context
+    //
+    // masked_.observations is mask.count() throughout: masked_ follows
+    // every change the subfunctions make to the mask.
     bool start = true;
     index_t prev_break = 0;
     index_t num_bands = masked_spectral.extent(0);
     auto window = Window(0, options.MEOW_SIZE);
 
-    while(window.stop <= mask.count() - options.MEOW_SIZE)
+    while(window.stop <= masked_.observations - options.MEOW_SIZE)
     {   
         LOG_DEBUG("Initialize for change model #: " << results.models.size());
         if (!results.models.empty()) {
@@ -865,7 +933,7 @@ FitResult StandardProcedure::run(
             results.models.push_back(result);
         }
 
-        if (window.stop + options.PEEK_SIZE > mask.count()) {
+        if (window.stop + options.PEEK_SIZE > masked_.observations) {
             break;
         }
 
@@ -887,8 +955,8 @@ FitResult StandardProcedure::run(
     // --------------------------------
     // End catch
     // --------------------------------
-    if (prev_break + options.PEEK_SIZE < mask.count()) {
-        auto window_1 = Window(prev_break, mask.count());
+    if (prev_break + options.PEEK_SIZE < masked_.observations) {
+        auto window_1 = Window(prev_break, masked_.observations);
         ChangeModel result = 
             catch_model(hworkspace, lworkspace, solver, mask, window_1, CurveQA::End);
         results.models.push_back(result);

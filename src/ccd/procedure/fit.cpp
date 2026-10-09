@@ -697,15 +697,6 @@ std::vector<index_t> find_closest_doy(
         );
     }
 
-    std::stable_sort(
-        candidates.begin(),
-        candidates.end(),
-        [](const auto& a,
-           const auto& b)
-        {
-            return a.distance < b.distance;
-        });
-
     count =
         std::min(
             count,
@@ -713,6 +704,25 @@ std::vector<index_t> find_closest_doy(
                 candidates.size()
             )
         );
+
+    //----------------------------------------------------------
+    // The `count` nearest, nearest first, ties in window order.
+    //
+    // Candidates are built in increasing index, so ordering by
+    // (distance, index) is the stable sort by distance; only
+    // the first `count` of that order are needed.
+    //----------------------------------------------------------
+    std::partial_sort(
+        candidates.begin(),
+        candidates.begin() + count,
+        candidates.end(),
+        [](const auto& a,
+           const auto& b)
+        {
+            if (a.distance != b.distance)
+                return a.distance < b.distance;
+            return a.index < b.index;
+        });
 
     std::vector<index_t> indices;
 
