@@ -21,8 +21,20 @@ FitResult detect(
     ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
     ArrayView<scalar_t, 2> spectral,  // shape -> (bands, timesteps)
     ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
-    HarmonicOptions hoptions,
-    LassoOptions loptions
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions
+) {
+    DetectScratch scratch;
+    return detect(dates, spectral, qas, hoptions, loptions, scratch);
+}
+
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    DetectScratch& scratch
 ) {
 
     Quality quality;
@@ -90,7 +102,7 @@ FitResult detect(
         << hworkspace.spectral()
     );
 
-    LassoWorkspace lworkspace(dates.size());
+    LassoWorkspace& lworkspace = scratch.lasso;
     LassoSolver solver(
         loptions
     );
@@ -101,7 +113,7 @@ FitResult detect(
         case FitProcedureType::Standard:
         {   
             LOG_DEBUG("Standard");
-            StandardProcedure fit_procedure;
+            StandardProcedure& fit_procedure = scratch.standard;
             final_result = fit_procedure.run(
                 hworkspace,
                 lworkspace,
@@ -142,8 +154,8 @@ CubeResult detect_cube(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<scalar_t, 4> spectral,          // (H,W,B,T)
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
-    HarmonicOptions hoptions,
-    LassoOptions loptions,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
     int threads,
     bool keep_masks
 )
@@ -183,6 +195,8 @@ CubeResult detect_cube(
 
         auto& output   = thread_results[tid];
         auto& failures = thread_failures[tid];
+
+        DetectScratch scratch;
 
         const std::int64_t npixels =
             static_cast<std::int64_t>(H) *
@@ -239,7 +253,8 @@ CubeResult detect_cube(
                         spect_view,
                         qa_view,
                         hoptions,
-                        loptions
+                        loptions,
+                        scratch
                     );
 
                 if (!keep_masks)

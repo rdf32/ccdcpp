@@ -273,11 +273,13 @@ public:
     // Constructor
     //----------------------------------------------------------------------
 
+    // The workspace keeps its own copy of `options`: the Standard procedure
+    // adjusts PEEK_SIZE and CHANGE_THRESHOLD per pixel.
     HarmonicWorkspace(
         ArrayView<const std::int64_t, 1> dates,
         ArrayView<const scalar_t, 2> spectral,
         ArrayView<const std::uint8_t, 1> qas,
-        HarmonicOptions& options
+        const HarmonicOptions& options
     )
         :
         dates_(dates),

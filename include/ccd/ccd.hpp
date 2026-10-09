@@ -11,6 +11,7 @@
 #include "ccd/ccd.hpp"
 
 #include "ccd/procedure/fit.hpp"
+#include "ccd/procedure/standard.hpp"
 
 namespace ccd
 {
@@ -149,12 +150,38 @@ inline void print_change_models(
     }
 }
 
+//------------------------------------------------------------------------------
+//
+// Scratch detect() reuses from one pixel to the next.
+//
+// Every buffer in here is rewritten before it is read for each pixel, so a
+// thread that keeps one of these across pixels gets the same results as a
+// fresh one per pixel, without reallocating the buffers.
+//
+//------------------------------------------------------------------------------
+
+struct DetectScratch
+{
+    LassoWorkspace lasso{0};
+    StandardProcedure standard;
+};
+
 FitResult detect(
     ArrayView<const std::int64_t, 1> dates, // shape -> (timesteps)
     ArrayView<scalar_t, 2> spectral,  // shape -> (bands, timesteps)
     ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
-    HarmonicOptions hoptions,
-    LassoOptions loptions
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions
+);
+
+// detect() with caller-held scratch.
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    DetectScratch& scratch
 );
 
 //------------------------------------------------------------------------------
@@ -181,8 +208,8 @@ CubeResult detect_cube(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<scalar_t, 4> spectral,          // (H,W,B,T)
     ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
-    HarmonicOptions hoptions,
-    LassoOptions loptions,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
     int threads = 0,
     bool keep_masks = true
 );
