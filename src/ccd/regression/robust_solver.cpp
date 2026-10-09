@@ -1,5 +1,6 @@
 #include "ccd/regression/robust_solver.hpp"
 
+#include <algorithm>
 #include <vector>
 #include <Eigen/Dense>
 
@@ -16,39 +17,23 @@ RobustSolver::RobustSolver(
     : options_(options)
 {}
 
-RobustModel RobustSolver::fit(
-    Eigen::Ref<const Eigen::MatrixXd> X,
-    Eigen::Ref<const Eigen::VectorXd> y
-) {
-    //--------------------------------------------------------
-    // Initial OLS
-    //--------------------------------------------------------
-    Eigen::VectorXd ones =
-        Eigen::VectorXd::Ones(
-            y.size()
-        );
+RobustDesign::RobustDesign(
+    Eigen::Ref<const Eigen::MatrixXd> X
+)
+    : X_(X),
+      unweighted_svd_(X_)
+{}
 
-    Eigen::VectorXd resid;
-    Eigen::VectorXd coefficients =
-        weighted_fit(
-            X,
-            y,
-            ones,
-            resid
-        );
+//------------------------------------------------------------
+// Leverage adjustment, 1 / sqrt(1 - h_i)
+//------------------------------------------------------------
+const Eigen::VectorXd& RobustDesign::leverage_adjustment()
+{
+    if (have_adjustment_)
+        return adjustment_;
 
-    scalar_t scale = 
-        mad(resid);
+    const auto& X = X_;
 
-    if(scale < EPS)
-        return RobustModel(
-            1,
-            coefficients
-        );
-
-    //--------------------------------------------------------
-    // leverage adjustment
-    //--------------------------------------------------------
     Eigen::HouseholderQR<Eigen::MatrixXd> qr(X);
 
     Eigen::MatrixXd R =
@@ -77,14 +62,68 @@ RobustModel RobustSolver::fit(
             std::min(0.9999, leverage[i]);
     }
 
-    Eigen::VectorXd adj =
+    adjustment_ =
         (1.0 / (1.0 - leverage.array()).sqrt()).matrix();
+
+    have_adjustment_ = true;
+    return adjustment_;
+}
+
+RobustModel RobustSolver::fit(
+    Eigen::Ref<const Eigen::MatrixXd> X,
+    Eigen::Ref<const Eigen::VectorXd> y
+) {
+    RobustDesign design(X);
+    return fit(design, y);
+}
+
+RobustModel RobustSolver::fit(
+    RobustDesign& design,
+    Eigen::Ref<const Eigen::VectorXd> y
+) {
+    const auto X = design.X();
+
+    //--------------------------------------------------------
+    // Initial OLS
+    //
+    // Unit weights: sqrt(1) * X is X and sqrt(1) * y is y, so
+    // the weighted solve is the shared SVD of X applied to y.
+    //--------------------------------------------------------
+    Eigen::VectorXd coefficients =
+        design.unweighted_svd_.solve(y);
+
+    Eigen::VectorXd resid =
+        y - X * coefficients;
+
+    scalar_t scale = 
+        mad(resid);
+
+    if(scale < EPS)
+        return RobustModel(
+            1,
+            coefficients
+        );
+
+    //--------------------------------------------------------
+    // leverage adjustment
+    //--------------------------------------------------------
+    const Eigen::VectorXd& adj =
+        design.leverage_adjustment();
     //--------------------------------------------------------
     // IRLS
     //--------------------------------------------------------
     Eigen::VectorXd weights =
         Eigen::VectorXd::Ones(
             y.size()
+        );
+
+    // y is fixed across iterations, so are its mean and spread.
+    const scalar_t y_mean = y.mean();
+    const scalar_t y_std =
+        std::sqrt(
+            (y.array() - y_mean)
+            .square()
+            .mean()
         );
     
     index_t iter = 1;
@@ -99,14 +138,6 @@ RobustModel RobustSolver::fit(
 
         resid =
             resid.array() * adj.array();
-
-        scalar_t y_mean = y.mean();
-        scalar_t y_std =
-            std::sqrt(
-                (y.array() - y_mean)
-                .square()
-                .mean()
-            );
         
         scale =
             std::max(EPS * y_std, mad(resid));
@@ -116,7 +147,7 @@ RobustModel RobustSolver::fit(
 
         coefficients =
             weighted_fit(
-                X,
+                design,
                 y,
                 weights,
                 resid
@@ -138,26 +169,30 @@ RobustModel RobustSolver::fit(
 // Weighted least squares
 //------------------------------------------------------------
 Eigen::VectorXd RobustSolver::weighted_fit(
-    const Eigen::MatrixXd& X,
-    const Eigen::VectorXd& y,
+    RobustDesign& design,
+    Eigen::Ref<const Eigen::VectorXd> y,
     const Eigen::VectorXd& w,
     Eigen::VectorXd& residuals
 )
 {
-    Eigen::VectorXd sqrt_w =
+    const auto X = design.X();
+
+    auto& sqrt_w = design.sqrt_w_;
+    auto& Xw = design.Xw_;
+    auto& yw = design.yw_;
+    auto& svd = design.weighted_svd_;
+
+    sqrt_w =
         w.array().sqrt();
 
-    Eigen::MatrixXd Xw =
+    Xw =
         sqrt_w.asDiagonal() * X;
 
-    Eigen::VectorXd yw =
+    yw =
         y.array() *
         sqrt_w.array();
 
-    Eigen::BDCSVD<
-        Eigen::MatrixXd,
-        Eigen::ComputeThinU | Eigen::ComputeThinV
-    > svd(Xw);
+    svd.compute(Xw);
 
     Eigen::VectorXd beta =
         svd.solve(yw);
@@ -175,16 +210,12 @@ scalar_t RobustSolver::mad(
     const Eigen::VectorXd& x
 ) const
 {
-    std::vector<scalar_t> values;
+    auto& values = mad_values_;
+    values.clear();
     values.reserve(x.size());
 
     for(auto v : x)
         values.push_back(std::abs(v));
-
-    std::sort(
-        values.begin(),
-        values.end()
-    );
 
     // Python version uses median(rs[4:])
     // because this is Landsat time-series specific
@@ -193,22 +224,42 @@ scalar_t RobustSolver::mad(
     index_t start = 
         std::min<index_t>(4, values.size());
 
-    std::vector<scalar_t> trimmed(
-        values.begin() + start,
+    index_t n = values.size() - start;
+
+    if(n == 0)
+        return 0.0;
+
+    //--------------------------------------------------------
+    // The median of the sorted values past `start` is one or
+    // two order statistics of the whole set: select them
+    // rather than sort. For an even count the lower middle is
+    // the largest value left of the upper one.
+    //--------------------------------------------------------
+    const auto upper =
+        values.begin() + start + n/2;
+
+    std::nth_element(
+        values.begin(),
+        upper,
         values.end()
     );
 
     scalar_t med;
-    index_t n = trimmed.size();
 
     if(n % 2)
     {
-        med = trimmed[n/2];
+        med = *upper;
     }
     else
     {
+        const scalar_t lower =
+            *std::max_element(
+                values.begin(),
+                upper
+            );
+
         med =
-            0.5 * (trimmed[n/2-1] + trimmed[n/2]);
+            0.5 * (lower + *upper);
     }
 
     return med / options_.scale_constant;

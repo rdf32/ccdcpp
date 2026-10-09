@@ -481,6 +481,9 @@ ProcessingMask tmask(
     options.max_iter = 5;
     RobustSolver solver(options);
 
+    // Every band is fitted against the same X.
+    RobustDesign design(X);
+
     //----------------------------------------------------------
     // Test each spectral band
     //----------------------------------------------------------
@@ -495,7 +498,7 @@ ProcessingMask tmask(
         // Fit
         //------------------------------------------------------
         RobustModel model = solver.fit(
-            X,
+            design,
             y
         );
 
