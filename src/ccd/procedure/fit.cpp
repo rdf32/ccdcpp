@@ -111,7 +111,7 @@ FitResult FitProcedure::run(
         };
     }
 
-    results.models.push_back(result);
+    results.models.push_back(std::move(result));
     results.mask = mask;
 
     return results;

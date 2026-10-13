@@ -935,7 +935,7 @@ FitResult StandardProcedure::run(
                 catch_model(hworkspace, lworkspace, solver, mask, window_0, CurveQA::Start);
             // append result
             start = false;
-            results.models.push_back(result);
+            results.models.push_back(std::move(result));
         }
 
         if (window.stop + options.PEEK_SIZE > masked_.observations) {
@@ -950,7 +950,7 @@ FitResult StandardProcedure::run(
             mask,
             window
         );
-        results.models.push_back(result);
+        results.models.push_back(std::move(result));
         //--------------------------------------------------
         // iterate
         //--------------------------------------------------
@@ -964,7 +964,7 @@ FitResult StandardProcedure::run(
         auto window_1 = Window(prev_break, masked_.observations);
         ChangeModel result = 
             catch_model(hworkspace, lworkspace, solver, mask, window_1, CurveQA::End);
-        results.models.push_back(result);
+        results.models.push_back(std::move(result));
     }
     results.mask = std::move(mask);
     return results;
