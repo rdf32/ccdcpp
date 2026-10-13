@@ -156,3 +156,33 @@ TEST(Validation, DetectCubeRejectsDateCountMismatch)
     EXPECT_THROW(run_cube<double>(7, 40, 39), std::invalid_argument);
     EXPECT_THROW(run_cube<double>(7, 40, 41), std::invalid_argument);
 }
+
+//------------------------------------------------------------------------------
+// A series no longer than the band count is valid input with too few
+// observations to fit, in every procedure: it returns no models.
+//------------------------------------------------------------------------------
+
+TEST(Validation, SeriesNoLongerThanBandCountRuns)
+{
+    for (ccd::index_t T : {1, 3, 6, 7})
+    {
+        const auto dates = make_dates(T);
+        const auto spectral = make_spectral<double>(7, T);
+
+        // clear -> Standard, snow -> PermanentSnow, cloud -> InsufficientClear
+        for (const std::uint8_t qa : {0, 3, 4})
+        {
+            const std::vector<std::uint8_t> qas(T, qa);
+
+            const auto result = ccd::detect(
+                ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+                ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
+                ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
+                ccd::HarmonicOptions(),
+                ccd::LassoOptions()
+            );
+
+            EXPECT_TRUE(result.models.empty()) << "T=" << T << " qa=" << int(qa);
+        }
+    }
+}

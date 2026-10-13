@@ -131,8 +131,11 @@ void apply_thermal_filter(
     ProcessingMask& mask
 )
 {
-    // should actually have it check the "layout" and make sure its (B, T)
-    assert(spectral.extent(0) < spectral.extent(1));
+    // `spectral` is (B, T). Its extents cannot tell (B, T) from (T, B) --
+    // a series may be shorter than its band count -- so the band count is
+    // checked at the entry points (validate_bands) and this checks only that
+    // the thermal band is on the band axis.
+    assert(thermal_band < spectral.extent(0));
 
     ArrayView<const scalar_t, 1> thermal =
         spectral.slice(fixed(thermal_band), all());
