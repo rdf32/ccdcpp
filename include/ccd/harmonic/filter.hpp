@@ -160,9 +160,13 @@ void apply_saturation_filter(
 //
 // Insufficient clear procedure green filter.
 //
-// Removes observations where:
+// Removes masked observations where
 //
-// green > median(green before STAT_ORD) + filter_range
+//   green >= median(green of the masked observations dated <= max_date)
+//            + filter_range
+//
+// at any date (scope All), only at dates <= max_date (StatWindow), or none
+// (Off). See GreenFilterScope in harmonic.hpp.
 //
 //------------------------------------------------------------------------------
 
@@ -172,6 +176,7 @@ void apply_green_median_filter(
     index_t green_band,
     std::int64_t max_date,
     scalar_t filter_range,
+    GreenFilterScope scope,
     ProcessingMask& mask
 );
 

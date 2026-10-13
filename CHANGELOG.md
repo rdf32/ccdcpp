@@ -11,6 +11,12 @@
   it is rejected. The defaults are the bounds as they were, so output is
   unchanged. In profiles: `Units.refl_inclusive=(lo, hi)` and
   `Thermal.inclusive=(lo, hi)`.
+- `HarmonicOptions.GREEN_FILTER_SCOPE`, a `ccdcpp.GreenFilterScope`: which
+  observations the InsufficientClear green median filter drops. `All` (the
+  default, and the filter's behaviour so far) drops them at any date,
+  `StatWindow` only those dated up to `STAT_ORD`, as pyccd intends, and `Off`
+  disables the filter. In profiles: `SensorProfile.green_filter_scope`,
+  `"all"`, `"stat_window"` or `"off"`.
 
 ## 0.3.0 - 2026-10-13
 

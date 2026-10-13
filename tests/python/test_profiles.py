@@ -400,6 +400,32 @@ class BoundFlags(unittest.TestCase):
         self.assertNotEqual(u, ccdcpp.REFLECTANCE)
 
 
+class GreenFilterScopeField(unittest.TestCase):
+    def test_default_is_all(self):
+        for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
+            with self.subTest(preset=preset.__name__):
+                p = preset()
+                self.assertEqual(p.green_filter_scope, "all")
+                self.assertEqual(p.options()[0].GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.All)
+
+    def test_names_and_values(self):
+        base = presets.landsat_c1_dn()
+        for name, value in ccdcpp.GREEN_FILTER_SCOPES.items():
+            with self.subTest(name=name):
+                p = dataclasses.replace(base, green_filter_scope=name)
+                self.assertEqual(p.options()[0].GREEN_FILTER_SCOPE, value)
+                q = dataclasses.replace(base, green_filter_scope=value)
+                self.assertEqual(q.green_filter_scope, name)
+                self.assertEqual(q, p)
+                self.assertEqual(hash(q), hash(p))
+                self.assertEqual(pickle.loads(pickle.dumps(p)), p)
+
+    def test_unknown_name(self):
+        with self.assertRaises(ValueError) as caught:
+            dataclasses.replace(presets.landsat_c1_dn(), green_filter_scope="StatWindow")
+        self.assertIn("green_filter_scope is 'StatWindow'", str(caught.exception))
+
+
 class Overrides(unittest.TestCase):
     def test_hoptions_and_loptions_win(self):
         h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()

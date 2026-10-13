@@ -19,6 +19,21 @@ void bind_options(py::module_& m)
     // The largest band count, and the capacity of each band list.
     m.attr("CCD_MAX_BANDS") = ccd::CCD_MAX_BANDS;
 
+    py::enum_<ccd::GreenFilterScope>(
+        m,
+        "GreenFilterScope",
+        "Which observations the InsufficientClear green median filter drops. "
+        "The threshold is the median green of the masked observations dated "
+        "<= STAT_ORD plus MEDIAN_GREEN_FILTER; a masked observation whose "
+        "green is >= it is dropped at any date (All), only when dated <= "
+        "STAT_ORD (StatWindow, the scope pyccd computes the mask for), or "
+        "never (Off). With no masked observation dated <= STAT_ORD nothing "
+        "is dropped."
+    )
+    .value("All", ccd::GreenFilterScope::All)
+    .value("StatWindow", ccd::GreenFilterScope::StatWindow)
+    .value("Off", ccd::GreenFilterScope::Off);
+
     py::class_<ccd::HarmonicOptions>(
         m,
         "HarmonicOptions"
@@ -126,6 +141,15 @@ void bind_options(py::module_& m)
     .def_readwrite(
         "MEDIAN_GREEN_FILTER",
         &ccd::HarmonicOptions::MEDIAN_GREEN_FILTER
+    )
+
+    .def_readwrite(
+        "GREEN_FILTER_SCOPE",
+        &ccd::HarmonicOptions::GREEN_FILTER_SCOPE,
+        "A ccdcpp.GreenFilterScope (default All): which observations the "
+        "InsufficientClear green median filter drops, at any date (All), "
+        "only dated <= STAT_ORD (StatWindow) or none (Off). Not a unit "
+        "constant."
     )
 
     //--------------------------------------------------------------------------

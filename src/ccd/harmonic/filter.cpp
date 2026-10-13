@@ -115,6 +115,7 @@ ProcessingMask insufficientclear(
         options.GREEN_IDX,
         options.STAT_ORD,
         options.MEDIAN_GREEN_FILTER,
+        options.GREEN_FILTER_SCOPE,
         mask
     );
 
@@ -211,9 +212,13 @@ void apply_green_median_filter(
     index_t green_band,
     std::int64_t max_date,
     scalar_t filter_range,
+    GreenFilterScope scope,
     ProcessingMask& mask
 )
 {
+    if (scope == GreenFilterScope::Off)
+        return;
+
     //----------------------------------------------------------------------
     // Collect green values used for median calculation
     //
@@ -259,10 +264,17 @@ void apply_green_median_filter(
     //
     // green_mask = green < median + filter_range
     //
+    // over the masked observations dated <= max_date for StatWindow, and
+    // over every masked observation for All.
     //----------------------------------------------------------------------
+    const bool window_only = scope == GreenFilterScope::StatWindow;
+
     for (index_t i = 0; i < dates.size(); ++i)
     {
         if(!mask.test(i))
+            continue;
+
+        if (window_only && dates(i) > max_date)
             continue;
 
 

@@ -47,6 +47,7 @@ import numpy as np
 from .ccdcpp import (
     CCD_MAX_BANDS,
     NO_BAND,
+    GreenFilterScope,
     HarmonicOptions,
     LassoOptions,
     chi2_quantile,
@@ -102,6 +103,13 @@ CADENCE_FIELDS = (
 #: The probability behind the ``OUTLIER_THRESHOLD`` default:
 #: ``chi2_quantile(OUTLIER_PROBABILITY, 5)`` is that default to the last bit.
 OUTLIER_PROBABILITY = 1.0 - 1e-6
+
+#: ``green_filter_scope`` names -> ``ccdcpp.GreenFilterScope`` values.
+GREEN_FILTER_SCOPES = {
+    "all": GreenFilterScope.All,
+    "stat_window": GreenFilterScope.StatWindow,
+    "off": GreenFilterScope.Off,
+}
 
 #: ``stat_ord=None`` puts every date inside the statistics window.
 NO_STAT_CUTOFF = 2**63 - 1
@@ -231,6 +239,11 @@ class SensorProfile:
     qa_table_builder
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
+    green_filter_scope
+        ``GREEN_FILTER_SCOPE``, by name from :data:`GREEN_FILTER_SCOPES`:
+        ``"all"`` (the default), ``"stat_window"`` or ``"off"``; a
+        ``ccdcpp.GreenFilterScope`` is accepted and stored as its name. Which
+        observations InsufficientClear's green median filter drops.
 
     Profiles are immutable, hashable and picklable, so one can be handed to
     worker processes where option objects cannot.
@@ -251,10 +264,14 @@ class SensorProfile:
     change_threshold: Optional[float] = None
     outlier_threshold: Optional[float] = None
     qa_table_builder: Optional[str] = None
+    green_filter_scope: str = "all"
 
     def __post_init__(self):
         for name in ("band_names", "roles", "detection", "tmask", "saturation"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
+        if isinstance(self.green_filter_scope, GreenFilterScope):
+            names = {v: k for k, v in GREEN_FILTER_SCOPES.items()}
+            object.__setattr__(self, "green_filter_scope", names[self.green_filter_scope])
         items = self.cadence.items() if isinstance(self.cadence, Mapping) else self.cadence
         object.__setattr__(self, "cadence", tuple(sorted((str(k), v) for k, v in items)))
         self._validate()
@@ -301,6 +318,11 @@ class SensorProfile:
         for key, _ in self.cadence:
             if key not in CADENCE_FIELDS:
                 self._fail(f"cadence names {key!r}; it may set {CADENCE_FIELDS}")
+        if self.green_filter_scope not in GREEN_FILTER_SCOPES:
+            self._fail(
+                f"green_filter_scope is {self.green_filter_scope!r}; it is one of "
+                f"{tuple(GREEN_FILTER_SCOPES)}"
+            )
         if self.qa_table_builder is not None and not callable(
             getattr(qa_tables, self.qa_table_builder, None)
         ):
@@ -336,6 +358,7 @@ class SensorProfile:
         h.REFL_MAX = self.units.refl_max
         h.REFL_MIN_INCLUSIVE, h.REFL_MAX_INCLUSIVE = self.units.refl_inclusive
         h.MEDIAN_GREEN_FILTER = self.units.median_green_filter
+        h.GREEN_FILTER_SCOPE = GREEN_FILTER_SCOPES[self.green_filter_scope]
         if self.thermal is not None:
             h.THERMAL_SCALE = self.thermal.scale
             h.THERMAL_OFFSET = self.thermal.offset

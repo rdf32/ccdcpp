@@ -6,6 +6,10 @@
 //              themselves and at NaN, with each end inclusive or exclusive.
 //              The saturation bound is tested in DN (0, 10000) and in
 //              reflectance (0.0, 1.0): the flags mean the same in both units.
+//   GreenScope.*
+//              filter::insufficientclear's green median filter under each
+//              GreenFilterScope, on a series with green spikes before and
+//              after STAT_ORD, and on one dated entirely after it.
 //
 //==============================================================================
 
@@ -290,4 +294,138 @@ TEST(Bounds, StandardFilterReadsTheFlags)
 
         EXPECT_EQ(kept(ccd::filter::standard(workspace)), mode.expected);
     }
+}
+
+
+namespace
+{
+
+constexpr std::int64_t STAT_ORD = 731000;
+
+// A 7-band DN series of `T` observations 16 days apart from `first`, all
+// clear, green 1000 except where `green` says otherwise.
+struct Series
+{
+    std::vector<std::int64_t> dates;
+    std::vector<ccd::scalar_t> spectral;
+    std::vector<std::uint8_t> qas;
+    ccd::index_t T;
+
+    Series(std::int64_t first, ccd::index_t T_)
+        : dates(T_), spectral(7 * T_, 1000.0), qas(T_, 0), T(T_)
+    {
+        for (ccd::index_t t = 0; t < T; ++t)
+        {
+            dates[t] = first + 16 * t;
+            spectral[6 * T + t] = 2900.0;
+        }
+    }
+
+    void green(ccd::index_t t, ccd::scalar_t value)
+    {
+        spectral[1 * T + t] = value;
+    }
+
+    std::vector<int> insufficient_clear(ccd::GreenFilterScope scope) const
+    {
+        ccd::HarmonicOptions h;
+        h.STAT_ORD = STAT_ORD;
+        h.GREEN_FILTER_SCOPE = scope;
+
+        const ccd::HarmonicWorkspace workspace(
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+            ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
+                spectral.data(), {7, T}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
+            h);
+
+        return kept(ccd::filter::insufficientclear(workspace));
+    }
+};
+
+} // namespace
+
+TEST(GreenScope, DefaultIsAll)
+{
+    EXPECT_EQ(ccd::HarmonicOptions().GREEN_FILTER_SCOPE, ccd::GreenFilterScope::All);
+}
+
+// Green median before STAT_ORD is 1000, so the threshold is 1400. Spikes of
+// 2000 sit at t = 2 (before STAT_ORD) and t = 17 (after); t = 4 is exactly
+// the threshold, which the filter drops (green >= threshold), and t = 6 is
+// just below it. t = 9 is a cloud: out of the mask whatever its green.
+TEST(GreenScope, SpikesBeforeAndAfterStatOrd)
+{
+    // 20 observations; the first 10 are dated <= STAT_ORD.
+    Series s(STAT_ORD - 16 * 9, 20);
+    ASSERT_LE(s.dates[9], STAT_ORD);
+    ASSERT_GT(s.dates[10], STAT_ORD);
+
+    s.green(2, 2000.0);
+    s.green(4, 1400.0);
+    s.green(6, 1399.0);
+    s.green(17, 2000.0);
+    s.green(14, 1400.0);
+    s.qas[9] = 4;
+
+    std::vector<int> off(20, 1);
+    off[9] = 0;
+
+    std::vector<int> window = off;
+    window[2] = window[4] = 0;
+
+    std::vector<int> all = window;
+    all[17] = all[14] = 0;
+
+    EXPECT_EQ(s.insufficient_clear(ccd::GreenFilterScope::All), all);
+    EXPECT_EQ(s.insufficient_clear(ccd::GreenFilterScope::StatWindow), window);
+    EXPECT_EQ(s.insufficient_clear(ccd::GreenFilterScope::Off), off);
+}
+
+// Every observation after STAT_ORD: no median, so no scope drops anything.
+TEST(GreenScope, NothingBeforeStatOrd)
+{
+    Series s(STAT_ORD + 1, 12);
+    s.green(3, 5000.0);
+    s.green(8, 9000.0);
+
+    const std::vector<int> every(12, 1);
+
+    for (const auto scope : {ccd::GreenFilterScope::All,
+                             ccd::GreenFilterScope::StatWindow,
+                             ccd::GreenFilterScope::Off})
+    {
+        EXPECT_EQ(s.insufficient_clear(scope), every)
+            << "scope " << static_cast<int>(scope);
+    }
+}
+
+// The scope is read only by InsufficientClear: the Standard filter mask is
+// the same under each.
+TEST(GreenScope, StandardFilterIgnoresIt)
+{
+    Series s(STAT_ORD - 16 * 9, 20);
+    s.green(2, 2000.0);
+    s.green(17, 2000.0);
+
+    std::vector<std::vector<int>> masks;
+    for (const auto scope : {ccd::GreenFilterScope::All,
+                             ccd::GreenFilterScope::StatWindow,
+                             ccd::GreenFilterScope::Off})
+    {
+        ccd::HarmonicOptions h;
+        h.STAT_ORD = STAT_ORD;
+        h.GREEN_FILTER_SCOPE = scope;
+        const ccd::HarmonicWorkspace workspace(
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(s.dates.data(), {s.T}),
+            ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
+                s.spectral.data(), {7, s.T}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(s.qas.data(), {s.T}),
+            h);
+        masks.push_back(kept(ccd::filter::standard(workspace)));
+    }
+
+    EXPECT_EQ(masks[0], std::vector<int>(20, 1));
+    EXPECT_EQ(masks[1], masks[0]);
+    EXPECT_EQ(masks[2], masks[0]);
 }

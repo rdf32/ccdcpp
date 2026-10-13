@@ -438,6 +438,56 @@ class BoundFlags(unittest.TestCase):
                                  [0, 1])
 
 
+class GreenFilterScope(unittest.TestCase):
+    STAT_ORD = 731000
+
+    def test_default_and_docstring(self):
+        self.assertEqual(ccdcpp.HarmonicOptions().GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.All)
+        self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
+        self.assertIn("default All", ccdcpp.HarmonicOptions.GREEN_FILTER_SCOPE.__doc__)
+        self.assertIn("STAT_ORD", ccdcpp.GreenFilterScope.__doc__)
+
+    def pixel(self, first):
+        """An insufficient-clear pixel: one clear observation in five, green
+        spikes at t = 10 and t = 150 among the clear ones."""
+        T = 200
+        d = first + 16 * np.arange(T, dtype=np.int64)
+        s = np.empty((7, T))
+        s[:] = (1000.0 + 100.0 * np.arange(7))[:, None]
+        s[6] = 2900.0
+        q = np.full(T, 4, dtype=np.uint8)
+        q[::5] = 0
+        s[1, 10] = s[1, 150] = 3000.0
+        return d, s, q
+
+    def detect_mask(self, pixel, scope):
+        h, lo = options()
+        h.STAT_ORD = self.STAT_ORD
+        h.GREEN_FILTER_SCOPE = scope
+        out = ccdcpp.detect(*pixel, h, lo)
+        self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
+        return out["processing_mask"]
+
+    def test_spikes_before_and_after_stat_ord(self):
+        pixel = self.pixel(self.STAT_ORD - 16 * 99)   # t = 99 is STAT_ORD
+        for scope, kept in ((ccdcpp.GreenFilterScope.All, (0, 0)),
+                            (ccdcpp.GreenFilterScope.StatWindow, (0, 1)),
+                            (ccdcpp.GreenFilterScope.Off, (1, 1))):
+            with self.subTest(scope=scope):
+                mask = self.detect_mask(pixel, scope)
+                self.assertEqual((mask[10], mask[150]), kept)
+                self.assertEqual(int(mask.sum()), 38 + sum(kept))
+
+    def test_every_date_after_stat_ord(self):
+        pixel = self.pixel(self.STAT_ORD + 1)
+        masks = [self.detect_mask(pixel, scope) for scope in (
+            ccdcpp.GreenFilterScope.All, ccdcpp.GreenFilterScope.StatWindow,
+            ccdcpp.GreenFilterScope.Off)]
+        for mask in masks:
+            np.testing.assert_array_equal(mask, masks[2])
+        self.assertEqual((masks[0][10], masks[0][150]), (1, 1))
+
+
 class TimestepMismatch(unittest.TestCase):
     def test_detect(self):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):

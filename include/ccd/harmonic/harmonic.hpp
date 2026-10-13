@@ -15,6 +15,32 @@ namespace ccd
 
 //==============================================================================
 //
+// GreenFilterScope
+//
+// Which observations the InsufficientClear procedure's green median filter
+// drops. The threshold is the same in each: the median green of the masked
+// observations dated <= STAT_ORD, plus MEDIAN_GREEN_FILTER. A masked
+// observation whose green is >= the threshold is dropped
+//
+//   All          at any date;
+//   StatWindow   only when dated <= STAT_ORD, which is the scope pyccd's
+//                insufficient_clear_filter computes the mask for;
+//   Off          never: the filter does not run.
+//
+// When no masked observation is dated <= STAT_ORD there is no median and
+// nothing is dropped.
+//
+//==============================================================================
+
+enum class GreenFilterScope : std::uint8_t
+{
+    All,
+    StatWindow,
+    Off
+};
+
+//==============================================================================
+//
 // HarmonicOptions
 //
 // Parameters controlling CCD harmonic processing.
@@ -287,6 +313,10 @@ struct HarmonicOptions
     // equivalent is 0.04, which is why this is scalar_t and not index_t --
     // as an integer it could not represent the preset's value at all.
     scalar_t MEDIAN_GREEN_FILTER = 400.0;
+
+    // Which observations the green median filter drops; see GreenFilterScope.
+    // Not a unit constant.
+    GreenFilterScope GREEN_FILTER_SCOPE = GreenFilterScope::All;
 
     //--------------------------------------------------------------------------
     // Statistics
