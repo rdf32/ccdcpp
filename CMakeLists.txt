@@ -418,6 +418,38 @@ if(CCD_BUILD_TESTS)
             CCD_GOLDEN_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/golden_fixture.txt"
     )
 
+    # Band layouts other than Landsat's: a second fixture of synthetic
+    # profiles, and the layout equivalences. See tests/ccd/golden/test_bands.cpp.
+    add_executable(
+        test_bands
+
+        tests/ccd/golden/test_bands.cpp
+    )
+
+
+    target_link_libraries(
+        test_bands
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_bands
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    target_compile_definitions(
+        test_bands
+
+        PRIVATE
+            CCD_BANDS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/bands_fixture.txt"
+    )
+
     configure_file(
         ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv
         ${PROJECT_BINARY_DIR}/test002_c2.csv
@@ -489,6 +521,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_units)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_golden)
+    gtest_discover_tests(test_bands)
 
 endif()
 
