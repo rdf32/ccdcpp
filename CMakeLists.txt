@@ -113,6 +113,7 @@ add_library(
     src/ccd/procedure/standard.cpp
 
     src/ccd/ccd.cpp
+    src/ccd/qa_table.cpp
 )
 
 
@@ -450,6 +451,31 @@ if(CCD_BUILD_TESTS)
             CCD_BANDS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/bands_fixture.txt"
     )
 
+    # QA lookup tables: raw QA decoded through a table against the codes
+    # passed directly. See tests/ccd/golden/test_qa_tables.cpp.
+    add_executable(
+        test_qa_tables
+
+        tests/ccd/golden/test_qa_tables.cpp
+    )
+
+
+    target_link_libraries(
+        test_qa_tables
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_qa_tables
+
+        PRIVATE
+            cxx_std_17
+    )
+
     configure_file(
         ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv
         ${PROJECT_BINARY_DIR}/test002_c2.csv
@@ -522,6 +548,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_bands)
+    gtest_discover_tests(test_qa_tables)
 
 endif()
 

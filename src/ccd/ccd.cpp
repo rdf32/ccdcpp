@@ -163,6 +163,51 @@ void validate_shapes(
 }
 
 //------------------------------------------------------------------------------
+// A uint16 `qas` holds raw QA values and has no meaning without a table.
+//------------------------------------------------------------------------------
+template<typename Qa>
+void validate_qa(const QaTable* qa_table)
+{
+    if (std::is_same_v<Qa, std::uint16_t> && qa_table == nullptr)
+    {
+        throw std::invalid_argument(
+            "qas is uint16, which holds raw QA values; pass a QaTable "
+            "(qa_table) to decode them, or pass uint8 QA codes"
+        );
+    }
+}
+
+//------------------------------------------------------------------------------
+// The pixel's QA codes.
+//
+// Without a table a uint8 `qas` is the codes, and is returned as it is. With
+// one, every value is decoded into `scratch`, which is returned. A uint16
+// `qas` always has a table here; validate_qa() saw to that.
+//------------------------------------------------------------------------------
+template<typename Qa>
+ArrayView<const std::uint8_t, 1> qa_codes(
+    ArrayView<const Qa, 1> qas,
+    const QaTable* qa_table,
+    std::vector<std::uint8_t>& scratch
+)
+{
+    if constexpr (std::is_same_v<Qa, std::uint8_t>)
+    {
+        if (qa_table == nullptr)
+            return qas;
+    }
+
+    const index_t T = qas.size();
+    scratch.resize(T);
+
+    const auto& code = qa_table->code;
+    for (index_t t = 0; t < T; ++t)
+        scratch[t] = code[qas(t)];
+
+    return ArrayView<const std::uint8_t, 1>::contiguous(scratch.data(), {T});
+}
+
+//------------------------------------------------------------------------------
 // One pixel, from a (B, T) view of any supported element type.
 //
 // The procedures read a contiguous scalar_t (B, T) block. When the input is
@@ -170,15 +215,18 @@ void validate_shapes(
 // otherwise it is converted into scratch.spectral, and the thermal transform
 // is applied there. The caller's buffer is never written.
 //------------------------------------------------------------------------------
-template<typename Value>
+template<typename Value, typename Qa>
 FitResult detect_pixel(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const Value, 2> spectral,
-    ArrayView<const std::uint8_t, 1> qas,
+    ArrayView<const Qa, 1> raw_qas,
+    const QaTable* qa_table,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     DetectScratch& scratch
 ) {
+    const ArrayView<const std::uint8_t, 1> qas =
+        qa_codes<Qa>(raw_qas, qa_table, scratch.qas);
 
     Quality quality;
     Quality::Statistics quality_stat = quality.compute_until(
@@ -331,11 +379,12 @@ FitResult detect_pixel(
     return final_result;
 }
 
-template<typename Value>
+template<typename Value, typename Qa>
 CubeResult detect_cube_impl(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const Value, 4> spectral,       // (H,W,B,T)
-    ArrayView<const std::uint8_t, 3> qas,     // (H,W,T)
+    ArrayView<const Qa, 3> qas,               // (H,W,T)
+    const QaTable* qa_table,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads,
@@ -356,6 +405,7 @@ CubeResult detect_cube_impl(
     }
 
     validate_shapes(hoptions, spectral.extent(2), T, dates.size(), qas.extent(2));
+    validate_qa<Qa>(qa_table);
 
     // threads == 0 keeps the historical behaviour: let the OpenMP runtime
     // decide, which is OMP_NUM_THREADS or the core count. A positive value is
@@ -435,10 +485,11 @@ CubeResult detect_cube_impl(
             try
             {
                 FitResult result =
-                    detect_pixel<Value>(
+                    detect_pixel<Value, Qa>(
                         dates,
                         spect_view,
                         qa_view,
+                        qa_table,
                         hoptions,
                         loptions,
                         scratch
@@ -532,12 +583,23 @@ FitResult detect(
     ArrayView<const scalar_t, 2> spectral,
     ArrayView<const std::uint8_t, 1> qas,
     const HarmonicOptions& hoptions,
-    const LassoOptions& loptions
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table
 ) {
-    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
-
     DetectScratch scratch;
-    return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
+    return detect(dates, spectral, qas, hoptions, loptions, scratch, qa_table);
+}
+
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table
+) {
+    DetectScratch scratch;
+    return detect(dates, spectral, qas, hoptions, loptions, scratch, qa_table);
 }
 
 FitResult detect(
@@ -546,11 +608,29 @@ FitResult detect(
     ArrayView<const std::uint8_t, 1> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
-    DetectScratch& scratch
+    DetectScratch& scratch,
+    const QaTablePtr& qa_table
 ) {
     validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
 
-    return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
+    return detect_pixel<scalar_t, std::uint8_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, scratch);
+}
+
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    DetectScratch& scratch,
+    const QaTablePtr& qa_table
+) {
+    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
+    validate_qa<std::uint16_t>(qa_table.get());
+
+    return detect_pixel<scalar_t, std::uint16_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, scratch);
 }
 
 CubeResult detect_cube(
@@ -560,9 +640,25 @@ CubeResult detect_cube(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads,
-    bool keep_masks
+    bool keep_masks,
+    const QaTablePtr& qa_table
 ) {
-    return detect_cube_impl<double>(dates, spectral, qas, hoptions, loptions, threads, keep_masks);
+    return detect_cube_impl<double, std::uint8_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+}
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const double, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table
+) {
+    return detect_cube_impl<double, std::uint16_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
 }
 
 CubeResult detect_cube(
@@ -572,9 +668,25 @@ CubeResult detect_cube(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads,
-    bool keep_masks
+    bool keep_masks,
+    const QaTablePtr& qa_table
 ) {
-    return detect_cube_impl<float>(dates, spectral, qas, hoptions, loptions, threads, keep_masks);
+    return detect_cube_impl<float, std::uint8_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+}
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table
+) {
+    return detect_cube_impl<float, std::uint16_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
 }
 
 CubeResult detect_cube(
@@ -584,9 +696,25 @@ CubeResult detect_cube(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads,
-    bool keep_masks
+    bool keep_masks,
+    const QaTablePtr& qa_table
 ) {
-    return detect_cube_impl<std::uint16_t>(dates, spectral, qas, hoptions, loptions, threads, keep_masks);
+    return detect_cube_impl<std::uint16_t, std::uint8_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+}
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table
+) {
+    return detect_cube_impl<std::uint16_t, std::uint16_t>(
+        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
 }
 
 } // namespace ccd

@@ -12,6 +12,7 @@
 
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/standard.hpp"
+#include "ccd/qa_table.hpp"
 
 namespace ccd
 {
@@ -170,6 +171,9 @@ struct DetectScratch
     // The pixel's (B, T) as scalar_t, when it has to be converted or its
     // thermal band transformed.
     std::vector<scalar_t> spectral;
+
+    // The pixel's (T) QA codes, when its raw QA is decoded through a QaTable.
+    std::vector<std::uint8_t> qas;
 };
 
 //------------------------------------------------------------------------------
@@ -204,9 +208,14 @@ void validate(const HarmonicOptions& options, index_t bands);
 // private copy, so calling detect() twice on the same buffer gives the same
 // result twice. `spectral` may be strided.
 //
+// `qas` is either the QA codes themselves (uint8, read as they are), or raw
+// QA values decoded through `qa_table` (uint8 or uint16; see qa_table.hpp).
+// A uint8 `qas` with a table is decoded too. The decoded codes go to private
+// scratch; `qas` is never written.
+//
 // Throws std::invalid_argument unless `spectral`'s band count passes
 // validate() and `dates`, `qas` and `spectral` agree on the number of
-// timesteps.
+// timesteps, and when `qas` is uint16 and `qa_table` is null.
 //
 //------------------------------------------------------------------------------
 
@@ -215,7 +224,17 @@ FitResult detect(
     ArrayView<const scalar_t, 2> spectral,  // shape -> (bands, timesteps)
     ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
     const HarmonicOptions& hoptions,
-    const LassoOptions& loptions
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table = nullptr
+);
+
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table = nullptr
 );
 
 // detect() with caller-held scratch.
@@ -225,7 +244,18 @@ FitResult detect(
     ArrayView<const std::uint8_t, 1> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
-    DetectScratch& scratch
+    DetectScratch& scratch,
+    const QaTablePtr& qa_table = nullptr
+);
+
+FitResult detect(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    DetectScratch& scratch,
+    const QaTablePtr& qa_table = nullptr
 );
 
 //------------------------------------------------------------------------------
@@ -254,6 +284,12 @@ FitResult detect(
 // uint16 or float32 cube gives the results of the same values widened to
 // float64 beforehand, without a float64 copy of the cube.
 //
+// `qas` is uint8 codes, or uint8 or uint16 raw values with `qa_table`, as for
+// detect(). Each pixel is decoded in a per-thread buffer, so the cube gives
+// the results of its decoded codes passed as uint8, without a decoded copy of
+// the cube. One table serves every thread. A uint16 `qas` with a null
+// `qa_table` throws std::invalid_argument before any pixel runs.
+//
 //------------------------------------------------------------------------------
 
 CubeResult detect_cube(
@@ -263,7 +299,19 @@ CubeResult detect_cube(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads = 0,
-    bool keep_masks = true
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr
+);
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const double, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr
 );
 
 CubeResult detect_cube(
@@ -273,7 +321,19 @@ CubeResult detect_cube(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads = 0,
-    bool keep_masks = true
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr
+);
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr
 );
 
 CubeResult detect_cube(
@@ -283,7 +343,19 @@ CubeResult detect_cube(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads = 0,
-    bool keep_masks = true
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr
+);
+
+CubeResult detect_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr
 );
 
 } // namespace ccd
