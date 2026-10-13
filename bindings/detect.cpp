@@ -249,11 +249,23 @@ py::dict detect_wrapper(
 // per-pixel copy.
 //------------------------------------------------------------------------------
 
+// The element type of CubeInput::spectral, read while the GIL is held:
+// testing a py::array's dtype creates and releases Python objects, which
+// run_cube cannot do.
+enum class SpectralType
+{
+    Float64,
+    Float32,
+    UInt16
+};
+
 struct CubeInput
 {
     py::array_t<std::int64_t, py::array::c_style> dates;
     py::array spectral;
     py::array qas;
+
+    SpectralType spectral_type = SpectralType::Float64;
 
     ccd::index_t H = 0;
     ccd::index_t W = 0;
@@ -386,10 +398,16 @@ static CubeInput check_cube(
     // ValueError, raised here, before the GIL is released.
     ccd::validate_bands(B);
 
+    const SpectralType spectral_type =
+        takes_as_is<std::uint16_t>(spectral) ? SpectralType::UInt16 :
+        takes_as_is<float>(spectral)         ? SpectralType::Float32 :
+                                               SpectralType::Float64;
+
     return CubeInput{
         std::move(dates),
         std::move(spectral),
         std::move(qas),
+        spectral_type,
         H, W, B, T
     };
 }
@@ -397,7 +415,8 @@ static CubeInput check_cube(
 //------------------------------------------------------------------------------
 // detect_cube on a checked input, dispatched on the spectral dtype.
 //
-// Called with the GIL released: it only reads buffers that `in` keeps alive.
+// Called with the GIL released: it only reads buffers that `in` keeps alive,
+// and touches no Python object.
 //------------------------------------------------------------------------------
 
 static ccd::CubeResult run_cube(
@@ -417,12 +436,12 @@ static ccd::CubeResult run_cube(
     const auto qas =
         strided_view<std::uint8_t, 3>(in.qas);
 
-    if (takes_as_is<std::uint16_t>(in.spectral))
+    if (in.spectral_type == SpectralType::UInt16)
         return ccd::detect_cube(
             dates, strided_view<std::uint16_t, 4>(in.spectral), qas,
             hoptions, loptions, threads, keep_masks);
 
-    if (takes_as_is<float>(in.spectral))
+    if (in.spectral_type == SpectralType::Float32)
         return ccd::detect_cube(
             dates, strided_view<float, 4>(in.spectral), qas,
             hoptions, loptions, threads, keep_masks);
