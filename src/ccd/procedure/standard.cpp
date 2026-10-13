@@ -902,7 +902,10 @@ FitResult StandardProcedure::run(
     index_t num_bands = masked_spectral.extent(0);
     auto window = Window(0, options.MEOW_SIZE);
 
-    while(window.stop <= masked_.observations - options.MEOW_SIZE)
+    // window.stop <= observations - MEOW_SIZE, written without the
+    // subtraction: index_t is unsigned, and observations < MEOW_SIZE would
+    // wrap it to a huge bound.
+    while(window.stop + options.MEOW_SIZE <= masked_.observations)
     {   
         LOG_DEBUG("Initialize for change model #: " << results.models.size());
         if (!results.models.empty()) {
