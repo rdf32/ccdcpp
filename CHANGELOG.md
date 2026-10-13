@@ -1,22 +1,68 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-10-13
+
+### Changed (outputs)
+
+The observation filters' defaults are now pyccd's, as pyccd intends them.
+`HarmonicOptions()` and every preset change together (`landsat_c1_dn()` is
+still `HarmonicOptions()` field for field), so a caller that builds its
+options from either sees both changes below. The millworks nlcd plugin builds
+its options from `HarmonicOptions()` and will see both when it upgrades to
+0.4.0.
+
+**Reflectance bounds are exclusive.** `REFL_MIN_INCLUSIVE` and
+`REFL_MAX_INCLUSIVE` default to `False` (`Units.refl_inclusive=(False,
+False)`), so the saturation filter keeps `REFL_MIN < v < REFL_MAX`, which is
+pyccd's `0 < v < 10000` (`ccd/qa.py`, `filter_saturated`). Before, both ends
+were inclusive.
+
+- Who is affected: a pixel with an observation the filters kept (clear or
+  water, thermal in range) on which a saturation band is exactly `REFL_MIN` or
+  `REFL_MAX` (`0` or `10000` in DN, `0.0` or `1.0` in reflectance), or NaN.
+  That observation is now dropped, and the pixel's segments, breaks and
+  coefficients can change. Integer input clipped to the bounds is the common
+  case: a `uint16` array where negative reflectance was clipped to `0` now
+  gives the result of the unclipped values. A NaN in a saturation band no
+  longer reaches the fit, where it left the pixel with no segments; the pixel
+  now fits without that observation.
+- To keep observations on the bounds: set `REFL_MIN_INCLUSIVE` and
+  `REFL_MAX_INCLUSIVE` to `True` (`refl_inclusive=(True, True)` in a
+  profile). That reproduces 0.3.0 output.
+
+**The green median filter drops only observations up to `STAT_ORD`.**
+`GREEN_FILTER_SCOPE` defaults to `StatWindow` (`green_filter_scope=
+"stat_window"`). The threshold is unchanged, the median green of the masked
+observations dated up to `STAT_ORD` plus `MEDIAN_GREEN_FILTER`; an observation
+at or above it is now dropped only when it is itself dated up to `STAT_ORD`,
+which is the set pyccd's `insufficient_clear_filter` computes its green mask
+for. Before, it was dropped at any date.
+
+- Who is affected: InsufficientClear pixels (`curve_qa` 44) with masked
+  observations dated after `STAT_ORD` whose green is at or above the
+  threshold. Those observations are now kept, so the pixel's single segment
+  has more observations and its coefficients change; a pixel that had too few
+  observations to fit can now fit. Standard and PermanentSnow pixels are
+  unaffected.
+- To drop them at every date: set `GREEN_FILTER_SCOPE` to
+  `ccdcpp.GreenFilterScope.All` (`green_filter_scope="all"`). That reproduces
+  0.3.0 output.
+
+With both escape hatches set, 0.4.0 gives 0.3.0's output bit for bit.
 
 ### Added
 
 - `HarmonicOptions.REFL_MIN_INCLUSIVE` and `REFL_MAX_INCLUSIVE` (default
-  `True`) and `THERM_MIN_INCLUSIVE` and `THERM_MAX_INCLUSIVE` (default
+  `False`) and `THERM_MIN_INCLUSIVE` and `THERM_MAX_INCLUSIVE` (default
   `False`): whether a value equal to a saturation or thermal bound is kept.
   With both ends of a range inclusive NaN passes; with either end exclusive
-  it is rejected. The defaults are the bounds as they were, so output is
-  unchanged. In profiles: `Units.refl_inclusive=(lo, hi)` and
+  it is rejected. In profiles: `Units.refl_inclusive=(lo, hi)` and
   `Thermal.inclusive=(lo, hi)`.
 - `HarmonicOptions.GREEN_FILTER_SCOPE`, a `ccdcpp.GreenFilterScope`: which
-  observations the InsufficientClear green median filter drops. `All` (the
-  default, and the filter's behaviour so far) drops them at any date,
-  `StatWindow` only those dated up to `STAT_ORD`, as pyccd intends, and `Off`
-  disables the filter. In profiles: `SensorProfile.green_filter_scope`,
-  `"all"`, `"stat_window"` or `"off"`.
+  observations the InsufficientClear green median filter drops. `StatWindow`
+  (the default) drops those dated up to `STAT_ORD`, as pyccd intends, `All`
+  drops them at any date, and `Off` disables the filter. In profiles:
+  `SensorProfile.green_filter_scope`, `"stat_window"`, `"all"` or `"off"`.
 - `ccd::validate_dates(dates)`: throws `std::invalid_argument` unless `dates`
   is non-decreasing.
 

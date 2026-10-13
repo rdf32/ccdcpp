@@ -121,7 +121,7 @@ Every row is fitted and reported, so results have `NUM_BANDS` bands in row order
 
 ## Input Unit Convention
 
-The observation filters compare `spectral` against absolute thresholds, so each threshold is a statement about the unit of the input. The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is every one of them divided by 10000. See the input unit convention in `harmonic.hpp` for the measured equivalence.
+The observation filters compare `spectral` against absolute thresholds, so each threshold is a statement about the unit of the input. The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is every one of them divided by 10000. See the input unit convention in `harmonic.hpp` for the measured equivalence. The filters' defaults are pyccd's, as pyccd intends them: its exclusive saturation and thermal bounds, and the green median filter scope its InsufficientClear filter computes (see [Differences from pyccd](#differences-from-pyccd) for where pyccd's code does not do what it intends).
 
 | Field | Default | Read by |
 |-------|---------|---------|
@@ -134,7 +134,19 @@ The observation filters compare `spectral` against absolute thresholds, so each 
 
 The `*_INCLUSIVE` flags are not unit constants: a bound means the same in DN and in reflectance, so the preset leaves them as they are. The defaults are exclusive on both ends of both ranges, which is pyccd's form, `0 < v < 10000` for the saturation bound and `-9320 < v < 7070` for the thermal one: an observation with a saturation band at exactly `0` or `10000`, or NaN, is dropped. With either end exclusive NaN is rejected; with both ends of a range inclusive the test is `!(v < lo || v > hi)`, under which `0` and `10000` are kept and NaN passes. A NaN the filter keeps reaches the fit: on a synthetic pixel with one NaN in a saturation band, `detect` returns no segments and an empty processing mask, and `detect_cube_columns` reports no failure for it.
 
-**Green median filter scope.** The InsufficientClear procedure drops cloud-like observations by their green value: the threshold is the median green of the masked observations dated up to `STAT_ORD`, plus `MEDIAN_GREEN_FILTER`, and an observation at or above it is dropped. `GREEN_FILTER_SCOPE`, a `ccdcpp.GreenFilterScope`, says where: `StatWindow` (the default) drops it only up to `STAT_ORD`, which is the scope pyccd's `insufficient_clear_filter` computes its mask for, `All` at any date, and `Off` never. When no masked observation is dated up to `STAT_ORD` there is no median and nothing is dropped. It is not a unit constant.
+**Green median filter scope.** The InsufficientClear procedure drops cloud-like observations by their green value: the threshold is the median green of the masked observations dated up to `STAT_ORD`, plus `MEDIAN_GREEN_FILTER`, and an observation at or above it is dropped. `GREEN_FILTER_SCOPE`, a `ccdcpp.GreenFilterScope`, says where: `StatWindow` (the default) drops it only up to `STAT_ORD`, which is the scope pyccd's `insufficient_clear_filter` computes its mask for, `All` at any date, and `Off` never. When no masked observation is dated up to `STAT_ORD` there is no median and nothing is dropped. It is not a unit constant. pyccd's own filter drops nothing (below): on an InsufficientClear pixel with an observation up to `STAT_ORD` at or above the threshold, the default gives what pyccd's filter computes and `Off` gives what pyccd's code does.
+
+**Inclusive bounds and the all-dates filter.** Set `REFL_MIN_INCLUSIVE` and `REFL_MAX_INCLUSIVE` to `True` to keep observations on a saturation bound (and NaN), and `GREEN_FILTER_SCOPE` to `All` to drop green outliers at every date.
+
+### Differences from pyccd
+
+ccdcpp recreates pyccd. Where pyccd's code does not do what it evidently intends, ccdcpp does what it intends, so the two differ on the inputs that reach it:
+
+- **RLM convergence.** pyccd's robust fit stops when `not numpy.any(numpy.fabs(x0 - x > tol))` (`ccd/models/robust_fit.py`, `_check_converge`): the parenthesis takes the absolute value of the comparison, not of the difference, so a coefficient that fell by more than `tol` counts as converged. ccdcpp stops when every coefficient moved by less than `tol` in either direction. A fit that pyccd stops early gets different weights and coefficients.
+- **Date order.** pyccd orders observations with `np.argsort(dates)`, which is not a stable sort, so which of two observations on the same date survives the duplicate-date filter depends on the sort. ccdcpp takes dates in non-decreasing order (unsorted dates raise `ValueError`) and keeps the first observation of each date.
+- **Green median filter.** pyccd's `insufficient_clear_filter` computes the green mask for the observations up to `STAT_ORD` and applies it with `standard_mask[standard_mask][:n] &= green_mask` (`ccd/qa.py`), which writes into a copy, so the filter drops nothing. ccdcpp applies it, with the `StatWindow` scope by default.
+
+On the synthetic corpus, with pyccd patched for these three (the convergence test as `|x0 - x| > tol`, a stable sort, and the green mask written through `standard_mask[np.flatnonzero(standard_mask)[:n]] &= green_mask`), ccdcpp's defaults match pyccd to 1e-6 on every InsufficientClear pixel (175 in DN) and on every pixel where a saturation-band value on a bound reaches the saturation filter (106, and the golden test's bounds pixel); with the green filter left unpatched, `Off` matches on the same 175. One more difference is kept on purpose: an undefined raw QA value decodes to fill where pyccd raises (see [QA Input](#qa-input)). One pyccd quirk is kept for parity: the PermanentSnow and InsufficientClear procedures test the untransformed thermal band against the Celsius bounds (see `harmonic.hpp`).
 
 ## QA Input
 
