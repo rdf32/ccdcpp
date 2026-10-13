@@ -14,6 +14,60 @@ namespace filter
 
 //------------------------------------------------------------------------------
 //
+// A bound of a valid range, and the range test the thermal and saturation
+// filters share.
+//
+// in_range() keeps `value` when it lies above `lo` and below `hi`, an
+// inclusive end also keeping a value equal to it. Each end is written so that
+// a NaN fails an exclusive end and passes an inclusive one, so:
+//
+//   both inclusive   !(value < lo || value > hi)   NaN passes
+//   both exclusive   value > lo && value < hi      NaN is rejected
+//   mixed                                          NaN is rejected
+//
+//------------------------------------------------------------------------------
+
+struct Bound
+{
+    scalar_t value;
+    bool inclusive;
+};
+
+struct Range
+{
+    Bound lo;
+    Bound hi;
+};
+
+inline bool in_range(scalar_t value, const Range& range)
+{
+    const bool above =
+        range.lo.inclusive ? !(value < range.lo.value) : value > range.lo.value;
+    const bool below =
+        range.hi.inclusive ? !(value > range.hi.value) : value < range.hi.value;
+    return above && below;
+}
+
+// The saturation range of `options`: REFL_MIN/REFL_MAX and their flags.
+inline Range reflectance_range(const HarmonicOptions& options)
+{
+    return Range{
+        Bound{options.REFL_MIN, options.REFL_MIN_INCLUSIVE},
+        Bound{options.REFL_MAX, options.REFL_MAX_INCLUSIVE}
+    };
+}
+
+// The thermal range of `options`: THERM_MIN/THERM_MAX and their flags.
+inline Range thermal_range(const HarmonicOptions& options)
+{
+    return Range{
+        Bound{options.THERM_MIN, options.THERM_MIN_INCLUSIVE},
+        Bound{options.THERM_MAX, options.THERM_MAX_INCLUSIVE}
+    };
+}
+
+//------------------------------------------------------------------------------
+//
 // Standard CCD filtering.
 //
 // Keeps observations that are:
@@ -57,7 +111,9 @@ void remove_duplicate_dates(
 //
 // Remove observations with invalid thermal values.
 //
-// `min_value` / `max_value` are exclusive bounds in the unit of `spectral`'s
+// An observation is kept when its thermal value is in_range() of `range`
+// (HarmonicOptions::THERM_MIN/THERM_MAX and their flags, exclusive on both
+// ends by default). The bounds are in the unit of `spectral`'s
 // thermal band AT THE POINT THIS RUNS -- which for the Standard procedure is
 // after ccd::detect applied HarmonicOptions::THERMAL_SCALE/THERMAL_OFFSET, and
 // for the PermanentSnow and InsufficientClear procedures is the caller's own
@@ -66,15 +122,14 @@ void remove_duplicate_dates(
 //
 // The bounds are parameters rather than the MIN_CELSIUS/MAX_CELSIUS globals so
 // that a caller working in degrees Celsius can pass [-93.20, 70.70] instead of
-// Celsius x 100. Defaults reproduce the globals exactly.
+// Celsius x 100. The option defaults are the globals.
 //
 //------------------------------------------------------------------------------
 
 void apply_thermal_filter(
     ArrayView<const scalar_t, 2> spectral,
     index_t thermal_band,
-    scalar_t min_value,
-    scalar_t max_value,
+    const Range& range,
     ProcessingMask& mask
 );
 
@@ -83,8 +138,9 @@ void apply_thermal_filter(
 //
 // Remove saturated observations.
 //
-// An observation is saturated when any of `bands` lies outside the inclusive
-// bounds `min_value` / `max_value`; the bands are tested in list order.
+// An observation is saturated when any of `bands` is not in_range() of
+// `range` (HarmonicOptions::REFL_MIN/REFL_MAX and their flags, inclusive on
+// both ends by default); the bands are tested in list order.
 // pyccd's Collection-1 values are [0, 10000] and Collection-2's are
 // [7273, 43636]; both express the single predicate `reflectance in [0, 1]`
 // (C2 surface reflectance is DN * 2.75e-5 - 0.2), so a caller working in
@@ -95,8 +151,7 @@ void apply_thermal_filter(
 void apply_saturation_filter(
     ArrayView<const scalar_t, 2> spectral,
     const BandList& bands,
-    scalar_t min_value,
-    scalar_t max_value,
+    const Range& range,
     ProcessingMask& mask
 );
 

@@ -129,6 +129,40 @@ void bind_options(py::module_& m)
     )
 
     //--------------------------------------------------------------------------
+    // Bound flags
+    //
+    // Whether a value equal to a bound is kept. They are not unit constants,
+    // so the physical-unit preset leaves them as they are. NaN passes a range
+    // only with both of its ends inclusive.
+    //--------------------------------------------------------------------------
+    .def_readwrite(
+        "REFL_MIN_INCLUSIVE",
+        &ccd::HarmonicOptions::REFL_MIN_INCLUSIVE,
+        "Keep a saturation-band value equal to REFL_MIN (default True). With "
+        "both REFL_* flags True NaN passes the saturation filter; with either "
+        "False it is rejected. Both False is pyccd's 0 < x < 10000."
+    )
+    .def_readwrite(
+        "REFL_MAX_INCLUSIVE",
+        &ccd::HarmonicOptions::REFL_MAX_INCLUSIVE,
+        "Keep a saturation-band value equal to REFL_MAX (default True). See "
+        "REFL_MIN_INCLUSIVE."
+    )
+    .def_readwrite(
+        "THERM_MIN_INCLUSIVE",
+        &ccd::HarmonicOptions::THERM_MIN_INCLUSIVE,
+        "Keep a thermal value equal to THERM_MIN (default False, pyccd's "
+        "exclusive bound, which rejects NaN). NaN passes the thermal filter "
+        "only with both THERM_* flags True."
+    )
+    .def_readwrite(
+        "THERM_MAX_INCLUSIVE",
+        &ccd::HarmonicOptions::THERM_MAX_INCLUSIVE,
+        "Keep a thermal value equal to THERM_MAX (default False). See "
+        "THERM_MIN_INCLUSIVE."
+    )
+
+    //--------------------------------------------------------------------------
     // Band layout
     //
     // Which row of `spectral` holds which band role. NUM_BANDS is the band

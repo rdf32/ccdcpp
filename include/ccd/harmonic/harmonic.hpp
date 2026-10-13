@@ -135,14 +135,15 @@ struct HarmonicOptions
     // Input unit convention
     //
     // Every value in this block is an ABSOLUTE threshold, which makes each one
-    // a statement about the unit of the caller's `spectral` array. They are
-    // gathered here because they were previously spread across three files as
-    // literals and two commented-out "collection-1 / collection-2" branches,
-    // and switching collection meant editing C++.
+    // a statement about the unit of the caller's `spectral` array, and
+    // switching collection or unit is a change of options, not of C++.
     //
-    // The DEFAULTS ARE UNCHANGED: Collection-1 DN exactly as pyccd consumed
-    // it, so a caller that sets nothing gets the historical numbers and the
-    // regression references in tests/ still hold.
+    // The defaults are Collection-1 DN as pyccd consumes it, and the
+    // regression references in tests/ are computed with them.
+    //
+    // The *_INCLUSIVE flags beside the bounds are not unit constants: they say
+    // whether a value equal to a bound is kept, which is the same question in
+    // every unit, so the preset leaves them as they are.
     //
     // THE PHYSICAL-UNIT PRESET
     //
@@ -258,17 +259,28 @@ struct HarmonicOptions
     scalar_t THERMAL_SCALE  = KELVIN_SCALE;
     scalar_t THERMAL_OFFSET = -KELVIN_OFFSET;
 
-    // Saturation bound for the SATURATION_BANDS, inclusive on both ends (an
-    // observation is rejected when any of them has value < REFL_MIN ||
-    // value > REFL_MAX).
+    // Saturation bound for the SATURATION_BANDS. An observation is kept when
+    // every one of them lies within [REFL_MIN, REFL_MAX], each end inclusive
+    // or exclusive by its flag (default inclusive on both ends).
+    //
+    // With both ends inclusive the test is !(value < REFL_MIN || value >
+    // REFL_MAX), under which NaN passes. With either end exclusive NaN is
+    // rejected; both exclusive is pyccd's 0 < value < 10000.
     scalar_t REFL_MIN = 0.0;
     scalar_t REFL_MAX = 10000.0;
+    bool REFL_MIN_INCLUSIVE = true;
+    bool REFL_MAX_INCLUSIVE = true;
 
-    // Valid range for the THERMAL_IDX band, exclusive on both ends, tested after
-    // the THERMAL_SCALE/THERMAL_OFFSET transform. Defaults are Celsius x 100;
-    // the preset's are those divided by 10000, i.e. [-0.9320, 0.7070].
+    // Valid range for the THERMAL_IDX band, tested after the
+    // THERMAL_SCALE/THERMAL_OFFSET transform, each end inclusive or exclusive
+    // by its flag (default exclusive on both ends, pyccd's -9320 < value <
+    // 7070, which rejects NaN). Defaults are Celsius x 100; the preset's are
+    // those divided by 10000, i.e. [-0.9320, 0.7070]. NaN passes only with
+    // both ends inclusive, as for the saturation bound.
     scalar_t THERM_MIN = MIN_CELSIUS;
     scalar_t THERM_MAX = MAX_CELSIUS;
+    bool THERM_MIN_INCLUSIVE = false;
+    bool THERM_MAX_INCLUSIVE = false;
 
     // Offset added to the median green value in the InsufficientClear
     // procedure's cloud screen. 400 is Collection-1 DN; the reflectance

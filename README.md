@@ -117,6 +117,21 @@ Using C-contiguous arrays with these layouts maximizes performance and minimizes
 
 Every row is fitted and reported, so results have `NUM_BANDS` bands in row order: `detect` returns a `bands` list of that length per model and `num_bands`, and `detect_cube_columns` returns `[n, B]` and `[n, B, 7]` arrays. `CHANGE_THRESHOLD` and `OUTLIER_THRESHOLD` default to chi-squared quantiles with 5 degrees of freedom, the default detection band count; a layout with a different count sets them to match. `BLUE_IDX`, `RED_IDX`, `NIR_IDX`, `SWIR1_IDX`, `SWIR2_IDX` and `QA_IDX` are informational and not read. A layout that does not fit the input (wrong band count, an index off the band axis, a repeated index, an empty detection or Tmask list, no green band, thermal in the saturation list, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs.
 
+## Input Unit Convention
+
+The observation filters compare `spectral` against absolute thresholds, so each threshold is a statement about the unit of the input. The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is every one of them divided by 10000. See the input unit convention in `harmonic.hpp` for the measured equivalence.
+
+| Field | Default | Read by |
+|-------|---------|---------|
+| `THERMAL_SCALE`, `THERMAL_OFFSET` | `10.0`, `-27315.0` | the Standard procedure's thermal transform, `thermal * scale + offset` |
+| `REFL_MIN`, `REFL_MAX` | `0.0`, `10000.0` | the saturation filter, on `SATURATION_BANDS` |
+| `REFL_MIN_INCLUSIVE`, `REFL_MAX_INCLUSIVE` | `True`, `True` | whether a value equal to `REFL_MIN` / `REFL_MAX` is kept |
+| `THERM_MIN`, `THERM_MAX` | `-9320.0`, `7070.0` | the thermal filter, on `THERMAL_IDX`, after the transform |
+| `THERM_MIN_INCLUSIVE`, `THERM_MAX_INCLUSIVE` | `False`, `False` | whether a value equal to `THERM_MIN` / `THERM_MAX` is kept |
+| `MEDIAN_GREEN_FILTER` | `400.0` | the InsufficientClear green median filter's offset |
+
+The `*_INCLUSIVE` flags are not unit constants: a bound means the same in DN and in reflectance, so the preset leaves them as they are. With both ends of a range inclusive the test is `!(v < lo || v > hi)`, under which NaN passes; with either end exclusive NaN is rejected. Both exclusive is pyccd's form, `0 < v < 10000` for the saturation bound and `-9320 < v < 7070` for the thermal one; the default saturation bound is inclusive on both ends, so it keeps `0`, `10000` and NaN where pyccd drops them. A NaN the filter keeps reaches the fit: on a synthetic pixel with one NaN in a saturation band, `detect` returns no segments and an empty processing mask, and `detect_cube_columns` reports no failure for it.
+
 ## QA Input
 
 `qas` reaches the procedures as one class code per observation. It can be passed two ways.
@@ -244,7 +259,7 @@ def hls_l30():
     )
 ```
 
-`units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE` are the two Landsat blocks), `thermal` a `ccdcpp.Thermal` (transform and bounds; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None` for an input without one, and `cadence` a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`). `alpha` and `coef_floor` have no default because both are statements about the input unit and a wrong value does not raise. A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, thermal band without `thermal=`) raises `ValueError` when it is constructed.
+`units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`, and `refl_inclusive=(lo, hi)` for `REFL_MIN_INCLUSIVE`/`REFL_MAX_INCLUSIVE`, default `(True, True)`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE` are the two Landsat blocks), `thermal` a `ccdcpp.Thermal` (transform and bounds, and `inclusive=(lo, hi)` for `THERM_MIN_INCLUSIVE`/`THERM_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None` for an input without one, and `cadence` a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`). `alpha` and `coef_floor` have no default because both are statements about the input unit and a wrong value does not raise. A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, thermal band without `thermal=`) raises `ValueError` when it is constructed.
 
 ## Native C++ Implementation
 

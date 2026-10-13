@@ -363,6 +363,31 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The observation filters on hand-built series: the range bounds and
+    # their flags, and the green median filter's scope.
+    add_executable(
+        test_filters
+
+        tests/ccd/procedure/test_filters.cpp
+    )
+
+
+    target_link_libraries(
+        test_filters
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_filters
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # Entry-point input checks: band count and timestep agreement.
     add_executable(
         test_validation
@@ -571,6 +596,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_snow)
     gtest_discover_tests(test_standard)
     gtest_discover_tests(test_units)
+    gtest_discover_tests(test_filters)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_bands)

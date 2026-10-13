@@ -356,6 +356,50 @@ class Check(unittest.TestCase):
         self.assertIn("saturation names 'other'", str(caught.exception))
 
 
+class BoundFlags(unittest.TestCase):
+    def test_defaults(self):
+        for units in (ccdcpp.DN, ccdcpp.REFLECTANCE):
+            self.assertEqual(units.refl_inclusive, (True, True))
+        for thermal in (ccdcpp.KELVIN_TENTHS, ccdcpp.CELSIUS_HUNDREDTHS):
+            self.assertEqual(thermal.inclusive, (False, False))
+
+    def test_options_carry_the_flags(self):
+        base = presets.landsat_c1_physical()
+        for refl in ((True, True), (False, False), (True, False), (False, True)):
+            for therm in ((False, False), (True, True), (False, True)):
+                with self.subTest(refl=refl, therm=therm):
+                    p = dataclasses.replace(
+                        base,
+                        units=dataclasses.replace(base.units, refl_inclusive=refl),
+                        thermal=dataclasses.replace(base.thermal, inclusive=therm),
+                    )
+                    h = p.options()[0]
+                    self.assertEqual((h.REFL_MIN_INCLUSIVE, h.REFL_MAX_INCLUSIVE), refl)
+                    self.assertEqual((h.THERM_MIN_INCLUSIVE, h.THERM_MAX_INCLUSIVE), therm)
+
+    def test_no_thermal_keeps_the_option_defaults(self):
+        h = ten_band_profile().options()[0]
+        default = ccdcpp.HarmonicOptions()
+        self.assertEqual((h.THERM_MIN_INCLUSIVE, h.THERM_MAX_INCLUSIVE),
+                         (default.THERM_MIN_INCLUSIVE, default.THERM_MAX_INCLUSIVE))
+
+    def test_flags_are_two_bools(self):
+        for bad in ((True,), (True, True, True), (1, 0), ("yes", "no"), True):
+            with self.subTest(bad=bad):
+                with self.assertRaises((ValueError, TypeError)):
+                    ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=bad)
+                with self.assertRaises((ValueError, TypeError)):
+                    ccdcpp.Thermal(1.0, 0.0, -0.932, 0.707, inclusive=bad)
+        self.assertEqual(ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=[False, True]).refl_inclusive,
+                         (False, True))
+
+    def test_hashable_and_picklable(self):
+        u = ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=(False, False))
+        self.assertEqual(pickle.loads(pickle.dumps(u)), u)
+        self.assertEqual(hash(u), hash(ccdcpp.Units(0.0, 1.0, 0.04, (False, False))))
+        self.assertNotEqual(u, ccdcpp.REFLECTANCE)
+
+
 class Overrides(unittest.TestCase):
     def test_hoptions_and_loptions_win(self):
         h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()

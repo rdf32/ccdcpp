@@ -15,9 +15,14 @@
 // most likely to break silently -- every failure mode here returns numbers,
 // none of them raise.
 //
-// Five tests, in order of how hard the failure is to notice:
+// Six tests, the property twice and then in order of how hard the failure is
+// to notice:
 //
 //   PhysicalUnitsAreEquivalent  the property itself
+//   PhysicalUnitsAreEquivalentWithExclusiveBounds
+//                               the property with observations on the
+//                               reflectance bounds and the bounds exclusive:
+//                               the *_INCLUSIVE flags are not unit constants
 //   AlphaIsAUnitConstant        alpha left behind: 89 % of coefficients zeroed
 //                               and a different segment count -- and it runs
 //                               FASTER, so wall clock calls it an improvement
@@ -80,6 +85,7 @@
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/insufficient_clear.hpp"
+#include "ccd/harmonic/filter.hpp"
 
 namespace {
 
@@ -381,6 +387,95 @@ TEST(Units, PhysicalUnitsAreEquivalent)
         << "worst relative difference after x" << SCALE << " is " << worst
         << " -- an absolute threshold has been missed somewhere; see the"
            " \"Input unit convention\" block in harmonic.hpp";
+}
+
+//------------------------------------------------------------------------------
+// The property again, with the reflectance bounds exclusive and observations
+// sitting exactly on them.
+//
+// The *_INCLUSIVE flags are not unit constants: 0 and 10000 in DN are 0.0 and
+// 1.0 in reflectance, so an exclusive bound rejects the same observations in
+// both units. Five clear observations are moved onto a bound first, so the
+// flags have something to decide: under the default inclusive bounds they are
+// kept by the filter, under exclusive ones they are dropped, and the DN and physical runs
+// agree either way.
+//------------------------------------------------------------------------------
+
+TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
+{
+    auto obs = read_observations(OBSERVATIONS);
+    const auto original = run(obs, obs.spectral, ccd::HarmonicOptions{}, ccd::LassoOptions{});
+
+    std::vector<ccd::index_t> moved;
+    for (ccd::index_t t = 0; t < obs.T && moved.size() < 5; t += 37)
+    {
+        if (!original.mask[t])
+            continue;
+        // Alternate the band and the bound.
+        const ccd::index_t band = moved.size() % 6;
+        obs.spectral[band * obs.T + t] = moved.size() % 2 ? 10000.0 : 0.0;
+        moved.push_back(t);
+    }
+    ASSERT_EQ(moved.size(), 5u);
+
+    ccd::HarmonicOptions dn_h;
+    ccd::HarmonicOptions phys_h = physical_harmonic();
+
+    const auto dn_inclusive = run(obs, obs.spectral, dn_h, ccd::LassoOptions{});
+
+    dn_h.REFL_MIN_INCLUSIVE = dn_h.REFL_MAX_INCLUSIVE = false;
+    phys_h.REFL_MIN_INCLUSIVE = phys_h.REFL_MAX_INCLUSIVE = false;
+
+    const auto dn = run(obs, obs.spectral, dn_h, ccd::LassoOptions{});
+    const auto phys = run(
+        obs, to_physical(obs.spectral, obs.T), phys_h, physical_lasso());
+
+    // The filter mask, before any fitting: the inclusive bound keeps the
+    // moved observations, the exclusive one drops them, in both units.
+    const auto filter_mask = [&obs](const std::vector<ccd::scalar_t>& spectral,
+                                    const ccd::HarmonicOptions& h) {
+        const ccd::HarmonicWorkspace workspace(
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.T}),
+            ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.T}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.T}),
+            h);
+        return ccd::filter::standard(workspace);
+    };
+
+    const auto physical = to_physical(obs.spectral, obs.T);
+    const auto inclusive_mask = filter_mask(obs.spectral, ccd::HarmonicOptions{});
+    const auto exclusive_mask = filter_mask(obs.spectral, dn_h);
+    const auto physical_exclusive_mask = filter_mask(physical, phys_h);
+
+    for (const auto t : moved)
+    {
+        EXPECT_TRUE(inclusive_mask.test(t)) << "inclusive bound dropped " << t;
+        EXPECT_FALSE(exclusive_mask.test(t)) << "exclusive bound kept " << t;
+        EXPECT_FALSE(dn.mask[t]) << "exclusive bound kept " << t;
+    }
+
+    for (ccd::index_t i = 0; i < obs.T; ++i)
+        EXPECT_EQ(exclusive_mask.test(i), physical_exclusive_mask.test(i))
+            << "filter mask differs at " << i;
+
+    EXPECT_NE(dn_inclusive.mask.count(), dn.mask.count());
+
+    ASSERT_EQ(dn.models.size(), phys.models.size());
+    ASSERT_GT(dn.models.size(), 0u);
+    ASSERT_EQ(dn.mask.size(), phys.mask.size());
+
+    for (ccd::index_t i = 0; i < static_cast<ccd::index_t>(dn.mask.size()); ++i)
+        EXPECT_EQ(dn.mask[i], phys.mask[i]) << "processing mask differs at " << i;
+
+    for (std::size_t m = 0; m < dn.models.size(); ++m)
+    {
+        EXPECT_EQ(dn.models[m].start_day, phys.models[m].start_day) << "model " << m;
+        EXPECT_EQ(dn.models[m].end_day, phys.models[m].end_day) << "model " << m;
+        EXPECT_EQ(dn.models[m].break_day, phys.models[m].break_day) << "model " << m;
+    }
+
+    EXPECT_EQ(count_nonzero(dn), count_nonzero(phys));
+    EXPECT_LT(worst_relative(dn, phys), 1e-9);
 }
 
 //------------------------------------------------------------------------------

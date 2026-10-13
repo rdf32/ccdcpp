@@ -110,21 +110,37 @@ NO_STAT_CUTOFF = 2**63 - 1
 LANDSAT_STAT_ORD = 736694
 
 
+def _flag_pair(value, name):
+    """``value`` as a ``(bool, bool)``, for the inclusive-bound fields."""
+    pair = tuple(value)
+    if len(pair) != 2 or not all(isinstance(v, (bool, np.bool_)) for v in pair):
+        raise ValueError(f"{name} is {value!r}; it must be two bools (lo, hi)")
+    return (bool(pair[0]), bool(pair[1]))
+
+
 @dataclass(frozen=True)
 class Units:
     """The unit-coupled thresholds of the reflective bands.
 
     refl_min, refl_max
-        ``REFL_MIN``, ``REFL_MAX``: the saturation bounds, inclusive, tested
-        on the saturation bands.
+        ``REFL_MIN``, ``REFL_MAX``: the saturation bounds, tested on the
+        saturation bands.
     median_green_filter
         ``MEDIAN_GREEN_FILTER``: the offset of InsufficientClear's green
         median cloud screen.
+    refl_inclusive
+        ``(REFL_MIN_INCLUSIVE, REFL_MAX_INCLUSIVE)``: whether a value equal
+        to each bound is kept (default ``(True, True)``). NaN passes only
+        with both True.
     """
 
     refl_min: float
     refl_max: float
     median_green_filter: float
+    refl_inclusive: Tuple[bool, bool] = (True, True)
+
+    def __post_init__(self):
+        object.__setattr__(self, "refl_inclusive", _flag_pair(self.refl_inclusive, "refl_inclusive"))
 
 
 @dataclass(frozen=True)
@@ -136,14 +152,21 @@ class Thermal:
         ``thermal * scale + offset``. ``(1.0, 0.0)`` for input already in the
         bounds' unit.
     min, max
-        ``THERM_MIN``, ``THERM_MAX``: the valid range, exclusive, after the
-        transform.
+        ``THERM_MIN``, ``THERM_MAX``: the valid range, after the transform.
+    inclusive
+        ``(THERM_MIN_INCLUSIVE, THERM_MAX_INCLUSIVE)``: whether a value equal
+        to each bound is kept (default ``(False, False)``, pyccd's exclusive
+        range, which rejects NaN).
     """
 
     scale: float
     offset: float
     min: float
     max: float
+    inclusive: Tuple[bool, bool] = (False, False)
+
+    def __post_init__(self):
+        object.__setattr__(self, "inclusive", _flag_pair(self.inclusive, "inclusive"))
 
 
 #: Collection 1 DN: reflectance x 10000 (``HarmonicOptions()`` defaults).
@@ -311,12 +334,14 @@ class SensorProfile:
 
         h.REFL_MIN = self.units.refl_min
         h.REFL_MAX = self.units.refl_max
+        h.REFL_MIN_INCLUSIVE, h.REFL_MAX_INCLUSIVE = self.units.refl_inclusive
         h.MEDIAN_GREEN_FILTER = self.units.median_green_filter
         if self.thermal is not None:
             h.THERMAL_SCALE = self.thermal.scale
             h.THERMAL_OFFSET = self.thermal.offset
             h.THERM_MIN = self.thermal.min
             h.THERM_MAX = self.thermal.max
+            h.THERM_MIN_INCLUSIVE, h.THERM_MAX_INCLUSIVE = self.thermal.inclusive
 
         for key, value in self.cadence:
             setattr(h, key, value)

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `HarmonicOptions.REFL_MIN_INCLUSIVE` and `REFL_MAX_INCLUSIVE` (default
+  `True`) and `THERM_MIN_INCLUSIVE` and `THERM_MAX_INCLUSIVE` (default
+  `False`): whether a value equal to a saturation or thermal bound is kept.
+  With both ends of a range inclusive NaN passes; with either end exclusive
+  it is rejected. The defaults are the bounds as they were, so output is
+  unchanged. In profiles: `Units.refl_inclusive=(lo, hi)` and
+  `Thermal.inclusive=(lo, hi)`.
+
 ## 0.3.0 - 2026-10-13
 
 ### Sensor profiles

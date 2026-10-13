@@ -376,6 +376,68 @@ class CadenceOptions(unittest.TestCase):
         self.assertEqual(breaks(h), 0)
 
 
+class BoundFlags(unittest.TestCase):
+    FLAGS = {
+        "REFL_MIN_INCLUSIVE": True,
+        "REFL_MAX_INCLUSIVE": True,
+        "THERM_MIN_INCLUSIVE": False,
+        "THERM_MAX_INCLUSIVE": False,
+    }
+
+    def test_defaults_and_docstrings(self):
+        h = ccdcpp.HarmonicOptions()
+        for name, value in self.FLAGS.items():
+            with self.subTest(name=name):
+                self.assertIs(getattr(h, name), value)
+                doc = getattr(ccdcpp.HarmonicOptions, name).__doc__
+                self.assertIn(f"default {value}", doc)
+                setattr(h, name, not value)
+                self.assertIs(getattr(h, name), not value)
+
+    def mask(self, values, band, **flags):
+        """processing_mask of detect on a pixel whose `band` holds `values` at
+        its first observations."""
+        d, s, q = inputs(7, 40)
+        s[band, :len(values)] = values
+        h, lo = options()
+        for name, value in flags.items():
+            setattr(h, name, value)
+        return ccdcpp.detect(d, s, q, h, lo)["processing_mask"][:len(values)].tolist()
+
+    def test_reflectance_bounds(self):
+        values = [0.0, 10000.0, -1.0, 10001.0]
+        for flags, expected in (
+            (dict(), [1, 1, 0, 0]),
+            (dict(REFL_MIN_INCLUSIVE=False, REFL_MAX_INCLUSIVE=False), [0, 0, 0, 0]),
+            (dict(REFL_MIN_INCLUSIVE=False), [0, 1, 0, 0]),
+            (dict(REFL_MAX_INCLUSIVE=False), [1, 0, 0, 0]),
+        ):
+            with self.subTest(**flags):
+                self.assertEqual([int(v) for v in self.mask(values, 3, **flags)], expected)
+
+    def test_thermal_bounds(self):
+        # detect transforms thermal K x 10 -> Celsius x 100 first: k10 * 10 - 27315.
+        at = lambda celsius100: (celsius100 + 27315.0) / 10.0  # noqa: E731
+        values = [at(-9320.0), at(7070.0), at(0.0)]
+        for flags, expected in (
+            (dict(), [0, 0, 1]),
+            (dict(THERM_MIN_INCLUSIVE=True, THERM_MAX_INCLUSIVE=True), [1, 1, 1]),
+            (dict(THERM_MIN_INCLUSIVE=True), [1, 0, 1]),
+        ):
+            with self.subTest(**flags):
+                self.assertEqual([int(v) for v in self.mask(values, 6, **flags)], expected)
+
+    def test_exclusive_bounds_reject_nan(self):
+        # An exclusive end rejects NaN, so the pixel fits without it. (Both ends
+        # inclusive let NaN through to the fit; see the README.)
+        for band, flags in ((3, dict(REFL_MIN_INCLUSIVE=False)),
+                            (3, dict(REFL_MAX_INCLUSIVE=False)),
+                            (6, dict())):
+            with self.subTest(band=band, **flags):
+                self.assertEqual(self.mask([np.nan, 1000.0 if band != 6 else 2900.0], band, **flags),
+                                 [0, 1])
+
+
 class TimestepMismatch(unittest.TestCase):
     def test_detect(self):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):

@@ -46,8 +46,7 @@ ProcessingMask standard(
         apply_thermal_filter(
             workspace.spectral(),
             options.THERMAL_IDX,
-            options.THERM_MIN,
-            options.THERM_MAX,
+            thermal_range(options),
             mask
         );
     }
@@ -57,8 +56,7 @@ ProcessingMask standard(
     apply_saturation_filter(
         workspace.spectral(),
         options.SATURATION_BANDS,
-        options.REFL_MIN,
-        options.REFL_MAX,
+        reflectance_range(options),
         mask
     );
 
@@ -132,8 +130,7 @@ ProcessingMask insufficientclear(
 void apply_thermal_filter(
     ArrayView<const scalar_t, 2> spectral,
     index_t thermal_band,
-    scalar_t min_value,
-    scalar_t max_value,
+    const Range& range,
     ProcessingMask& mask
 )
 {
@@ -147,10 +144,7 @@ void apply_thermal_filter(
         spectral.slice(fixed(thermal_band), all());
 
     for (index_t i = 0; i < thermal.size(); ++i) {
-        scalar_t value = thermal(i);
-        const bool valid =
-            value > min_value &&
-            value < max_value;
+        const bool valid = in_range(thermal(i), range);
         // This is an Intersection (AND) operation so set false where 
         // conditional is not valid retains original mask
         if(!valid) {     
@@ -162,8 +156,7 @@ void apply_thermal_filter(
 void apply_saturation_filter(
     ArrayView<const scalar_t, 2> spectral,
     const BandList& bands,
-    scalar_t min_value,
-    scalar_t max_value,
+    const Range& range,
     ProcessingMask& mask
 )
 {
@@ -176,14 +169,11 @@ void apply_saturation_filter(
 
         bool valid = true;
         for (const index_t band : bands) {
-            const scalar_t value = spectral(band, obs);
-
-            // One predicate, not two. pyccd's collection-1 bound is
-            // [0, 10000] and collection-2's is [7273, 43636]; both mean
-            // "reflectance in [0, 1]", and a caller working in reflectance
-            // passes [0.0, 1.0]. The two commented-out branches this
-            // replaced were the same test written in two units.
-            if (value < min_value || value > max_value) {
+            // One predicate for every collection. pyccd's collection-1
+            // bound is [0, 10000] and collection-2's is [7273, 43636]; both
+            // mean "reflectance in [0, 1]", and a caller working in
+            // reflectance passes [0.0, 1.0].
+            if (!in_range(spectral(band, obs), range)) {
                 valid = false;
                 break;
             }
