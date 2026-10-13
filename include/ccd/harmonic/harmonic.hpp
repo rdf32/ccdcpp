@@ -35,6 +35,20 @@ struct HarmonicOptions
     
     //--------------------------------------------------------------------------
     // QA Values
+    //
+    // The codes the procedures compare `qas` against, one per observation:
+    // the caller's uint8 codes, or a QaTable's output (qa_table.hpp), which
+    // the table builders take from these fields.
+    //
+    //   QA_FILL               not a valid observation in the statistics
+    //   QA_CLEAR, QA_WATER    kept for the fit; the clear percentage
+    //   QA_SNOW               the snow percentage; PermanentSnow's fit
+    //   QA_CLOUD              the statistics' cloud count
+    //
+    // Every other code keeps the observation out of the fit and counts only
+    // toward the total. QA_SHADOW is not read by the procedures; the table
+    // builders write it. QA_CIRRUS1, QA_CIRRUS2 and QA_OCCLUSION are
+    // informational: nothing in ccdcpp reads them.
     //--------------------------------------------------------------------------
     std::uint8_t QA_FILL      = 255;
     std::uint8_t QA_CLEAR     = 0;

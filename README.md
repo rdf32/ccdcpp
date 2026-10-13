@@ -17,6 +17,7 @@ A high-performance C++17 implementation of the Continuous Change Detection and C
 - Significant reductions in execution time and memory usage
 - OpenMP parallel processing for image cubes
 - Zero-copy NumPy interface
+- Raw QA input decoded through optional lookup tables (Landsat C1/C2; HLS and Sentinel-2 building blocks)
 - Designed to reproduce PyCCD algorithm behavior and outputs
 - Cross-platform CMake build system
 
@@ -56,7 +57,7 @@ The `detect()` API expects a single pixel time series in the following layout:
 |-------|--------|-------------|
 | `dates` | `(timesteps,)` | Acquisition dates |
 | `spectral` | `(bands, timesteps)` | Spectral observations for one pixel |
-| `qas` | `(timesteps,)` | Quality assessment values |
+| `qas` | `(timesteps,)` | QA codes, or raw QA with `qa_table=` (see [QA Input](#qa-input)) |
 
 For example:
 
@@ -78,7 +79,7 @@ The `detect_cube()` API expects image cubes in the following layout:
 |-------|--------|-------------|
 | `dates` | `(timesteps,)` | Shared acquisition dates |
 | `spectral` | `(height, width, bands, timesteps)` | Spectral observations |
-| `qas` | `(height, width, timesteps)` | QA observations |
+| `qas` | `(height, width, timesteps)` | QA codes, or raw QA with `qa_table=` (see [QA Input](#qa-input)) |
 
 For example:
 
@@ -114,6 +115,49 @@ Using C-contiguous arrays with these layouts maximizes performance and minimizes
 | `THERMAL_IDX` | `6` | the thermal transform and filter; `ccdcpp.NO_BAND` for none |
 
 Every row is fitted and reported, so results have `NUM_BANDS` bands in row order: `detect` returns a `bands` list of that length per model and `num_bands`, and `detect_cube_columns` returns `[n, B]` and `[n, B, 7]` arrays. `CHANGE_THRESHOLD` and `OUTLIER_THRESHOLD` default to chi-squared quantiles with 5 degrees of freedom, the default detection band count; a layout with a different count sets them to match. `BLUE_IDX`, `RED_IDX`, `NIR_IDX`, `SWIR1_IDX`, `SWIR2_IDX` and `QA_IDX` are informational and not read. A layout that does not fit the input (wrong band count, an index off the band axis, a repeated index, an empty detection or Tmask list, no green band, thermal in the saturation list, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs.
+
+## QA Input
+
+`qas` reaches the procedures as one class code per observation. It can be passed two ways.
+
+**Pre-classified codes (uint8).** `qas` already holds the codes, and is read as it is. The codes are the `HarmonicOptions` `QA_*` fields:
+
+| Field | Default | Read by |
+|-------|---------|---------|
+| `QA_FILL` | `255` | the quality statistics: not counted as a valid observation |
+| `QA_CLEAR` | `0` | the fit (kept), the clear percentage |
+| `QA_WATER` | `1` | the fit (kept), the clear percentage |
+| `QA_SNOW` | `3` | the snow percentage and the PermanentSnow procedure |
+| `QA_CLOUD` | `4` | the quality statistics' cloud count |
+| `QA_SHADOW` | `2` | not read by the procedures; written by the QA tables |
+| `QA_CIRRUS1`, `QA_CIRRUS2`, `QA_OCCLUSION` | `8`, `9`, `10` | informational; not read by ccdcpp |
+
+Any code other than `QA_CLEAR` and `QA_WATER` keeps the observation out of the fit; a code that is none of the above counts only toward the total.
+
+**Raw QA plus a table (uint8 or uint16).** Pass the archive's own QA band and a `ccdcpp.QaTable` as `qa_table=`. Each pixel's values are decoded through the table, per thread, before the procedures run, so the run is exactly the run of the decoded codes passed as uint8, without a decoded copy of the cube. A uint16 `qas` without a table raises `TypeError`.
+
+```python
+table = ccdcpp.qa_tables.landsat_c2_qa_pixel(hoptions)
+
+columns = ccdcpp.detect_cube_columns(
+    dates, spectra, qa_pixel, hoptions, loptions, threads=8, qa_table=table)
+```
+
+| Builder | Product | Validated for production |
+|---------|---------|--------------------------|
+| `landsat_c2_qa_pixel(options)` | Landsat Collection 2 `QA_PIXEL` (uint16) | yes |
+| `landsat_c1_pixel_qa(options)` | Landsat Collection 1 `pixel_qa` (uint16) | yes |
+| `hls_fmask(options, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | not yet |
+| `sentinel2_scl(options)` | Sentinel-2 L2A `SCL` (uint8) | not yet |
+
+Each builder writes the `QA_*` codes of the `HarmonicOptions` it is given (default `HarmonicOptions()`), so build the table from the options the run uses. Each decodes most-excluding first: fill, then cloud, then shadow, then snow, then water, then clear.
+
+- **Landsat C2 `QA_PIXEL`:** bit 0 fill; bits 3, 1, 2 (cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; bit 7 water; otherwise clear. Bit 6 (clear) and the confidence bits 8-15 are not read. This is the table the millworks nlcd plugin builds, entry for entry.
+- **Landsat C1 `pixel_qa`:** pyccd's `qabitval`: bit 0 fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 clear; bits 8 and 9 together, or bit 10, clear. A value pyccd rejects decodes to fill.
+- **HLS `Fmask`:** 255 fill; bits 1, 2, 0 (cloud, adjacent to cloud or shadow, cirrus) cloud; bit 3 shadow; bit 4 snow; bit 5 water; otherwise clear. The aerosol level (bits 6-7) is ignored unless `exclude_high_aerosol=True`, which makes high aerosol cloud. Values above 255 are fill.
+- **Sentinel-2 `SCL`:** 0, 1 fill; 2, 3 shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud medium and high probability, thin cirrus) cloud; 11 snow; anything else fill.
+
+The HLS and Sentinel-2 tables follow the products' definitions and are tested, but no production run has used them yet; only the Landsat tables are blessed for production use so far. For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
 
 ## Native C++ Implementation
 

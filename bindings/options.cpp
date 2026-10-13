@@ -212,18 +212,29 @@ void bind_options(py::module_& m)
     //--------------------------------------------------------------------------
     // QA vocabulary
     //
-    // The codes the caller's `qas` array uses. A caller unpacking a different
-    // archive's bitmask sets these rather than remapping the array.
+    // The codes the procedures compare `qas` against: the caller's uint8
+    // codes, or a QaTable's output, which ccdcpp.qa_tables builds from these
+    // fields. See harmonic.hpp for what reads each one.
     //--------------------------------------------------------------------------
-    .def_readwrite("QA_FILL",      &ccd::HarmonicOptions::QA_FILL)
-    .def_readwrite("QA_CLEAR",     &ccd::HarmonicOptions::QA_CLEAR)
-    .def_readwrite("QA_WATER",     &ccd::HarmonicOptions::QA_WATER)
-    .def_readwrite("QA_SHADOW",    &ccd::HarmonicOptions::QA_SHADOW)
-    .def_readwrite("QA_SNOW",      &ccd::HarmonicOptions::QA_SNOW)
-    .def_readwrite("QA_CLOUD",     &ccd::HarmonicOptions::QA_CLOUD)
-    .def_readwrite("QA_CIRRUS1",   &ccd::HarmonicOptions::QA_CIRRUS1)
-    .def_readwrite("QA_CIRRUS2",   &ccd::HarmonicOptions::QA_CIRRUS2)
-    .def_readwrite("QA_OCCLUSION", &ccd::HarmonicOptions::QA_OCCLUSION)
+    .def_readwrite("QA_FILL",      &ccd::HarmonicOptions::QA_FILL,
+        "Fill: not a valid observation (default 255).")
+    .def_readwrite("QA_CLEAR",     &ccd::HarmonicOptions::QA_CLEAR,
+        "Clear: kept for the fit (default 0).")
+    .def_readwrite("QA_WATER",     &ccd::HarmonicOptions::QA_WATER,
+        "Water: kept for the fit (default 1).")
+    .def_readwrite("QA_SHADOW",    &ccd::HarmonicOptions::QA_SHADOW,
+        "Cloud shadow (default 2). Not read by the procedures, so excluded "
+        "from the fit; the QA tables write it.")
+    .def_readwrite("QA_SNOW",      &ccd::HarmonicOptions::QA_SNOW,
+        "Snow: the snow percentage and PermanentSnow (default 3).")
+    .def_readwrite("QA_CLOUD",     &ccd::HarmonicOptions::QA_CLOUD,
+        "Cloud: excluded from the fit (default 4).")
+    .def_readwrite("QA_CIRRUS1",   &ccd::HarmonicOptions::QA_CIRRUS1,
+        "Informational; not read by ccdcpp (default 8).")
+    .def_readwrite("QA_CIRRUS2",   &ccd::HarmonicOptions::QA_CIRRUS2,
+        "Informational; not read by ccdcpp (default 9).")
+    .def_readwrite("QA_OCCLUSION", &ccd::HarmonicOptions::QA_OCCLUSION,
+        "Informational; not read by ccdcpp (default 10).")
 
     //--------------------------------------------------------------------------
     // Remaining thresholds

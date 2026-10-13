@@ -126,10 +126,12 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(ccdcpp.CCD_MAX_BANDS, 32)
 
     def test_informational_indices_say_so(self):
-        for name in ("BLUE_IDX", "RED_IDX", "NIR_IDX", "SWIR1_IDX", "SWIR2_IDX", "QA_IDX"):
+        for name in ("BLUE_IDX", "RED_IDX", "NIR_IDX", "SWIR1_IDX", "SWIR2_IDX", "QA_IDX",
+                     "QA_CIRRUS1", "QA_CIRRUS2", "QA_OCCLUSION"):
             with self.subTest(name=name):
                 self.assertIn("Informational", getattr(ccdcpp.HarmonicOptions, name).__doc__)
-        for name in ("GREEN_IDX", "THERMAL_IDX"):
+        for name in ("GREEN_IDX", "THERMAL_IDX", "QA_FILL", "QA_CLEAR", "QA_WATER",
+                     "QA_SHADOW", "QA_SNOW", "QA_CLOUD"):
             with self.subTest(name=name):
                 self.assertNotIn("Informational", getattr(ccdcpp.HarmonicOptions, name).__doc__)
 
