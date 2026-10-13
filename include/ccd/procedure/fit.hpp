@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <vector>
 
 #include "ccd/types.hpp"
@@ -44,7 +43,8 @@ struct ChangeModel {
 
     CurveQA curve_qa;
 
-    std::array<LassoResult, 7> bands;
+    // One fit per row of the input's spectral array, in row order.
+    std::vector<LassoResult> bands;
 };
 
 struct FitResult

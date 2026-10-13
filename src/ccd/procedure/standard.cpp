@@ -541,6 +541,7 @@ ChangeModel StandardProcedure::catch_model(
     // Fit every spectral band
     //----------------------------------------------------------
     LOG_DEBUG("catch model training: ");
+    result.bands.resize(masked_spectral_window.extent(0));
     for (index_t band = 0; band < masked_spectral_window.extent(0); ++band)
     {
         auto y = masked_spectral_window.slice(
@@ -792,8 +793,8 @@ ChangeModel StandardProcedure::lookforward(
     result.change_probability = static_cast<scalar_t>(change);
     result.curve_qa = static_cast<CurveQA>(num_coef);
 
-    for (index_t band = 0; band < 7; ++band) {
-        result.bands[band] = std::move(models[band]);
+    result.bands = std::move(models);
+    for (index_t band = 0; band < num_bands; ++band) {
         result.bands[band].score.magn = median(full_resids[band]);
 
         // The fit-window residuals were for seasonal_rmse(); nothing reads

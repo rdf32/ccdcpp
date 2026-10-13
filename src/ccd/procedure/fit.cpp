@@ -72,6 +72,7 @@ FitResult FitProcedure::run(
     //----------------------------------------------------------
     // Fit every spectral band
     //----------------------------------------------------------
+    result.bands.resize(masked_spectral.extent(0));
     for (index_t band = 0; band < masked_spectral.extent(0); ++band)
     {   
         lworkspace.reset();
