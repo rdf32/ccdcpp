@@ -119,7 +119,8 @@ FitResult FitProcedure::run(
 
 index_t adjust_peek(
     ArrayView<const std::int64_t, 1> dates,
-    index_t defpeek
+    index_t defpeek,
+    scalar_t reference_days
 )
 {
     if (dates.size() < 2)
@@ -140,7 +141,7 @@ index_t adjust_peek(
 
     const auto adjusted =
         static_cast<index_t>(
-            std::round(defpeek * 16.0 / delta)
+            std::round(defpeek * reference_days / delta)
         );
 
     return std::max(
@@ -153,7 +154,8 @@ scalar_t adjust_change_threshold(
     index_t peek,
     index_t defpeek,
     scalar_t defthresh,
-    index_t df
+    index_t df,
+    scalar_t probability
 )
 {
     if(peek <= defpeek)
@@ -163,14 +165,19 @@ scalar_t adjust_change_threshold(
     const scalar_t pt =
         1.0 -
         std::pow(
-            1.0-0.99,
+            1.0 - probability,
             static_cast<double>(defpeek)/peek
         );
 
 
+    return chi2_quantile(pt, df);
+}
+
+scalar_t chi2_quantile(scalar_t p, index_t df)
+{
     boost::math::chi_squared dist(static_cast<scalar_t>(df));
 
-    return boost::math::quantile(dist, pt);
+    return boost::math::quantile(dist, p);
 }
 
 //------------------------------------------------------------------------------
@@ -220,13 +227,14 @@ std::vector<scalar_t> calculate_variogram(
 //------------------------------------------------------------------------------
 // Modified variogram.
 //
-// Attempts to use observations separated by >30 days.
+// Attempts to use observations separated by more than min_lag_days.
 //
 // Equivalent to adjusted_variogram() in Python.
 //------------------------------------------------------------------------------
 std::vector<scalar_t> adjusted_variogram(
     ArrayView<const std::int64_t, 1> dates,
-    ArrayView<const scalar_t, 2> spectral
+    ArrayView<const scalar_t, 2> spectral,
+    std::int64_t min_lag_days
 )
 {
     std::vector<scalar_t> variogram =
@@ -239,7 +247,7 @@ std::vector<scalar_t> adjusted_variogram(
         return variogram;
     }
     //----------------------------------------------------------------------
-    // Increase lag until the most common separation exceeds 30 days.
+    // Increase lag until the most common separation exceeds min_lag_days.
     //----------------------------------------------------------------------
     for (index_t lag = 1; lag < count; ++lag)
     {
@@ -274,11 +282,11 @@ std::vector<scalar_t> adjusted_variogram(
             << ", count = " << majority_count
         );
 
-        if (majority_value <= 30) {
+        if (majority_value <= min_lag_days) {
             continue;
         }
         //------------------------------------------------------------------
-        // Recompute variogram using only pairs >30 days apart.
+        // Recompute variogram using only pairs more than min_lag_days apart.
         //------------------------------------------------------------------
         LOG_DEBUG("SELECTED LAG: " << lag);
 
@@ -291,7 +299,7 @@ std::vector<scalar_t> adjusted_variogram(
                 const std::int64_t delta =
                     dates(i + lag) - dates(i);
 
-                if (delta <= 30) {
+                if (delta <= min_lag_days) {
                     continue;
                 }
                 scratch.push_back(
@@ -742,7 +750,8 @@ std::vector<index_t> find_closest_doy(
 
 scalar_t seasonal_rmse(
     const LassoResult& model,
-    const std::vector<index_t>& indices
+    const std::vector<index_t>& indices,
+    scalar_t divisor
 )
 {
     scalar_t sum = 0.0;
@@ -756,8 +765,8 @@ scalar_t seasonal_rmse(
     }
     LOG_DEBUG("C++ sum_sq: " << sum);
     LOG_DEBUG("C++ norm:   " << std::sqrt(sum));
-    LOG_DEBUG("C++ rmse:   " << std::sqrt(sum) / 4.0);
-    return std::sqrt(sum) / 4.0;
+    LOG_DEBUG("C++ rmse:   " << std::sqrt(sum) / divisor);
+    return std::sqrt(sum) / divisor;
 }
 
 } // namespace ccd

@@ -11,6 +11,7 @@
 //
 //==============================================================================
 
+#include <cmath>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -268,6 +269,89 @@ TEST(Validation, LayoutRules)
         h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6};
         expect_layout_error(h, 7, "SATURATION_BANDS holds THERMAL_IDX (6)");
     }
+}
+
+// The cadence and change-probability options: zero or negative days, counts
+// below 1, a probability outside (0, 1), a non-positive factor or divisor.
+TEST(Validation, CadenceRules)
+{
+    const double nan = std::nan("");
+
+    const auto expect_error = [](auto set, const std::string& expected)
+    {
+        ccd::HarmonicOptions h;
+        set(h);
+        expect_layout_error(h, 7, expected);
+    };
+
+    for (const double days : {0.0, -16.0, nan})
+        expect_error([&](auto& h) { h.PEEK_REFERENCE_DAYS = days; },
+            "PEEK_REFERENCE_DAYS is ");
+    expect_error([](auto& h) { h.PEEK_REFERENCE_DAYS = 0.0; },
+        "PEEK_REFERENCE_DAYS is 0.000000; it must be greater than 0 days");
+
+    for (const std::int64_t days : {0, -30})
+        expect_error([&](auto& h) { h.VARIOGRAM_MIN_LAG_DAYS = days; },
+            "VARIOGRAM_MIN_LAG_DAYS is " + std::to_string(days) +
+            "; it must be greater than 0 days");
+
+    expect_error([](auto& h) { h.RETRAIN_MIN_OBS = 0; },
+        "RETRAIN_MIN_OBS is 0; it must be at least 1");
+    expect_error([](auto& h) { h.SEASONAL_RMSE_COUNT = 0; },
+        "SEASONAL_RMSE_COUNT is 0; it must be at least 1");
+
+    for (const double factor : {0.0, -1.33, nan})
+        expect_error([&](auto& h) { h.RETRAIN_SPAN_FACTOR = factor; },
+            "RETRAIN_SPAN_FACTOR is ");
+    for (const double divisor : {0.0, -4.0, nan})
+        expect_error([&](auto& h) { h.SEASONAL_RMSE_DIVISOR = divisor; },
+            "SEASONAL_RMSE_DIVISOR is ");
+
+    for (const double p : {0.0, 1.0, -0.5, 1.5, nan})
+        expect_error([&](auto& h) { h.CHANGE_PROBABILITY = p; },
+            "CHANGE_PROBABILITY is ");
+    expect_error([](auto& h) { h.CHANGE_PROBABILITY = 1.0; },
+        "CHANGE_PROBABILITY is 1.000000; it must be in (0, 1)");
+
+    // The smallest accepted values.
+    ccd::HarmonicOptions h;
+    h.PEEK_REFERENCE_DAYS = 1e-9;
+    h.VARIOGRAM_MIN_LAG_DAYS = 1;
+    h.RETRAIN_MIN_OBS = 1;
+    h.RETRAIN_SPAN_FACTOR = 1e-9;
+    h.SEASONAL_RMSE_COUNT = 1;
+    h.SEASONAL_RMSE_DIVISOR = 1e-9;
+    h.CHANGE_PROBABILITY = 1e-9;
+    EXPECT_NO_THROW(ccd::validate(h, 7));
+    h.CHANGE_PROBABILITY = 1.0 - 1e-9;
+    EXPECT_NO_THROW(ccd::validate(h, 7));
+}
+
+// The cadence options are checked at the entry points too.
+TEST(Validation, DetectRejectsACadenceOption)
+{
+    constexpr ccd::index_t T = 40;
+    const auto dates = make_dates(T);
+    const auto spectral = make_spectral<double>(7, T);
+    const std::vector<std::uint8_t> qas(T, 0);
+
+    ccd::HarmonicOptions h;
+    h.SEASONAL_RMSE_DIVISOR = 0.0;
+
+    EXPECT_THROW(
+        ccd::detect(
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+            ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
+            h, ccd::LassoOptions()),
+        std::invalid_argument);
+
+    EXPECT_THROW(ccd::detect_cube(
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+            ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
+            ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {1, 1, T}),
+            h, ccd::LassoOptions(), 1),
+        std::invalid_argument);
 }
 
 TEST(Validation, BandListRejectsWhatItCannotHold)

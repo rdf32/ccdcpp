@@ -135,30 +135,46 @@ struct Window
 
 // full timeseries
 
+// The peek size for `dates`: defpeek * reference_days over the median gap
+// between consecutive dates, rounded, and never below `defpeek`. `defpeek`
+// for fewer than two dates. reference_days is
+// HarmonicOptions::PEEK_REFERENCE_DAYS.
 index_t adjust_peek(
     ArrayView<const std::int64_t, 1> dates,
-    index_t defpeek
+    index_t defpeek,
+    scalar_t reference_days
 );
 
 // The change threshold for a peek window of `peek` observations where the
 // default window is `defpeek`: the chi-squared quantile, with `df` degrees of
 // freedom (the detection band count), of the per-observation probability
-// that keeps the window's false-alarm rate at the default's. `defthresh`
-// when peek <= defpeek.
+// 1 - (1 - probability)^(defpeek / peek), which keeps the window's
+// false-alarm rate at the default's. `defthresh` when peek <= defpeek.
+// probability is HarmonicOptions::CHANGE_PROBABILITY.
 scalar_t adjust_change_threshold(
     index_t peek,
     index_t defpeek,
     scalar_t defthresh,
-    index_t df
+    index_t df,
+    scalar_t probability
 );
+
+// The chi-squared quantile at probability p with df degrees of freedom: the
+// distribution adjust_change_threshold() reads its threshold from.
+scalar_t chi2_quantile(scalar_t p, index_t df);
 
 std::vector<scalar_t> calculate_variogram(
     ArrayView<const scalar_t, 2> spectral
 );
 
+// The first-order variogram at the smallest lag whose most common
+// separation exceeds min_lag_days, over the pairs further apart than
+// min_lag_days; calculate_variogram() when no lag qualifies. min_lag_days is
+// HarmonicOptions::VARIOGRAM_MIN_LAG_DAYS.
 std::vector<scalar_t> adjusted_variogram(
     ArrayView<const std::int64_t, 1> dates,
-    ArrayView<const scalar_t, 2> spectral
+    ArrayView<const scalar_t, 2> spectral,
+    std::int64_t min_lag_days
 );
 
 bool check_variogram(
@@ -243,9 +259,12 @@ std::vector<index_t> find_closest_doy(
     index_t count
 );
 
+// The norm of model's residuals at `indices`, over `divisor`
+// (HarmonicOptions::SEASONAL_RMSE_DIVISOR).
 scalar_t seasonal_rmse(
     const LassoResult& model,
-    const std::vector<index_t>& indices
+    const std::vector<index_t>& indices,
+    scalar_t divisor
 );
 
 } // namespace ccd

@@ -65,6 +65,58 @@ void validate_nonempty(const char* name, const BandList& list)
     }
 }
 
+// `value` > 0; written so that NaN fails too.
+void validate_positive(const char* name, scalar_t value, const char* unit)
+{
+    if (!(value > 0.0))
+    {
+        throw std::invalid_argument(
+            std::string(name) + " is " + std::to_string(value) +
+            "; it must be greater than 0" + unit
+        );
+    }
+}
+
+void validate_count(const char* name, index_t value)
+{
+    if (value < 1)
+    {
+        throw std::invalid_argument(
+            std::string(name) + " is " + std::to_string(value) +
+            "; it must be at least 1"
+        );
+    }
+}
+
+// The cadence and change-probability options.
+void validate_cadence(const HarmonicOptions& options)
+{
+    validate_positive("PEEK_REFERENCE_DAYS", options.PEEK_REFERENCE_DAYS, " days");
+
+    if (options.VARIOGRAM_MIN_LAG_DAYS <= 0)
+    {
+        throw std::invalid_argument(
+            "VARIOGRAM_MIN_LAG_DAYS is " +
+            std::to_string(options.VARIOGRAM_MIN_LAG_DAYS) +
+            "; it must be greater than 0 days"
+        );
+    }
+
+    validate_count("RETRAIN_MIN_OBS", options.RETRAIN_MIN_OBS);
+    validate_positive("RETRAIN_SPAN_FACTOR", options.RETRAIN_SPAN_FACTOR, "");
+    validate_count("SEASONAL_RMSE_COUNT", options.SEASONAL_RMSE_COUNT);
+    validate_positive("SEASONAL_RMSE_DIVISOR", options.SEASONAL_RMSE_DIVISOR, "");
+
+    if (!(options.CHANGE_PROBABILITY > 0.0 && options.CHANGE_PROBABILITY < 1.0))
+    {
+        throw std::invalid_argument(
+            "CHANGE_PROBABILITY is " +
+            std::to_string(options.CHANGE_PROBABILITY) +
+            "; it must be in (0, 1)"
+        );
+    }
+}
+
 } // namespace
 
 void validate(const HarmonicOptions& options, index_t bands)
@@ -126,6 +178,7 @@ void validate(const HarmonicOptions& options, index_t bands)
             );
         }
     }
+    validate_cadence(options);
 }
 
 namespace

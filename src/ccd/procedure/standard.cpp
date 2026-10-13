@@ -646,7 +646,7 @@ ChangeModel StandardProcedure::lookforward(
         
         LOG_DEBUG("detecting change for: " << peek_window.start << ", " << peek_window.stop);
 
-        if (!trained || window.stop - window.start < 24 || model_span >= 1.33 * fit_span) 
+        if (!trained || window.stop - window.start < options.RETRAIN_MIN_OBS || model_span >= options.RETRAIN_SPAN_FACTOR * fit_span) 
         {   
             trained = true;
             fit_window = window;
@@ -718,7 +718,7 @@ ChangeModel StandardProcedure::lookforward(
             calc_residuals(y, lworkspace.predictions, full_resids[band]);
         }
 
-        if (window.stop - window.start <= 24) {
+        if (window.stop - window.start <= options.RETRAIN_MIN_OBS) {
             LOG_DEBUG("normal residuals and rmse");
             for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
@@ -730,7 +730,7 @@ ChangeModel StandardProcedure::lookforward(
 
             LOG_DEBUG("closest day residuals and rmse");
             auto closest_indexes = 
-                find_closest_doy(masked_dates, peek_window.stop - 1, fit_window, 24);
+                find_closest_doy(masked_dates, peek_window.stop - 1, fit_window, options.SEASONAL_RMSE_COUNT);
             
             LOG_DEBUG("period: " << masked_dates);
             LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
@@ -740,7 +740,7 @@ ChangeModel StandardProcedure::lookforward(
             for (index_t i = 0; i < options.DETECTION_BANDS.size(); ++i)
             {   
                 auto band = options.DETECTION_BANDS[i];
-                comp_rmses[i] = seasonal_rmse(models[band], closest_indexes);
+                comp_rmses[i] = seasonal_rmse(models[band], closest_indexes, options.SEASONAL_RMSE_DIVISOR);
                 comp_vario[i] = variogram[band];
             }
         }
@@ -867,7 +867,8 @@ FitResult StandardProcedure::run(
     options.PEEK_SIZE =
         adjust_peek(
             stat_dates,
-            options.PEEK_SIZE
+            options.PEEK_SIZE,
+            options.PEEK_REFERENCE_DAYS
         );
     
     options.CHANGE_THRESHOLD =
@@ -875,7 +876,8 @@ FitResult StandardProcedure::run(
             options.PEEK_SIZE,
             options.PEEK_SIZE,
             options.CHANGE_THRESHOLD,
-            options.DETECTION_BANDS.size()
+            options.DETECTION_BANDS.size(),
+            options.CHANGE_PROBABILITY
         );
     
     LOG_DEBUG("Peek size: " << options.PEEK_SIZE);
@@ -885,7 +887,8 @@ FitResult StandardProcedure::run(
     std::vector<scalar_t> variogram =
         adjusted_variogram(
             stat_dates,
-            stat_spectral
+            stat_spectral,
+            options.VARIOGRAM_MIN_LAG_DAYS
         );
 
     if(!check_variogram(variogram))

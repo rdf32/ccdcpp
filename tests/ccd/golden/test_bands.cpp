@@ -765,16 +765,16 @@ TEST(Bands, ChangeThresholdTakesItsDegreesOfFreedom)
 
     // df = 5: the values it gives with the detection count of the default
     // layout.
-    EXPECT_EQ(ccd::adjust_change_threshold(6, 6, DEFAULT, 5), DEFAULT);
-    EXPECT_EQ(ccd::adjust_change_threshold(7, 6, DEFAULT, 5), 0x1.af382cc5ddf21p+3);
-    EXPECT_EQ(ccd::adjust_change_threshold(9, 6, DEFAULT, 5), 0x1.6866ca4a577a6p+3);
-    EXPECT_EQ(ccd::adjust_change_threshold(12, 6, DEFAULT, 5), 0x1.27903c5857cd8p+3);
-    EXPECT_EQ(ccd::adjust_change_threshold(20, 6, DEFAULT, 5), 0x1.a71fc718bf22bp+2);
-    EXPECT_EQ(ccd::adjust_change_threshold(40, 6, DEFAULT, 5), 0x1.15f079295b2c3p+2);
+    EXPECT_EQ(ccd::adjust_change_threshold(6, 6, DEFAULT, 5, 0.99), DEFAULT);
+    EXPECT_EQ(ccd::adjust_change_threshold(7, 6, DEFAULT, 5, 0.99), 0x1.af382cc5ddf21p+3);
+    EXPECT_EQ(ccd::adjust_change_threshold(9, 6, DEFAULT, 5, 0.99), 0x1.6866ca4a577a6p+3);
+    EXPECT_EQ(ccd::adjust_change_threshold(12, 6, DEFAULT, 5, 0.99), 0x1.27903c5857cd8p+3);
+    EXPECT_EQ(ccd::adjust_change_threshold(20, 6, DEFAULT, 5, 0.99), 0x1.a71fc718bf22bp+2);
+    EXPECT_EQ(ccd::adjust_change_threshold(40, 6, DEFAULT, 5, 0.99), 0x1.15f079295b2c3p+2);
 
     // df = 8: the chi2(8) quantile of the same probability.
     const double pt = 1.0 - std::pow(1.0 - 0.99, 6.0 / 12.0);
-    EXPECT_EQ(ccd::adjust_change_threshold(12, 6, DEFAULT, 8), chi2_quantile(8, pt));
-    EXPECT_GT(ccd::adjust_change_threshold(12, 6, DEFAULT, 8),
-              ccd::adjust_change_threshold(12, 6, DEFAULT, 5));
+    EXPECT_EQ(ccd::adjust_change_threshold(12, 6, DEFAULT, 8, 0.99), chi2_quantile(8, pt));
+    EXPECT_GT(ccd::adjust_change_threshold(12, 6, DEFAULT, 8, 0.99),
+              ccd::adjust_change_threshold(12, 6, DEFAULT, 5, 0.99));
 }

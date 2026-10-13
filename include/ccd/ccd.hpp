@@ -178,8 +178,7 @@ struct DetectScratch
 
 //------------------------------------------------------------------------------
 //
-// The band layout check every entry point runs once per call, before any
-// work.
+// The options check every entry point runs once per call, before any work.
 //
 // The procedures hold one fit per band and read bands by the indices in
 // `options`, so every index must name a row of an array with `bands` bands.
@@ -193,7 +192,14 @@ struct DetectScratch
 //   * THERMAL_IDX is neither NO_BAND nor below `bands`, or is in
 //     SATURATION_BANDS.
 //
-// The message names the field and the counts.
+// and the cadence and change-probability options when:
+//
+//   * PEEK_REFERENCE_DAYS or VARIOGRAM_MIN_LAG_DAYS is not greater than 0;
+//   * RETRAIN_MIN_OBS or SEASONAL_RMSE_COUNT is below 1;
+//   * RETRAIN_SPAN_FACTOR or SEASONAL_RMSE_DIVISOR is not greater than 0;
+//   * CHANGE_PROBABILITY is not in (0, 1).
+//
+// The message names the field and the counts or the value.
 //
 //------------------------------------------------------------------------------
 

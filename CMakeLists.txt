@@ -451,6 +451,32 @@ if(CCD_BUILD_TESTS)
             CCD_BANDS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/bands_fixture.txt"
     )
 
+    # The cadence and change-probability options: defaults spelled out equal
+    # the defaults, and each option moves the result its way. See
+    # tests/ccd/golden/test_cadence.cpp.
+    add_executable(
+        test_cadence
+
+        tests/ccd/golden/test_cadence.cpp
+    )
+
+
+    target_link_libraries(
+        test_cadence
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_cadence
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # QA lookup tables: raw QA decoded through a table against the codes
     # passed directly. See tests/ccd/golden/test_qa_tables.cpp.
     add_executable(
@@ -549,6 +575,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)
+    gtest_discover_tests(test_cadence)
 
 endif()
 

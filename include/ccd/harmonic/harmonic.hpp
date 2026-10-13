@@ -80,6 +80,58 @@ struct HarmonicOptions
     scalar_t T_CONST = 4.89;
 
     //--------------------------------------------------------------------------
+    // Cadence and change probability
+    //
+    // The Standard procedure's constants that are statements about the
+    // revisit interval of the input or the false-alarm rate of the change
+    // test. The defaults are pyccd's, tuned for 16-day Landsat. ccd::validate()
+    // rejects zero or negative days, counts below 1, a probability outside
+    // (0, 1) and a non-positive factor or divisor.
+    //
+    // MEOW_SIZE and the RETRAIN_* constants are observation counts and are
+    // not scaled with the cadence, here or in pyccd: at a denser cadence the
+    // same count spans less time.
+    //--------------------------------------------------------------------------
+
+    // Days. adjust_peek() scales PEEK_SIZE by PEEK_REFERENCE_DAYS over the
+    // median gap between the statistics-window observations, and never below
+    // PEEK_SIZE.
+    scalar_t PEEK_REFERENCE_DAYS = 16.0;
+
+    // Days. adjusted_variogram() raises the lag until the most common
+    // separation exceeds this, then keeps only the pairs further apart than
+    // it.
+    std::int64_t VARIOGRAM_MIN_LAG_DAYS = 30;
+
+    // Observations. Lookforward refits the models while the window holds
+    // fewer than RETRAIN_MIN_OBS observations, or once the window spans at
+    // least RETRAIN_SPAN_FACTOR times the span of the last fit. A window of
+    // at most RETRAIN_MIN_OBS observations compares against the model RMSE;
+    // a longer one against the seasonal RMSE below.
+    index_t RETRAIN_MIN_OBS = 24;
+
+    // Unitless ratio of spans; see RETRAIN_MIN_OBS.
+    scalar_t RETRAIN_SPAN_FACTOR = 1.33;
+
+    // Observations. The seasonal RMSE takes the fit-window residuals of the
+    // SEASONAL_RMSE_COUNT observations closest in day of year to the last
+    // peek observation...
+    index_t SEASONAL_RMSE_COUNT = 24;
+
+    // ...and is the norm of those residuals divided by SEASONAL_RMSE_DIVISOR.
+    // Unitless. The default is pyccd's 4, sqrt(24 - 8): 24 residuals less the
+    // 8 coefficients of the full model. It is a separate option and is not
+    // derived from SEASONAL_RMSE_COUNT.
+    scalar_t SEASONAL_RMSE_DIVISOR = 4.0;
+
+    // Probability, in (0, 1). For a peek window of `peek` observations longer
+    // than the default `defpeek`, adjust_change_threshold() takes the chi2
+    // quantile at 1 - (1 - CHANGE_PROBABILITY)^(defpeek / peek). The default
+    // CHANGE_THRESHOLD is the chi2(5) quantile at this probability, so a
+    // caller changing one sets the other to match (ccdcpp.chi2_quantile).
+    scalar_t CHANGE_PROBABILITY = 0.99;
+
+    //--------------------------------------------------------------------------
     // Input unit convention
     //
     // Every value in this block is an ABSOLUTE threshold, which makes each one
