@@ -5,6 +5,7 @@
 
 #include "ccd/constants.hpp"
 #include "ccd/harmonic/harmonic.hpp"
+#include "ccd/procedure/fit.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 namespace py = pybind11;
@@ -259,6 +260,83 @@ void bind_options(py::module_& m)
     .def_readwrite(
         "NUM_OBS_FACTOR",
         &ccd::HarmonicOptions::NUM_OBS_FACTOR
+    )
+
+    //--------------------------------------------------------------------------
+    // Cadence and change probability
+    //
+    // The Standard procedure's constants about the revisit interval of the
+    // input and the false-alarm rate of the change test. Defaults are
+    // pyccd's, for 16-day Landsat. ccdcpp.detect* raise ValueError on zero
+    // or negative days, counts below 1, a probability outside (0, 1) and a
+    // non-positive factor or divisor. See harmonic.hpp.
+    //--------------------------------------------------------------------------
+    .def_readwrite(
+        "PEEK_REFERENCE_DAYS",
+        &ccd::HarmonicOptions::PEEK_REFERENCE_DAYS,
+        "Days (default 16.0). The Standard procedure's peek size is "
+        "PEEK_SIZE * PEEK_REFERENCE_DAYS / (median gap between the "
+        "statistics-window observations, in days), rounded, and never below "
+        "PEEK_SIZE."
+    )
+    .def_readwrite(
+        "VARIOGRAM_MIN_LAG_DAYS",
+        &ccd::HarmonicOptions::VARIOGRAM_MIN_LAG_DAYS,
+        "Days (default 30). The Standard procedure's variogram uses the "
+        "smallest lag whose most common separation exceeds this, over the "
+        "pairs further apart than this."
+    )
+    .def_readwrite(
+        "RETRAIN_MIN_OBS",
+        &ccd::HarmonicOptions::RETRAIN_MIN_OBS,
+        "Observations (default 24). Read by the Standard procedure's "
+        "lookforward: it refits while the model window holds fewer than "
+        "this, and a window of at most this many compares against the model "
+        "RMSE instead of the seasonal RMSE. Not scaled with the cadence."
+    )
+    .def_readwrite(
+        "RETRAIN_SPAN_FACTOR",
+        &ccd::HarmonicOptions::RETRAIN_SPAN_FACTOR,
+        "Unitless ratio of spans (default 1.33). Read by the Standard "
+        "procedure's lookforward: it refits once the model window spans at "
+        "least this times the span of the last fit. Not scaled with the "
+        "cadence."
+    )
+    .def_readwrite(
+        "SEASONAL_RMSE_COUNT",
+        &ccd::HarmonicOptions::SEASONAL_RMSE_COUNT,
+        "Observations (default 24). Read by the Standard procedure's "
+        "lookforward: the seasonal RMSE takes the fit residuals of this many "
+        "observations closest in day of year to the last peek observation."
+    )
+    .def_readwrite(
+        "SEASONAL_RMSE_DIVISOR",
+        &ccd::HarmonicOptions::SEASONAL_RMSE_DIVISOR,
+        "Unitless (default 4.0). Read by the Standard procedure's "
+        "lookforward: the seasonal RMSE is the norm of those residuals "
+        "divided by this. pyccd's 4 is sqrt(24 - 8); this is not derived "
+        "from SEASONAL_RMSE_COUNT."
+    )
+    .def_readwrite(
+        "CHANGE_PROBABILITY",
+        &ccd::HarmonicOptions::CHANGE_PROBABILITY,
+        "Probability in (0, 1) (default 0.99). Read by the Standard "
+        "procedure's change-threshold adjustment: a peek window of `peek` "
+        "observations longer than the default `defpeek` uses the chi2 "
+        "quantile at 1 - (1 - CHANGE_PROBABILITY) ** (defpeek / peek). "
+        "CHANGE_THRESHOLD is ccdcpp.chi2_quantile(CHANGE_PROBABILITY, 5) by "
+        "default; set both together."
+    );
+
+    m.def(
+        "chi2_quantile",
+        &ccd::chi2_quantile,
+        py::arg("p"),
+        py::arg("df"),
+        "The chi-squared quantile at probability p with df degrees of "
+        "freedom, from the same boost call the Standard procedure's "
+        "change-threshold adjustment makes. chi2_quantile(0.99, 5) is the "
+        "CHANGE_THRESHOLD default; df is the DETECTION_BANDS count."
     );
 
 

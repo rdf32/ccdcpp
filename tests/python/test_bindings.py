@@ -1,4 +1,5 @@
-"""Python entry points: input validation, the band layout and __version__.
+"""Python entry points: input validation, the band layout, the cadence options
+and __version__.
 
 usage: python test_bindings.py <module_dir> <source_dir> [unittest args]
 
@@ -243,9 +244,136 @@ class LayoutValidation(unittest.TestCase):
         for h, bands, expected in cases:
             self.assert_rejected(h, bands, expected)
 
+    def test_cadence_rules(self):
+        def broken(**fields):
+            h = ccdcpp.HarmonicOptions()
+            for k, v in fields.items():
+                setattr(h, k, v)
+            return h
+
+        nan = float("nan")
+        cases = [
+            (broken(PEEK_REFERENCE_DAYS=0.0), "PEEK_REFERENCE_DAYS is 0.000000; it must be greater than 0 days"),
+            (broken(PEEK_REFERENCE_DAYS=-16.0), "PEEK_REFERENCE_DAYS is -16.000000"),
+            (broken(PEEK_REFERENCE_DAYS=nan), "PEEK_REFERENCE_DAYS is nan"),
+            (broken(VARIOGRAM_MIN_LAG_DAYS=0), "VARIOGRAM_MIN_LAG_DAYS is 0; it must be greater than 0 days"),
+            (broken(VARIOGRAM_MIN_LAG_DAYS=-30), "VARIOGRAM_MIN_LAG_DAYS is -30"),
+            (broken(RETRAIN_MIN_OBS=0), "RETRAIN_MIN_OBS is 0; it must be at least 1"),
+            (broken(RETRAIN_SPAN_FACTOR=0.0), "RETRAIN_SPAN_FACTOR is 0.000000; it must be greater than 0"),
+            (broken(RETRAIN_SPAN_FACTOR=-1.33), "RETRAIN_SPAN_FACTOR is -1.330000"),
+            (broken(SEASONAL_RMSE_COUNT=0), "SEASONAL_RMSE_COUNT is 0; it must be at least 1"),
+            (broken(SEASONAL_RMSE_DIVISOR=0.0), "SEASONAL_RMSE_DIVISOR is 0.000000; it must be greater than 0"),
+            (broken(SEASONAL_RMSE_DIVISOR=-4.0), "SEASONAL_RMSE_DIVISOR is -4.000000"),
+            (broken(CHANGE_PROBABILITY=0.0), "CHANGE_PROBABILITY is 0.000000; it must be in (0, 1)"),
+            (broken(CHANGE_PROBABILITY=1.0), "CHANGE_PROBABILITY is 1.000000; it must be in (0, 1)"),
+            (broken(CHANGE_PROBABILITY=1.5), "CHANGE_PROBABILITY is 1.500000"),
+            (broken(CHANGE_PROBABILITY=nan), "CHANGE_PROBABILITY is nan"),
+        ]
+        for h, expected in cases:
+            self.assert_rejected(h, 7, expected)
+
     def test_empty_saturation_list_is_allowed(self):
         h = self.broken(SATURATION_BANDS=[])
         ccdcpp.detect(*inputs(10, 40), h, ccdcpp.LassoOptions())
+
+
+class CadenceOptions(unittest.TestCase):
+    """The cadence and change-probability fields and ccdcpp.chi2_quantile."""
+
+    DEFAULTS = {
+        "PEEK_REFERENCE_DAYS": 16.0,
+        "VARIOGRAM_MIN_LAG_DAYS": 30,
+        "RETRAIN_MIN_OBS": 24,
+        "RETRAIN_SPAN_FACTOR": 1.33,
+        "SEASONAL_RMSE_COUNT": 24,
+        "SEASONAL_RMSE_DIVISOR": 4.0,
+        "CHANGE_PROBABILITY": 0.99,
+    }
+
+    UNITS = {
+        "PEEK_REFERENCE_DAYS": "Days",
+        "VARIOGRAM_MIN_LAG_DAYS": "Days",
+        "RETRAIN_MIN_OBS": "Observations",
+        "RETRAIN_SPAN_FACTOR": "Unitless",
+        "SEASONAL_RMSE_COUNT": "Observations",
+        "SEASONAL_RMSE_DIVISOR": "Unitless",
+        "CHANGE_PROBABILITY": "Probability",
+    }
+
+    def test_defaults(self):
+        h = ccdcpp.HarmonicOptions()
+        for name, value in self.DEFAULTS.items():
+            with self.subTest(name=name):
+                self.assertEqual(getattr(h, name), value)
+                self.assertIs(type(getattr(h, name)), type(value))
+
+    def test_docstrings_state_unit_and_reader(self):
+        for name, unit in self.UNITS.items():
+            with self.subTest(name=name):
+                doc = getattr(ccdcpp.HarmonicOptions, name).__doc__
+                self.assertTrue(doc.startswith(unit), doc)
+                self.assertIn("Standard procedure", doc)
+                self.assertIn("default", doc)
+
+    def test_fields_are_writable(self):
+        h = ccdcpp.HarmonicOptions()
+        h.PEEK_REFERENCE_DAYS = 2.5
+        h.VARIOGRAM_MIN_LAG_DAYS = 6
+        h.RETRAIN_MIN_OBS = 48
+        h.RETRAIN_SPAN_FACTOR = 1.5
+        h.SEASONAL_RMSE_COUNT = 30
+        h.SEASONAL_RMSE_DIVISOR = 4.69
+        h.CHANGE_PROBABILITY = 0.995
+        self.assertEqual(
+            [h.PEEK_REFERENCE_DAYS, h.VARIOGRAM_MIN_LAG_DAYS, h.RETRAIN_MIN_OBS,
+             h.RETRAIN_SPAN_FACTOR, h.SEASONAL_RMSE_COUNT, h.SEASONAL_RMSE_DIVISOR,
+             h.CHANGE_PROBABILITY],
+            [2.5, 6, 48, 1.5, 30, 4.69, 0.995])
+        # Counts are unsigned.
+        with self.assertRaises(TypeError):
+            h.RETRAIN_MIN_OBS = -1
+
+    def test_chi2_quantile_is_the_change_threshold(self):
+        h = ccdcpp.HarmonicOptions()
+        # To the last bit.
+        self.assertEqual(
+            ccdcpp.chi2_quantile(0.99, 5).hex(), h.CHANGE_THRESHOLD.hex())
+        self.assertEqual(
+            ccdcpp.chi2_quantile(p=h.CHANGE_PROBABILITY, df=len(h.DETECTION_BANDS)),
+            h.CHANGE_THRESHOLD)
+        self.assertGreater(ccdcpp.chi2_quantile(0.99, 8), ccdcpp.chi2_quantile(0.99, 5))
+        self.assertGreater(ccdcpp.chi2_quantile(0.999, 5), ccdcpp.chi2_quantile(0.99, 5))
+        self.assertIn("same boost call", ccdcpp.chi2_quantile.__doc__)
+
+    def test_defaults_spelled_out_equal_default(self):
+        h = ccdcpp.HarmonicOptions()
+        for name, value in self.DEFAULTS.items():
+            setattr(h, name, value)
+        for args in (noisy(7, 120), noisy(7, 400, seed=3)):
+            self.assertEqual(
+                repr(ccdcpp.detect(*args, h, ccdcpp.LassoOptions())),
+                repr(ccdcpp.detect(*args, *options())))
+
+    def test_peek_reference_days_reaches_the_procedure(self):
+        # Eight disturbed observations fill the default peek window of 6 at a
+        # 16-day cadence, but not the window of 12 that 32 reference days make.
+        rng = np.random.default_rng(1)
+        d = START + 16 * np.arange(500, dtype=np.int64)
+        years = (d - d[0]) / 365.25
+        s = (1000.0 + 100.0 * np.arange(7))[:, None] + 300.0 * np.sin(2 * np.pi * years)
+        s = s + rng.normal(0.0, 30.0, s.shape)
+        s[6] = 2900.0 + 50.0 * np.sin(2 * np.pi * years)
+        s[1:6, 250:258] += 600.0
+        q = np.zeros(500, dtype=np.uint8)
+
+        def breaks(h):
+            out = ccdcpp.detect(d, s, q, h, ccdcpp.LassoOptions())
+            return sum(m["change_probability"] for m in out["models"])
+
+        h = ccdcpp.HarmonicOptions()
+        self.assertEqual(breaks(h), 1)
+        h.PEEK_REFERENCE_DAYS = 32.0
+        self.assertEqual(breaks(h), 0)
 
 
 class TimestepMismatch(unittest.TestCase):
