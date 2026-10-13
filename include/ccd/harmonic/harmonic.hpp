@@ -24,7 +24,8 @@ namespace ccd
 //
 //   All          at any date;
 //   StatWindow   only when dated <= STAT_ORD, which is the scope pyccd's
-//                insufficient_clear_filter computes the mask for;
+//                insufficient_clear_filter computes the mask for (the
+//                default);
 //   Off          never: the filter does not run.
 //
 // When no masked observation is dated <= STAT_ORD there is no median and
@@ -316,7 +317,7 @@ struct HarmonicOptions
 
     // Which observations the green median filter drops; see GreenFilterScope.
     // Not a unit constant.
-    GreenFilterScope GREEN_FILTER_SCOPE = GreenFilterScope::All;
+    GreenFilterScope GREEN_FILTER_SCOPE = GreenFilterScope::StatWindow;
 
     //--------------------------------------------------------------------------
     // Statistics

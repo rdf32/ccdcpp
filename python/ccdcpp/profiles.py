@@ -241,7 +241,7 @@ class SensorProfile:
         band, or None for pre-classified uint8 codes.
     green_filter_scope
         ``GREEN_FILTER_SCOPE``, by name from :data:`GREEN_FILTER_SCOPES`:
-        ``"all"`` (the default), ``"stat_window"`` or ``"off"``; a
+        ``"all"``, ``"stat_window"`` (the default) or ``"off"``; a
         ``ccdcpp.GreenFilterScope`` is accepted and stored as its name. Which
         observations InsufficientClear's green median filter drops.
 
@@ -264,7 +264,7 @@ class SensorProfile:
     change_threshold: Optional[float] = None
     outlier_threshold: Optional[float] = None
     qa_table_builder: Optional[str] = None
-    green_filter_scope: str = "all"
+    green_filter_scope: str = "stat_window"
 
     def __post_init__(self):
         for name in ("band_names", "roles", "detection", "tmask", "saturation"):

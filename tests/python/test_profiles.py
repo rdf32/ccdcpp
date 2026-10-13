@@ -401,12 +401,12 @@ class BoundFlags(unittest.TestCase):
 
 
 class GreenFilterScopeField(unittest.TestCase):
-    def test_default_is_all(self):
+    def test_default_is_stat_window(self):
         for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
             with self.subTest(preset=preset.__name__):
                 p = preset()
-                self.assertEqual(p.green_filter_scope, "all")
-                self.assertEqual(p.options()[0].GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.All)
+                self.assertEqual(p.green_filter_scope, "stat_window")
+                self.assertEqual(p.options()[0].GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.StatWindow)
 
     def test_names_and_values(self):
         base = presets.landsat_c1_dn()

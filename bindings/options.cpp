@@ -146,7 +146,7 @@ void bind_options(py::module_& m)
     .def_readwrite(
         "GREEN_FILTER_SCOPE",
         &ccd::HarmonicOptions::GREEN_FILTER_SCOPE,
-        "A ccdcpp.GreenFilterScope (default All): which observations the "
+        "A ccdcpp.GreenFilterScope (default StatWindow): which observations the "
         "InsufficientClear green median filter drops, at any date (All), "
         "only dated <= STAT_ORD (StatWindow) or none (Off). Not a unit "
         "constant."

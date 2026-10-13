@@ -345,9 +345,9 @@ struct Series
 
 } // namespace
 
-TEST(GreenScope, DefaultIsAll)
+TEST(GreenScope, DefaultIsStatWindow)
 {
-    EXPECT_EQ(ccd::HarmonicOptions().GREEN_FILTER_SCOPE, ccd::GreenFilterScope::All);
+    EXPECT_EQ(ccd::HarmonicOptions().GREEN_FILTER_SCOPE, ccd::GreenFilterScope::StatWindow);
 }
 
 // Green median before STAT_ORD is 1000, so the threshold is 1400. Spikes of

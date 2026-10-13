@@ -443,9 +443,9 @@ class GreenFilterScope(unittest.TestCase):
     STAT_ORD = 731000
 
     def test_default_and_docstring(self):
-        self.assertEqual(ccdcpp.HarmonicOptions().GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.All)
+        self.assertEqual(ccdcpp.HarmonicOptions().GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.StatWindow)
         self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
-        self.assertIn("default All", ccdcpp.HarmonicOptions.GREEN_FILTER_SCOPE.__doc__)
+        self.assertIn("default StatWindow", ccdcpp.HarmonicOptions.GREEN_FILTER_SCOPE.__doc__)
         self.assertIn("STAT_ORD", ccdcpp.GreenFilterScope.__doc__)
 
     def pixel(self, first):
