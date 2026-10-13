@@ -228,6 +228,9 @@ py::dict detect_wrapper(
             }
         );
 
+    // ValueError, as above.
+    ccd::validate_dates(dates_view);
+
 
     auto spectral_view =
         ccd::ArrayView<const ccd::scalar_t,2>::contiguous(
@@ -475,6 +478,8 @@ static CubeInput check_cube(
 
     // ValueError, raised here, before the GIL is released.
     ccd::validate(hoptions, B);
+    ccd::validate_dates(
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}));
 
     const SpectralType spectral_type =
         takes_as_is<std::uint16_t>(spectral) ? SpectralType::UInt16 :

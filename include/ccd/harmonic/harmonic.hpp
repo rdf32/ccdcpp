@@ -450,13 +450,8 @@ public:
 
         assert(spectral_.is_contiguous());
 
-        assert(
-            std::is_sorted(
-                dates_.data(),
-                dates_.data() + dates_.size()
-            )
-        );
-        // assert spectral has the correct layout
+        // Date order is checked once per call at the entry points
+        // (ccd::validate_dates), not per pixel here.
     }
 
     //----------------------------------------------------------------------

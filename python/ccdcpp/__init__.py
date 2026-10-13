@@ -79,7 +79,9 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
     """CCD on one pixel.
 
     dates
-        (T,) int64 proleptic Gregorian ordinals, ascending.
+        (T,) int64 proleptic Gregorian ordinals, non-decreasing (ValueError
+        otherwise). Equal dates are allowed; the first observation of each
+        date is kept.
     spectral
         (B, T) float64, one row per band.
     qas
@@ -114,7 +116,8 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
     """CCD on every pixel of a cube, in parallel.
 
     dates
-        (T,) int64, shared by every pixel.
+        (T,) int64, shared by every pixel, non-decreasing (ValueError
+        otherwise, checked once per call).
     spectral
         (H, W, B, T) float64, float32 or uint16, any non-negative strides.
     qas

@@ -17,6 +17,16 @@
   `StatWindow` only those dated up to `STAT_ORD`, as pyccd intends, and `Off`
   disables the filter. In profiles: `SensorProfile.green_filter_scope`,
   `"all"`, `"stat_window"` or `"off"`.
+- `ccd::validate_dates(dates)`: throws `std::invalid_argument` unless `dates`
+  is non-decreasing.
+
+### Changed
+
+- `detect`, `detect_cube` and `detect_cube_columns`, in C++ and Python, raise
+  `ValueError` (`std::invalid_argument`) when `dates` decreases anywhere,
+  before any pixel runs. Equal dates are still accepted and deduplicated.
+  Unsorted dates were checked only by a debug-build assertion, and a Release
+  build returned results computed on the wrong order.
 
 ## 0.3.0 - 2026-10-13
 

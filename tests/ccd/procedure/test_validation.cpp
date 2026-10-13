@@ -4,8 +4,9 @@
 //
 // detect() and detect_cube() reject a band layout ccd::validate() refuses --
 // a band count other than HarmonicOptions::NUM_BANDS, an index off the band
-// axis, a repeated or missing band -- and inputs whose timestep counts
-// disagree, with std::invalid_argument before any pixel runs. Inside
+// axis, a repeated or missing band -- inputs whose timestep counts
+// disagree, and dates that decrease, with std::invalid_argument before any
+// pixel runs. Inside
 // detect_cube a bad layout would otherwise be out-of-bounds access within
 // the OpenMP region, where nothing reports it.
 //
@@ -13,6 +14,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
+#include <utility>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -470,4 +473,136 @@ TEST(Validation, SeriesNoLongerThanBandCountRuns)
             EXPECT_TRUE(result.models.empty()) << "T=" << T << " qa=" << int(qa);
         }
     }
+}
+
+//------------------------------------------------------------------------------
+// Dates must be non-decreasing; equal dates are allowed and deduplicated.
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+template<typename Value>
+ccd::CubeResult run_cube_dates(const std::vector<std::int64_t>& dates)
+{
+    constexpr ccd::index_t H = 2;
+    constexpr ccd::index_t W = 3;
+    const auto T = static_cast<ccd::index_t>(dates.size());
+
+    const auto pixel = make_spectral<Value>(7, T);
+    std::vector<Value> spectral;
+    for (ccd::index_t p = 0; p < H * W; ++p)
+        spectral.insert(spectral.end(), pixel.begin(), pixel.end());
+
+    const std::vector<std::uint8_t> qas(H * W * T, 0);
+
+    return ccd::detect_cube(
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+        ccd::ArrayView<const Value, 4>::contiguous(spectral.data(), {H, W, 7, T}),
+        ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
+        ccd::HarmonicOptions(),
+        ccd::LassoOptions(),
+        2
+    );
+}
+
+ccd::FitResult run_detect_dates(const std::vector<std::int64_t>& dates)
+{
+    const auto T = static_cast<ccd::index_t>(dates.size());
+    const auto spectral = make_spectral<double>(7, T);
+    const std::vector<std::uint8_t> qas(T, 0);
+
+    return ccd::detect(
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+        ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
+        ccd::HarmonicOptions(),
+        ccd::LassoOptions()
+    );
+}
+
+std::vector<std::int64_t> swapped(ccd::index_t T, ccd::index_t at)
+{
+    auto dates = make_dates(T);
+    std::swap(dates[at], dates[at + 1]);
+    return dates;
+}
+
+} // namespace
+
+TEST(Validation, ValidateDates)
+{
+    const auto check = [](const std::vector<std::int64_t>& dates) {
+        ccd::validate_dates(ccd::ArrayView<const std::int64_t, 1>::contiguous(
+            dates.data(), {static_cast<ccd::index_t>(dates.size())}));
+    };
+
+    EXPECT_NO_THROW(check({}));
+    EXPECT_NO_THROW(check({5}));
+    EXPECT_NO_THROW(check({1, 2, 3}));
+    EXPECT_NO_THROW(check({1, 1, 2, 2, 2, 3}));
+    EXPECT_THROW(check({2, 1}), std::invalid_argument);
+    EXPECT_THROW(check({1, 2, 3, 3, 2}), std::invalid_argument);
+
+    try
+    {
+        check({10, 20, 30, 25, 40});
+        FAIL() << "no exception";
+    }
+    catch (const std::invalid_argument& e)
+    {
+        EXPECT_STREQ(e.what(),
+            "dates must be non-decreasing; dates[3] = 25 follows dates[2] = 30");
+    }
+
+    // A strided view is read by its strides.
+    const std::vector<std::int64_t> interleaved = {1, 99, 2, 0, 3, 50};
+    EXPECT_NO_THROW(ccd::validate_dates(ccd::ArrayView<const std::int64_t, 1>::strided(
+        interleaved.data(), {3}, {2})));
+    EXPECT_THROW(ccd::validate_dates(ccd::ArrayView<const std::int64_t, 1>::strided(
+        interleaved.data() + 1, {3}, {2})), std::invalid_argument);
+}
+
+TEST(Validation, DetectRejectsUnsortedDates)
+{
+    EXPECT_THROW(run_detect_dates(swapped(40, 0)), std::invalid_argument);
+    EXPECT_THROW(run_detect_dates(swapped(40, 20)), std::invalid_argument);
+    EXPECT_THROW(run_detect_dates(swapped(40, 38)), std::invalid_argument);
+
+    // uint16 raw QA with a table.
+    const auto dates = swapped(40, 10);
+    const auto spectral = make_spectral<double>(7, 40);
+    const std::vector<std::uint16_t> raw(40, 0);
+    EXPECT_THROW(ccd::detect(
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {40}),
+        ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, 40}),
+        ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {40}),
+        ccd::HarmonicOptions(),
+        ccd::LassoOptions(),
+        std::make_shared<ccd::QaTable>()), std::invalid_argument);
+}
+
+TEST(Validation, DetectAcceptsEqualDates)
+{
+    auto dates = make_dates(40);
+    dates[11] = dates[10];
+    dates[12] = dates[10];
+    const auto result = run_detect_dates(dates);
+    ASSERT_EQ(result.mask.size(), 40u);
+    EXPECT_TRUE(result.mask[10]);
+    EXPECT_FALSE(result.mask[11]);
+    EXPECT_FALSE(result.mask[12]);
+}
+
+TEST(Validation, DetectCubeRejectsUnsortedDatesForEveryDtype)
+{
+    EXPECT_THROW(run_cube_dates<double>(swapped(40, 5)), std::invalid_argument);
+    EXPECT_THROW(run_cube_dates<float>(swapped(40, 5)), std::invalid_argument);
+    EXPECT_THROW(run_cube_dates<std::uint16_t>(swapped(40, 5)), std::invalid_argument);
+
+    auto equal = make_dates(40);
+    equal[21] = equal[20];
+    const auto ok = run_cube_dates<double>(equal);
+    EXPECT_EQ(ok.pixels.size(), 6u);
+    EXPECT_TRUE(ok.failures.empty());
 }

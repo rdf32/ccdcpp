@@ -181,22 +181,40 @@ void validate(const HarmonicOptions& options, index_t bands)
     validate_cadence(options);
 }
 
+void validate_dates(ArrayView<const std::int64_t, 1> dates)
+{
+    for (index_t i = 1; i < dates.size(); ++i)
+    {
+        if (dates(i) < dates(i - 1))
+        {
+            throw std::invalid_argument(
+                "dates must be non-decreasing; dates[" + std::to_string(i) +
+                "] = " + std::to_string(dates(i)) + " follows dates[" +
+                std::to_string(i - 1) + "] = " + std::to_string(dates(i - 1))
+            );
+        }
+    }
+}
+
 namespace
 {
 
 //------------------------------------------------------------------------------
 // The checks detect() and detect_cube() make before any work: the band
-// layout, and one timestep count shared by dates, spectral and qas.
+// layout, one timestep count shared by dates, spectral and qas, and dates in
+// non-decreasing order.
 //------------------------------------------------------------------------------
 void validate_shapes(
     const HarmonicOptions& options,
     index_t bands,
     index_t spectral_timesteps,
-    index_t date_count,
+    ArrayView<const std::int64_t, 1> dates,
     index_t qa_count
 )
 {
     validate(options, bands);
+
+    const index_t date_count = dates.size();
 
     if (date_count != spectral_timesteps)
     {
@@ -213,6 +231,8 @@ void validate_shapes(
             " timesteps; spectral has " + std::to_string(spectral_timesteps)
         );
     }
+
+    validate_dates(dates);
 }
 
 //------------------------------------------------------------------------------
@@ -457,7 +477,7 @@ CubeResult detect_cube_impl(
         );
     }
 
-    validate_shapes(hoptions, spectral.extent(2), T, dates.size(), qas.extent(2));
+    validate_shapes(hoptions, spectral.extent(2), T, dates, qas.extent(2));
     validate_qa<Qa>(qa_table);
 
     // threads == 0 keeps the historical behaviour: let the OpenMP runtime
@@ -664,7 +684,7 @@ FitResult detect(
     DetectScratch& scratch,
     const QaTablePtr& qa_table
 ) {
-    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
+    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates, qas.size());
 
     return detect_pixel<scalar_t, std::uint8_t>(
         dates, spectral, qas, qa_table.get(), hoptions, loptions, scratch);
@@ -679,7 +699,7 @@ FitResult detect(
     DetectScratch& scratch,
     const QaTablePtr& qa_table
 ) {
-    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
+    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates, qas.size());
     validate_qa<std::uint16_t>(qa_table.get());
 
     return detect_pixel<scalar_t, std::uint16_t>(

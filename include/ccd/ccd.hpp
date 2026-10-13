@@ -207,6 +207,18 @@ void validate(const HarmonicOptions& options, index_t bands);
 
 //------------------------------------------------------------------------------
 //
+// The date check every entry point runs once per call, before any work.
+//
+// Throws std::invalid_argument unless `dates` is non-decreasing. Equal dates
+// are allowed: the filters keep the first observation of each date. The
+// message names the first position out of order and both dates.
+//
+//------------------------------------------------------------------------------
+
+void validate_dates(ArrayView<const std::int64_t, 1> dates);
+
+//------------------------------------------------------------------------------
+//
 // Run CCD on one pixel.
 //
 // `spectral` is read, never written: the thermal transform of the Standard
@@ -220,8 +232,9 @@ void validate(const HarmonicOptions& options, index_t bands);
 // scratch; `qas` is never written.
 //
 // Throws std::invalid_argument unless `spectral`'s band count passes
-// validate() and `dates`, `qas` and `spectral` agree on the number of
-// timesteps, and when `qas` is uint16 and `qa_table` is null.
+// validate(), `dates`, `qas` and `spectral` agree on the number of
+// timesteps and `dates` passes validate_dates(), and when `qas` is uint16
+// and `qa_table` is null.
 //
 //------------------------------------------------------------------------------
 

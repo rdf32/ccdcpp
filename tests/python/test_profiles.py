@@ -426,6 +426,20 @@ class GreenFilterScopeField(unittest.TestCase):
         self.assertIn("green_filter_scope is 'StatWindow'", str(caught.exception))
 
 
+class DateOrder(unittest.TestCase):
+    def test_profile_entry_points_raise(self):
+        dates = DATES.copy()
+        dates[3], dates[4] = dates[4], dates[3]
+        profile = presets.landsat_c1_dn()
+        with self.assertRaises(ValueError) as caught:
+            ccdcpp.detect(dates, CUBE_DN[0, 0], CODES[0, 0], profile=profile)
+        self.assertIn("dates must be non-decreasing", str(caught.exception))
+        for entry in (ccdcpp.detect_cube, ccdcpp.detect_cube_columns):
+            with self.subTest(entry=entry.__name__):
+                with self.assertRaises(ValueError):
+                    entry(dates, CUBE_DN, CODES, threads=1, profile=profile)
+
+
 class Overrides(unittest.TestCase):
     def test_hoptions_and_loptions_win(self):
         h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()

@@ -503,6 +503,48 @@ class TimestepMismatch(unittest.TestCase):
                         entry(*cube(7, 40, dates=dates, qas=qas), *options(), threads=1)
 
 
+class DateOrder(unittest.TestCase):
+    def swapped(self, d, at):
+        d = d.copy()
+        d[at], d[at + 1] = d[at + 1], d[at]
+        return d
+
+    def test_detect(self):
+        d, s, q = inputs(7, 40)
+        for at in (0, 20, 38):
+            with self.subTest(at=at):
+                with self.assertRaises(ValueError) as caught:
+                    ccdcpp.detect(self.swapped(d, at), s, q, *options())
+                self.assertIn("dates must be non-decreasing", str(caught.exception))
+                self.assertIn(f"dates[{at + 1}] = {d[at]} follows dates[{at}] = {d[at + 1]}",
+                              str(caught.exception))
+
+    def test_raw_qa(self):
+        d, s, _ = inputs(7, 40)
+        raw = np.zeros(40, dtype=np.uint16)
+        table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
+        with self.assertRaises(ValueError):
+            ccdcpp.detect(self.swapped(d, 5), s, raw, *options(), qa_table=table)
+
+    def test_cubes(self):
+        for entry in (ccdcpp.detect_cube, ccdcpp.detect_cube_columns):
+            for dtype in (np.float64, np.float32, np.uint16):
+                with self.subTest(entry=entry.__name__, dtype=dtype.__name__):
+                    d, spectral, q = cube(7, 40, dtype=dtype)
+                    with self.assertRaises(ValueError) as caught:
+                        entry(self.swapped(d, 7), spectral, q, *options(), threads=1)
+                    self.assertIn("dates must be non-decreasing", str(caught.exception))
+
+    def test_equal_dates_are_deduplicated(self):
+        d, s, q = inputs(7, 40)
+        d[11] = d[12] = d[10]
+        mask = ccdcpp.detect(d, s, q, *options())["processing_mask"]
+        self.assertEqual(mask[10:13].tolist(), [1, 0, 0])
+        _, spectral, qc = cube(7, 40)
+        out = ccdcpp.detect_cube_columns(d, spectral, qc, *options(), threads=1)
+        self.assertEqual(out["failures"], [])
+
+
 class Version(unittest.TestCase):
     def pyproject_version(self):
         with open(os.path.join(SOURCE_DIR, "pyproject.toml"), "rb") as f:
