@@ -83,6 +83,11 @@ py::dict detect_wrapper(
             "spectral time dimension must match dates"
         );
 
+    // ValueError, raised here, before the GIL is released.
+    ccd::validate_bands(
+        static_cast<ccd::index_t>(spectral_buf.shape[0])
+    );
+
     //--------------------------------------------------------------------------
     // Create zero-copy ArrayViews
     //--------------------------------------------------------------------------
@@ -377,6 +382,9 @@ static CubeInput check_cube(
             "qas must have shape (height,width,timesteps)"
         );
     }
+
+    // ValueError, raised here, before the GIL is released.
+    ccd::validate_bands(B);
 
     return CubeInput{
         std::move(dates),

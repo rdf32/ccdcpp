@@ -174,12 +174,29 @@ struct DetectScratch
 
 //------------------------------------------------------------------------------
 //
+// The band layout check every entry point runs before any work.
+//
+// The procedures hold one fit per band in a ChangeModel::bands of
+// CCD_NUM_BANDS entries and index the bands by HarmonicOptions::*_IDX, so a
+// spectral array with any other band count is out of bounds inside them.
+// Throws std::invalid_argument naming the expected and the actual count.
+//
+//------------------------------------------------------------------------------
+
+void validate_bands(index_t bands);
+
+//------------------------------------------------------------------------------
+//
 // Run CCD on one pixel.
 //
 // `spectral` is read, never written: the thermal transform of the Standard
 // procedure (HarmonicOptions::THERMAL_SCALE/THERMAL_OFFSET) is applied to a
 // private copy, so calling detect() twice on the same buffer gives the same
 // result twice. `spectral` may be strided.
+//
+// Throws std::invalid_argument unless `spectral` has CCD_NUM_BANDS bands (see
+// validate_bands()) and `dates`, `qas` and `spectral` agree on the number of
+// timesteps.
 //
 //------------------------------------------------------------------------------
 
@@ -213,7 +230,9 @@ FitResult detect(
 // scheduler cannot honour its own allocation without setting an environment
 // variable before the shared library is imported.
 //
-// This never throws on account of a pixel; see CubeResult::failures.
+// This never throws on account of a pixel; see CubeResult::failures. It
+// throws std::invalid_argument, before any pixel runs, on the checks detect()
+// makes, and std::runtime_error when `qas` is not (H, W, T).
 //
 // `keep_masks` false drops each pixel's processing mask (T bytes per pixel)
 // as soon as the pixel is done, for callers that do not read it; the

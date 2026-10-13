@@ -362,6 +362,30 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # Entry-point input checks: band count and timestep agreement.
+    add_executable(
+        test_validation
+
+        tests/ccd/procedure/test_validation.cpp
+    )
+
+
+    target_link_libraries(
+        test_validation
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_validation
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
     add_executable(
@@ -463,6 +487,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_snow)
     gtest_discover_tests(test_standard)
     gtest_discover_tests(test_units)
+    gtest_discover_tests(test_validation)
     gtest_discover_tests(test_golden)
 
 endif()
@@ -559,6 +584,20 @@ if(CCD_BUILD_PYTHON)
         PRIVATE
             cxx_std_17
     )
+
+    # The Python entry points, against the module just built.
+    if(CCD_BUILD_TESTS)
+
+        add_test(
+            NAME python_bindings
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_bindings.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
+
+    endif()
 
     # -----------------------------
     # Install into Python package

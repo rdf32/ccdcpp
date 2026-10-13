@@ -3,6 +3,8 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 #include <type_traits>
 
 #include "ccd/array_view.hpp"
@@ -19,8 +21,50 @@
 namespace ccd 
 {
 
+void validate_bands(index_t bands)
+{
+    if (bands != CCD_NUM_BANDS)
+    {
+        throw std::invalid_argument(
+            "spectral has " + std::to_string(bands) +
+            " bands; ccdcpp expects " + std::to_string(CCD_NUM_BANDS) +
+            " (blue, green, red, nir, swir1, swir2, thermal)"
+        );
+    }
+}
+
 namespace
 {
+
+//------------------------------------------------------------------------------
+// The checks detect() and detect_cube() make before any work: the band count,
+// and one timestep count shared by dates, spectral and qas.
+//------------------------------------------------------------------------------
+void validate_shapes(
+    index_t bands,
+    index_t spectral_timesteps,
+    index_t date_count,
+    index_t qa_count
+)
+{
+    validate_bands(bands);
+
+    if (date_count != spectral_timesteps)
+    {
+        throw std::invalid_argument(
+            "dates has " + std::to_string(date_count) +
+            " timesteps; spectral has " + std::to_string(spectral_timesteps)
+        );
+    }
+
+    if (qa_count != spectral_timesteps)
+    {
+        throw std::invalid_argument(
+            "qas has " + std::to_string(qa_count) +
+            " timesteps; spectral has " + std::to_string(spectral_timesteps)
+        );
+    }
+}
 
 //------------------------------------------------------------------------------
 // One pixel, from a (B, T) view of any supported element type.
@@ -213,6 +257,8 @@ CubeResult detect_cube_impl(
         );
     }
 
+    validate_shapes(spectral.extent(2), T, dates.size(), qas.extent(2));
+
     // threads == 0 keeps the historical behaviour: let the OpenMP runtime
     // decide, which is OMP_NUM_THREADS or the core count. A positive value is
     // a request, not a guarantee -- the runtime may still hand back fewer, so
@@ -390,6 +436,8 @@ FitResult detect(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions
 ) {
+    validate_shapes(spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
+
     DetectScratch scratch;
     return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
 }
@@ -402,6 +450,8 @@ FitResult detect(
     const LassoOptions& loptions,
     DetectScratch& scratch
 ) {
+    validate_shapes(spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
+
     return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
 }
 
