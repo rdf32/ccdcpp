@@ -21,6 +21,7 @@ void bind_detect(py::module_& m);
 PYBIND11_MODULE(ccdcpp, m)
 {
     m.doc() = "CCD change detection C++ implementation";
+    m.attr("__version__") = CCD_VERSION;
 
     bind_options(m);
     // bind_regression(m);

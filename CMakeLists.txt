@@ -578,6 +578,15 @@ if(CCD_BUILD_PYTHON)
             ${PROJECT_SOURCE_DIR}/include
     )
 
+    # ccdcpp.__version__. pyproject.toml carries the same number; the
+    # python_bindings test checks that they agree.
+    target_compile_definitions(
+        ccd_python
+
+        PRIVATE
+            CCD_VERSION="${PROJECT_VERSION}"
+    )
+
     target_compile_features(
         ccd_python
 

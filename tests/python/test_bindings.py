@@ -1,11 +1,17 @@
-"""Python entry points: input validation.
+"""Python entry points: input validation and __version__.
 
 usage: python test_bindings.py <module_dir> <source_dir> [unittest args]
 
 <module_dir> holds the built extension (ccdcpp.*.so / .pyd); <source_dir> is
 the repository root. ctest runs this as `python_bindings`.
 """
+import glob
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
+import tomllib
 import unittest
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
@@ -94,6 +100,35 @@ class TimestepMismatch(unittest.TestCase):
                 with self.subTest(entry=entry.__name__, dates=dates, qas=qas):
                     with self.assertRaises(RuntimeError):
                         entry(*cube(7, 40, dates=dates, qas=qas), *options(), threads=1)
+
+
+class Version(unittest.TestCase):
+    def pyproject_version(self):
+        with open(os.path.join(SOURCE_DIR, "pyproject.toml"), "rb") as f:
+            return tomllib.load(f)["project"]["version"]
+
+    def test_extension_matches_pyproject(self):
+        self.assertEqual(ccdcpp.__version__, self.pyproject_version())
+
+    def test_package_exposes_it(self):
+        # The wheel layout: python/ccdcpp/__init__.py next to the extension.
+        # Run in a fresh interpreter so the extension imported above is not
+        # the one found.
+        (extension,) = glob.glob(os.path.join(MODULE_DIR, "ccdcpp.*"))
+        with tempfile.TemporaryDirectory() as root:
+            package = os.path.join(root, "ccdcpp")
+            os.mkdir(package)
+            shutil.copy(
+                os.path.join(SOURCE_DIR, "python", "ccdcpp", "__init__.py"), package)
+            shutil.copy(extension, package)
+            out = subprocess.run(
+                [sys.executable, "-I", "-c",
+                 "import sys; sys.path.insert(0, sys.argv[1]); import ccdcpp; "
+                 "print(ccdcpp.__file__); print(ccdcpp.__version__)", root],
+                check=True, capture_output=True, text=True,
+            ).stdout.split()
+        self.assertEqual(out[0], os.path.join(package, "__init__.py"))
+        self.assertEqual(out[1], self.pyproject_version())
 
 
 if __name__ == "__main__":
