@@ -132,14 +132,24 @@ struct HarmonicOptions
     //    transform runs for the Standard procedure ONLY. That asymmetry is
     //    inherited from pyccd, not introduced here: kelvin_to_celsius() is
     //    called inside standard_procedure() while snow_procedure_filter()
-    //    applies filter_thermal_celsius() to values nothing converted. The
-    //    consequence is that the thermal filter is a silent no-op for the
-    //    PermanentSnow and InsufficientClear procedures -- Kelvin x 10 is
-    //    ~2200..3300, comfortably inside [-9320, 7070]. It is preserved
+    //    applies filter_thermal_celsius() to values nothing converted. Under
+    //    the DN defaults the PermanentSnow and InsufficientClear procedures
+    //    therefore test Kelvin x 10 against Celsius x 100 bounds, and since
+    //    Kelvin x 10 is ~2200..3300, comfortably inside [-9320, 7070], the
+    //    filter rejects nothing a sensor records there. It is preserved
     //    deliberately, because ccdcpp is a recreation of pyccd and the
-    //    regression references encode it. Under the preset the bounds are
-    //    scaled by the same 10000, so the no-op holds there too and the
-    //    equivalence measured above covers it.
+    //    regression references encode it.
+    //
+    //    Under the preset the caller has already converted thermal to
+    //    Celsius / 100 for every procedure, so PermanentSnow and
+    //    InsufficientClear test converted values against converted bounds,
+    //    as Standard does, and the filter is live there: a clear or water
+    //    observation outside (-93.20, 70.70) degrees Celsius is dropped
+    //    (PermanentSnow then adds back every snow observation regardless).
+    //    The DN defaults keep that observation. So on those two procedures
+    //    the preset and the DN defaults agree only while no clear or water
+    //    observation's thermal value is out of range; the equivalence
+    //    measured above is on a Standard pixel and does not cover them.
     //
     // Where the guard lives, and what each part of it is for.
     // tests/ccd/procedure/test_units.cpp asserts the equivalence above and
