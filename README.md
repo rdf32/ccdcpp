@@ -159,6 +159,33 @@ Each builder writes the `QA_*` codes of the `HarmonicOptions` it is given (defau
 
 The HLS and Sentinel-2 tables follow the products' definitions and are tested, but no production run has used them yet; only the Landsat tables are blessed for production use so far. For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
 
+## Cadence Parameters
+
+The Standard procedure has constants that assume something about the revisit interval of the input or the false-alarm rate of the change test. They are `HarmonicOptions` fields. Each one defaults to pyccd's value, which was tuned for 16-day Landsat:
+
+| Field | Default | Unit | Read by |
+|-------|---------|------|---------|
+| `PEEK_REFERENCE_DAYS` | `16.0` | days | the peek size: `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / median gap)`, never below `PEEK_SIZE` |
+| `VARIOGRAM_MIN_LAG_DAYS` | `30` | days | the variogram: the smallest lag whose most common separation exceeds this, over the pairs further apart than this |
+| `RETRAIN_MIN_OBS` | `24` | observations | lookforward: refit while the window holds fewer than this; a window of at most this many compares against the model RMSE, a longer one against the seasonal RMSE |
+| `RETRAIN_SPAN_FACTOR` | `1.33` | ratio | lookforward: refit once the window spans at least this times the span of the last fit |
+| `SEASONAL_RMSE_COUNT` | `24` | observations | the seasonal RMSE: residuals of this many fit observations closest in day of year to the last peek observation |
+| `SEASONAL_RMSE_DIVISOR` | `4.0` | none | the seasonal RMSE: their norm divided by this. pyccd's 4 is `sqrt(24 - 8)`; it is not derived from `SEASONAL_RMSE_COUNT` |
+| `CHANGE_PROBABILITY` | `0.99` | probability | the change threshold of a peek window longer than the default: the chi-squared quantile at `1 - (1 - CHANGE_PROBABILITY) ** (PEEK_SIZE / peek)` |
+
+`ccdcpp.chi2_quantile(p, df)` is the chi-squared quantile the procedure computes, from the same boost call. `CHANGE_THRESHOLD` is `chi2_quantile(CHANGE_PROBABILITY, 5)` to the last bit, so a caller changing the probability or the detection band count sets the threshold to match:
+
+```python
+h.CHANGE_PROBABILITY = 0.995
+h.CHANGE_THRESHOLD = ccdcpp.chi2_quantile(h.CHANGE_PROBABILITY, len(h.DETECTION_BANDS))
+```
+
+A value that makes no sense raises `ValueError` before any pixel runs: zero or negative days, a count below 1, a probability outside (0, 1), a factor or divisor of zero or less.
+
+**Denser cadences.** The peek size already follows the cadence through `PEEK_REFERENCE_DAYS`: at 8 days it is 12, and at the 2–3 day cadence of HLS it grows to about 32–48 observations (`6 * 16 / 3 ≈ 32`, `6 * 16 / 2 = 48`). The change threshold is meant to fall as the window grows, to about 4.95 at 32 and 3.91 at 48 for five detection bands, so that a window that long keeps the default window's false-alarm rate. The Standard procedure does not apply that yet: it passes the adjusted peek size as both `peek` and `defpeek` to `adjust_change_threshold`, so every window is tested at `CHANGE_THRESHOLD` (review item C1, fixed on its own). Until then a dense series sees fewer breaks than its cadence warrants.
+
+`MEOW_SIZE` and the `RETRAIN_*` constants are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 2–3 day cadence, 12 observations are about a month and 24 about two, where at 16 days they are about half a year and a year. A caller who wants them in time rather than in observations sets them from the cadence.
+
 ## Native C++ Implementation
 
 The core CCD algorithm was translated into modern C++17 to eliminate the overhead associated with Python execution.
