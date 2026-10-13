@@ -1,0 +1,150 @@
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+
+#include <algorithm>
+#include <memory>
+#include <string>
+
+#include "ccd/harmonic/harmonic.hpp"
+#include "ccd/qa_table.hpp"
+
+namespace py = pybind11;
+
+//------------------------------------------------------------------------------
+// QaTable and the ccdcpp.qa_tables builders.
+//
+// Python holds a table as std::shared_ptr<ccd::QaTable>, the holder pybind11
+// needs; the class exposes no way to write to it, so it is as read-only as
+// the std::shared_ptr<const QaTable> the core takes, and the conversion
+// between the two is a pointer copy. detect, detect_cube and
+// detect_cube_columns take it as qa_table=.
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+std::shared_ptr<ccd::QaTable> held(ccd::QaTablePtr table)
+{
+    return std::const_pointer_cast<ccd::QaTable>(std::move(table));
+}
+
+std::shared_ptr<ccd::QaTable> from_codes(const py::object& obj)
+{
+    auto codes = py::array_t<std::uint8_t, py::array::c_style>::ensure(obj);
+
+    if (!codes)
+        throw py::type_error(
+            "codes cannot be converted to uint8 without an unsafe cast"
+        );
+
+    if (codes.ndim() != 1 ||
+        static_cast<ccd::index_t>(codes.shape(0)) != ccd::QA_TABLE_SIZE)
+    {
+        throw py::value_error(
+            "codes must have shape (" + std::to_string(ccd::QA_TABLE_SIZE) +
+            ",), one code per uint16 value"
+        );
+    }
+
+    auto table = std::make_shared<ccd::QaTable>();
+    std::copy(codes.data(), codes.data() + ccd::QA_TABLE_SIZE, table->code.begin());
+    return table;
+}
+
+} // namespace
+
+void bind_qa_tables(py::module_& m)
+{
+    m.attr("QA_TABLE_SIZE") = ccd::QA_TABLE_SIZE;
+
+    py::class_<ccd::QaTable, std::shared_ptr<ccd::QaTable>>(
+        m,
+        "QaTable",
+        "A lookup from raw QA values to the QA codes detect reads: entry v "
+        "is the code of raw value v, for every uint16 v. Pass one as "
+        "qa_table= to decode a raw uint8 or uint16 qas array per pixel. "
+        "Build one with ccdcpp.qa_tables, or from 65,536 uint8 codes."
+    )
+    .def(
+        py::init(&from_codes),
+        py::arg("codes"),
+        "A table from a (65536,) array of codes, entry v for raw value v."
+    )
+    .def_property_readonly(
+        "codes",
+        [](const ccd::QaTable& t)
+        {
+            return py::array_t<std::uint8_t>(
+                static_cast<py::ssize_t>(ccd::QA_TABLE_SIZE),
+                t.code.data()
+            );
+        },
+        "A copy of the (65536,) uint8 codes."
+    );
+
+    py::module_ sub = m.def_submodule(
+        "qa_tables",
+        "QaTable builders, one per QA product. Each writes the QA_* codes of "
+        "the HarmonicOptions it is given (default HarmonicOptions()), so "
+        "build with the options the run uses. Precedence is most-excluding "
+        "first: fill, cloud, shadow, snow, water, clear. The Landsat tables "
+        "are validated for production use; the HLS and Sentinel-2 tables "
+        "follow the products' definitions and are tested, but are not yet "
+        "validated in production."
+    );
+
+    // `import ccdcpp.qa_tables` as well as `ccdcpp.qa_tables`.
+    py::module_::import("sys").attr("modules")[sub.attr("__name__")] = sub;
+
+    sub.def(
+        "landsat_c2_qa_pixel",
+        [](const ccd::HarmonicOptions& o)
+        {
+            return held(ccd::qa_tables::landsat_c2_qa_pixel(o));
+        },
+        py::arg("options") = ccd::HarmonicOptions{},
+        "Landsat Collection 2 QA_PIXEL (uint16). Bit 0 fill; bits 3, 1, 2 "
+        "(cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; "
+        "bit 7 water; otherwise clear. Bits 6 and 8-15 are not read."
+    );
+
+    sub.def(
+        "landsat_c1_pixel_qa",
+        [](const ccd::HarmonicOptions& o)
+        {
+            return held(ccd::qa_tables::landsat_c1_pixel_qa(o));
+        },
+        py::arg("options") = ccd::HarmonicOptions{},
+        "Landsat Collection 1 pixel_qa (uint16), in pyccd's order. Bit 0 "
+        "fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 "
+        "clear; bits 8 and 9 both set, or bit 10, clear; otherwise fill "
+        "(pyccd raises there)."
+    );
+
+    sub.def(
+        "hls_fmask",
+        [](const ccd::HarmonicOptions& o, bool exclude_high_aerosol)
+        {
+            return held(ccd::qa_tables::hls_fmask(o, exclude_high_aerosol));
+        },
+        py::arg("options") = ccd::HarmonicOptions{},
+        py::arg("exclude_high_aerosol") = false,
+        "HLS v2.0 Fmask (uint8). 255 fill; bits 1, 2, 0 (cloud, adjacent "
+        "to cloud or shadow, cirrus) cloud; bit 3 shadow; bit 4 snow; bit 5 "
+        "water; otherwise clear. Bits 6-7 (aerosol) are ignored unless "
+        "exclude_high_aerosol, which makes high aerosol (11) cloud. Values "
+        "above 255 are fill. Not yet validated in production."
+    );
+
+    sub.def(
+        "sentinel2_scl",
+        [](const ccd::HarmonicOptions& o)
+        {
+            return held(ccd::qa_tables::sentinel2_scl(o));
+        },
+        py::arg("options") = ccd::HarmonicOptions{},
+        "Sentinel-2 L2A SCL (uint8). 0, 1 fill; 2, 3 shadow; 4, 5 clear; "
+        "6 water; 7-10 cloud; 11 snow; anything else fill. Not yet "
+        "validated in production."
+    );
+}

@@ -2,6 +2,7 @@
 #include <pybind11/numpy.h>
 
 #include <array>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -12,10 +13,124 @@
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/procedure/fit.hpp"
+#include "ccd/qa_table.hpp"
 
 namespace py = pybind11;
 
+//------------------------------------------------------------------------------
+// Array input, shared by every wrapper below.
+//------------------------------------------------------------------------------
 
+static bool usable_strides(const py::array& a)
+{
+    for (py::ssize_t d = 0; d < a.ndim(); ++d)
+    {
+        if (a.strides(d) < 0 || a.strides(d) % a.itemsize() != 0)
+            return false;
+    }
+    return true;
+}
+
+template<typename T>
+static bool takes_as_is(const py::array& a)
+{
+    return py::isinstance<py::array_t<T>>(a) && usable_strides(a);
+}
+
+template<typename T>
+static py::array as_c_array(const py::object& obj, const char* name)
+{
+    auto converted = py::array_t<T, py::array::c_style>::ensure(obj);
+
+    if (!converted)
+        throw py::type_error(
+            std::string(name) + " cannot be converted to " +
+            py::str(py::dtype::of<T>()).cast<std::string>() +
+            " without an unsafe cast"
+        );
+
+    return std::move(converted);
+}
+
+template<typename T, std::size_t Rank>
+static ccd::ArrayView<const T, Rank> strided_view(const py::array& a)
+{
+    std::array<std::size_t, Rank> shape{};
+    std::array<std::size_t, Rank> strides{};
+
+    for (std::size_t d = 0; d < Rank; ++d)
+    {
+        shape[d] = static_cast<std::size_t>(a.shape(d));
+        strides[d] = static_cast<std::size_t>(a.strides(d)) / sizeof(T);
+    }
+
+    return ccd::ArrayView<const T, Rank>::strided(
+        static_cast<const T*>(a.data()),
+        shape,
+        strides
+    );
+}
+
+//------------------------------------------------------------------------------
+// `obj` as it is if it is an ndarray of one of the types Ts in a layout
+// takes_as_is accepts, else converted to a C-contiguous array of the first.
+//------------------------------------------------------------------------------
+template<typename... Ts>
+static py::array accept(const py::object& obj, const char* name)
+{
+    if (py::isinstance<py::array>(obj))
+    {
+        auto a = py::reinterpret_borrow<py::array>(obj);
+
+        if ((takes_as_is<Ts>(a) || ...))
+            return a;
+    }
+
+    using First = std::tuple_element_t<0, std::tuple<Ts...>>;
+    return as_c_array<First>(obj, name);
+}
+
+//------------------------------------------------------------------------------
+// `qas`, as an entry point accepts it.
+//
+// Without a table `qas` is QA codes: uint8, under the same two rules as
+// `spectral` below. A uint16 `qas` holds raw QA values, which have no meaning
+// without a table, and is a TypeError. With a table `qas` is raw values,
+// uint8 or uint16, anything else converted to uint16 under numpy safe
+// casting.
+//------------------------------------------------------------------------------
+
+enum class QaType
+{
+    UInt8,
+    UInt16
+};
+
+static void refuse_raw_without_table(const py::object& obj, bool with_table)
+{
+    if (!with_table && py::isinstance<py::array_t<std::uint16_t>>(obj))
+        throw py::type_error(
+            "qas is uint16, which holds raw QA values; pass qa_table= "
+            "(see ccdcpp.qa_tables) to decode them, or pass uint8 QA codes"
+        );
+}
+
+static py::array accept_qas(const py::object& obj, bool with_table)
+{
+    refuse_raw_without_table(obj, with_table);
+
+    if (!with_table)
+        return accept<std::uint8_t>(obj, "qas");
+
+    return accept<std::uint16_t, std::uint8_t>(obj, "qas");
+}
+
+static QaType qa_type(const py::array& qas)
+{
+    return py::isinstance<py::array_t<std::uint16_t>>(qas)
+        ? QaType::UInt16
+        : QaType::UInt8;
+}
 
 //------------------------------------------------------------------------------
 // detect wrapper
@@ -23,7 +138,7 @@ namespace py = pybind11;
 // Zero-copy:
 //   dates    -> int64 numpy memory
 //   spectral -> float64 numpy memory
-//   qas      -> uint8 numpy memory
+//   qas      -> uint8 numpy memory, or uint16 with a table
 //
 // No allocations are performed here.
 // ArrayViews simply wrap existing buffers. The array_t casters hand over
@@ -38,13 +153,24 @@ py::dict detect_wrapper(
     py::array_t<ccd::scalar_t,
         py::array::c_style> spectral,
 
-    py::array_t<std::uint8_t,
-        py::array::c_style> qas,
+    py::object qas_obj,
 
     ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions
+    ccd::LassoOptions loptions,
+    std::shared_ptr<ccd::QaTable> qa_table
 )
 {
+    refuse_raw_without_table(qas_obj, qa_table != nullptr);
+
+    // As accept_qas(): with a table, uint8 stays uint8 and anything else is
+    // uint16.
+    const bool raw16 =
+        qa_table && !py::isinstance<py::array_t<std::uint8_t>>(qas_obj);
+
+    py::array qas = raw16
+        ? as_c_array<std::uint16_t>(qas_obj, "qas")
+        : as_c_array<std::uint8_t>(qas_obj, "qas");
+
     auto dates_buf = dates.request();
     auto spectral_buf = spectral.request();
     auto qas_buf = qas.request();
@@ -120,16 +246,6 @@ py::dict detect_wrapper(
         );
 
 
-    auto qas_view =
-        ccd::ArrayView<const std::uint8_t,1>::contiguous(
-            static_cast<std::uint8_t*>(
-                qas_buf.ptr
-            ),
-            {
-                timesteps
-            }
-        );
-    
     //----------------------------------------------------------------------
     // Run CCD WITHOUT Python GIL
     //----------------------------------------------------------------------
@@ -138,14 +254,36 @@ py::dict detect_wrapper(
     {
         py::gil_scoped_release release;
 
-        final_result =
-            ccd::detect(
-                dates_view,
-                spectral_view,
-                qas_view,
-                hoptions,
-                loptions
-            );
+        if (raw16)
+        {
+            final_result =
+                ccd::detect(
+                    dates_view,
+                    spectral_view,
+                    ccd::ArrayView<const std::uint16_t,1>::contiguous(
+                        static_cast<const std::uint16_t*>(qas_buf.ptr),
+                        {timesteps}
+                    ),
+                    hoptions,
+                    loptions,
+                    qa_table
+                );
+        }
+        else
+        {
+            final_result =
+                ccd::detect(
+                    dates_view,
+                    spectral_view,
+                    ccd::ArrayView<const std::uint8_t,1>::contiguous(
+                        static_cast<const std::uint8_t*>(qas_buf.ptr),
+                        {timesteps}
+                    ),
+                    hoptions,
+                    loptions,
+                    qa_table
+                );
+        }
     }
 
     //----------------------------------------------------------------------
@@ -248,7 +386,7 @@ py::dict detect_wrapper(
 // whole. Anything else is converted to a C-contiguous float64 array first,
 // under the same rule the float64 argument used to apply (numpy safe casting),
 // so the accepted inputs are a superset of before. `qas` is uint8 under the
-// same two rules.
+// same two rules, or uint8 or uint16 with a table; see accept_qas().
 //
 // Nothing is written to `spectral`: the thermal transform happens in the
 // per-pixel copy.
@@ -271,6 +409,8 @@ struct CubeInput
     py::array qas;
 
     SpectralType spectral_type = SpectralType::Float64;
+    QaType qa_type = QaType::UInt8;
+    std::shared_ptr<ccd::QaTable> qa_table;
 
     ccd::index_t H = 0;
     ccd::index_t W = 0;
@@ -278,87 +418,19 @@ struct CubeInput
     ccd::index_t T = 0;
 };
 
-static bool usable_strides(const py::array& a)
-{
-    for (py::ssize_t d = 0; d < a.ndim(); ++d)
-    {
-        if (a.strides(d) < 0 || a.strides(d) % a.itemsize() != 0)
-            return false;
-    }
-    return true;
-}
-
-template<typename T>
-static bool takes_as_is(const py::array& a)
-{
-    return py::isinstance<py::array_t<T>>(a) && usable_strides(a);
-}
-
-template<typename T>
-static py::array as_c_array(const py::object& obj, const char* name)
-{
-    auto converted = py::array_t<T, py::array::c_style>::ensure(obj);
-
-    if (!converted)
-        throw py::type_error(
-            std::string(name) + " cannot be converted to " +
-            py::str(py::dtype::of<T>()).cast<std::string>() +
-            " without an unsafe cast"
-        );
-
-    return std::move(converted);
-}
-
-template<typename T, std::size_t Rank>
-static ccd::ArrayView<const T, Rank> strided_view(const py::array& a)
-{
-    std::array<std::size_t, Rank> shape{};
-    std::array<std::size_t, Rank> strides{};
-
-    for (std::size_t d = 0; d < Rank; ++d)
-    {
-        shape[d] = static_cast<std::size_t>(a.shape(d));
-        strides[d] = static_cast<std::size_t>(a.strides(d)) / sizeof(T);
-    }
-
-    return ccd::ArrayView<const T, Rank>::strided(
-        static_cast<const T*>(a.data()),
-        shape,
-        strides
-    );
-}
-
-//------------------------------------------------------------------------------
-// `obj` as it is if it is an ndarray of one of the types Ts in a layout
-// takes_as_is accepts, else converted to a C-contiguous array of the first.
-//------------------------------------------------------------------------------
-template<typename... Ts>
-static py::array accept(const py::object& obj, const char* name)
-{
-    if (py::isinstance<py::array>(obj))
-    {
-        auto a = py::reinterpret_borrow<py::array>(obj);
-
-        if ((takes_as_is<Ts>(a) || ...))
-            return a;
-    }
-
-    using First = std::tuple_element_t<0, std::tuple<Ts...>>;
-    return as_c_array<First>(obj, name);
-}
-
 static CubeInput check_cube(
     py::array_t<std::int64_t, py::array::c_style> dates,
     const py::object& spectral_obj,
     const py::object& qas_obj,
-    const ccd::HarmonicOptions& hoptions
+    const ccd::HarmonicOptions& hoptions,
+    std::shared_ptr<ccd::QaTable> qa_table
 )
 {
     py::array spectral =
         accept<double, float, std::uint16_t>(spectral_obj, "spectral");
 
     py::array qas =
-        accept<std::uint8_t>(qas_obj, "qas");
+        accept_qas(qas_obj, qa_table != nullptr);
 
     if (dates.ndim() != 1)
         throw std::runtime_error(
@@ -409,21 +481,51 @@ static CubeInput check_cube(
         takes_as_is<float>(spectral)         ? SpectralType::Float32 :
                                                SpectralType::Float64;
 
+    const QaType qas_type = qa_type(qas);
+
     return CubeInput{
         std::move(dates),
         std::move(spectral),
         std::move(qas),
         spectral_type,
+        qas_type,
+        std::move(qa_table),
         H, W, B, T
     };
 }
 
 //------------------------------------------------------------------------------
-// detect_cube on a checked input, dispatched on the spectral dtype.
+// detect_cube on a checked input, dispatched on the spectral and QA dtypes.
 //
 // Called with the GIL released: it only reads buffers that `in` keeps alive,
 // and touches no Python object.
 //------------------------------------------------------------------------------
+
+template<typename Qa>
+static ccd::CubeResult run_cube_spectral(
+    const CubeInput& in,
+    ccd::ArrayView<const std::int64_t, 1> dates,
+    ccd::ArrayView<const Qa, 3> qas,
+    const ccd::HarmonicOptions& hoptions,
+    const ccd::LassoOptions& loptions,
+    int threads,
+    bool keep_masks
+)
+{
+    if (in.spectral_type == SpectralType::UInt16)
+        return ccd::detect_cube(
+            dates, strided_view<std::uint16_t, 4>(in.spectral), qas,
+            hoptions, loptions, threads, keep_masks, in.qa_table);
+
+    if (in.spectral_type == SpectralType::Float32)
+        return ccd::detect_cube(
+            dates, strided_view<float, 4>(in.spectral), qas,
+            hoptions, loptions, threads, keep_masks, in.qa_table);
+
+    return ccd::detect_cube(
+        dates, strided_view<double, 4>(in.spectral), qas,
+        hoptions, loptions, threads, keep_masks, in.qa_table);
+}
 
 static ccd::CubeResult run_cube(
     const CubeInput& in,
@@ -439,21 +541,13 @@ static ccd::CubeResult run_cube(
             {in.T}
         );
 
-    const auto qas =
-        strided_view<std::uint8_t, 3>(in.qas);
-
-    if (in.spectral_type == SpectralType::UInt16)
-        return ccd::detect_cube(
-            dates, strided_view<std::uint16_t, 4>(in.spectral), qas,
+    if (in.qa_type == QaType::UInt16)
+        return run_cube_spectral(
+            in, dates, strided_view<std::uint16_t, 3>(in.qas),
             hoptions, loptions, threads, keep_masks);
 
-    if (in.spectral_type == SpectralType::Float32)
-        return ccd::detect_cube(
-            dates, strided_view<float, 4>(in.spectral), qas,
-            hoptions, loptions, threads, keep_masks);
-
-    return ccd::detect_cube(
-        dates, strided_view<double, 4>(in.spectral), qas,
+    return run_cube_spectral(
+        in, dates, strided_view<std::uint8_t, 3>(in.qas),
         hoptions, loptions, threads, keep_masks);
 }
 
@@ -494,11 +588,12 @@ py::list detect_cube_wrapper(
 
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
-    int threads
+    int threads,
+    std::shared_ptr<ccd::QaTable> qa_table
 )
 {
     const CubeInput views =
-        check_cube(dates, spectral, qas, hoptions);
+        check_cube(dates, spectral, qas, hoptions, std::move(qa_table));
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -709,11 +804,12 @@ py::dict detect_cube_columns_wrapper(
 
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
-    int threads
+    int threads,
+    std::shared_ptr<ccd::QaTable> qa_table
 )
 {
     const CubeInput views =
-        check_cube(dates, spectral, qas, hoptions);
+        check_cube(dates, spectral, qas, hoptions, std::move(qa_table));
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -892,7 +988,9 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::arg("hoptions"),
-        py::arg("loptions")
+        py::arg("loptions"),
+        py::kw_only(),
+        py::arg("qa_table") = py::none()
     );
     m.def(
         "detect_cube",
@@ -902,7 +1000,9 @@ void bind_detect(py::module_& m)
         py::arg("qas"),
         py::arg("hoptions"),
         py::arg("loptions"),
-        py::arg("threads") = 0
+        py::arg("threads") = 0,
+        py::kw_only(),
+        py::arg("qa_table") = py::none()
     );
     m.def(
         "detect_cube_columns",
@@ -912,7 +1012,9 @@ void bind_detect(py::module_& m)
         py::arg("qas"),
         py::arg("hoptions"),
         py::arg("loptions"),
-        py::arg("threads") = 0
+        py::arg("threads") = 0,
+        py::kw_only(),
+        py::arg("qa_table") = py::none()
     );
 }
 

@@ -609,6 +609,7 @@ if(CCD_BUILD_PYTHON)
         bindings/fit.cpp
         bindings/pmask.cpp
         bindings/quality.cpp
+        bindings/qa_tables.cpp
         bindings/detect.cpp
     )
 
@@ -664,6 +665,40 @@ if(CCD_BUILD_PYTHON)
                 ${PROJECT_SOURCE_DIR}/tests/python/test_bindings.py
                 $<TARGET_FILE_DIR:ccd_python>
                 ${PROJECT_SOURCE_DIR}
+        )
+
+        add_test(
+            NAME python_qa_tables
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_qa_tables.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
+
+        # The Landsat QA tables against the millworks nlcd plugin's table and
+        # pyccd's qabitval. Both are found through PYTHONPATH, set for this
+        # test alone from CCD_REFERENCE_PYTHONPATH (os.pathsep-separated, e.g.
+        # <millworks>/plugins/nlcd/src:<pyccd>). Skipped when neither imports.
+        set(
+            CCD_REFERENCE_PYTHONPATH "" CACHE STRING
+            "PYTHONPATH for python_qa_references: the nlcd plugin's src and pyccd"
+        )
+
+        add_test(
+            NAME python_qa_references
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_qa_references.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
+
+        set_tests_properties(
+            python_qa_references
+            PROPERTIES
+                SKIP_RETURN_CODE 77
+                ENVIRONMENT "PYTHONPATH=${CCD_REFERENCE_PYTHONPATH}"
         )
 
     endif()

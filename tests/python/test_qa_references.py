@@ -1,0 +1,133 @@
+"""The Landsat QA tables against the implementations they reproduce.
+
+usage: python test_qa_references.py <module_dir> <source_dir> [unittest args]
+
+  * landsat_c2_qa_pixel against the table the millworks nlcd plugin builds
+    (nlcd.changedetection.io._QA_TABLE, from nlcd.science.qa_code), all
+    65,536 entries;
+  * landsat_c1_pixel_qa against pyccd's ccd.qa.qabitval under pyccd's
+    bit-packed parameters, all 65,536 entries.
+
+Both references are found on sys.path. Point PYTHONPATH at them for this one
+command, never in the shell's environment, e.g.
+
+    PYTHONPATH=<millworks>/plugins/nlcd/src:<pyccd> python test_qa_references.py ...
+
+ctest runs this as `python_qa_references`, with PYTHONPATH set from the
+CCD_REFERENCE_PYTHONPATH cache variable for that test alone. A reference that
+is not importable skips its test and says why; when both are skipped the
+script exits 77, which ctest reports as skipped.
+"""
+import importlib
+import importlib.util
+import sys
+import types
+import unittest
+
+MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
+del sys.argv[1:3]
+sys.path.insert(0, MODULE_DIR)
+
+import numpy as np  # noqa: E402
+
+import ccdcpp  # noqa: E402
+
+
+def nlcd_table():
+    """The nlcd plugin's QA table, or the reason it is unavailable."""
+    try:
+        from nlcd.changedetection import io
+        from nlcd import science
+    except ImportError as e:
+        return None, None, (
+            f"millworks nlcd plugin not importable ({e}); run with "
+            "PYTHONPATH=<millworks>/plugins/nlcd/src for this command")
+    return io._QA_TABLE(np), science, None
+
+
+def pyccd_qa():
+    """pyccd's ccd.qa module, or the reason it is unavailable.
+
+    ccd/__init__.py imports the whole of pyccd, scikit-learn included, and
+    qabitval needs none of it, so when the package does not import, ccd.qa is
+    loaded from the package directory without running __init__.py."""
+    spec = importlib.util.find_spec("ccd")
+    if spec is None or not spec.submodule_search_locations:
+        return None, (
+            "pyccd (package `ccd`) not importable; run with "
+            "PYTHONPATH=<pyccd checkout or unpacked lcmap-pyccd wheel> for this command")
+    try:
+        return importlib.import_module("ccd.qa"), None
+    except ImportError:
+        pass
+    for name in [m for m in sys.modules if m == "ccd" or m.startswith("ccd.")]:
+        del sys.modules[name]
+    package = types.ModuleType("ccd")
+    package.__path__ = list(spec.submodule_search_locations)
+    sys.modules["ccd"] = package
+    try:
+        return importlib.import_module("ccd.qa"), None
+    except ImportError as e:
+        return None, f"pyccd's ccd.qa does not import ({e})"
+
+
+class NlcdC2(unittest.TestCase):
+    def test_all_entries_equal_the_nlcd_table(self):
+        table, science, reason = nlcd_table()
+        if table is None:
+            self.skipTest(reason)
+
+        # The plugin's codes are HarmonicOptions' defaults.
+        h = ccdcpp.HarmonicOptions()
+        self.assertEqual(
+            [science.QA_FILL, science.QA_CLEAR, science.QA_WATER,
+             science.QA_SHADOW, science.QA_SNOW, science.QA_CLOUD],
+            [h.QA_FILL, h.QA_CLEAR, h.QA_WATER, h.QA_SHADOW, h.QA_SNOW, h.QA_CLOUD])
+
+        ours = ccdcpp.qa_tables.landsat_c2_qa_pixel().codes
+        self.assertEqual(table.dtype, np.uint8)
+        self.assertEqual(table.shape, (65536,))
+        differ = np.flatnonzero(ours != table)
+        self.assertEqual(
+            differ.size, 0,
+            f"{differ.size} of 65536 entries differ; first {differ[:10].tolist()}")
+        print(f"\nlandsat_c2_qa_pixel == nlcd _QA_TABLE on all 65536 entries "
+              f"({science.__file__})", file=sys.stderr)
+
+
+class PyccdC1(unittest.TestCase):
+    def test_all_entries_equal_qabitval(self):
+        qa, reason = pyccd_qa()
+        if qa is None:
+            self.skipTest(reason)
+
+        # pyccd's bit-packed parameters: each QA_* is a bit offset, and
+        # qabitval returns the offset of the class it chose.
+        params = types.SimpleNamespace(
+            QA_FILL=0, QA_CLEAR=1, QA_WATER=2, QA_SHADOW=3, QA_SNOW=4,
+            QA_CLOUD=5, QA_CIRRUS1=8, QA_CIRRUS2=9, QA_OCCLUSION=10)
+        h = ccdcpp.HarmonicOptions()
+        code_of_offset = {
+            0: h.QA_FILL, 1: h.QA_CLEAR, 2: h.QA_WATER,
+            3: h.QA_SHADOW, 4: h.QA_SNOW, 5: h.QA_CLOUD}
+
+        ours = ccdcpp.qa_tables.landsat_c1_pixel_qa().codes
+        rejected = 0
+        for v in range(65536):
+            try:
+                expected = code_of_offset[qa.qabitval(v, params)]
+            except ValueError:
+                # pyccd raises; the table decodes to fill.
+                expected = h.QA_FILL
+                rejected += 1
+            self.assertEqual(ours[v], expected, v)
+        print(f"\nlandsat_c1_pixel_qa == pyccd qabitval on all 65536 entries, "
+              f"{rejected} of them values pyccd rejects ({qa.__file__})", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    result = unittest.main(exit=False, verbosity=2).result
+    if not result.wasSuccessful():
+        sys.exit(1)
+    if result.testsRun and len(result.skipped) == result.testsRun:
+        sys.exit(77)
