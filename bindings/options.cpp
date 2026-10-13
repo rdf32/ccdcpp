@@ -1,5 +1,9 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
+#include <vector>
+
+#include "ccd/constants.hpp"
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
@@ -8,6 +12,12 @@ namespace py = pybind11;
 
 void bind_options(py::module_& m)
 {
+    // THERMAL_IDX for an input without a thermal band.
+    m.attr("NO_BAND") = ccd::NO_BAND;
+
+    // The largest band count, and the capacity of each band list.
+    m.attr("CCD_MAX_BANDS") = ccd::CCD_MAX_BANDS;
+
     py::class_<ccd::HarmonicOptions>(
         m,
         "HarmonicOptions"
@@ -120,18 +130,84 @@ void bind_options(py::module_& m)
     //--------------------------------------------------------------------------
     // Band layout
     //
-    // Which row of `spectral` holds which band. Exposed because a caller
-    // assembling the array from a differently-ordered archive would otherwise
-    // have to transpose it -- these are cheaper than a copy of the cube.
+    // Which row of `spectral` holds which band role. NUM_BANDS is the band
+    // count every call must pass; every row is fitted and reported. The
+    // lists are read and written as lists of ints and kept in the order
+    // given, which is the order the procedures iterate them in. Exposed
+    // because a caller assembling the array from a differently-ordered
+    // archive would otherwise have to transpose it -- these are cheaper than
+    // a copy of the cube. ccdcpp.detect* raise ValueError on a layout that
+    // does not fit the input (see ccd::validate in ccd.hpp).
     //--------------------------------------------------------------------------
-    .def_readwrite("BLUE_IDX",    &ccd::HarmonicOptions::BLUE_IDX)
-    .def_readwrite("GREEN_IDX",   &ccd::HarmonicOptions::GREEN_IDX)
-    .def_readwrite("RED_IDX",     &ccd::HarmonicOptions::RED_IDX)
-    .def_readwrite("NIR_IDX",     &ccd::HarmonicOptions::NIR_IDX)
-    .def_readwrite("SWIR1_IDX",   &ccd::HarmonicOptions::SWIR1_IDX)
-    .def_readwrite("SWIR2_IDX",   &ccd::HarmonicOptions::SWIR2_IDX)
-    .def_readwrite("THERMAL_IDX", &ccd::HarmonicOptions::THERMAL_IDX)
-    .def_readwrite("QA_IDX",      &ccd::HarmonicOptions::QA_IDX)
+    .def_readwrite(
+        "NUM_BANDS",
+        &ccd::HarmonicOptions::NUM_BANDS,
+        "Band count of the spectral array every call must pass (default 7)."
+    )
+    .def_property(
+        "DETECTION_BANDS",
+        [](const ccd::HarmonicOptions& self)
+        {
+            return self.DETECTION_BANDS.to_vector();
+        },
+        [](ccd::HarmonicOptions& self, const std::vector<ccd::index_t>& bands)
+        {
+            self.DETECTION_BANDS = ccd::BandList(bands);
+        },
+        "Bands whose residuals make up the change magnitude, in order "
+        "(default [1, 2, 3, 4, 5]). The count is the chi-squared degrees of "
+        "freedom behind CHANGE_THRESHOLD and OUTLIER_THRESHOLD, whose "
+        "defaults are chi2(5) quantiles."
+    )
+    .def_property(
+        "TMASK_BANDS",
+        [](const ccd::HarmonicOptions& self)
+        {
+            return self.TMASK_BANDS.to_vector();
+        },
+        [](ccd::HarmonicOptions& self, const std::vector<ccd::index_t>& bands)
+        {
+            self.TMASK_BANDS = ccd::BandList(bands);
+        },
+        "Bands the Tmask outlier screen fits (default [1, 4])."
+    )
+    .def_property(
+        "SATURATION_BANDS",
+        [](const ccd::HarmonicOptions& self)
+        {
+            return self.SATURATION_BANDS.to_vector();
+        },
+        [](ccd::HarmonicOptions& self, const std::vector<ccd::index_t>& bands)
+        {
+            self.SATURATION_BANDS = ccd::BandList(bands);
+        },
+        "Bands tested against [REFL_MIN, REFL_MAX] (default [0, 1, 2, 3, 4, "
+        "5]). May be empty; must not hold THERMAL_IDX."
+    )
+    .def_readwrite(
+        "GREEN_IDX",
+        &ccd::HarmonicOptions::GREEN_IDX,
+        "Band read by the InsufficientClear green median filter (default 1). "
+        "Required."
+    )
+    .def_readwrite(
+        "THERMAL_IDX",
+        &ccd::HarmonicOptions::THERMAL_IDX,
+        "Band read by the thermal transform and the thermal filter (default "
+        "6), or ccdcpp.NO_BAND for an input without one, which skips both."
+    )
+    .def_readwrite("BLUE_IDX",  &ccd::HarmonicOptions::BLUE_IDX,
+        "Informational; not read by ccdcpp (default 0).")
+    .def_readwrite("RED_IDX",   &ccd::HarmonicOptions::RED_IDX,
+        "Informational; not read by ccdcpp (default 2).")
+    .def_readwrite("NIR_IDX",   &ccd::HarmonicOptions::NIR_IDX,
+        "Informational; not read by ccdcpp (default 3).")
+    .def_readwrite("SWIR1_IDX", &ccd::HarmonicOptions::SWIR1_IDX,
+        "Informational; not read by ccdcpp (default 4).")
+    .def_readwrite("SWIR2_IDX", &ccd::HarmonicOptions::SWIR2_IDX,
+        "Informational; not read by ccdcpp (default 5).")
+    .def_readwrite("QA_IDX",    &ccd::HarmonicOptions::QA_IDX,
+        "Informational; not read by ccdcpp (default 7).")
 
     //--------------------------------------------------------------------------
     // QA vocabulary

@@ -212,6 +212,10 @@ py::dict detect_wrapper(
 
     output["models"] = models;
 
+    // The length of every model's band list, also when there are no models.
+    output["num_bands"] =
+        static_cast<ccd::index_t>(spectral_buf.shape[0]);
+
     // processing mask
     py::array_t<std::uint8_t> mask_array(
         final_result.mask.size()
@@ -665,10 +669,11 @@ py::list detect_cube_wrapper(
 //   curve_qa              uint8 [n]
 //   observation_count     int32 [n]
 //   change_probability  float64 [n]
-//   intercept           float64 [n, 7]     band-major
-//   coefficients        float64 [n, 7, 7]  (band, coefficient)
-//   rmse                float64 [n, 7]
-//   magnitude           float64 [n, 7]
+//   intercept           float64 [n, B]     band-major
+//   coefficients        float64 [n, B, 7]  (band, coefficient)
+//   rmse                float64 [n, B]
+//   magnitude           float64 [n, B]
+//   num_bands             int              B, the input's band count
 //   failures              list of (row, col, message)
 //   threads               int              what actually ran
 //   pixels_total          int              H * W
@@ -684,8 +689,9 @@ py::list detect_cube_wrapper(
 // legacy change-detection parquet does -- must compare these two numbers, and
 // nothing else in this dict would have told it.
 //
-// Band order is ccdcpp's own -- blue, green, red, nir, swir1, swir2, thermal.
-// Coefficient order is build_basis()'s -- slope, cos1, sin1, cos2, sin2, cos3,
+// Band order is the input's row order, B = HarmonicOptions.NUM_BANDS rows;
+// under the default layout that is blue, green, red, nir, swir1, swir2,
+// thermal. Coefficient order is build_basis()'s -- slope, cos1, sin1, cos2, sin2, cos3,
 // sin3 -- and the intercept is NOT among them, which is why it is a separate
 // array. Coefficients above the model's own count are zero, not absent; zero
 // is also a legitimate fitted value under L1, so a caller that needs to know
@@ -858,6 +864,7 @@ py::dict detect_cube_columns_wrapper(
     output["coefficients"] = coef_arr;
     output["rmse"]         = rmse_arr;
     output["magnitude"]    = magn_arr;
+    output["num_bands"]    = NB;
 
     output["failures"] = failures_to_python(cube.failures);
     output["threads"]  = cube.threads;

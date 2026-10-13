@@ -98,6 +98,23 @@ Each pixel's complete time series is stored contiguously in memory. This layout 
 
 Using C-contiguous arrays with these layouts maximizes performance and minimizes unnecessary memory copies.
 
+---
+
+## Band Layout
+
+`HarmonicOptions` says which row of `spectral` plays which role. The defaults are the Landsat layout, seven bands in the order blue, green, red, nir, swir1, swir2, thermal:
+
+| Field | Default | Read by |
+|-------|---------|---------|
+| `NUM_BANDS` | `7` | every entry point: the band count `spectral` must have |
+| `DETECTION_BANDS` | `[1, 2, 3, 4, 5]` | change magnitude and the stability check, in list order |
+| `TMASK_BANDS` | `[1, 4]` | the Tmask outlier screen |
+| `SATURATION_BANDS` | `[0, 1, 2, 3, 4, 5]` | the saturation filter (`REFL_MIN`, `REFL_MAX`) |
+| `GREEN_IDX` | `1` | the InsufficientClear green median filter |
+| `THERMAL_IDX` | `6` | the thermal transform and filter; `ccdcpp.NO_BAND` for none |
+
+Every row is fitted and reported, so results have `NUM_BANDS` bands in row order: `detect` returns a `bands` list of that length per model and `num_bands`, and `detect_cube_columns` returns `[n, B]` and `[n, B, 7]` arrays. `CHANGE_THRESHOLD` and `OUTLIER_THRESHOLD` default to chi-squared quantiles with 5 degrees of freedom, the default detection band count; a layout with a different count sets them to match. `BLUE_IDX`, `RED_IDX`, `NIR_IDX`, `SWIR1_IDX`, `SWIR2_IDX` and `QA_IDX` are informational and not read. A layout that does not fit the input (wrong band count, an index off the band axis, a repeated index, an empty detection or Tmask list, no green band, thermal in the saturation list, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs.
+
 ## Native C++ Implementation
 
 The core CCD algorithm was translated into modern C++17 to eliminate the overhead associated with Python execution.
