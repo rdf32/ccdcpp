@@ -139,12 +139,12 @@ void apply_thermal_filter(
 // Remove saturated observations.
 //
 // An observation is saturated when any of `bands` is not in_range() of
-// `range` (HarmonicOptions::REFL_MIN/REFL_MAX and their flags, inclusive on
+// `range` (HarmonicOptions::REFL_MIN/REFL_MAX and their flags, exclusive on
 // both ends by default); the bands are tested in list order.
-// pyccd's Collection-1 values are [0, 10000] and Collection-2's are
-// [7273, 43636]; both express the single predicate `reflectance in [0, 1]`
+// pyccd's Collection-1 values are (0, 10000) and Collection-2's are
+// (7273, 43636); both express the single predicate `reflectance in (0, 1)`
 // (C2 surface reflectance is DN * 2.75e-5 - 0.2), so a caller working in
-// reflectance passes [0.0, 1.0] and there is no collection branch left.
+// reflectance passes (0.0, 1.0) and there is no collection branch left.
 //
 //------------------------------------------------------------------------------
 

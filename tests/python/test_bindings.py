@@ -378,8 +378,8 @@ class CadenceOptions(unittest.TestCase):
 
 class BoundFlags(unittest.TestCase):
     FLAGS = {
-        "REFL_MIN_INCLUSIVE": True,
-        "REFL_MAX_INCLUSIVE": True,
+        "REFL_MIN_INCLUSIVE": False,
+        "REFL_MAX_INCLUSIVE": False,
         "THERM_MIN_INCLUSIVE": False,
         "THERM_MAX_INCLUSIVE": False,
     }
@@ -407,10 +407,10 @@ class BoundFlags(unittest.TestCase):
     def test_reflectance_bounds(self):
         values = [0.0, 10000.0, -1.0, 10001.0]
         for flags, expected in (
-            (dict(), [1, 1, 0, 0]),
-            (dict(REFL_MIN_INCLUSIVE=False, REFL_MAX_INCLUSIVE=False), [0, 0, 0, 0]),
-            (dict(REFL_MIN_INCLUSIVE=False), [0, 1, 0, 0]),
-            (dict(REFL_MAX_INCLUSIVE=False), [1, 0, 0, 0]),
+            (dict(), [0, 0, 0, 0]),
+            (dict(REFL_MIN_INCLUSIVE=True, REFL_MAX_INCLUSIVE=True), [1, 1, 0, 0]),
+            (dict(REFL_MIN_INCLUSIVE=True), [1, 0, 0, 0]),
+            (dict(REFL_MAX_INCLUSIVE=True), [0, 1, 0, 0]),
         ):
             with self.subTest(**flags):
                 self.assertEqual([int(v) for v in self.mask(values, 3, **flags)], expected)
@@ -430,8 +430,9 @@ class BoundFlags(unittest.TestCase):
     def test_exclusive_bounds_reject_nan(self):
         # An exclusive end rejects NaN, so the pixel fits without it. (Both ends
         # inclusive let NaN through to the fit; see the README.)
-        for band, flags in ((3, dict(REFL_MIN_INCLUSIVE=False)),
-                            (3, dict(REFL_MAX_INCLUSIVE=False)),
+        for band, flags in ((3, dict()),
+                            (3, dict(REFL_MIN_INCLUSIVE=True)),
+                            (3, dict(REFL_MAX_INCLUSIVE=True)),
                             (6, dict())):
             with self.subTest(band=band, **flags):
                 self.assertEqual(self.mask([np.nan, 1000.0 if band != 6 else 2900.0], band, **flags),

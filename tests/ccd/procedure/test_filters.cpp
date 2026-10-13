@@ -133,16 +133,16 @@ TEST(Bounds, OptionDefaults)
 {
     const ccd::HarmonicOptions h;
 
-    EXPECT_TRUE(h.REFL_MIN_INCLUSIVE);
-    EXPECT_TRUE(h.REFL_MAX_INCLUSIVE);
+    EXPECT_FALSE(h.REFL_MIN_INCLUSIVE);
+    EXPECT_FALSE(h.REFL_MAX_INCLUSIVE);
     EXPECT_FALSE(h.THERM_MIN_INCLUSIVE);
     EXPECT_FALSE(h.THERM_MAX_INCLUSIVE);
 
     const auto refl = ccd::filter::reflectance_range(h);
     EXPECT_EQ(refl.lo.value, h.REFL_MIN);
     EXPECT_EQ(refl.hi.value, h.REFL_MAX);
-    EXPECT_TRUE(refl.lo.inclusive);
-    EXPECT_TRUE(refl.hi.inclusive);
+    EXPECT_FALSE(refl.lo.inclusive);
+    EXPECT_FALSE(refl.hi.inclusive);
 
     const auto therm = ccd::filter::thermal_range(h);
     EXPECT_EQ(therm.lo.value, ccd::MIN_CELSIUS);

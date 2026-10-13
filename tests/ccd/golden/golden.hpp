@@ -18,6 +18,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <limits>
 #include <string>
 
 #include <Eigen/Core>
@@ -133,6 +134,32 @@ inline void to_physical(double* block, std::size_t T)
     for (std::size_t t = 0; t < T; ++t)
         block[6 * T + t] =
             (block[6 * T + t] * ccd::KELVIN_SCALE - ccd::KELVIN_OFFSET) / SCALE;
+}
+
+// Puts saturation-band values on the DN reflectance bounds of a (7, T) block,
+// at clear observations (QA 0) numbered 10, 60, 110, 160 and 210 in date
+// order: blue 0, nir 10000, red NaN, green 10000, swir2 0.
+inline void put_bound_values(double* block, const std::uint8_t* qas, std::size_t T)
+{
+    struct Put { std::size_t clear_index; std::size_t band; double value; };
+    const Put puts[] = {
+        {10, 0, 0.0},
+        {60, 3, 10000.0},
+        {110, 2, std::numeric_limits<double>::quiet_NaN()},
+        {160, 1, 10000.0},
+        {210, 5, 0.0},
+    };
+
+    std::size_t clear = 0;
+    for (std::size_t t = 0; t < T; ++t)
+    {
+        if (qas[t] != 0)
+            continue;
+        for (const auto& put : puts)
+            if (put.clear_index == clear)
+                block[put.band * T + t] = put.value;
+        ++clear;
+    }
 }
 
 // Collection-2 style bounds, for the two C2 reference files.

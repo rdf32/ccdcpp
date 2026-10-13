@@ -162,14 +162,14 @@ void bind_options(py::module_& m)
     .def_readwrite(
         "REFL_MIN_INCLUSIVE",
         &ccd::HarmonicOptions::REFL_MIN_INCLUSIVE,
-        "Keep a saturation-band value equal to REFL_MIN (default True). With "
-        "both REFL_* flags True NaN passes the saturation filter; with either "
-        "False it is rejected. Both False is pyccd's 0 < x < 10000."
+        "Keep a saturation-band value equal to REFL_MIN (default False, "
+        "pyccd's exclusive 0 < x < 10000, which rejects NaN). NaN passes the "
+        "saturation filter only with both REFL_* flags True."
     )
     .def_readwrite(
         "REFL_MAX_INCLUSIVE",
         &ccd::HarmonicOptions::REFL_MAX_INCLUSIVE,
-        "Keep a saturation-band value equal to REFL_MAX (default True). See "
+        "Keep a saturation-band value equal to REFL_MAX (default False). See "
         "REFL_MIN_INCLUSIVE."
     )
     .def_readwrite(
@@ -240,7 +240,7 @@ void bind_options(py::module_& m)
         {
             self.SATURATION_BANDS = ccd::BandList(bands);
         },
-        "Bands tested against [REFL_MIN, REFL_MAX] (default [0, 1, 2, 3, 4, "
+        "Bands tested against REFL_MIN and REFL_MAX (default [0, 1, 2, 3, 4, "
         "5]). May be empty; must not hold THERMAL_IDX."
     )
     .def_readwrite(

@@ -21,7 +21,8 @@
 //   PhysicalUnitsAreEquivalent  the property itself
 //   PhysicalUnitsAreEquivalentWithExclusiveBounds
 //                               the property with observations on the
-//                               reflectance bounds and the bounds exclusive:
+//                               reflectance bounds, which the default
+//                               exclusive bounds drop and inclusive ones keep:
 //                               the *_INCLUSIVE flags are not unit constants
 //   AlphaIsAUnitConstant        alpha left behind: 89 % of coefficients zeroed
 //                               and a different segment count -- and it runs
@@ -396,9 +397,9 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 // The *_INCLUSIVE flags are not unit constants: 0 and 10000 in DN are 0.0 and
 // 1.0 in reflectance, so an exclusive bound rejects the same observations in
 // both units. Five clear observations are moved onto a bound first, so the
-// flags have something to decide: under the default inclusive bounds they are
-// kept by the filter, under exclusive ones they are dropped, and the DN and physical runs
-// agree either way.
+// flags have something to decide: under the default exclusive bounds the
+// filter drops them, under inclusive ones it keeps them, and the DN and
+// physical runs agree.
 //------------------------------------------------------------------------------
 
 TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
@@ -418,13 +419,12 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     }
     ASSERT_EQ(moved.size(), 5u);
 
-    ccd::HarmonicOptions dn_h;
-    ccd::HarmonicOptions phys_h = physical_harmonic();
+    const ccd::HarmonicOptions dn_h;
+    const ccd::HarmonicOptions phys_h = physical_harmonic();
+    ccd::HarmonicOptions inclusive_h;
+    inclusive_h.REFL_MIN_INCLUSIVE = inclusive_h.REFL_MAX_INCLUSIVE = true;
 
-    const auto dn_inclusive = run(obs, obs.spectral, dn_h, ccd::LassoOptions{});
-
-    dn_h.REFL_MIN_INCLUSIVE = dn_h.REFL_MAX_INCLUSIVE = false;
-    phys_h.REFL_MIN_INCLUSIVE = phys_h.REFL_MAX_INCLUSIVE = false;
+    const auto dn_inclusive = run(obs, obs.spectral, inclusive_h, ccd::LassoOptions{});
 
     const auto dn = run(obs, obs.spectral, dn_h, ccd::LassoOptions{});
     const auto phys = run(
@@ -443,7 +443,7 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     };
 
     const auto physical = to_physical(obs.spectral, obs.T);
-    const auto inclusive_mask = filter_mask(obs.spectral, ccd::HarmonicOptions{});
+    const auto inclusive_mask = filter_mask(obs.spectral, inclusive_h);
     const auto exclusive_mask = filter_mask(obs.spectral, dn_h);
     const auto physical_exclusive_mask = filter_mask(physical, phys_h);
 

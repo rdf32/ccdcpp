@@ -12,6 +12,8 @@
 // Inputs:
 //
 //   * the pyccd reference pixel (DN defaults and the physical-unit preset),
+//   * the same pixel with saturation-band values on the reflectance bounds
+//     and a NaN (golden::put_bound_values), both ways,
 //   * the Collection-2 reference pixel under Collection-2 bounds,
 //   * synthetic cubes from synthetic.hpp covering Standard, PermanentSnow and
 //     InsufficientClear, 0-4 breaks, unflagged outliers, saturation, fill
@@ -180,6 +182,23 @@ std::string run_corpus()
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
         golden::dump_pixel(dump, "pyccd:phys",
+            run_detect(p.dates, phys.data(), p.qas.data(),
+                golden::physical_harmonic(), golden::physical_lasso()));
+    }
+    {
+        // The reference pixel with saturation-band values on the bounds and a
+        // NaN: the reflectance filter's default exclusive ends drop all five.
+        Pixel p = read_csv("test_3657_3610_observations.csv");
+        const std::size_t T = p.dates.size();
+        golden::put_bound_values(p.spectral.data(), p.qas.data(), T);
+
+        golden::dump_pixel(dump, "bounds:dn",
+            run_detect(p.dates, p.spectral.data(), p.qas.data(),
+                ccd::HarmonicOptions{}, ccd::LassoOptions{}));
+
+        std::vector<double> phys = p.spectral;
+        golden::to_physical(phys.data(), T);
+        golden::dump_pixel(dump, "bounds:phys",
             run_detect(p.dates, phys.data(), p.qas.data(),
                 golden::physical_harmonic(), golden::physical_lasso()));
     }

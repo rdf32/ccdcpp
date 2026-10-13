@@ -138,14 +138,14 @@ class Units:
         median cloud screen.
     refl_inclusive
         ``(REFL_MIN_INCLUSIVE, REFL_MAX_INCLUSIVE)``: whether a value equal
-        to each bound is kept (default ``(True, True)``). NaN passes only
-        with both True.
+        to each bound is kept (default ``(False, False)``, pyccd's exclusive
+        range, which rejects NaN). NaN passes only with both True.
     """
 
     refl_min: float
     refl_max: float
     median_green_filter: float
-    refl_inclusive: Tuple[bool, bool] = (True, True)
+    refl_inclusive: Tuple[bool, bool] = (False, False)
 
     def __post_init__(self):
         object.__setattr__(self, "refl_inclusive", _flag_pair(self.refl_inclusive, "refl_inclusive"))

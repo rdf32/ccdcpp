@@ -171,9 +171,9 @@ void apply_saturation_filter(
         bool valid = true;
         for (const index_t band : bands) {
             // One predicate for every collection. pyccd's collection-1
-            // bound is [0, 10000] and collection-2's is [7273, 43636]; both
-            // mean "reflectance in [0, 1]", and a caller working in
-            // reflectance passes [0.0, 1.0].
+            // bound is (0, 10000) and collection-2's is (7273, 43636); both
+            // mean "reflectance in (0, 1)", and a caller working in
+            // reflectance passes (0.0, 1.0).
             if (!in_range(spectral(band, obs), range)) {
                 valid = false;
                 break;

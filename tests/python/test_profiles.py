@@ -359,7 +359,7 @@ class Check(unittest.TestCase):
 class BoundFlags(unittest.TestCase):
     def test_defaults(self):
         for units in (ccdcpp.DN, ccdcpp.REFLECTANCE):
-            self.assertEqual(units.refl_inclusive, (True, True))
+            self.assertEqual(units.refl_inclusive, (False, False))
         for thermal in (ccdcpp.KELVIN_TENTHS, ccdcpp.CELSIUS_HUNDREDTHS):
             self.assertEqual(thermal.inclusive, (False, False))
 
@@ -394,9 +394,9 @@ class BoundFlags(unittest.TestCase):
                          (False, True))
 
     def test_hashable_and_picklable(self):
-        u = ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=(False, False))
+        u = ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=(True, True))
         self.assertEqual(pickle.loads(pickle.dumps(u)), u)
-        self.assertEqual(hash(u), hash(ccdcpp.Units(0.0, 1.0, 0.04, (False, False))))
+        self.assertEqual(hash(u), hash(ccdcpp.Units(0.0, 1.0, 0.04, (True, True))))
         self.assertNotEqual(u, ccdcpp.REFLECTANCE)
 
 

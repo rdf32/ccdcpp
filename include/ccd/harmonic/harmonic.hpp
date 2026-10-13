@@ -216,8 +216,8 @@ struct HarmonicOptions
     // Two more things are worth knowing before changing any of these.
     //
     // 1. The two collection variants of the saturation bound are ONE
-    //    predicate. Collection-1's [0, 10000] and Collection-2's
-    //    [7273, 43636] both mean "reflectance in [0, 1]" -- C2 surface
+    //    predicate. Collection-1's (0, 10000) and Collection-2's
+    //    (7273, 43636) both mean "reflectance in (0, 1)" -- C2 surface
     //    reflectance is DN * 2.75e-5 - 0.2, which maps 7273 -> 0.0000 and
     //    43636 -> 1.0000. So in physical units there is no collection branch
     //    left to choose between; it collapses.
@@ -286,16 +286,16 @@ struct HarmonicOptions
     scalar_t THERMAL_OFFSET = -KELVIN_OFFSET;
 
     // Saturation bound for the SATURATION_BANDS. An observation is kept when
-    // every one of them lies within [REFL_MIN, REFL_MAX], each end inclusive
-    // or exclusive by its flag (default inclusive on both ends).
+    // every one of them lies within (REFL_MIN, REFL_MAX), each end inclusive
+    // or exclusive by its flag (default exclusive on both ends, pyccd's
+    // 0 < value < 10000).
     //
-    // With both ends inclusive the test is !(value < REFL_MIN || value >
-    // REFL_MAX), under which NaN passes. With either end exclusive NaN is
-    // rejected; both exclusive is pyccd's 0 < value < 10000.
+    // With either end exclusive NaN is rejected. With both ends inclusive the
+    // test is !(value < REFL_MIN || value > REFL_MAX), under which NaN passes.
     scalar_t REFL_MIN = 0.0;
     scalar_t REFL_MAX = 10000.0;
-    bool REFL_MIN_INCLUSIVE = true;
-    bool REFL_MAX_INCLUSIVE = true;
+    bool REFL_MIN_INCLUSIVE = false;
+    bool REFL_MAX_INCLUSIVE = false;
 
     // Valid range for the THERMAL_IDX band, tested after the
     // THERMAL_SCALE/THERMAL_OFFSET transform, each end inclusive or exclusive
@@ -368,7 +368,7 @@ struct HarmonicOptions
     // Bands the Tmask outlier screen fits.
     BandList TMASK_BANDS = {1, 4};
 
-    // Bands the saturation filter tests against [REFL_MIN, REFL_MAX]. May be
+    // Bands the saturation filter tests against REFL_MIN and REFL_MAX. May be
     // empty; must not hold THERMAL_IDX.
     BandList SATURATION_BANDS = {0, 1, 2, 3, 4, 5};
 
