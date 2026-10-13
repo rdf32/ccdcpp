@@ -152,7 +152,8 @@ index_t adjust_peek(
 scalar_t adjust_change_threshold(
     index_t peek,
     index_t defpeek,
-    scalar_t defthresh
+    scalar_t defthresh,
+    index_t df
 )
 {
     if(peek <= defpeek)
@@ -167,7 +168,7 @@ scalar_t adjust_change_threshold(
         );
 
 
-    boost::math::chi_squared dist(5);
+    boost::math::chi_squared dist(static_cast<scalar_t>(df));
 
     return boost::math::quantile(dist, pt);
 }
@@ -355,7 +356,7 @@ bool stable(
     std::vector<scalar_t>& variogram,
     std::vector<LassoResult>& results,
     scalar_t change_threshold,
-    const std::vector<index_t>& detection_bands
+    const BandList& detection_bands
 ) {
     
     scalar_t euclidean_norm = 0.0;
@@ -462,7 +463,7 @@ ProcessingMask tmask(
     ArrayView<const std::int64_t, 1> dates_window,
     ArrayView<const scalar_t, 2> spect_window,
     std::vector<scalar_t>& variogram,
-    const std::vector<index_t>& bands,
+    const BandList& bands,
     scalar_t t_const
 ) {
     const index_t n =

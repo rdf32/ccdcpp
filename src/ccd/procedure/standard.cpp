@@ -303,7 +303,7 @@ void StandardProcedure::calc_residuals(
 //------------------------------------------------------------------------------
 static void detection_magnitude(
     const std::vector<std::vector<scalar_t>>& residuals,
-    const std::vector<index_t>& bands,
+    const BandList& bands,
     const std::vector<scalar_t>& variogram,
     const std::vector<scalar_t>& rmse,
     std::vector<scalar_t>& magnitude
@@ -874,7 +874,8 @@ FitResult StandardProcedure::run(
         adjust_change_threshold(
             options.PEEK_SIZE,
             options.PEEK_SIZE,
-            options.CHANGE_THRESHOLD
+            options.CHANGE_THRESHOLD,
+            options.DETECTION_BANDS.size()
         );
     
     LOG_DEBUG("Peek size: " << options.PEEK_SIZE);

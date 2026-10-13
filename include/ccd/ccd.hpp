@@ -174,16 +174,26 @@ struct DetectScratch
 
 //------------------------------------------------------------------------------
 //
-// The band layout check every entry point runs before any work.
+// The band layout check every entry point runs once per call, before any
+// work.
 //
-// The procedures hold one fit per band in a ChangeModel::bands of
-// CCD_NUM_BANDS entries and index the bands by HarmonicOptions::*_IDX, so a
-// spectral array with any other band count is out of bounds inside them.
-// Throws std::invalid_argument naming the expected and the actual count.
+// The procedures hold one fit per band and read bands by the indices in
+// `options`, so every index must name a row of an array with `bands` bands.
+// Throws std::invalid_argument when:
+//
+//   * `bands` is not options.NUM_BANDS, or exceeds CCD_MAX_BANDS;
+//   * DETECTION_BANDS or TMASK_BANDS is empty;
+//   * DETECTION_BANDS, TMASK_BANDS or SATURATION_BANDS holds an index not
+//     below `bands`, or holds one index twice;
+//   * GREEN_IDX is NO_BAND or not below `bands`;
+//   * THERMAL_IDX is neither NO_BAND nor below `bands`, or is in
+//     SATURATION_BANDS.
+//
+// The message names the field and the counts.
 //
 //------------------------------------------------------------------------------
 
-void validate_bands(index_t bands);
+void validate(const HarmonicOptions& options, index_t bands);
 
 //------------------------------------------------------------------------------
 //
@@ -194,8 +204,8 @@ void validate_bands(index_t bands);
 // private copy, so calling detect() twice on the same buffer gives the same
 // result twice. `spectral` may be strided.
 //
-// Throws std::invalid_argument unless `spectral` has CCD_NUM_BANDS bands (see
-// validate_bands()) and `dates`, `qas` and `spectral` agree on the number of
+// Throws std::invalid_argument unless `spectral`'s band count passes
+// validate() and `dates`, `qas` and `spectral` agree on the number of
 // timesteps.
 //
 //------------------------------------------------------------------------------

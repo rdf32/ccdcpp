@@ -84,7 +84,8 @@ py::dict detect_wrapper(
         );
 
     // ValueError, raised here, before the GIL is released.
-    ccd::validate_bands(
+    ccd::validate(
+        hoptions,
         static_cast<ccd::index_t>(spectral_buf.shape[0])
     );
 
@@ -345,7 +346,8 @@ static py::array accept(const py::object& obj, const char* name)
 static CubeInput check_cube(
     py::array_t<std::int64_t, py::array::c_style> dates,
     const py::object& spectral_obj,
-    const py::object& qas_obj
+    const py::object& qas_obj,
+    const ccd::HarmonicOptions& hoptions
 )
 {
     py::array spectral =
@@ -396,7 +398,7 @@ static CubeInput check_cube(
     }
 
     // ValueError, raised here, before the GIL is released.
-    ccd::validate_bands(B);
+    ccd::validate(hoptions, B);
 
     const SpectralType spectral_type =
         takes_as_is<std::uint16_t>(spectral) ? SpectralType::UInt16 :
@@ -492,7 +494,7 @@ py::list detect_cube_wrapper(
 )
 {
     const CubeInput views =
-        check_cube(dates, spectral, qas);
+        check_cube(dates, spectral, qas, hoptions);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -705,7 +707,7 @@ py::dict detect_cube_columns_wrapper(
 )
 {
     const CubeInput views =
-        check_cube(dates, spectral, qas);
+        check_cube(dates, spectral, qas, hoptions);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -745,7 +747,8 @@ py::dict detect_cube_columns_wrapper(
     // Allocate
     //----------------------------------------------------------------------
 
-    constexpr ccd::index_t NB = ccd::CCD_NUM_BANDS;
+    const ccd::index_t NB = views.B;
+    const auto nb = static_cast<py::ssize_t>(NB);
     constexpr ccd::index_t NC = ccd::CCD_MAX_COEFS;
 
     const auto rows = static_cast<py::ssize_t>(n);
@@ -762,16 +765,16 @@ py::dict detect_cube_columns_wrapper(
     py::array_t<ccd::scalar_t> prob_arr(rows);
 
     py::array_t<ccd::scalar_t> int_arr(
-        std::vector<py::ssize_t>{rows, NB}
+        std::vector<py::ssize_t>{rows, nb}
     );
     py::array_t<ccd::scalar_t> rmse_arr(
-        std::vector<py::ssize_t>{rows, NB}
+        std::vector<py::ssize_t>{rows, nb}
     );
     py::array_t<ccd::scalar_t> magn_arr(
-        std::vector<py::ssize_t>{rows, NB}
+        std::vector<py::ssize_t>{rows, nb}
     );
     py::array_t<ccd::scalar_t> coef_arr(
-        std::vector<py::ssize_t>{rows, NB, NC}
+        std::vector<py::ssize_t>{rows, nb, NC}
     );
 
     auto row_v   = row_arr.mutable_unchecked<1>();

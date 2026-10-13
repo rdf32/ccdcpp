@@ -2,11 +2,12 @@
 //
 // Input validation at the entry points.
 //
-// detect() and detect_cube() reject a spectral array whose band count is not
-// CCD_NUM_BANDS, and inputs whose timestep counts disagree, with
-// std::invalid_argument before any pixel runs. Inside detect_cube a wrong
-// band count would otherwise be out-of-bounds access within the OpenMP
-// region, where nothing reports it.
+// detect() and detect_cube() reject a band layout ccd::validate() refuses --
+// a band count other than HarmonicOptions::NUM_BANDS, an index off the band
+// axis, a repeated or missing band -- and inputs whose timestep counts
+// disagree, with std::invalid_argument before any pixel runs. Inside
+// detect_cube a bad layout would otherwise be out-of-bounds access within
+// the OpenMP region, where nothing reports it.
 //
 //==============================================================================
 
@@ -114,12 +115,212 @@ void expect_band_error(F&& f, ccd::index_t bands)
 
 } // namespace
 
-TEST(Validation, ValidateBandsAcceptsSevenOnly)
+TEST(Validation, DefaultLayoutAcceptsSevenOnly)
 {
-    EXPECT_NO_THROW(ccd::validate_bands(ccd::CCD_NUM_BANDS));
-    expect_band_error([] { ccd::validate_bands(6); }, 6);
-    expect_band_error([] { ccd::validate_bands(8); }, 8);
-    expect_band_error([] { ccd::validate_bands(0); }, 0);
+    const ccd::HarmonicOptions h;
+    EXPECT_NO_THROW(ccd::validate(h, 7));
+    expect_band_error([&] { ccd::validate(h, 6); }, 6);
+    expect_band_error([&] { ccd::validate(h, 8); }, 8);
+    expect_band_error([&] { ccd::validate(h, 0); }, 0);
+}
+
+//------------------------------------------------------------------------------
+// One case per rule of ccd::validate(). Each starts from a layout that
+// passes and breaks one thing; the message names what broke.
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+// A 10-band layout without thermal, which passes.
+ccd::HarmonicOptions ten_band_layout()
+{
+    ccd::HarmonicOptions h;
+    h.NUM_BANDS = 10;
+    h.DETECTION_BANDS = {1, 2, 6, 8, 9};
+    h.TMASK_BANDS = {1, 8};
+    h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    h.GREEN_IDX = 1;
+    h.THERMAL_IDX = ccd::NO_BAND;
+    return h;
+}
+
+void expect_layout_error(
+    const ccd::HarmonicOptions& h,
+    ccd::index_t bands,
+    const std::string& expected
+)
+{
+    try
+    {
+        ccd::validate(h, bands);
+        FAIL() << "no exception; expected \"" << expected << "\"";
+    }
+    catch (const std::invalid_argument& e)
+    {
+        const std::string message = e.what();
+        EXPECT_NE(message.find(expected), std::string::npos) << message;
+    }
+}
+
+} // namespace
+
+TEST(Validation, LayoutRules)
+{
+    EXPECT_NO_THROW(ccd::validate(ten_band_layout(), 10));
+
+    // B != NUM_BANDS
+    expect_layout_error(ten_band_layout(), 7,
+        "spectral has 7 bands; HarmonicOptions.NUM_BANDS expects 10");
+
+    // B > CCD_MAX_BANDS
+    {
+        auto h = ten_band_layout();
+        h.NUM_BANDS = ccd::CCD_MAX_BANDS + 1;
+        expect_layout_error(h, ccd::CCD_MAX_BANDS + 1,
+            "spectral has 33 bands; ccdcpp accepts at most 32");
+
+        h.NUM_BANDS = ccd::CCD_MAX_BANDS;
+        EXPECT_NO_THROW(ccd::validate(h, ccd::CCD_MAX_BANDS));
+    }
+
+    // An index >= B, in each list.
+    {
+        auto h = ten_band_layout();
+        h.DETECTION_BANDS = {1, 2, 10};
+        expect_layout_error(h, 10, "DETECTION_BANDS holds band 10; spectral has 10 bands");
+    }
+    {
+        auto h = ten_band_layout();
+        h.TMASK_BANDS = {1, 12};
+        expect_layout_error(h, 10, "TMASK_BANDS holds band 12; spectral has 10 bands");
+    }
+    {
+        auto h = ten_band_layout();
+        h.SATURATION_BANDS = {0, 31};
+        expect_layout_error(h, 10, "SATURATION_BANDS holds band 31; spectral has 10 bands");
+    }
+
+    // Duplicates, in each list.
+    {
+        auto h = ten_band_layout();
+        h.DETECTION_BANDS = {1, 2, 6, 2};
+        expect_layout_error(h, 10, "DETECTION_BANDS holds band 2 more than once");
+    }
+    {
+        auto h = ten_band_layout();
+        h.TMASK_BANDS = {8, 8};
+        expect_layout_error(h, 10, "TMASK_BANDS holds band 8 more than once");
+    }
+    {
+        auto h = ten_band_layout();
+        h.SATURATION_BANDS = {0, 1, 0};
+        expect_layout_error(h, 10, "SATURATION_BANDS holds band 0 more than once");
+    }
+
+    // Empty detection or tmask list; an empty saturation list is allowed.
+    {
+        auto h = ten_band_layout();
+        h.DETECTION_BANDS = {};
+        expect_layout_error(h, 10, "DETECTION_BANDS is empty");
+    }
+    {
+        auto h = ten_band_layout();
+        h.TMASK_BANDS = {};
+        expect_layout_error(h, 10, "TMASK_BANDS is empty");
+    }
+    {
+        auto h = ten_band_layout();
+        h.SATURATION_BANDS = {};
+        EXPECT_NO_THROW(ccd::validate(h, 10));
+    }
+
+    // GREEN_IDX absent or out of range.
+    {
+        auto h = ten_band_layout();
+        h.GREEN_IDX = ccd::NO_BAND;
+        expect_layout_error(h, 10, "GREEN_IDX is NO_BAND");
+    }
+    {
+        auto h = ten_band_layout();
+        h.GREEN_IDX = 10;
+        expect_layout_error(h, 10, "GREEN_IDX is 10; spectral has 10 bands");
+    }
+
+    // THERMAL_IDX out of range, or in SATURATION_BANDS.
+    {
+        auto h = ten_band_layout();
+        h.THERMAL_IDX = 10;
+        expect_layout_error(h, 10, "THERMAL_IDX is 10; spectral has 10 bands");
+    }
+    {
+        auto h = ten_band_layout();
+        h.THERMAL_IDX = 9;
+        expect_layout_error(h, 10, "SATURATION_BANDS holds THERMAL_IDX (9)");
+
+        h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+        EXPECT_NO_THROW(ccd::validate(h, 10));
+    }
+
+    // The default layout's thermal band is outside its saturation list.
+    {
+        ccd::HarmonicOptions h;
+        h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6};
+        expect_layout_error(h, 7, "SATURATION_BANDS holds THERMAL_IDX (6)");
+    }
+}
+
+TEST(Validation, BandListRejectsWhatItCannotHold)
+{
+    ccd::BandList list;
+    EXPECT_THROW(list.push_back(ccd::CCD_MAX_BANDS), std::invalid_argument);
+    EXPECT_THROW(list.push_back(ccd::NO_BAND), std::invalid_argument);
+
+    for (ccd::index_t i = 0; i < ccd::CCD_MAX_BANDS; ++i)
+        list.push_back(i % 4);
+    EXPECT_EQ(list.size(), ccd::CCD_MAX_BANDS);
+    EXPECT_THROW(list.push_back(0), std::invalid_argument);
+
+    // Stored order is kept.
+    const ccd::BandList ordered = {5, 1, 3};
+    EXPECT_EQ(ordered.to_vector(), (std::vector<ccd::index_t>{5, 1, 3}));
+}
+
+// The layout is checked before any pixel runs, for detect() and for
+// detect_cube() of every dtype.
+TEST(Validation, EntryPointsRejectALayout)
+{
+    constexpr ccd::index_t T = 40;
+    const auto dates = make_dates(T);
+    const auto spectral = make_spectral<double>(7, T);
+    const std::vector<std::uint8_t> qas(T, 0);
+
+    ccd::HarmonicOptions h;
+    h.DETECTION_BANDS = {1, 2, 7};
+
+    EXPECT_THROW(
+        ccd::detect(
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+            ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
+            h, ccd::LassoOptions()),
+        std::invalid_argument);
+
+    const std::vector<std::uint8_t> cube_qas(T, 0);
+    const std::vector<float> f32(spectral.begin(), spectral.end());
+    const std::vector<std::uint16_t> u16(spectral.begin(), spectral.end());
+    const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T});
+    const auto q = ccd::ArrayView<const std::uint8_t, 3>::contiguous(cube_qas.data(), {1, 1, T});
+
+    EXPECT_THROW(ccd::detect_cube(d,
+        ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
+        q, h, ccd::LassoOptions(), 1), std::invalid_argument);
+    EXPECT_THROW(ccd::detect_cube(d,
+        ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 1, 7, T}),
+        q, h, ccd::LassoOptions(), 1), std::invalid_argument);
+    EXPECT_THROW(ccd::detect_cube(d,
+        ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 1, 7, T}),
+        q, h, ccd::LassoOptions(), 1), std::invalid_argument);
 }
 
 TEST(Validation, DetectRejectsBandCount)

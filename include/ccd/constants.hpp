@@ -10,7 +10,12 @@ namespace ccd
 // CCD Constants
 //==============================================================================
 
-constexpr index_t CCD_NUM_BANDS = 7;
+// Capacity of a BandList, and the largest band count the entry points accept.
+constexpr index_t CCD_MAX_BANDS = 32;
+
+// A band index that names no band: HarmonicOptions::THERMAL_IDX when the
+// input has no thermal band.
+constexpr index_t NO_BAND = static_cast<index_t>(-1);
 
 // constant harmonic basis size
 constexpr index_t CCD_MAX_COEFS = 7;

@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "ccd/types.hpp"
+#include "ccd/band_list.hpp"
 #include "ccd/pmask.hpp"
 #include "ccd/constants.hpp"
 #include "ccd/array_view.hpp"
@@ -186,16 +187,18 @@ struct HarmonicOptions
     //
     // The default is pyccd's Kelvin x 10 -> Celsius x 100. The caller's
     // buffer is never written. The identity (1.0, 0.0) skips the pass, and
-    // with it the copy when the pixel is already contiguous float64.
+    // with it the copy when the pixel is already contiguous float64, and so
+    // does THERMAL_IDX == NO_BAND.
     scalar_t THERMAL_SCALE  = KELVIN_SCALE;
     scalar_t THERMAL_OFFSET = -KELVIN_OFFSET;
 
-    // Saturation bound for the six optical bands, inclusive on both ends
-    // (an observation is rejected on value < REFL_MIN || value > REFL_MAX).
+    // Saturation bound for the SATURATION_BANDS, inclusive on both ends (an
+    // observation is rejected when any of them has value < REFL_MIN ||
+    // value > REFL_MAX).
     scalar_t REFL_MIN = 0.0;
     scalar_t REFL_MAX = 10000.0;
 
-    // Valid range for the thermal band, exclusive on both ends, tested after
+    // Valid range for the THERMAL_IDX band, exclusive on both ends, tested after
     // the THERMAL_SCALE/THERMAL_OFFSET transform. Defaults are Celsius x 100;
     // the preset's are those divided by 10000, i.e. [-0.9320, 0.7070].
     scalar_t THERM_MIN = MIN_CELSIUS;
@@ -232,7 +235,41 @@ struct HarmonicOptions
     // e.g. COEFFICIENT_MIN * NUM_OBS_FACTOR = 12
     index_t NUM_OBS_FACTOR = 3;
 
-    // Define spectral band indices on input observations array
+    //--------------------------------------------------------------------------
+    // Band layout
+    //
+    // The rows of the spectral array. NUM_BANDS is the band count every call
+    // must pass. Each row is fitted and reported -- ChangeModel::bands has
+    // one entry per row, whatever its role -- and the three lists and two
+    // indices below are the only places a procedure reads a band by role.
+    // ccd::validate() checks them against the input once per call.
+    //
+    // The defaults are the Landsat layout: blue, green, red, nir, swir1,
+    // swir2, thermal.
+    //--------------------------------------------------------------------------
+    index_t NUM_BANDS = 7;
+
+    // Bands whose residuals make up the change magnitude, accumulated in
+    // this order. The count is the degrees of freedom of the chi-squared
+    // distribution behind the thresholds: CHANGE_THRESHOLD and
+    // OUTLIER_THRESHOLD above are chi2(5) quantiles, so a caller changing the
+    // count sets them to match, and adjust_change_threshold() takes its df
+    // from here.
+    BandList DETECTION_BANDS = {1, 2, 3, 4, 5};
+
+    // Bands the Tmask outlier screen fits.
+    BandList TMASK_BANDS = {1, 4};
+
+    // Bands the saturation filter tests against [REFL_MIN, REFL_MAX]. May be
+    // empty; must not hold THERMAL_IDX.
+    BandList SATURATION_BANDS = {0, 1, 2, 3, 4, 5};
+
+    // GREEN_IDX is read by InsufficientClear's green median filter and is
+    // required. THERMAL_IDX is read by the thermal transform and the thermal
+    // filter; NO_BAND says the input has no thermal band and skips both.
+    //
+    // BLUE_IDX, RED_IDX, NIR_IDX, SWIR1_IDX, SWIR2_IDX and QA_IDX are
+    // informational: no procedure reads them.
     index_t BLUE_IDX    = 0;
     index_t GREEN_IDX   = 1;
     index_t RED_IDX     = 2;
@@ -241,12 +278,6 @@ struct HarmonicOptions
     index_t SWIR2_IDX   = 5;
     index_t THERMAL_IDX = 6;
     index_t QA_IDX      = 7;
-
-    // spectral bands used for detection change
-    const std::vector<index_t> DETECTION_BANDS = {1, 2, 3, 4, 5};
-
-    // spectral bands used for Tmask filtering
-    const std::vector<index_t> TMASK_BANDS = {1, 4};
 
 };
 

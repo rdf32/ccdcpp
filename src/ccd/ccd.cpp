@@ -21,15 +21,110 @@
 namespace ccd 
 {
 
-void validate_bands(index_t bands)
+namespace
 {
-    if (bands != CCD_NUM_BANDS)
+
+std::string count_text(index_t bands)
+{
+    return "spectral has " + std::to_string(bands) + " bands";
+}
+
+// `name` holds only indices below `bands`, each once.
+void validate_list(const char* name, const BandList& list, index_t bands)
+{
+    for (index_t i = 0; i < list.size(); ++i)
+    {
+        if (list[i] >= bands)
+        {
+            throw std::invalid_argument(
+                std::string(name) + " holds band " + std::to_string(list[i]) +
+                "; " + count_text(bands)
+            );
+        }
+
+        for (index_t j = 0; j < i; ++j)
+        {
+            if (list[j] == list[i])
+            {
+                throw std::invalid_argument(
+                    std::string(name) + " holds band " +
+                    std::to_string(list[i]) + " more than once"
+                );
+            }
+        }
+    }
+}
+
+void validate_nonempty(const char* name, const BandList& list)
+{
+    if (list.empty())
     {
         throw std::invalid_argument(
-            "spectral has " + std::to_string(bands) +
-            " bands; ccdcpp expects " + std::to_string(CCD_NUM_BANDS) +
-            " (blue, green, red, nir, swir1, swir2, thermal)"
+            std::string(name) + " is empty"
         );
+    }
+}
+
+} // namespace
+
+void validate(const HarmonicOptions& options, index_t bands)
+{
+    if (bands != options.NUM_BANDS)
+    {
+        throw std::invalid_argument(
+            count_text(bands) + "; HarmonicOptions.NUM_BANDS expects " +
+            std::to_string(options.NUM_BANDS)
+        );
+    }
+
+    if (bands > CCD_MAX_BANDS)
+    {
+        throw std::invalid_argument(
+            count_text(bands) + "; ccdcpp accepts at most " +
+            std::to_string(CCD_MAX_BANDS)
+        );
+    }
+
+    validate_nonempty("DETECTION_BANDS", options.DETECTION_BANDS);
+    validate_nonempty("TMASK_BANDS", options.TMASK_BANDS);
+
+    validate_list("DETECTION_BANDS", options.DETECTION_BANDS, bands);
+    validate_list("TMASK_BANDS", options.TMASK_BANDS, bands);
+    validate_list("SATURATION_BANDS", options.SATURATION_BANDS, bands);
+
+    if (options.GREEN_IDX == NO_BAND)
+    {
+        throw std::invalid_argument(
+            "GREEN_IDX is NO_BAND; the green median filter needs a green band"
+        );
+    }
+
+    if (options.GREEN_IDX >= bands)
+    {
+        throw std::invalid_argument(
+            "GREEN_IDX is " + std::to_string(options.GREEN_IDX) + "; " +
+            count_text(bands)
+        );
+    }
+
+    if (options.THERMAL_IDX != NO_BAND)
+    {
+        if (options.THERMAL_IDX >= bands)
+        {
+            throw std::invalid_argument(
+                "THERMAL_IDX is " + std::to_string(options.THERMAL_IDX) +
+                "; " + count_text(bands) + " (NO_BAND for none)"
+            );
+        }
+
+        if (options.SATURATION_BANDS.contains(options.THERMAL_IDX))
+        {
+            throw std::invalid_argument(
+                "SATURATION_BANDS holds THERMAL_IDX (" +
+                std::to_string(options.THERMAL_IDX) +
+                "); the thermal band has its own bounds"
+            );
+        }
     }
 }
 
@@ -37,17 +132,18 @@ namespace
 {
 
 //------------------------------------------------------------------------------
-// The checks detect() and detect_cube() make before any work: the band count,
-// and one timestep count shared by dates, spectral and qas.
+// The checks detect() and detect_cube() make before any work: the band
+// layout, and one timestep count shared by dates, spectral and qas.
 //------------------------------------------------------------------------------
 void validate_shapes(
+    const HarmonicOptions& options,
     index_t bands,
     index_t spectral_timesteps,
     index_t date_count,
     index_t qa_count
 )
 {
-    validate_bands(bands);
+    validate(options, bands);
 
     if (date_count != spectral_timesteps)
     {
@@ -117,13 +213,15 @@ FitResult detect_pixel(
         // buffer, and it runs for Standard ONLY, matching pyccd, where
         // kelvin_to_celsius() is called inside standard_procedure(). See
         // harmonic.hpp's "Input unit convention" block for the consequences
-        // for the other two procedures. The identity transform is skipped.
+        // for the other two procedures. The identity transform is skipped,
+        // and so is an input without a thermal band.
         //------------------------------------------------------------------
         const bool identity =
             hoptions.THERMAL_SCALE  == scalar_t(1.0) &&
             hoptions.THERMAL_OFFSET == scalar_t(0.0);
 
-        transform_thermal = !identity;
+        transform_thermal =
+            !identity && hoptions.THERMAL_IDX != NO_BAND;
     }
 
     const index_t B = spectral.extent(0);
@@ -257,7 +355,7 @@ CubeResult detect_cube_impl(
         );
     }
 
-    validate_shapes(spectral.extent(2), T, dates.size(), qas.extent(2));
+    validate_shapes(hoptions, spectral.extent(2), T, dates.size(), qas.extent(2));
 
     // threads == 0 keeps the historical behaviour: let the OpenMP runtime
     // decide, which is OMP_NUM_THREADS or the core count. A positive value is
@@ -436,7 +534,7 @@ FitResult detect(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions
 ) {
-    validate_shapes(spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
+    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
 
     DetectScratch scratch;
     return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
@@ -450,7 +548,7 @@ FitResult detect(
     const LassoOptions& loptions,
     DetectScratch& scratch
 ) {
-    validate_shapes(spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
+    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates.size(), qas.size());
 
     return detect_pixel<scalar_t>(dates, spectral, qas, hoptions, loptions, scratch);
 }

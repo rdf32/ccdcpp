@@ -83,8 +83,9 @@ void apply_thermal_filter(
 //
 // Remove saturated observations.
 //
-// `min_value` / `max_value` are inclusive bounds on each of the six optical
-// bands. pyccd's Collection-1 values are [0, 10000] and Collection-2's are
+// An observation is saturated when any of `bands` lies outside the inclusive
+// bounds `min_value` / `max_value`; the bands are tested in list order.
+// pyccd's Collection-1 values are [0, 10000] and Collection-2's are
 // [7273, 43636]; both express the single predicate `reflectance in [0, 1]`
 // (C2 surface reflectance is DN * 2.75e-5 - 0.2), so a caller working in
 // reflectance passes [0.0, 1.0] and there is no collection branch left.
@@ -93,6 +94,7 @@ void apply_thermal_filter(
 
 void apply_saturation_filter(
     ArrayView<const scalar_t, 2> spectral,
+    const BandList& bands,
     scalar_t min_value,
     scalar_t max_value,
     ProcessingMask& mask

@@ -140,10 +140,16 @@ index_t adjust_peek(
     index_t defpeek
 );
 
+// The change threshold for a peek window of `peek` observations where the
+// default window is `defpeek`: the chi-squared quantile, with `df` degrees of
+// freedom (the detection band count), of the per-observation probability
+// that keeps the window's false-alarm rate at the default's. `defthresh`
+// when peek <= defpeek.
 scalar_t adjust_change_threshold(
     index_t peek,
     index_t defpeek,
-    scalar_t defthresh
+    scalar_t defthresh,
+    index_t df
 );
 
 std::vector<scalar_t> calculate_variogram(
@@ -175,7 +181,7 @@ bool stable(
     std::vector<scalar_t>& variogram,
     std::vector<LassoResult>& results,
     scalar_t change_threshold,
-    const std::vector<index_t>& detection_bands
+    const BandList& detection_bands
 );
 
 // window models
@@ -202,7 +208,7 @@ ProcessingMask tmask(
     ArrayView<const std::int64_t, 1> dates_window,
     ArrayView<const scalar_t, 2> spect_window,
     std::vector<scalar_t>& variogram,
-    const std::vector<index_t>& bands,
+    const BandList& bands,
     scalar_t t_const
 );
 

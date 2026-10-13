@@ -39,18 +39,24 @@ ProcessingMask standard(
     }
     LOG_DEBUG("Processing Mask after QA: " << mask.as_ints());
 
-    apply_thermal_filter(
-        workspace.spectral(),
-        options.THERMAL_IDX,
-        options.THERM_MIN,
-        options.THERM_MAX,
-        mask
-    );
+    // An input without a thermal band has nothing for this screen to test,
+    // which is the same mask as a thermal band that is always in range.
+    if (options.THERMAL_IDX != NO_BAND)
+    {
+        apply_thermal_filter(
+            workspace.spectral(),
+            options.THERMAL_IDX,
+            options.THERM_MIN,
+            options.THERM_MAX,
+            mask
+        );
+    }
 
     LOG_DEBUG("Processing Mask after thermal: " << mask.as_ints());
 
     apply_saturation_filter(
         workspace.spectral(),
+        options.SATURATION_BANDS,
         options.REFL_MIN,
         options.REFL_MAX,
         mask
@@ -133,7 +139,7 @@ void apply_thermal_filter(
 {
     // `spectral` is (B, T). Its extents cannot tell (B, T) from (T, B) --
     // a series may be shorter than its band count -- so the band count is
-    // checked at the entry points (validate_bands) and this checks only that
+    // checked at the entry points (validate) and this checks only that
     // the thermal band is on the band axis.
     assert(thermal_band < spectral.extent(0));
 
@@ -155,6 +161,7 @@ void apply_thermal_filter(
 
 void apply_saturation_filter(
     ArrayView<const scalar_t, 2> spectral,
+    const BandList& bands,
     scalar_t min_value,
     scalar_t max_value,
     ProcessingMask& mask
@@ -162,13 +169,13 @@ void apply_saturation_filter(
 {
     // returns mask where true is UNSATURATED where false SATURATED
 
-    constexpr index_t NUM_SATURATION_BANDS = 6;
-    assert(spectral.extent(0) >= NUM_SATURATION_BANDS);
+    for (const index_t band : bands)
+        assert(band < spectral.extent(0));
 
     for (index_t obs = 0; obs < spectral.extent(1); ++obs) {
 
         bool valid = true;
-        for(index_t band = 0; band < NUM_SATURATION_BANDS; ++band) {
+        for (const index_t band : bands) {
             const scalar_t value = spectral(band, obs);
 
             // One predicate, not two. pyccd's collection-1 bound is
