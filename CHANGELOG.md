@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Sensor profiles
+
+- `ccdcpp.SensorProfile`: band names and roles, the detection, Tmask and
+  saturation lists by role name, the unit-coupled thresholds, the Lasso
+  constants, cadence options, `STAT_ORD` and a QA table builder, in one
+  immutable, picklable object. `options()` resolves it to
+  `(HarmonicOptions, LassoOptions)`, `qa_table()` builds its table and
+  `check(spectral)` checks the band count. The change and outlier thresholds
+  are computed for the detection band count, with a warning when a profile
+  of other than five detection bands is given the chi2(5) defaults.
+- `ccdcpp.presets`: `landsat_c1_dn()` (exactly `HarmonicOptions()` and
+  `LassoOptions()`), `landsat_c1_physical()` and `landsat_c2()` (physical
+  units, raw `QA_PIXEL`).
+- `profile=` on `detect`, `detect_cube` and `detect_cube_columns`. Explicit
+  `hoptions`, `loptions` and `qa_table` override the profile's. With a
+  profile, `detect` and `detect_cube_columns` return `band_names`. Calls
+  without `profile=` take the same arguments and return the same output as
+  before; the three functions are now Python functions in `ccdcpp` that call
+  the extension's (`ccdcpp.ccdcpp.detect`, ...).
+
 ## 0.2.0
 
 ### Changed output: the change threshold follows the adjusted peek window

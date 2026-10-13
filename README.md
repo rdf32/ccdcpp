@@ -18,6 +18,7 @@ A high-performance C++17 implementation of the Continuous Change Detection and C
 - OpenMP parallel processing for image cubes
 - Zero-copy NumPy interface
 - Raw QA input decoded through optional lookup tables (Landsat C1/C2; HLS and Sentinel-2 building blocks)
+- Sensor profiles: band roles, units and options in one object, with Landsat presets (`ccdcpp.presets`)
 - Designed to reproduce PyCCD algorithm behavior and outputs
 - Cross-platform CMake build system
 
@@ -185,6 +186,65 @@ A value that makes no sense raises `ValueError` before any pixel runs: zero or n
 **Denser cadences.** The peek size follows the cadence through `PEEK_REFERENCE_DAYS`: it is `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / (median gap + 0.001))`, never below `PEEK_SIZE`, where the gap is between consecutive observations the processing mask keeps, up to `STAT_ORD`. At 8 days it is 12, and at the 2–3 day cadence of HLS it grows to about 32–48 observations (`6 * 16 / 3 ≈ 32`, `6 * 16 / 2 = 48`). The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: it is the chi-squared quantile, with one degree of freedom per detection band, at `1 - (1 - CHANGE_PROBABILITY) ** (PEEK_SIZE / peek)`. With the defaults that is 9.24 at a peek of 12 (8 days), 4.95 at 32 and 3.91 at 48. Both are computed per pixel from the `PEEK_SIZE` and `CHANGE_THRESHOLD` the caller passes, as pyccd's `adjustpeek` and `adjustchgthresh` do. A series whose median gap is about 14.8 days or more keeps `PEEK_SIZE` and `CHANGE_THRESHOLD` as given.
 
 `MEOW_SIZE` and the `RETRAIN_*` constants are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 2–3 day cadence, 12 observations are about a month and 24 about two, where at 16 days they are about half a year and a year. A caller who wants them in time rather than in observations sets them from the cadence.
+
+## Sensor Profiles
+
+A `ccdcpp.SensorProfile` describes one sensor's input in one immutable object: the band names, the role each band plays, the detection, Tmask and saturation lists by role name, the unit-coupled thresholds, the Lasso constants, the cadence options, `STAT_ORD` and the QA table. `detect`, `detect_cube` and `detect_cube_columns` take one as `profile=`:
+
+```python
+from ccdcpp import presets
+
+columns = ccdcpp.detect_cube_columns(
+    dates, spectra, qa_pixel, threads=8, profile=presets.landsat_c2())
+```
+
+The profile supplies `hoptions`, `loptions` and `qa_table`. Any of the three passed explicitly is used instead, whole: `hoptions=` replaces the profile's `HarmonicOptions` rather than being merged into it, and `qa_table=None` reads `qas` as pre-classified codes. The profile's table is built with the `QA_*` codes of the `HarmonicOptions` the run uses. `spectral` is checked against the profile's band count first (`ValueError`), and the outputs of `detect` and `detect_cube_columns` gain `band_names`, a tuple in row order; `detect_cube`'s per-pixel dicts do not. Without `profile=`, `hoptions` and `loptions` are required and a call, positional or by keyword, is the call of the extension function of the same name (`ccdcpp.ccdcpp.detect`, ...), output included.
+
+`profile.options()` returns new `(HarmonicOptions, LassoOptions)`, `profile.qa_table()` the table (or `None` for pre-classified input), and `profile.check(spectral)` raises `ValueError` when the band axis (second from last) does not match. Profiles are hashable and picklable, where the option objects are not, so a profile can be sent to worker processes.
+
+### Presets
+
+`ccdcpp.presets` holds the inputs ccdcpp is validated on: Landsat. All three take seven bands in the order blue, green, red, nir, swir1, swir2, thermal (TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6; OLI/TIRS bands 2, 3, 4, 5, 6, 7, 10).
+
+| Preset | Optical input | Thermal input | QA input |
+|--------|---------------|---------------|----------|
+| `landsat_c1_dn()` | reflectance x 10000 | Kelvin x 10 | pre-classified codes |
+| `landsat_c1_physical()` | reflectance 0..1 (DN / 10000) | degrees Celsius / 100 | pre-classified codes |
+| `landsat_c2()` | reflectance 0..1 (`SR_B* * 2.75e-5 - 0.2`) | degrees Celsius / 100 | raw `QA_PIXEL` (uint16) |
+
+`landsat_c1_dn().options()` is `HarmonicOptions()` and `LassoOptions()`, field for field. `landsat_c1_physical()` is the physical-unit preset (see the input unit convention in `harmonic.hpp`): `REFL_MIN`/`REFL_MAX` 0 and 1, `THERM_MIN`/`THERM_MAX` -0.932 and 0.707, `MEDIAN_GREEN_FILTER` 0.04, `alpha` and `coef_floor` 1e-4, which is every absolute threshold and both Lasso constants of the DN preset divided by 10000, and the identity thermal transform. It is the same fit as the DN preset, with coefficients in the input's units. `landsat_c2()` has the same thresholds (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL` with `qa_tables.landsat_c2_qa_pixel`.
+
+### Roles and thresholds
+
+The roles are `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_narrow` and `other` (`ccdcpp.ROLES`). Each role but `other` names at most one band; `other` bands are fitted and reported but no list can name them. A role resolves to its band's position in `band_names`, and each list keeps the order the profile gives, which is the order the procedures accumulate in. So a profile whose bands are listed in another order, with `spectral` in that order, gives the same output with its band axis in that order.
+
+`change_threshold` and `outlier_threshold` default to `None`, which computes `chi2_quantile(CHANGE_PROBABILITY, n)` and `chi2_quantile(ccdcpp.OUTLIER_PROBABILITY, n)` for `n` detection bands; for five bands these are the `HarmonicOptions` defaults to the last bit. A profile whose detection count is not five but whose threshold is set to the chi2(5) default gets a `UserWarning` from `options()`.
+
+### Adding a sensor
+
+A sensor is one `SensorProfile` call. **Not shipped:** the HLS L30 profile below shows the shape; its values are not validated, and HLS and Sentinel-2 presets are not part of `ccdcpp.presets` yet.
+
+```python
+from ccdcpp import CELSIUS_HUNDREDTHS, REFLECTANCE, SensorProfile
+
+def hls_l30():
+    return SensorProfile(
+        name="hls_l30",
+        band_names=("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10"),
+        roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"),
+        detection=("green", "red", "nir", "swir1", "swir2"),
+        tmask=("green", "swir1"),
+        saturation=("coastal", "blue", "green", "red", "nir", "swir1", "swir2"),
+        units=REFLECTANCE,
+        alpha=1e-4,
+        coef_floor=1e-4,
+        thermal=CELSIUS_HUNDREDTHS,
+        stat_ord=None,  # no statistics cutoff; 2017-12-31 is Landsat's
+        qa_table_builder="hls_fmask",
+    )
+```
+
+`units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE` are the two Landsat blocks), `thermal` a `ccdcpp.Thermal` (transform and bounds; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None` for an input without one, and `cadence` a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`). `alpha` and `coef_floor` have no default because both are statements about the input unit and a wrong value does not raise. A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, thermal band without `thermal=`) raises `ValueError` when it is constructed.
 
 ## Native C++ Implementation
 
