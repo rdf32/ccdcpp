@@ -414,8 +414,8 @@ class Package(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             package = os.path.join(root, "ccdcpp")
             os.mkdir(package)
-            shutil.copy(
-                os.path.join(SOURCE_DIR, "python", "ccdcpp", "__init__.py"), package)
+            for source in glob.glob(os.path.join(SOURCE_DIR, "python", "ccdcpp", "*.py")):
+                shutil.copy(source, package)
             shutil.copy(extension, package)
             out = subprocess.run(
                 [sys.executable, "-I", "-c",

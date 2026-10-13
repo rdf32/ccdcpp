@@ -400,15 +400,15 @@ class Version(unittest.TestCase):
         self.assertEqual(ccdcpp.__version__, self.pyproject_version())
 
     def test_package_exposes_it(self):
-        # The wheel layout: python/ccdcpp/__init__.py next to the extension.
+        # The wheel layout: python/ccdcpp/*.py next to the extension.
         # Run in a fresh interpreter so the extension imported above is not
         # the one found.
         (extension,) = glob.glob(os.path.join(MODULE_DIR, "ccdcpp.*"))
         with tempfile.TemporaryDirectory() as root:
             package = os.path.join(root, "ccdcpp")
             os.mkdir(package)
-            shutil.copy(
-                os.path.join(SOURCE_DIR, "python", "ccdcpp", "__init__.py"), package)
+            for source in glob.glob(os.path.join(SOURCE_DIR, "python", "ccdcpp", "*.py")):
+                shutil.copy(source, package)
             shutil.copy(extension, package)
             out = subprocess.run(
                 [sys.executable, "-I", "-c",
