@@ -15,6 +15,11 @@
 //     option decides the outcome. The step sizes and drift rates were chosen
 //     by scanning; each case sits on the side of a boundary the option moves.
 //
+// The PeekThreshold tests hold the threshold that goes with an adjusted peek
+// window: a series denser than PEEK_REFERENCE_DAYS gets a longer peek window
+// and, with it, the lower change threshold adjust_change_threshold() takes
+// from the caller's PEEK_SIZE and CHANGE_THRESHOLD.
+//
 //==============================================================================
 
 #include <cmath>
@@ -377,8 +382,8 @@ TEST(Cadence, SeasonalRmseCount)
 
 //==============================================================================
 // CHANGE_PROBABILITY: a higher probability raises the threshold of a peek
-// window longer than the default. Read by adjust_change_threshold(), and
-// tested there.
+// window longer than the default. Read by adjust_change_threshold(), tested
+// there and through detect() on a dense series.
 //==============================================================================
 
 TEST(Cadence, ChangeProbability)
@@ -404,4 +409,95 @@ TEST(Cadence, ChangeProbability)
 
     // A higher probability, a higher quantile.
     EXPECT_LT(ccd::chi2_quantile(0.99, 5), ccd::chi2_quantile(0.999, 5));
+}
+
+// At an 8-day cadence the peek window is 12 and the threshold is the chi2(5)
+// quantile at 1 - (1 - p)^(6 / 12): 9.24 at 0.99, 12.24 at 0.999. A step of 58
+// clears the first and not the second; a step of 65 clears both.
+TEST(Cadence, ChangeProbabilityThroughDetect)
+{
+    ccd::HarmonicOptions higher;
+    higher.CHANGE_PROBABILITY = 0.999;
+
+    const auto small = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
+    const auto at99 = run(small, ccd::HarmonicOptions{});
+    ASSERT_EQ(breaks(at99), 1);
+    EXPECT_EQ(first_break(at99), small.dates[250]);
+    EXPECT_EQ(breaks(run(small, higher)), 0);
+
+    const auto larger = make_pixel(0.0, 0.0, {{250, T, 65.0}}, 8);
+    const auto at999 = run(larger, higher);
+    ASSERT_EQ(breaks(at999), 1);
+    EXPECT_EQ(first_break(at999), larger.dates[250]);
+}
+
+//==============================================================================
+// PeekThreshold: the threshold of an adjusted peek window.
+//==============================================================================
+
+TEST(PeekThreshold, AdjustChangeThreshold)
+{
+    constexpr double DEFAULT = 15.086272469388987;
+
+    // pyccd: chi2.ppf(1 - (1 - 0.99) ** (6 / 12), 5).
+    const double at12 = ccd::adjust_change_threshold(12, 6, DEFAULT, 5, 0.99);
+    EXPECT_EQ(at12, ccd::chi2_quantile(1.0 - std::pow(1.0 - 0.99, 6.0 / 12.0), 5));
+    EXPECT_NEAR(at12, 9.236356899781123, 1e-12);
+
+    // pyccd: chi2.ppf(1 - (1 - 0.99) ** (6 / 8), 5).
+    EXPECT_NEAR(
+        ccd::adjust_change_threshold(8, 6, DEFAULT, 5, 0.99),
+        12.241629783293535,
+        1e-12);
+
+    // A window no longer than the default keeps the default threshold.
+    EXPECT_EQ(ccd::adjust_change_threshold(6, 6, DEFAULT, 5, 0.99), DEFAULT);
+}
+
+// An 8-day series runs with a peek window of 12 and the threshold of that
+// window, so it gives the same output as options that fix both: PEEK_SIZE 12
+// with a PEEK_REFERENCE_DAYS that leaves it at 12, and CHANGE_THRESHOLD at
+// the adjusted value. Holding the threshold at its default instead misses a
+// step the adjusted one finds.
+TEST(PeekThreshold, DenseSeriesUsesAdjustedThreshold)
+{
+    ccd::HarmonicOptions fixed;
+    fixed.PEEK_SIZE = 12;
+    fixed.PEEK_REFERENCE_DAYS = 8.0;
+    fixed.CHANGE_THRESHOLD = ccd::adjust_change_threshold(12, 6, ccd::HarmonicOptions{}.CHANGE_THRESHOLD, 5, 0.99);
+
+    ccd::HarmonicOptions unadjusted = fixed;
+    unadjusted.CHANGE_THRESHOLD = ccd::HarmonicOptions{}.CHANGE_THRESHOLD;
+
+    const auto step = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
+
+    std::string adjusted_dump, fixed_dump;
+    golden::dump_pixel(adjusted_dump, "step", run(step, ccd::HarmonicOptions{}));
+    golden::dump_pixel(fixed_dump, "step", run(step, fixed));
+    EXPECT_EQ(adjusted_dump, fixed_dump);
+
+    const auto adjusted = run(step, ccd::HarmonicOptions{});
+    ASSERT_EQ(breaks(adjusted), 1);
+    EXPECT_EQ(first_break(adjusted), step.dates[250]);
+    EXPECT_EQ(breaks(run(step, unadjusted)), 0);
+}
+
+// The adjustment starts from the caller's options on every call: a sparse
+// pixel run after a dense one gives the output it gets alone, and the
+// options passed in keep their values.
+TEST(PeekThreshold, EachPixelStartsFromTheCallerOptions)
+{
+    const auto dense = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
+    const auto sparse = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 16);
+
+    std::string alone;
+    golden::dump_pixel(alone, "sparse", run(sparse, ccd::HarmonicOptions{}));
+
+    const ccd::HarmonicOptions h;
+    run(dense, h);
+    std::string after;
+    golden::dump_pixel(after, "sparse", run(sparse, h));
+    EXPECT_EQ(alone, after);
+    EXPECT_EQ(h.PEEK_SIZE, 6u);
+    EXPECT_EQ(h.CHANGE_THRESHOLD, ccd::HarmonicOptions{}.CHANGE_THRESHOLD);
 }

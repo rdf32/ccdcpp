@@ -864,18 +864,24 @@ FitResult StandardProcedure::run(
     
     LOG_DEBUG("stat dates: " << stat_dates);
 
+    // adjust_change_threshold() compares the adjusted peek with the caller's
+    // PEEK_SIZE and starts from the caller's CHANGE_THRESHOLD, so both are
+    // read before PEEK_SIZE is overwritten.
+    const index_t defpeek = options.PEEK_SIZE;
+    const scalar_t defthresh = options.CHANGE_THRESHOLD;
+
     options.PEEK_SIZE =
         adjust_peek(
             stat_dates,
-            options.PEEK_SIZE,
+            defpeek,
             options.PEEK_REFERENCE_DAYS
         );
-    
+
     options.CHANGE_THRESHOLD =
         adjust_change_threshold(
             options.PEEK_SIZE,
-            options.PEEK_SIZE,
-            options.CHANGE_THRESHOLD,
+            defpeek,
+            defthresh,
             options.DETECTION_BANDS.size(),
             options.CHANGE_PROBABILITY
         );
