@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 - 2026-10-14
 
 ### Fixed (outputs)
 
@@ -22,6 +22,12 @@ an integral type at compile time.
   which now matches pyccd (with the controls the README lists under
   Differences from pyccd); the synthetic corpus and the golden fixtures are
   unchanged, bit for bit.
+
+### Documentation
+
+- README, Differences from pyccd: pyccd's unstable sort in `find_closest_doy`
+  picks different tied seasonal-RMSE observations on dense series; ccdcpp breaks
+  ties in window order.
 
 ## 0.5.0 - 2026-10-13
 
