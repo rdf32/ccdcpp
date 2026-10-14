@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include "ccd/ccd.hpp"
 #include "ccd/types.hpp"
 #include "ccd/array_view.hpp"
 
@@ -90,7 +91,7 @@ inline void print_change_models(
                   << i
                   << " ########\n";
 
-        print_change_model(
+        ::print_change_model(
             models[i]
         );
     }
@@ -356,7 +357,7 @@ TEST(CCD, DetectStandard)
         solver
     );
 
-    print_change_models(result.models);
+    ::print_change_models(result.models);
 
     auto expected_models =
         read_reference(
@@ -444,4 +445,74 @@ TEST(CCD, DetectStandard)
             expected_mask[i]
         );
     }
+}
+
+
+//------------------------------------------------------------------------------
+// Atlanta tile 024013, chunk 00030008, pixel (481, 393): a Standard pixel
+// whose stat window has an even number of gaps with middle values 8 and 9.
+// pyccd's np.median gives 8.5 and a peek window of round(96 / 8.501) = 11;
+// a median that truncates to 8 gives round(96 / 8.001) = 12, the lower change
+// threshold that goes with it, and different outliers in the lookforward
+// (727551 kept, 732104 dropped), so the segment ended one observation early.
+//
+// The input is Collection 1 DN, fill rows dropped, the reflectance bound
+// applied in the QA (code 4). The reference is pyccd 2021.7.19 on it, with
+// the RLM convergence test as |x0 - x| > tol, a stable date sort and a stable
+// argsort in find_closest_doy.
+//------------------------------------------------------------------------------
+TEST(CCD, DetectStandardHalfDayMedianGap)
+{
+    auto data = read_data("test_atlanta_024013_00030008_481_393.csv");
+    const std::size_t T = data.dates.size();
+    ASSERT_EQ(T, 1760u);
+
+    auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(data.dates.data(), {T});
+    auto spectral = ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(data.spectra_storage.data(), {7, T});
+    auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(data.qas.data(), {T});
+
+    const ccd::HarmonicOptions hoptions;
+    const ccd::LassoOptions loptions;
+
+    const auto result = ccd::detect(dates, spectral, qas, hoptions, loptions);
+
+    ASSERT_EQ(result.models.size(), 1u);
+    const auto& m = result.models[0];
+    EXPECT_EQ(m.start_day, 724440);
+    EXPECT_EQ(m.end_day, 738751);
+    EXPECT_EQ(m.break_day, 738751);
+    EXPECT_EQ(m.observation_count, 960);
+    EXPECT_EQ(m.change_probability, 0.0);
+    EXPECT_EQ(static_cast<int>(m.curve_qa), 8);
+
+    // pyccd's intercept and RMSE per band.
+    const double expected[7][2] = {
+        {13856.652256036561, 104.84273922901038},
+        {17861.914274833238, 108.69803572362223},
+        {21401.59535008651, 122.95137094618717},
+        {1122.2419983962932, 297.2795540223367},
+        {36779.271735154354, 258.6001913744581},
+        {27717.356902630087, 180.5723178104279},
+        {1652.8467279281745, 358.25635528737234},
+    };
+    ASSERT_EQ(m.bands.size(), 7u);
+    for (std::size_t b = 0; b < 7; ++b)
+    {
+        EXPECT_NEAR(m.bands[b].model.intercept(), expected[b][0], 1e-6) << "band " << b;
+        EXPECT_NEAR(m.bands[b].score.rmse, expected[b][1], 1e-6) << "band " << b;
+    }
+
+    std::size_t kept = 0;
+    bool kept_727551 = false, kept_732104 = false;
+    for (std::size_t t = 0; t < T; ++t)
+    {
+        if (!result.mask[t])
+            continue;
+        ++kept;
+        kept_727551 |= data.dates[t] == 727551;
+        kept_732104 |= data.dates[t] == 732104;
+    }
+    EXPECT_EQ(kept, 973u);
+    EXPECT_FALSE(kept_727551);
+    EXPECT_TRUE(kept_732104);
 }

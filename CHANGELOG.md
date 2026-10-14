@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Fixed (outputs)
+
+**The peek window's median gap is no longer truncated.** The Standard
+procedure sizes its peek window from the median gap between consecutive
+observations up to `STAT_ORD`, and took that median in integer days: for an
+even number of gaps whose two middle values differ by one (8 and 9, say) it
+got the lower one, where pyccd's `np.median` gets the half day (8.5). The
+window then came out at `round(96 / 8.001) = 12` where pyccd's is
+`round(96 / 8.501) = 11`, with the change threshold that goes with it (9.24
+against 9.80). The median is now taken in `scalar_t`, and `median()` refuses
+an integral type at compile time.
+
+- Who is affected: a pixel whose kept observations up to `STAT_ORD` have an
+  even number of gaps with differing middle values, where the half day moves
+  `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / (median + 0.001))` across an
+  integer. Its segments, breaks and coefficients can change. On 1257 sampled
+  Atlanta pixels (tile 024013) one changed, chunk 00030008 pixel (481, 393),
+  which now matches pyccd (with the controls the README lists under
+  Differences from pyccd); the synthetic corpus and the golden fixtures are
+  unchanged, bit for bit.
+
 ## 0.5.0 - 2026-10-13
 
 Preprocessing plans, in C++ and Python: per procedure, the transform and the

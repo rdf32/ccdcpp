@@ -3,6 +3,7 @@
 #include <vector>      // std::vector
 #include <cmath>
 #include <algorithm>   // std::nth_element, std::max_element
+#include <type_traits> // std::is_floating_point
 
 
 namespace ccd
@@ -12,6 +13,10 @@ template<typename T>
 static T median(
     std::vector<T>& values
 ) {
+    // The mean of the two middle values of an even count is not a T for an
+    // integral T.
+    static_assert(std::is_floating_point<T>::value, "median() of an integral type truncates");
+
     if (values.empty()) {
         return static_cast<T>(0);
     }

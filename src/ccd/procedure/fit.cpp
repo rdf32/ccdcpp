@@ -122,14 +122,16 @@ index_t adjust_peek(
     if (dates.size() < 2)
         return defpeek;
 
-    std::vector<std::int64_t> diffs;
+    // The gaps as scalar_t: np.median of an even count is the mean of the
+    // two middle gaps, which is a half day when they differ by one.
+    std::vector<scalar_t> diffs;
     diffs.reserve(dates.size() - 1);
 
     for(index_t i = 0; i < dates.size() - 1; ++i)
     {   
         const int64_t curr = dates(i);
         const int64_t next = dates(i + 1);
-        diffs.push_back(next - curr);
+        diffs.push_back(static_cast<scalar_t>(next - curr));
     }
 
     const auto delta =

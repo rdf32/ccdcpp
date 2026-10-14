@@ -582,6 +582,12 @@ if(CCD_BUILD_TESTS)
     )
 
     configure_file(
+        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test_atlanta_024013_00030008_481_393.csv
+        ${PROJECT_BINARY_DIR}/test_atlanta_024013_00030008_481_393.csv
+        COPYONLY
+    )
+
+    configure_file(
         ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/clear_reference.csv
         ${PROJECT_BINARY_DIR}/clear_reference.csv
         COPYONLY

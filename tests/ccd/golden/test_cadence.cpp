@@ -232,6 +232,16 @@ TEST(Cadence, PeekReferenceDays)
     EXPECT_EQ(ccd::adjust_peek(d8, 6, 16.0), 12u);
     EXPECT_EQ(ccd::adjust_peek(d8, 6, 4.0), 6u);
 
+    // Gaps alternating 8 and 9 days: an even count whose middle two differ,
+    // so the median is 8.5 (np.median), 96 / 8.501 rounds to 11. A median
+    // truncated to 8 would give 12.
+    std::vector<std::int64_t> dates85(101);
+    dates85[0] = golden::ORDINAL_1984;
+    for (std::size_t i = 1; i < dates85.size(); ++i)
+        dates85[i] = dates85[i - 1] + (i % 2 ? 8 : 9);
+    const auto d85 = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates85.data(), {101});
+    EXPECT_EQ(ccd::adjust_peek(d85, 6, 16.0), 11u);
+
     ccd::HarmonicOptions longer;
     longer.PEEK_REFERENCE_DAYS = 32.0;
 
