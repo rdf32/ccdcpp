@@ -41,7 +41,7 @@ option(
 
 project(
     ccdcpp
-    VERSION 0.5.1
+    VERSION 0.5.2
     LANGUAGES CXX
 )
 
@@ -132,6 +132,16 @@ target_compile_features(
 
     PUBLIC
         cxx_std_17
+)
+
+
+# The static core is linked into the Python extension, a shared object, so it is built
+# position-independent; Linux linkers refuse non-PIC objects in a shared library.
+set_target_properties(
+    ccd_core
+
+    PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
 )
 
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.2 - 2026-10-14
+
+### Fixed (build)
+
+- The static core library `ccd_core` is built position-independent
+  (`POSITION_INDEPENDENT_CODE ON`). It is linked into the Python extension, a
+  shared object, and Linux linkers refuse non-PIC objects there
+  (`relocation R_X86_64_PC32 ... recompile with -fPIC`), so the Python package
+  did not build on Linux with conda-forge's gcc. macOS builds were unaffected.
+  Outputs are unchanged, bit for bit.
+
 ## 0.5.1 - 2026-10-14
 
 ### Fixed (outputs)
