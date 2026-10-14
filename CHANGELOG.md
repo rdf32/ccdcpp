@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed (C++ API)
+
+- `FitProcedure::run` and `StandardProcedure::run` take the processing mask:
+  `run(hworkspace, mask, lworkspace, solver)`. `ccd::detect` builds it per
+  pixel: decode the QA, compute the QA statistics, select the procedure,
+  apply that procedure's thermal transform (Standard only, as before), then
+  run the procedure's filter chain. `run(hworkspace, lworkspace, solver)` on
+  each procedure builds the mask with its filter (`filter::standard`,
+  `filter::snow`, `filter::insufficientclear`) and calls it.
+- `select_observations` is no longer a virtual of `FitProcedure`.
+- Outputs are unchanged, bit for bit.
+
 ## 0.4.0 - 2026-10-13
 
 ### Changed (outputs)

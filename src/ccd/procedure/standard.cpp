@@ -807,21 +807,15 @@ ChangeModel StandardProcedure::lookforward(
 
 FitResult StandardProcedure::run(
     HarmonicWorkspace& hworkspace,
+    ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver
 ) {
     FitResult results;
 
     auto& options = hworkspace.options();
-    //----------------------------------------------------------
-    // Build processing mask
-    //----------------------------------------------------------
-    
-    LOG_DEBUG("num obs: " << hworkspace.dates().size());
-    ProcessingMask mask =
-        select_observations(hworkspace);
-    // std::cout << "\n";
 
+    LOG_DEBUG("num obs: " << hworkspace.dates().size());
     LOG_DEBUG("Processing mask initial count: " << mask.count());
     //----------------------------------------------------------
     // Not enough observations

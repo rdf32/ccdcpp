@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "ccd/array_view.hpp"
 #include "ccd/regression/lasso_solver.hpp"
@@ -281,7 +282,66 @@ ArrayView<const std::uint8_t, 1> qa_codes(
 }
 
 //------------------------------------------------------------------------------
+// Whether procedure `type` reads the thermal band through the transform
+//
+//     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
+//
+// which puts it into the unit apply_thermal_filter tests. The defaults are
+// pyccd's collection-1 transform, Kelvin x 10 -> Celsius x 100 (the
+// collection-2 form `* 0.00341802 + 149.0 - 273.15` yields plain Celsius --
+// one of the two units these options exist to name explicitly).
+//
+// It applies to Standard ONLY, matching pyccd, where kelvin_to_celsius() is
+// called inside standard_procedure(). See harmonic.hpp's "Input unit
+// convention" block for the consequences for the other two procedures. The
+// identity transform applies to none, and neither does any transform to an
+// input without a thermal band.
+//------------------------------------------------------------------------------
+bool transforms_thermal(
+    FitProcedureType type,
+    const HarmonicOptions& options
+)
+{
+    if (type != FitProcedureType::Standard)
+        return false;
+
+    const bool identity =
+        options.THERMAL_SCALE  == scalar_t(1.0) &&
+        options.THERMAL_OFFSET == scalar_t(0.0);
+
+    return !identity && options.THERMAL_IDX != NO_BAND;
+}
+
+//------------------------------------------------------------------------------
+// The processing mask procedure `type` fits: its filter chain over
+// `workspace`, whose spectral block already holds the procedure's transform.
+//------------------------------------------------------------------------------
+ProcessingMask processing_mask(
+    FitProcedureType type,
+    const HarmonicWorkspace& workspace
+)
+{
+    switch (type)
+    {
+        case FitProcedureType::Standard:
+            return filter::standard(workspace);
+
+        case FitProcedureType::InsufficientClear:
+            return filter::insufficientclear(workspace);
+
+        case FitProcedureType::PermanentSnow:
+            return filter::snow(workspace);
+    }
+
+    return ProcessingMask();
+}
+
+//------------------------------------------------------------------------------
 // One pixel, from a (B, T) view of any supported element type.
+//
+// The steps run in order: decode the QA, compute the QA statistics, select
+// the procedure, apply the procedure's transform, build its processing mask,
+// and fit that mask.
 //
 // The procedures read a contiguous scalar_t (B, T) block. When the input is
 // already that and no thermal transform applies, it is read in place;
@@ -308,8 +368,6 @@ FitResult detect_pixel(
         hoptions
     );
 
-    bool transform_thermal = false;
-
     FitProcedureType fit_type;
     if (!quality_stat.enough_clear(hoptions.CLEAR_PCT_THRESHOLD)) {
         if (quality_stat.enough_snow(hoptions.SNOW_PCT_THRESHOLD)) {
@@ -319,31 +377,10 @@ FitResult detect_pixel(
         }
     } else {
         fit_type = FitProcedureType::Standard;
-
-        //------------------------------------------------------------------
-        // Put the thermal band into the unit apply_thermal_filter tests.
-        //
-        //     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
-        //
-        // The defaults are pyccd's collection-1 transform, Kelvin x 10 ->
-        // Celsius x 100 (the collection-2 form this replaced was
-        // `* 0.00341802 + 149.0 - 273.15`, which yields plain Celsius -- one
-        // of the two units these options exist to name explicitly).
-        //
-        // It is applied to the per-pixel copy below, never to the caller's
-        // buffer, and it runs for Standard ONLY, matching pyccd, where
-        // kelvin_to_celsius() is called inside standard_procedure(). See
-        // harmonic.hpp's "Input unit convention" block for the consequences
-        // for the other two procedures. The identity transform is skipped,
-        // and so is an input without a thermal band.
-        //------------------------------------------------------------------
-        const bool identity =
-            hoptions.THERMAL_SCALE  == scalar_t(1.0) &&
-            hoptions.THERMAL_OFFSET == scalar_t(0.0);
-
-        transform_thermal =
-            !identity && hoptions.THERMAL_IDX != NO_BAND;
     }
+
+    const bool transform_thermal =
+        transforms_thermal(fit_type, hoptions);
 
     const index_t B = spectral.extent(0);
     const index_t T = spectral.extent(1);
@@ -404,6 +441,9 @@ FitResult detect_pixel(
         << hworkspace.spectral()
     );
 
+    ProcessingMask mask =
+        processing_mask(fit_type, hworkspace);
+
     LassoWorkspace& lworkspace = scratch.lasso;
     LassoSolver solver(
         loptions
@@ -418,6 +458,7 @@ FitResult detect_pixel(
             StandardProcedure& fit_procedure = scratch.standard;
             final_result = fit_procedure.run(
                 hworkspace,
+                std::move(mask),
                 lworkspace,
                 solver
             );
@@ -430,6 +471,7 @@ FitResult detect_pixel(
             InsufficientClear fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
+                std::move(mask),
                 lworkspace,
                 solver
             );
@@ -442,6 +484,7 @@ FitResult detect_pixel(
             PermanentSnow fit_procedure;
             final_result = fit_procedure.run(
                 hworkspace,
+                std::move(mask),
                 lworkspace,
                 solver
             );

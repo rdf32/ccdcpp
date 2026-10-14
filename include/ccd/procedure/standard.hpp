@@ -24,11 +24,32 @@ class StandardProcedure final : public FitProcedure
 {
 
 public:
+    //----------------------------------------------------------------------
+    // Fits the observations `mask` keeps, as FitProcedure::run() does.
+    //----------------------------------------------------------------------
+    FitResult run(
+        HarmonicWorkspace& hworkspace,
+        ProcessingMask mask,
+        LassoWorkspace& lworkspace,
+        LassoSolver& solver
+    );
+
+    //----------------------------------------------------------------------
+    // run() on the mask filter::standard() builds from hworkspace.
+    //----------------------------------------------------------------------
     FitResult run(
         HarmonicWorkspace& hworkspace,
         LassoWorkspace& lworkspace,
         LassoSolver& solver
-    );
+    )
+    {
+        return run(
+            hworkspace,
+            filter::standard(hworkspace),
+            lworkspace,
+            solver
+        );
+    }
 
 protected:
 
@@ -70,19 +91,6 @@ protected:
         ProcessingMask& mask,
         Window& window
     );
-    //----------------------------------------------------------------------
-    // Select observations
-    //
-    // Uses the standard QA filtering.
-    //----------------------------------------------------------------------
-
-    ProcessingMask select_observations(
-        const HarmonicWorkspace& workspace
-    ) const override
-    {   
-        return filter::standard(workspace);
-    }
-
     //----------------------------------------------------------------------
     // Harmonic complexity
     //----------------------------------------------------------------------

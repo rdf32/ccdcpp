@@ -14,15 +14,11 @@ namespace ccd
 
 FitResult FitProcedure::run(
     HarmonicWorkspace& hworkspace,
+    ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver
 ) { 
     const auto& options = hworkspace.options();
-    //----------------------------------------------------------
-    // Build processing mask
-    //----------------------------------------------------------
-    ProcessingMask mask =
-        select_observations(hworkspace);
 
     //----------------------------------------------------------
     // Not enough observations
@@ -112,7 +108,7 @@ FitResult FitProcedure::run(
     }
 
     results.models.push_back(std::move(result));
-    results.mask = mask;
+    results.mask = std::move(mask);
 
     return results;
 }

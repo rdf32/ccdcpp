@@ -22,20 +22,29 @@ namespace ccd
 
 class PermanentSnow final : public FitProcedure
 {
-protected:
+public:
+
+    using FitProcedure::run;
 
     //----------------------------------------------------------------------
-    // Select observations
-    //
-    // Uses the standard QA filtering.
+    // run() on the mask filter::snow() builds from hworkspace.
     //----------------------------------------------------------------------
 
-    ProcessingMask select_observations(
-        const HarmonicWorkspace& workspace
-    ) const override
-    {   
-        return filter::snow(workspace);
+    FitResult run(
+        HarmonicWorkspace& hworkspace,
+        LassoWorkspace& lworkspace,
+        LassoSolver& solver
+    )
+    {
+        return run(
+            hworkspace,
+            filter::snow(hworkspace),
+            lworkspace,
+            solver
+        );
     }
+
+protected:
 
     //----------------------------------------------------------------------
     // Harmonic complexity

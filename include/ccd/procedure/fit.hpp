@@ -61,23 +61,21 @@ public:
 
     //----------------------------------------------------------------------
     // Execute complete fitting procedure
+    //
+    // Fits the observations `mask` keeps. `mask` is the procedure's
+    // processing mask over hworkspace's time series, built by the caller
+    // (ccd::detect builds it with the procedure's filter chain); the
+    // result carries it.
     //----------------------------------------------------------------------
 
     FitResult run(
         HarmonicWorkspace& hworkspace,
+        ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver
     );
 
 protected:
-
-    //----------------------------------------------------------------------
-    // Observation selection
-    //----------------------------------------------------------------------
-
-    virtual ProcessingMask select_observations(
-        const HarmonicWorkspace& workspace
-    ) const = 0;
 
     //----------------------------------------------------------------------
     // Number of coefficients
