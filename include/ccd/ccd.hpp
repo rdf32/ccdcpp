@@ -13,6 +13,7 @@
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/qa_table.hpp"
+#include "ccd/preprocess/preprocess.hpp"
 
 namespace ccd
 {
@@ -221,9 +222,9 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates);
 //
 // Run CCD on one pixel.
 //
-// `spectral` is read, never written: the thermal transform of the Standard
-// procedure (HarmonicOptions::THERMAL_SCALE/THERMAL_OFFSET) is applied to a
-// private copy, so calling detect() twice on the same buffer gives the same
+// `spectral` is read, never written: a plan's transform (by default the
+// Standard procedure's thermal transform, HarmonicOptions::THERMAL_SCALE/
+// THERMAL_OFFSET) is applied to a private copy, so calling detect() twice on the same buffer gives the same
 // result twice. `spectral` may be strided.
 //
 // `qas` is either the QA codes themselves (uint8, read as they are), or raw
@@ -231,10 +232,17 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates);
 // A uint8 `qas` with a table is decoded too. The decoded codes go to private
 // scratch; `qas` is never written.
 //
+// `preprocess` is the preprocessing plan (preprocess/preprocess.hpp): per
+// procedure, the transform applied to the private copy and the filter chain
+// that builds the processing mask. Null runs
+// preprocess::default_plan(hoptions), built once per call; either plan is
+// checked by preprocess::validate() once per call, never per pixel. One
+// plan serves every pixel and thread of a call, as a QaTable does.
+//
 // Throws std::invalid_argument unless `spectral`'s band count passes
 // validate(), `dates`, `qas` and `spectral` agree on the number of
-// timesteps and `dates` passes validate_dates(), and when `qas` is uint16
-// and `qa_table` is null.
+// timesteps and `dates` passes validate_dates(), when `qas` is uint16
+// and `qa_table` is null, and when the plan fails preprocess::validate().
 //
 //------------------------------------------------------------------------------
 
@@ -244,7 +252,8 @@ FitResult detect(
     ArrayView<const std::uint8_t, 1> qas,   // shape -> (timesteps)
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 FitResult detect(
@@ -253,7 +262,8 @@ FitResult detect(
     ArrayView<const std::uint16_t, 1> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 // detect() with caller-held scratch.
@@ -264,7 +274,8 @@ FitResult detect(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     DetectScratch& scratch,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 FitResult detect(
@@ -274,7 +285,8 @@ FitResult detect(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     DetectScratch& scratch,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 //------------------------------------------------------------------------------
@@ -303,8 +315,8 @@ FitResult detect(
 // uint16 or float32 cube gives the results of the same values widened to
 // float64 beforehand, without a float64 copy of the cube.
 //
-// `qas` is uint8 codes, or uint8 or uint16 raw values with `qa_table`, as for
-// detect(). Each pixel is decoded in a per-thread buffer, so the cube gives
+// `qas` is uint8 codes, or uint8 or uint16 raw values with `qa_table`, and
+// `preprocess` is a plan or null, as for detect(). Each pixel is decoded in a per-thread buffer, so the cube gives
 // the results of its decoded codes passed as uint8, without a decoded copy of
 // the cube. One table serves every thread. A uint16 `qas` with a null
 // `qa_table` throws std::invalid_argument before any pixel runs.
@@ -319,7 +331,8 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads = 0,
     bool keep_masks = true,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 CubeResult detect_cube(
@@ -330,7 +343,8 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads = 0,
     bool keep_masks = true,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 CubeResult detect_cube(
@@ -341,7 +355,8 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads = 0,
     bool keep_masks = true,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 CubeResult detect_cube(
@@ -352,7 +367,8 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads = 0,
     bool keep_masks = true,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 CubeResult detect_cube(
@@ -363,7 +379,8 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads = 0,
     bool keep_masks = true,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 CubeResult detect_cube(
@@ -374,7 +391,8 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads = 0,
     bool keep_masks = true,
-    const QaTablePtr& qa_table = nullptr
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
 );
 
 } // namespace ccd

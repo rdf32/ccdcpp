@@ -109,6 +109,8 @@ add_library(
     src/ccd/harmonic/filter.cpp
     src/ccd/harmonic/harmonic.cpp
 
+    src/ccd/preprocess/preprocess.cpp
+
     src/ccd/procedure/fit.cpp
     src/ccd/procedure/standard.cpp
 
@@ -388,6 +390,32 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The preprocessing plan: default_plan() against the hand-written
+    # chains, custom plans through detect(), plan validation, and a
+    # microbenchmark of apply(). See tests/ccd/procedure/test_preprocess.cpp.
+    add_executable(
+        test_preprocess
+
+        tests/ccd/procedure/test_preprocess.cpp
+    )
+
+
+    target_link_libraries(
+        test_preprocess
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_preprocess
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # Entry-point input checks: band count and timestep agreement.
     add_executable(
         test_validation
@@ -598,6 +626,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_units)
     gtest_discover_tests(test_filters)
     gtest_discover_tests(test_validation)
+    gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)

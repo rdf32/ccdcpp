@@ -282,71 +282,61 @@ ArrayView<const std::uint8_t, 1> qa_codes(
 }
 
 //------------------------------------------------------------------------------
-// Whether procedure `type` reads the thermal band through the transform
-//
-//     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
-//
-// which puts it into the unit apply_thermal_filter tests. The defaults are
-// pyccd's collection-1 transform, Kelvin x 10 -> Celsius x 100 (the
-// collection-2 form `* 0.00341802 + 149.0 - 273.15` yields plain Celsius --
-// one of the two units these options exist to name explicitly).
-//
-// It applies to Standard ONLY, matching pyccd, where kelvin_to_celsius() is
-// called inside standard_procedure(). See harmonic.hpp's "Input unit
-// convention" block for the consequences for the other two procedures. The
-// identity transform applies to none, and neither does any transform to an
-// input without a thermal band.
+// The plan of procedure `type`.
 //------------------------------------------------------------------------------
-bool transforms_thermal(
+const preprocess::ProcedurePlan& procedure_plan(
     FitProcedureType type,
-    const HarmonicOptions& options
-)
-{
-    if (type != FitProcedureType::Standard)
-        return false;
-
-    const bool identity =
-        options.THERMAL_SCALE  == scalar_t(1.0) &&
-        options.THERMAL_OFFSET == scalar_t(0.0);
-
-    return !identity && options.THERMAL_IDX != NO_BAND;
-}
-
-//------------------------------------------------------------------------------
-// The processing mask procedure `type` fits: its filter chain over
-// `workspace`, whose spectral block already holds the procedure's transform.
-//------------------------------------------------------------------------------
-ProcessingMask processing_mask(
-    FitProcedureType type,
-    const HarmonicWorkspace& workspace
+    const preprocess::PreprocessPlan& plan
 )
 {
     switch (type)
     {
-        case FitProcedureType::Standard:
-            return filter::standard(workspace);
-
         case FitProcedureType::InsufficientClear:
-            return filter::insufficientclear(workspace);
+            return plan.insufficient_clear;
 
         case FitProcedureType::PermanentSnow:
-            return filter::snow(workspace);
+            return plan.snow;
+
+        case FitProcedureType::Standard:
+            break;
     }
 
-    return ProcessingMask();
+    return plan.standard;
+}
+
+//------------------------------------------------------------------------------
+// The plan a call runs: `given`, or else default_plan(options) built into
+// `local`. Either is validated against `bands` here, once per call.
+//------------------------------------------------------------------------------
+const preprocess::PreprocessPlan& resolve_plan(
+    const PreprocessPlanPtr& given,
+    const HarmonicOptions& options,
+    index_t bands,
+    preprocess::PreprocessPlan& local
+)
+{
+    if (given)
+    {
+        preprocess::validate(*given, bands);
+        return *given;
+    }
+
+    local = preprocess::default_plan(options);
+    preprocess::validate(local, bands);
+    return local;
 }
 
 //------------------------------------------------------------------------------
 // One pixel, from a (B, T) view of any supported element type.
 //
 // The steps run in order: decode the QA, compute the QA statistics, select
-// the procedure, apply the procedure's transform, build its processing mask,
-// and fit that mask.
+// the procedure, apply its plan's transform, run its plan's chain to build
+// the processing mask, and fit that mask.
 //
 // The procedures read a contiguous scalar_t (B, T) block. When the input is
-// already that and no thermal transform applies, it is read in place;
-// otherwise it is converted into scratch.spectral, and the thermal transform
-// is applied there. The caller's buffer is never written.
+// already that and the plan has no transform, it is read in place; otherwise
+// it is converted into scratch.spectral, and the transform is applied there.
+// The caller's buffer is never written.
 //------------------------------------------------------------------------------
 template<typename Value, typename Qa>
 FitResult detect_pixel(
@@ -354,6 +344,7 @@ FitResult detect_pixel(
     ArrayView<const Value, 2> spectral,
     ArrayView<const Qa, 1> raw_qas,
     const QaTable* qa_table,
+    const preprocess::PreprocessPlan& plan,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     DetectScratch& scratch
@@ -379,8 +370,10 @@ FitResult detect_pixel(
         fit_type = FitProcedureType::Standard;
     }
 
-    const bool transform_thermal =
-        transforms_thermal(fit_type, hoptions);
+    const preprocess::ProcedurePlan& procedure =
+        procedure_plan(fit_type, plan);
+
+    const bool transform = procedure.transform.has_value();
 
     const index_t B = spectral.extent(0);
     const index_t T = spectral.extent(1);
@@ -394,7 +387,7 @@ FitResult detect_pixel(
     bool in_place = false;
     if constexpr (std::is_same_v<Value, scalar_t>)
     {
-        in_place = !transform_thermal && spectral.is_contiguous();
+        in_place = !transform && spectral.is_contiguous();
         if (in_place)
             pixel = spectral;
     }
@@ -413,13 +406,14 @@ FitResult detect_pixel(
             }
         }
 
-        if (transform_thermal)
+        if (transform)
         {
-            const index_t thermal_idx = hoptions.THERMAL_IDX;
+            const preprocess::Affine& affine = *procedure.transform;
+            const index_t band = affine.band;
             for (index_t t = 0; t < T; ++t) {
-                block[thermal_idx * T + t] =
-                    block[thermal_idx * T + t] * hoptions.THERMAL_SCALE
-                    + hoptions.THERMAL_OFFSET;
+                block[band * T + t] =
+                    block[band * T + t] * affine.scale
+                    + affine.offset;
             }
         }
 
@@ -441,8 +435,14 @@ FitResult detect_pixel(
         << hworkspace.spectral()
     );
 
-    ProcessingMask mask =
-        processing_mask(fit_type, hworkspace);
+    ProcessingMask mask;
+    preprocess::apply(
+        procedure.chain,
+        hworkspace.dates(),
+        hworkspace.spectral(),
+        hworkspace.qas(),
+        mask
+    );
 
     LassoWorkspace& lworkspace = scratch.lasso;
     LassoSolver solver(
@@ -501,6 +501,7 @@ CubeResult detect_cube_impl(
     ArrayView<const Value, 4> spectral,       // (H,W,B,T)
     ArrayView<const Qa, 3> qas,               // (H,W,T)
     const QaTable* qa_table,
+    const PreprocessPlanPtr& given_plan,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads,
@@ -522,6 +523,10 @@ CubeResult detect_cube_impl(
 
     validate_shapes(hoptions, spectral.extent(2), T, dates, qas.extent(2));
     validate_qa<Qa>(qa_table);
+
+    preprocess::PreprocessPlan local_plan;
+    const preprocess::PreprocessPlan& plan =
+        resolve_plan(given_plan, hoptions, spectral.extent(2), local_plan);
 
     // threads == 0 keeps the historical behaviour: let the OpenMP runtime
     // decide, which is OMP_NUM_THREADS or the core count. A positive value is
@@ -606,6 +611,7 @@ CubeResult detect_cube_impl(
                         spect_view,
                         qa_view,
                         qa_table,
+                        plan,
                         hoptions,
                         loptions,
                         scratch
@@ -700,10 +706,11 @@ FitResult detect(
     ArrayView<const std::uint8_t, 1> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     DetectScratch scratch;
-    return detect(dates, spectral, qas, hoptions, loptions, scratch, qa_table);
+    return detect(dates, spectral, qas, hoptions, loptions, scratch, qa_table, given_plan);
 }
 
 FitResult detect(
@@ -712,10 +719,11 @@ FitResult detect(
     ArrayView<const std::uint16_t, 1> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     DetectScratch scratch;
-    return detect(dates, spectral, qas, hoptions, loptions, scratch, qa_table);
+    return detect(dates, spectral, qas, hoptions, loptions, scratch, qa_table, given_plan);
 }
 
 FitResult detect(
@@ -725,12 +733,17 @@ FitResult detect(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     DetectScratch& scratch,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates, qas.size());
 
+    preprocess::PreprocessPlan local_plan;
+    const preprocess::PreprocessPlan& plan =
+        resolve_plan(given_plan, hoptions, spectral.extent(0), local_plan);
+
     return detect_pixel<scalar_t, std::uint8_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, scratch);
+        dates, spectral, qas, qa_table.get(), plan, hoptions, loptions, scratch);
 }
 
 FitResult detect(
@@ -740,13 +753,18 @@ FitResult detect(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     DetectScratch& scratch,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates, qas.size());
     validate_qa<std::uint16_t>(qa_table.get());
 
+    preprocess::PreprocessPlan local_plan;
+    const preprocess::PreprocessPlan& plan =
+        resolve_plan(given_plan, hoptions, spectral.extent(0), local_plan);
+
     return detect_pixel<scalar_t, std::uint16_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, scratch);
+        dates, spectral, qas, qa_table.get(), plan, hoptions, loptions, scratch);
 }
 
 CubeResult detect_cube(
@@ -757,10 +775,11 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads,
     bool keep_masks,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<double, std::uint8_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
 }
 
 CubeResult detect_cube(
@@ -771,10 +790,11 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads,
     bool keep_masks,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<double, std::uint16_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
 }
 
 CubeResult detect_cube(
@@ -785,10 +805,11 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads,
     bool keep_masks,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<float, std::uint8_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
 }
 
 CubeResult detect_cube(
@@ -799,10 +820,11 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads,
     bool keep_masks,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<float, std::uint16_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
 }
 
 CubeResult detect_cube(
@@ -813,10 +835,11 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads,
     bool keep_masks,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<std::uint16_t, std::uint8_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
 }
 
 CubeResult detect_cube(
@@ -827,10 +850,11 @@ CubeResult detect_cube(
     const LassoOptions& loptions,
     int threads,
     bool keep_masks,
-    const QaTablePtr& qa_table
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<std::uint16_t, std::uint16_t>(
-        dates, spectral, qas, qa_table.get(), hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
 }
 
 } // namespace ccd

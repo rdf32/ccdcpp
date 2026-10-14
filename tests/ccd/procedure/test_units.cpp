@@ -60,8 +60,9 @@
 // BoundsAreUnitConstants.
 //
 // MEDIAN_GREEN_FILTER is invisible for a different and more interesting reason:
-// apply_green_median_filter is called only from filter::insufficientclear, and
-// this pixel takes the Standard procedure, so the constant is never read. Even
+// the default plan runs the green median filter only in the InsufficientClear
+// chain, and this pixel takes the Standard procedure, so the constant is never
+// read. Even
 // setting it to 0.0 -- which would drop every observation at or above the
 // median green -- changes nothing through detect(). Its guard therefore has to
 // drive ccd::InsufficientClear directly, the way test_clear.cpp does. That is
@@ -233,8 +234,9 @@ ccd::FitResult run(
 // Drive ccd::InsufficientClear directly, as test_clear.cpp does.
 //
 // Needed because MEDIAN_GREEN_FILTER is unreachable through detect() on this
-// pixel: apply_green_median_filter is called from filter::insufficientclear
-// only, and detect() sends this pixel to the Standard procedure.
+// pixel: the default plan runs the green median filter only in the
+// InsufficientClear chain, and detect() sends this pixel to the Standard
+// procedure.
 //
 // This procedure applies NO thermal transform -- that is Standard-only, both
 // here and in pyccd -- so the exact scale relation for it is a plain divisor on

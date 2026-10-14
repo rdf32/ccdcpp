@@ -263,9 +263,10 @@ struct HarmonicOptions
     //                        physical bound -- where the mask empties and the
     //                        pixel returns 0 segments instead of 5.
     //   MEDIAN_GREEN_FILTER  unreachable through detect() on the reference
-    //                        pixel, because apply_green_median_filter is
-    //                        called from filter::insufficientclear only and
-    //                        that pixel takes the Standard procedure. Even 0.0
+    //                        pixel, because the default plan runs the
+    //                        green median filter in the InsufficientClear
+    //                        chain only and that pixel takes the Standard
+    //                        procedure. Even 0.0
     //                        changes nothing. Its guard drives
     //                        ccd::InsufficientClear directly.
     //

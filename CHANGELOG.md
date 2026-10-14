@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Added (C++ API)
+
+- `ccd/preprocess/preprocess.hpp`: preprocessing plans. A `PreprocessPlan`
+  holds one `ProcedurePlan` per procedure (`standard`, `snow`,
+  `insufficient_clear`): an optional `Affine` transform of one band, applied
+  to the per-pixel copy, and a `Chain` of up to 8 `Step`s (`KeepQa`, `AddQa`,
+  `ThermalRange`, `BandRange`, `GreenMedian`, `Dedupe`) that builds the
+  processing mask. `Bound` and `Range` are `filter::Bound`/`filter::Range`.
+- `preprocess::default_plan(hoptions)` is the plan the options describe, the
+  chains `filter::standard`, `filter::snow` and `filter::insufficientclear`
+  run and the Standard-only thermal transform; those three functions are now
+  wrappers over `preprocess::apply(default_plan(o).<procedure>.chain, ...)`.
+- `preprocess::validate(plan, bands)` throws `std::invalid_argument` for a
+  band index not below `bands`, a `GreenMedian` step without a band, a
+  transform band that a `BandRange` step of the same procedure tests, an
+  `AddQa` step not immediately followed by `Dedupe`, and a chain over
+  capacity.
+- `detect` and `detect_cube` take an optional trailing
+  `const PreprocessPlanPtr& preprocess = nullptr`
+  (`std::shared_ptr<const PreprocessPlan>`), after `qa_table`. Null runs
+  `default_plan(hoptions)`, built once per call; either plan is validated
+  once per call, before any pixel runs. Existing calls are unchanged, and
+  their outputs are unchanged, bit for bit. The Python bindings do not pass
+  a plan yet.
+
 ### Changed (C++ API)
 
 - `FitProcedure::run` and `StandardProcedure::run` take the processing mask:

@@ -68,14 +68,24 @@ inline Range thermal_range(const HarmonicOptions& options)
 
 //------------------------------------------------------------------------------
 //
-// Standard CCD filtering.
+// The processing mask of each procedure's chain in
+// preprocess::default_plan(workspace.options()), over the workspace's
+// spectral block as it is (no transform is applied here).
 //
-// Keeps observations that are:
-//   - QA clear
-//   - QA water
+// standard keeps observations that are:
+//   - QA clear or QA water
 //   - valid thermal
 //   - unsaturated
-//   - unique acquisition dates
+//   - the first of their acquisition date
+//
+// snow is standard with every QA snow observation added back (UNION, OR),
+// then deduplicated again.
+//
+// insufficientclear is standard followed by the green median filter, then
+// deduplicated again.
+//
+// Each builds the default plan per call; ccd::detect builds it once per call
+// instead and runs preprocess::apply() per pixel.
 //
 //------------------------------------------------------------------------------
 
@@ -83,12 +93,10 @@ ProcessingMask standard(
     const HarmonicWorkspace& workspace
 );
 
-// Snow filtering -- applies standard filtering with UNION (OR) Snow QA
 ProcessingMask snow(
     const HarmonicWorkspace& workspace
 );
 
-// InsufficientClear filtering -- applies standard filtering with UNION (OR) Snow QA
 ProcessingMask insufficientclear(
     const HarmonicWorkspace& workspace
 );

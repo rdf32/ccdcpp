@@ -7,6 +7,7 @@
 
 #include "ccd/constants.hpp"
 #include "ccd/logger.hpp"
+#include "ccd/preprocess/preprocess.hpp"
 
 namespace ccd
 {
@@ -14,117 +15,55 @@ namespace ccd
 namespace filter
 {
 
+namespace
+{
+
+ProcessingMask run_chain(
+    const preprocess::Chain& chain,
+    const HarmonicWorkspace& workspace
+)
+{
+    ProcessingMask mask;
+    preprocess::apply(
+        chain,
+        workspace.dates(),
+        workspace.spectral(),
+        workspace.qas(),
+        mask
+    );
+    return mask;
+}
+
+} // namespace
+
 ProcessingMask standard(
     const HarmonicWorkspace& workspace
-) {
-    ProcessingMask mask(
-        workspace.dates().size()
+)
+{
+    return run_chain(
+        preprocess::default_plan(workspace.options()).standard.chain,
+        workspace
     );
-
-    const auto dates    = workspace.dates();
-    const auto qas      = workspace.qas();
-    const auto& options = workspace.options();
-
-    for (index_t i = 0; i < dates.size(); ++i) {
-
-        const auto qa = qas(i);
-        // This is an Union (OR) operation so 
-        // set true where conditional is valid
-        if (
-            qa == options.QA_WATER ||
-            qa == options.QA_CLEAR
-        ) {
-            mask.set(i, true);
-        }
-    }
-    LOG_DEBUG("Processing Mask after QA: " << mask.as_ints());
-
-    // An input without a thermal band has nothing for this screen to test,
-    // which is the same mask as a thermal band that is always in range.
-    if (options.THERMAL_IDX != NO_BAND)
-    {
-        apply_thermal_filter(
-            workspace.spectral(),
-            options.THERMAL_IDX,
-            thermal_range(options),
-            mask
-        );
-    }
-
-    LOG_DEBUG("Processing Mask after thermal: " << mask.as_ints());
-
-    apply_saturation_filter(
-        workspace.spectral(),
-        options.SATURATION_BANDS,
-        reflectance_range(options),
-        mask
-    );
-
-    LOG_DEBUG("Processing Mask after saturation: " << mask.as_ints());
-
-    remove_duplicate_dates(
-        dates,
-        mask
-    );
-
-    LOG_DEBUG("Processing Mask after duplicates: " << mask.as_ints());
-
-    return mask;
 }
 
 ProcessingMask snow(
     const HarmonicWorkspace& workspace
 )
 {
-    ProcessingMask mask =
-        standard(workspace);
-
-    const auto qas = workspace.qas();
-    const auto& options = workspace.options();
-
-    for(index_t i = 0; i < qas.size(); ++i)
-    {   
-        // This is an Union (OR) operation so 
-        // set true where conditional is valid
-        if(qas(i) == options.QA_SNOW) 
-        {
-            mask.set(i, true);
-        }
-    }
-
-    remove_duplicate_dates(
-        workspace.dates(),
-        mask
+    return run_chain(
+        preprocess::default_plan(workspace.options()).snow.chain,
+        workspace
     );
-
-    return mask;
 }
 
 ProcessingMask insufficientclear(
     const HarmonicWorkspace& workspace
 )
 {
-    ProcessingMask mask = 
-        standard(workspace);
-
-    const auto& options = workspace.options();
-
-    apply_green_median_filter(
-        workspace.dates(),
-        workspace.spectral(),
-        options.GREEN_IDX,
-        options.STAT_ORD,
-        options.MEDIAN_GREEN_FILTER,
-        options.GREEN_FILTER_SCOPE,
-        mask
+    return run_chain(
+        preprocess::default_plan(workspace.options()).insufficient_clear.chain,
+        workspace
     );
-
-    remove_duplicate_dates(
-        workspace.dates(),
-        mask
-    );
-
-    return mask;
 }
 
 
