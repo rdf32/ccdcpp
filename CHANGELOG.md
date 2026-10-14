@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 - 2026-10-13
+
+Preprocessing plans, in C++ and Python: per procedure, the transform and the
+filter chain that build the processing mask, with the default plan the
+options describe. API only; outputs are those of 0.4.0, bit for bit.
 
 ### Added (Python API)
 
