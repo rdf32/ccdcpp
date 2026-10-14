@@ -6,6 +6,7 @@
 //     pmask.cpp           // ProcessingMask
 //     quality.cpp         // Quality::Statistics
 //     qa_tables.cpp       // QaTable, ccdcpp.qa_tables
+//     preprocess.cpp      // PreprocessPlan, default_plan, validate_plan
 
 #include <pybind11/pybind11.h>
 
@@ -17,6 +18,7 @@ void bind_options(py::module_& m);
 // void bind_processing_mask(py::module_& m);
 // void bind_quality(py::module_& m);
 void bind_qa_tables(py::module_& m);
+void bind_preprocess(py::module_& m);
 void bind_detect(py::module_& m);
 
 
@@ -31,6 +33,7 @@ PYBIND11_MODULE(ccdcpp, m)
     // bind_processing_mask(m);
     // bind_quality(m);
     bind_qa_tables(m);
+    bind_preprocess(m);
     bind_detect(m);
 }
 

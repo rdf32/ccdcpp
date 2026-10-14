@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added (Python API)
+
+- Preprocessing plans in Python. The bound classes `StepKind`, `Step` (named
+  constructors `keep_qa`, `add_qa`, `thermal_range`, `band_range`,
+  `green_median`, `dedupe`), `Chain`, `Affine`, `ProcedurePlan` and
+  `PreprocessPlan`, compared with `==` and printed by `describe()` and
+  `repr()`; `default_plan(hoptions)`, `validate_plan(plan, bands)` and
+  `CHAIN_CAPACITY`.
+- `detect`, `detect_cube` and `detect_cube_columns` take `preprocess=`,
+  keyword only: a `PreprocessPlan`, or `None` (the default) for
+  `default_plan(hoptions)`. The plan is checked against the band count
+  (`ValueError`) and copied before the GIL is released. A call without it is
+  unchanged, and so is its output, bit for bit.
+- Plans by role for sensor profiles, as frozen dataclasses: `KeepQa`,
+  `AddQa`, `ThermalRange`, `BandRange`, `GreenMedian`, `Dedupe`, `Transform`,
+  `ProcedureChain` and `Preprocess`. Roles resolve to the profile's rows,
+  QA code names (`QA_CODE_FIELDS`) to the run's `QA_*` codes, and a field
+  left `None` to the value the default plan takes from the run's options;
+  `Preprocess()` is the default plan.
+- `SensorProfile.preprocess`, default `None` (the default plan of the
+  profile's options), and `SensorProfile.preprocess_plan(options=None)`,
+  which builds the `PreprocessPlan`. A profile with a plan stays hashable and
+  picklable. The entry points run the profile's plan unless `preprocess=` is
+  passed, as with `qa_table=`: a `PreprocessPlan` or `Preprocess` replaces
+  it, `None` runs the default plan. Every preset has `preprocess=None`.
+- README: a Preprocessing section, with the default chains of each
+  procedure, custom plans in C++ and Python, and the remaining differences
+  from pyccd.
+
 ### Added (C++ API)
 
 - `ccd/preprocess/preprocess.hpp`: preprocessing plans. A `PreprocessPlan`
@@ -24,8 +53,7 @@
   (`std::shared_ptr<const PreprocessPlan>`), after `qa_table`. Null runs
   `default_plan(hoptions)`, built once per call; either plan is validated
   once per call, before any pixel runs. Existing calls are unchanged, and
-  their outputs are unchanged, bit for bit. The Python bindings do not pass
-  a plan yet.
+  their outputs are unchanged, bit for bit.
 
 ### Changed (C++ API)
 

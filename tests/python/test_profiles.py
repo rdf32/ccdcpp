@@ -539,10 +539,11 @@ class Unprofiled(unittest.TestCase):
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
-                self.assertEqual(list(params), positional + ["qa_table", "profile"])
+                self.assertEqual(list(params),
+                                 positional + ["qa_table", "preprocess", "profile"])
                 kinds = [p.kind for p in params.values()]
                 self.assertEqual(kinds, [inspect.Parameter.POSITIONAL_OR_KEYWORD] * len(positional)
-                                 + [inspect.Parameter.KEYWORD_ONLY] * 2)
+                                 + [inspect.Parameter.KEYWORD_ONLY] * 3)
                 if "threads" in params:
                     self.assertEqual(params["threads"].default, 0)
 
@@ -567,7 +568,8 @@ class Unprofiled(unittest.TestCase):
                 entry = getattr(ccdcpp, name)
                 self.assertEqual((entry.__module__, entry.__name__), ("ccdcpp", name))
                 text = pydoc.render_doc(entry)
-                for word in ("hoptions", "loptions", "qa_table", "profile", "band_names"):
+                for word in ("hoptions", "loptions", "qa_table", "preprocess", "profile",
+                             "band_names"):
                     self.assertIn(word, text)
                 self.assertIs(pickle.loads(pickle.dumps(entry)), entry)
         self.assertIn("SensorProfile", pydoc.render_doc(ccdcpp.SensorProfile))

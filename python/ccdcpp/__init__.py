@@ -16,15 +16,27 @@ from . import presets
 from .profiles import (
     CADENCE_FIELDS,
     CELSIUS_HUNDREDTHS,
+    DEFAULT_TRANSFORM,
     DN,
     GREEN_FILTER_SCOPES,
     KELVIN_TENTHS,
     NO_STAT_CUTOFF,
     OUTLIER_PROBABILITY,
+    PROCEDURES,
+    QA_CODE_FIELDS,
     REFLECTANCE,
     ROLES,
+    AddQa,
+    BandRange,
+    Dedupe,
+    GreenMedian,
+    KeepQa,
+    Preprocess,
+    ProcedureChain,
     SensorProfile,
     Thermal,
+    ThermalRange,
+    Transform,
     Units,
 )
 
@@ -39,7 +51,8 @@ from .profiles import (
 #------------------------------------------------------------------------------
 
 class _FromProfile:
-    """The qa_table default: the profile's table, or None without one."""
+    """The qa_table and preprocess default: the profile's, or None without
+    one."""
 
     def __repr__(self):
         return "<from profile>"
@@ -51,13 +64,30 @@ class _FromProfile:
 _FROM_PROFILE = _FromProfile()
 
 
-def _resolve(entry, spectral, hoptions, loptions, qa_table, profile):
+def _plan(entry, preprocess, profile, hoptions):
+    """preprocess= as the extension takes it: a PreprocessPlan or None."""
+    if preprocess is _FROM_PROFILE:
+        if profile is None or profile.preprocess is None:
+            return None
+        return profile.preprocess.plan(profile, hoptions)
+    if isinstance(preprocess, Preprocess):
+        if profile is None:
+            raise TypeError(
+                f"{entry}(): a ccdcpp.Preprocess names roles and needs profile=; "
+                f"pass a ccdcpp.PreprocessPlan without one"
+            )
+        return preprocess.plan(profile, hoptions)
+    return preprocess
+
+
+def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile):
     if profile is None:
         if hoptions is None or loptions is None:
             raise TypeError(
                 f"{entry}() needs hoptions and loptions, or profile="
             )
-        return hoptions, loptions, (None if qa_table is _FROM_PROFILE else qa_table)
+        return (hoptions, loptions, (None if qa_table is _FROM_PROFILE else qa_table),
+                _plan(entry, preprocess, None, hoptions))
 
     if not isinstance(profile, SensorProfile):
         raise TypeError(
@@ -71,11 +101,11 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, profile):
         loptions = lo if loptions is None else loptions
     if qa_table is _FROM_PROFILE:
         qa_table = profile.qa_table(hoptions)
-    return hoptions, loptions, qa_table
+    return hoptions, loptions, qa_table, _plan(entry, preprocess, profile, hoptions)
 
 
 def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
-           qa_table=_FROM_PROFILE, profile=None):
+           qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None):
     """CCD on one pixel.
 
     dates
@@ -91,28 +121,35 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         profile is given.
     qa_table
         A ccdcpp.QaTable that decodes raw qas, or None for codes.
+    preprocess
+        A ccdcpp.PreprocessPlan, or None for ccdcpp.default_plan(hoptions):
+        per procedure, the transform and filter steps that build the
+        processing mask. With a profile, a ccdcpp.Preprocess is accepted
+        too. Checked against the band count first (ValueError).
     profile
         A ccdcpp.SensorProfile (see ccdcpp.presets) that supplies hoptions,
-        loptions and qa_table. Any of the three passed explicitly is used
-        instead, whole; qa_table=None for pre-classified codes. The table is
-        built with the QA codes of the hoptions the run uses. spectral is
-        checked against the profile's band count first (ValueError).
+        loptions, qa_table and preprocess. Any of them passed explicitly is
+        used instead, whole; qa_table=None for pre-classified codes,
+        preprocess=None for the default plan. The table and the plan are
+        built with the hoptions the run uses. spectral is checked against
+        the profile's band count first (ValueError).
 
     Returns a dict: models (one dict per segment, each with a bands list of
     B entries in row order), processing_mask and num_bands, plus band_names
     (a tuple) with a profile.
     """
-    hoptions, loptions, qa_table = _resolve(
-        "detect", spectral, hoptions, loptions, qa_table, profile)
+    hoptions, loptions, qa_table, preprocess = _resolve(
+        "detect", spectral, hoptions, loptions, qa_table, preprocess, profile)
     out = _extension.detect(
-        dates, spectral, qas, hoptions, loptions, qa_table=qa_table)
+        dates, spectral, qas, hoptions, loptions, qa_table=qa_table,
+        preprocess=preprocess)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
 
 
 def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
-                *, qa_table=_FROM_PROFILE, profile=None):
+                *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None):
     """CCD on every pixel of a cube, in parallel.
 
     dates
@@ -129,24 +166,32 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
         OpenMP threads; 0 for the library's default.
     qa_table
         A ccdcpp.QaTable that decodes raw qas, or None for codes.
+    preprocess
+        A ccdcpp.PreprocessPlan, or None for ccdcpp.default_plan(hoptions):
+        per procedure, the transform and filter steps that build the
+        processing mask. With a profile, a ccdcpp.Preprocess is accepted
+        too. Checked against the band count first (ValueError).
     profile
         A ccdcpp.SensorProfile (see ccdcpp.presets) that supplies hoptions,
-        loptions and qa_table. Any of the three passed explicitly is used
-        instead, whole; qa_table=None for pre-classified codes. The table is
-        built with the QA codes of the hoptions the run uses. spectral is
-        checked against the profile's band count first (ValueError).
+        loptions, qa_table and preprocess. Any of them passed explicitly is
+        used instead, whole; qa_table=None for pre-classified codes,
+        preprocess=None for the default plan. The table and the plan are
+        built with the hoptions the run uses. spectral is checked against
+        the profile's band count first (ValueError).
 
     Returns a list of per-pixel dicts in raster order: row, col, models and
     processing_mask, as detect's. They carry no band_names.
     """
-    hoptions, loptions, qa_table = _resolve(
-        "detect_cube", spectral, hoptions, loptions, qa_table, profile)
+    hoptions, loptions, qa_table, preprocess = _resolve(
+        "detect_cube", spectral, hoptions, loptions, qa_table, preprocess, profile)
     return _extension.detect_cube(
-        dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table)
+        dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
+        preprocess=preprocess)
 
 
 def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
-                        threads=0, *, qa_table=_FROM_PROFILE, profile=None):
+                        threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
+                        profile=None):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     Arguments as detect_cube. Returns a dict of arrays with one entry per
@@ -156,10 +201,12 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     threads, pixels_total and pixels_with_segments, plus band_names (a
     tuple) with a profile.
     """
-    hoptions, loptions, qa_table = _resolve(
-        "detect_cube_columns", spectral, hoptions, loptions, qa_table, profile)
+    hoptions, loptions, qa_table, preprocess = _resolve(
+        "detect_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
+        profile)
     out = _extension.detect_cube_columns(
-        dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table)
+        dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
+        preprocess=preprocess)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out

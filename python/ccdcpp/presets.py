@@ -8,6 +8,10 @@ seven Landsat bands in this order, one row each:
 which is TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6 and OLI/TIRS bands 2, 3, 4, 5, 6,
 7, 10. They differ in the unit of the input and in the QA they expect.
 
+Every preset leaves ``preprocess`` None, so it runs the default plan of its
+options (``ccdcpp.default_plan``); ``dataclasses.replace(preset(),
+preprocess=ccdcpp.Preprocess(...))`` runs another.
+
 A profile for another sensor is a :class:`ccdcpp.SensorProfile` call; the
 module docstring of ``ccdcpp.profiles`` has an example.
 """

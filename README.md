@@ -229,7 +229,7 @@ columns = ccdcpp.detect_cube_columns(
     dates, spectra, qa_pixel, threads=8, profile=presets.landsat_c2())
 ```
 
-The profile supplies `hoptions`, `loptions` and `qa_table`. Any of the three passed explicitly is used instead, whole: `hoptions=` replaces the profile's `HarmonicOptions` rather than being merged into it, and `qa_table=None` reads `qas` as pre-classified codes. The profile's table is built with the `QA_*` codes of the `HarmonicOptions` the run uses. `spectral` is checked against the profile's band count first (`ValueError`), and the outputs of `detect` and `detect_cube_columns` gain `band_names`, a tuple in row order; `detect_cube`'s per-pixel dicts do not. Without `profile=`, `hoptions` and `loptions` are required and a call, positional or by keyword, is the call of the extension function of the same name (`ccdcpp.ccdcpp.detect`, ...), output included.
+The profile supplies `hoptions`, `loptions`, `qa_table` and `preprocess` (see [Preprocessing](#preprocessing)). Any of them passed explicitly is used instead, whole: `hoptions=` replaces the profile's `HarmonicOptions` rather than being merged into it, `qa_table=None` reads `qas` as pre-classified codes, and `preprocess=None` runs the default plan. The profile's table and plan are built with the `HarmonicOptions` the run uses. `spectral` is checked against the profile's band count first (`ValueError`), and the outputs of `detect` and `detect_cube_columns` gain `band_names`, a tuple in row order; `detect_cube`'s per-pixel dicts do not. Without `profile=`, `hoptions` and `loptions` are required and a call, positional or by keyword, is the call of the extension function of the same name (`ccdcpp.ccdcpp.detect`, ...), output included.
 
 `profile.options()` returns new `(HarmonicOptions, LassoOptions)`, `profile.qa_table()` the table (or `None` for pre-classified input), and `profile.check(spectral)` raises `ValueError` when the band axis (second from last) does not match. Profiles are hashable and picklable, where the option objects are not, so a profile can be sent to worker processes.
 
@@ -276,6 +276,123 @@ def hls_l30():
 ```
 
 `units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`, and `refl_inclusive=(lo, hi)` for `REFL_MIN_INCLUSIVE`/`REFL_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE` are the two Landsat blocks), `thermal` a `ccdcpp.Thermal` (transform and bounds, and `inclusive=(lo, hi)` for `THERM_MIN_INCLUSIVE`/`THERM_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None` for an input without one, and `cadence` a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`). `green_filter_scope` is `"stat_window"` (the default), `"all"` or `"off"` (`ccdcpp.GREEN_FILTER_SCOPES`), for `GREEN_FILTER_SCOPE`. `alpha` and `coef_floor` have no default because both are statements about the input unit and a wrong value does not raise. A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, thermal band without `thermal=`) raises `ValueError` when it is constructed.
+
+## Preprocessing
+
+Before a procedure fits a pixel it builds the processing mask, the set of observations it fits: an optional transform of one band of the pixel's private copy, then a chain of filter steps run in order. A `PreprocessPlan` holds one such `ProcedurePlan` (transform and chain) per procedure, `standard`, `snow` (PermanentSnow) and `insufficient_clear`, and each pixel runs the one of the procedure it selects. The steps are:
+
+| Step | Effect |
+|------|--------|
+| `KeepQa(codes)` | keep only observations whose QA code is in `codes` |
+| `AddQa(codes)` | also keep every observation whose code is in `codes`; must be followed by `Dedupe` |
+| `ThermalRange(band, range)` | keep only observations whose thermal value is in the range |
+| `BandRange(bands, range)` | keep only observations on which every band is in the range, tested in list order |
+| `GreenMedian(band, offset, max_date, scope)` | drop observations at or above the median of `band` over the kept observations dated up to `max_date`, plus `offset`, at the dates `scope` names |
+| `Dedupe` | keep the first kept observation of each date |
+
+A range keeps `min < x < max`; an inclusive end also keeps a value equal to it, and NaN passes only a range inclusive at both ends. A chain holds at most `CHAIN_CAPACITY` (8) steps.
+
+### The default plan
+
+Without a plan, `detect`, `detect_cube` and `detect_cube_columns` run `default_plan(hoptions)`, the plan the `HarmonicOptions` describe. For `HarmonicOptions()` it is (`ccdcpp.default_plan(ccdcpp.HarmonicOptions()).describe()`):
+
+```text
+standard
+  transform  band 6 <- x * 10 - 27315
+  0  KeepQa codes {0, 1}
+  1  ThermalRange band 6, -9320 < x < 7070
+  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
+  3  Dedupe
+snow
+  transform  none
+  0  KeepQa codes {0, 1}
+  1  ThermalRange band 6, -9320 < x < 7070
+  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
+  3  Dedupe
+  4  AddQa codes {3}
+  5  Dedupe
+insufficient_clear
+  transform  none
+  0  KeepQa codes {0, 1}
+  1  ThermalRange band 6, -9320 < x < 7070
+  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
+  3  Dedupe
+  4  GreenMedian band 1, drop x >= median(dates <= 736694) + 400, scope StatWindow
+  5  Dedupe
+```
+
+Every procedure keeps `QA_CLEAR` and `QA_WATER`, tests `THERMAL_IDX` against `THERM_MIN`/`THERM_MAX` (omitted when `THERMAL_IDX` is `NO_BAND`), tests `SATURATION_BANDS` against `REFL_MIN`/`REFL_MAX` and dedupes; `snow` then adds `QA_SNOW` back and dedupes, and `insufficient_clear` runs the green median filter (`GREEN_IDX`, `MEDIAN_GREEN_FILTER`, `STAT_ORD`, `GREEN_FILTER_SCOPE`) and dedupes. Only `standard` has a transform, `THERMAL_SCALE`/`THERMAL_OFFSET`, and none when that is the identity, so the other two test the thermal band in the caller's unit, as pyccd does. Passing the default plan explicitly gives the same output, to the bit, as passing none.
+
+### A custom plan in C++
+
+A plan is a value; edit the default or build chains from the named step constructors, and pass it to `detect` or `detect_cube` as the trailing `preprocess` argument, shared by every pixel and thread of the call:
+
+```cpp
+#include "ccd/ccd.hpp"
+
+namespace pp = ccd::preprocess;
+
+ccd::HarmonicOptions h;
+pp::PreprocessPlan plan = pp::default_plan(h);
+
+// The thermal transform on every procedure, not only Standard.
+plan.snow.transform = plan.standard.transform;
+plan.insufficient_clear.transform = plan.standard.transform;
+
+// Standard keeps snow observations too.
+plan.standard.chain = pp::Chain{
+    pp::Step::keep_qa(pp::qa_set({h.QA_CLEAR, h.QA_WATER, h.QA_SNOW})),
+    pp::Step::thermal_range(h.THERMAL_IDX, ccd::filter::thermal_range(h)),
+    pp::Step::band_range(h.SATURATION_BANDS, ccd::filter::reflectance_range(h)),
+    pp::Step::dedupe(),
+};
+
+const auto shared = std::make_shared<const pp::PreprocessPlan>(plan);
+ccd::FitResult result = ccd::detect(dates, spectral, qas, h, l, nullptr, shared);
+```
+
+`pp::validate(plan, bands)` runs once per call, before any pixel, and throws `std::invalid_argument`, naming the procedure and the step, when a band is not below the band count, a `GreenMedian` has no band, a transformed band is also tested by a `BandRange` of its procedure, an `AddQa` is not followed by a `Dedupe`, or a chain is over capacity.
+
+### A custom plan in Python
+
+The same classes are bound: `ccdcpp.StepKind`, `Step` (with the constructors `keep_qa`, `add_qa`, `thermal_range`, `band_range`, `green_median`, `dedupe`), `Chain`, `Affine`, `ProcedurePlan`, `PreprocessPlan`, `default_plan(hoptions)` and `validate_plan(plan, bands)`. Plans compare with `==`, and `describe()` (also the `repr`) prints them as above. Each entry point takes one as `preprocess=`, keyword only, checks it against the band count (`ValueError`) and copies it before the GIL is released:
+
+```python
+plan = ccdcpp.default_plan(hoptions)
+plan.standard.chain[0] = ccdcpp.Step.keep_qa([hoptions.QA_CLEAR, hoptions.QA_WATER, hoptions.QA_SNOW])
+out = ccdcpp.detect(dates, spectra, qas, hoptions, loptions, preprocess=plan)
+```
+
+With a sensor profile, a plan is written by role and QA code name instead, as frozen dataclasses: `KeepQa(codes=("clear", "water"))`, `AddQa(codes=("snow",))`, `ThermalRange(min=, max=, inclusive=)`, `BandRange(roles=, min=, max=, inclusive=)`, `GreenMedian(offset=, scope=, max_date=, role="green")`, `Dedupe()` and `Transform(role, scale, offset)`, gathered per procedure as `ProcedureChain(steps=, transform=)` and per plan as `Preprocess(standard=, snow=, insufficient_clear=)`. A field left `None` takes the value the default plan would take from the run's options; a `ProcedureChain` with `steps=None` keeps that procedure's default steps, and its `transform` defaults to `ccdcpp.DEFAULT_TRANSFORM`, the procedure's default transform (`None` for none); a procedure left `None` keeps its default transform and steps, so `Preprocess()` is the default plan. Roles resolve to the profile's rows as its band lists do, and code names (`ccdcpp.QA_CODE_FIELDS`) to the run's `QA_*` codes. A profile holds it as `SensorProfile(preprocess=...)` and stays hashable and picklable; `profile.preprocess_plan(options)` builds the `PreprocessPlan`, and the entry points run it unless `preprocess=` is passed (`None` for the default plan, a `PreprocessPlan`, or another `Preprocess`).
+
+Landsat Collection 2 with its thermal band handed over as the raw `ST_B10` DN, converted to the degrees Celsius / 100 of `landsat_c2()`'s bounds on every procedure, `((DN * 0.00341802 + 149.0) - 273.15) / 100`:
+
+```python
+import dataclasses
+import ccdcpp
+from ccdcpp import Preprocess, ProcedureChain, Transform, presets
+
+# ((DN * 0.00341802 + 149.0) - 273.15) / 100
+st_b10 = Transform("thermal", scale=3.41802e-5, offset=-1.2415)
+c2_raw_thermal = dataclasses.replace(
+    presets.landsat_c2(),
+    name="landsat_c2_raw_thermal",
+    preprocess=Preprocess(
+        standard=ProcedureChain(transform=st_b10),
+        snow=ProcedureChain(transform=st_b10),
+        insufficient_clear=ProcedureChain(transform=st_b10),
+    ),
+)
+
+columns = ccdcpp.detect_cube_columns(
+    dates, spectra, qa_pixel, threads=8, profile=c2_raw_thermal)
+```
+
+A `Preprocess` that does not fit its profile raises `ValueError`: an unknown QA code name or scope when it is constructed, a role the profile lacks when the profile is, and the `validate_plan` checks when the plan is built.
+
+### Remaining differences from pyccd
+
+The default plan is pyccd's preprocessing as pyccd intends it. What still differs is listed in [Differences from pyccd](#differences-from-pyccd): the RLM convergence test, the date order and the first observation of a date kept by `Dedupe`, and the green median filter, which ccdcpp applies (`StatWindow` scope) where pyccd's drops nothing (`GreenMedian(scope="off")` gives pyccd's code). An undefined raw QA value decodes to fill where pyccd raises. The PermanentSnow and InsufficientClear procedures keep pyccd's untransformed thermal test; a plan with the transform on every procedure, as above, changes it.
 
 ## Native C++ Implementation
 

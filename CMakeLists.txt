@@ -692,6 +692,7 @@ if(CCD_BUILD_PYTHON)
         bindings/pmask.cpp
         bindings/quality.cpp
         bindings/qa_tables.cpp
+        bindings/preprocess.cpp
         bindings/detect.cpp
     )
 
@@ -763,6 +764,15 @@ if(CCD_BUILD_PYTHON)
             COMMAND
                 ${Python_EXECUTABLE}
                 ${PROJECT_SOURCE_DIR}/tests/python/test_profiles.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
+
+        add_test(
+            NAME python_preprocess
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_preprocess.py
                 $<TARGET_FILE_DIR:ccd_python>
                 ${PROJECT_SOURCE_DIR}
         )

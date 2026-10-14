@@ -14,6 +14,7 @@
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/procedure/fit.hpp"
 #include "ccd/qa_table.hpp"
+#include "ccd/preprocess/preprocess.hpp"
 
 namespace py = pybind11;
 
@@ -133,6 +134,26 @@ static QaType qa_type(const py::array& qas)
 }
 
 //------------------------------------------------------------------------------
+// `preprocess=`, as an entry point accepts it: None for the default plan, or a
+// ccdcpp.PreprocessPlan, copied here so that the call never reads an object
+// Python can change while the GIL is released, and checked against the band
+// count (ValueError) before it is.
+//------------------------------------------------------------------------------
+
+static ccd::PreprocessPlanPtr take_plan(
+    const ccd::preprocess::PreprocessPlan* plan,
+    ccd::index_t bands
+)
+{
+    if (plan == nullptr)
+        return nullptr;
+
+    auto copy = std::make_shared<const ccd::preprocess::PreprocessPlan>(*plan);
+    ccd::preprocess::validate(*copy, bands);
+    return copy;
+}
+
+//------------------------------------------------------------------------------
 // detect wrapper
 //
 // Zero-copy:
@@ -157,7 +178,8 @@ py::dict detect_wrapper(
 
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
-    std::shared_ptr<ccd::QaTable> qa_table
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess_plan
 )
 {
     refuse_raw_without_table(qas_obj, qa_table != nullptr);
@@ -231,6 +253,11 @@ py::dict detect_wrapper(
     // ValueError, as above.
     ccd::validate_dates(dates_view);
 
+    const ccd::PreprocessPlanPtr preprocess = take_plan(
+        preprocess_plan,
+        static_cast<ccd::index_t>(spectral_buf.shape[0])
+    );
+
 
     auto spectral_view =
         ccd::ArrayView<const ccd::scalar_t,2>::contiguous(
@@ -269,7 +296,8 @@ py::dict detect_wrapper(
                     ),
                     hoptions,
                     loptions,
-                    qa_table
+                    qa_table,
+                    preprocess
                 );
         }
         else
@@ -284,7 +312,8 @@ py::dict detect_wrapper(
                     ),
                     hoptions,
                     loptions,
-                    qa_table
+                    qa_table,
+                    preprocess
                 );
         }
     }
@@ -391,8 +420,8 @@ py::dict detect_wrapper(
 // so the accepted inputs are a superset of before. `qas` is uint8 under the
 // same two rules, or uint8 or uint16 with a table; see accept_qas().
 //
-// Nothing is written to `spectral`: the thermal transform happens in the
-// per-pixel copy.
+// Nothing is written to `spectral`: a plan's transform happens in the
+// per-pixel copy. `preprocess` is copied and checked by take_plan().
 //------------------------------------------------------------------------------
 
 // The element type of CubeInput::spectral, read while the GIL is held:
@@ -414,6 +443,7 @@ struct CubeInput
     SpectralType spectral_type = SpectralType::Float64;
     QaType qa_type = QaType::UInt8;
     std::shared_ptr<ccd::QaTable> qa_table;
+    ccd::PreprocessPlanPtr preprocess;
 
     ccd::index_t H = 0;
     ccd::index_t W = 0;
@@ -426,7 +456,8 @@ static CubeInput check_cube(
     const py::object& spectral_obj,
     const py::object& qas_obj,
     const ccd::HarmonicOptions& hoptions,
-    std::shared_ptr<ccd::QaTable> qa_table
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess_plan
 )
 {
     py::array spectral =
@@ -480,6 +511,7 @@ static CubeInput check_cube(
     ccd::validate(hoptions, B);
     ccd::validate_dates(
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}));
+    ccd::PreprocessPlanPtr preprocess = take_plan(preprocess_plan, B);
 
     const SpectralType spectral_type =
         takes_as_is<std::uint16_t>(spectral) ? SpectralType::UInt16 :
@@ -495,6 +527,7 @@ static CubeInput check_cube(
         spectral_type,
         qas_type,
         std::move(qa_table),
+        std::move(preprocess),
         H, W, B, T
     };
 }
@@ -520,16 +553,16 @@ static ccd::CubeResult run_cube_spectral(
     if (in.spectral_type == SpectralType::UInt16)
         return ccd::detect_cube(
             dates, strided_view<std::uint16_t, 4>(in.spectral), qas,
-            hoptions, loptions, threads, keep_masks, in.qa_table);
+            hoptions, loptions, threads, keep_masks, in.qa_table, in.preprocess);
 
     if (in.spectral_type == SpectralType::Float32)
         return ccd::detect_cube(
             dates, strided_view<float, 4>(in.spectral), qas,
-            hoptions, loptions, threads, keep_masks, in.qa_table);
+            hoptions, loptions, threads, keep_masks, in.qa_table, in.preprocess);
 
     return ccd::detect_cube(
         dates, strided_view<double, 4>(in.spectral), qas,
-        hoptions, loptions, threads, keep_masks, in.qa_table);
+        hoptions, loptions, threads, keep_masks, in.qa_table, in.preprocess);
 }
 
 static ccd::CubeResult run_cube(
@@ -594,11 +627,12 @@ py::list detect_cube_wrapper(
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
     int threads,
-    std::shared_ptr<ccd::QaTable> qa_table
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess
 )
 {
     const CubeInput views =
-        check_cube(dates, spectral, qas, hoptions, std::move(qa_table));
+        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -810,11 +844,12 @@ py::dict detect_cube_columns_wrapper(
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
     int threads,
-    std::shared_ptr<ccd::QaTable> qa_table
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess
 )
 {
     const CubeInput views =
-        check_cube(dates, spectral, qas, hoptions, std::move(qa_table));
+        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -995,7 +1030,8 @@ void bind_detect(py::module_& m)
         py::arg("hoptions"),
         py::arg("loptions"),
         py::kw_only(),
-        py::arg("qa_table") = py::none()
+        py::arg("qa_table") = py::none(),
+        py::arg("preprocess") = py::none()
     );
     m.def(
         "detect_cube",
@@ -1007,7 +1043,8 @@ void bind_detect(py::module_& m)
         py::arg("loptions"),
         py::arg("threads") = 0,
         py::kw_only(),
-        py::arg("qa_table") = py::none()
+        py::arg("qa_table") = py::none(),
+        py::arg("preprocess") = py::none()
     );
     m.def(
         "detect_cube_columns",
@@ -1019,7 +1056,8 @@ void bind_detect(py::module_& m)
         py::arg("loptions"),
         py::arg("threads") = 0,
         py::kw_only(),
-        py::arg("qa_table") = py::none()
+        py::arg("qa_table") = py::none(),
+        py::arg("preprocess") = py::none()
     );
 }
 
