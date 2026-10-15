@@ -48,6 +48,10 @@ FILL, CLEAR, WATER, SHADOW, SNOW, CLOUD = 255, 0, 1, 2, 3, 4
 #: One raw QA_PIXEL value per class (Landsat Collection 2).
 C2_RAW = {FILL: 1, CLEAR: 21824, WATER: 21952, SHADOW: 23888, SNOW: 30048, CLOUD: 22280}
 
+#: One raw HLS v2.0 Fmask value per class: fill 255, bit 5 water, bit 3
+#: shadow, bit 4 snow, bit 1 cloud; 0 is clear with climatology aerosol.
+FMASK_RAW = {FILL: 255, CLEAR: 0, WATER: 32, SHADOW: 8, SNOW: 16, CLOUD: 2}
+
 
 def fields(obj):
     return {
@@ -330,6 +334,7 @@ class Check(unittest.TestCase):
             (dict(band_names=("a",) * 7), "band_names repeats"),
             (dict(roles=("blue",) * 7), "repeats a role other than 'other'"),
             (dict(roles=base.roles[:6] + ("infrared",)), "unknown roles ['infrared']"),
+            (dict(roles=base.roles[:6] + ("nir_narrow",)), "unknown roles ['nir_narrow']"),
             (dict(roles=("blue", "other") + base.roles[2:]), "no 'green' band"),
             (dict(thermal=None), "a 'thermal' band and thermal= go together"),
             (dict(detection=("green", "coastal")), "detection names 'coastal'"),
@@ -354,6 +359,128 @@ class Check(unittest.TestCase):
         with self.assertRaises(ValueError) as caught:
             dataclasses.replace(base, **other, saturation=("green", "other"))
         self.assertIn("saturation names 'other'", str(caught.exception))
+
+
+class Roles(unittest.TestCase):
+    def test_roles(self):
+        self.assertEqual(ccdcpp.ROLES, (
+            "blue", "green", "red", "nir", "swir1", "swir2", "thermal", "coastal",
+            "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad", "other"))
+
+    def test_nir_broad_is_a_band_role(self):
+        # B08 as nir_broad next to B8A as nir: it is fitted, reported and may
+        # be listed, and it is not NIR_IDX.
+        p = ten_band_profile()
+        h, _ = p.options()
+        self.assertEqual(p.index("nir_broad"), 6)
+        self.assertEqual(h.NIR_IDX, 7)
+        self.assertIn(6, h.SATURATION_BANDS)
+        q = dataclasses.replace(p, detection=("green", "red", "nir_broad", "nir", "swir1",
+                                              "swir2"))
+        self.assertEqual(q.options()[0].DETECTION_BANDS, [1, 2, 6, 7, 8, 9])
+        with self.assertRaises(ValueError) as caught:
+            dataclasses.replace(p, roles=p.roles[:7] + ("nir_broad",) + p.roles[8:])
+        self.assertIn("repeats a role other than 'other'", str(caught.exception))
+
+
+#: Every raw HLS Fmask value, for comparing whole tables.
+ALL_VALUES = np.arange(65536)
+
+
+class QaTableOptionsField(unittest.TestCase):
+    def hls(self, **kw):
+        return dataclasses.replace(presets.landsat_c1_physical(), qa_table_builder="hls_fmask",
+                                   **kw)
+
+    def test_default_is_empty(self):
+        for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
+            with self.subTest(preset=preset.__name__):
+                self.assertEqual(preset().qa_table_options, ())
+        np.testing.assert_array_equal(self.hls().qa_table().codes,
+                                      ccdcpp.qa_tables.hls_fmask().codes)
+
+    def test_builder_arguments_reach_the_builder(self):
+        for aerosol in (False, True):
+            with self.subTest(exclude_high_aerosol=aerosol):
+                p = self.hls(qa_table_options={"exclude_high_aerosol": aerosol})
+                h, _ = p.options()
+                expected = ccdcpp.qa_tables.hls_fmask(h, exclude_high_aerosol=aerosol).codes
+                got = p.qa_table().codes
+                self.assertEqual(got.shape, ALL_VALUES.shape)
+                np.testing.assert_array_equal(got, expected)
+        # The two tables differ exactly where the aerosol bits are 11 and no
+        # higher-precedence bit (fill, cloud, adjacent, cirrus) is set.
+        on = self.hls(qa_table_options={"exclude_high_aerosol": True}).qa_table().codes
+        off = self.hls().qa_table().codes
+        differs = np.flatnonzero(on != off)
+        self.assertTrue(len(differs) > 0)
+        self.assertTrue(((differs >> 6) == 3).all())
+        self.assertEqual(int(on[192]), CLOUD)
+        self.assertEqual(int(off[192]), CLEAR)
+
+    def test_follows_the_run_options(self):
+        p = self.hls(qa_table_options={"exclude_high_aerosol": True})
+        h, _ = p.options()
+        h.QA_FILL, h.QA_CLEAR, h.QA_WATER = 200, 10, 11
+        h.QA_SHADOW, h.QA_SNOW, h.QA_CLOUD = 12, 13, 14
+        np.testing.assert_array_equal(p.qa_table(h).codes,
+                                      ccdcpp.qa_tables.hls_fmask(h, True).codes)
+
+    def test_cached_by_value(self):
+        a = self.hls(qa_table_options={"exclude_high_aerosol": True})
+        b = self.hls(qa_table_options=(("exclude_high_aerosol", True),))
+        self.assertEqual(a, b)
+        self.assertEqual(hash(a), hash(b))
+        self.assertIs(a.qa_table(), b.qa_table())
+        self.assertIsNot(a.qa_table(), self.hls().qa_table())
+
+    def test_stored_sorted_hashable_picklable(self):
+        p = self.hls(qa_table_options={"exclude_high_aerosol": True})
+        self.assertEqual(p.qa_table_options, (("exclude_high_aerosol", True),))
+        q = pickle.loads(pickle.dumps(p))
+        self.assertEqual(q, p)
+        np.testing.assert_array_equal(q.qa_table().codes, p.qa_table().codes)
+
+    def test_entry_points_use_the_profile_table(self):
+        # Raw Fmask, with high aerosol on every third clear observation:
+        # screened out only with the option.
+        fmask = np.vectorize(FMASK_RAW.get, otypes=[np.uint8])(CODES)
+        aerosol = np.zeros(fmask.shape, dtype=bool)
+        aerosol[..., ::3] = True
+        aerosol &= fmask == 0
+        fmask[aerosol] = 192
+        base = self.hls()
+        screened = self.hls(qa_table_options={"exclude_high_aerosol": True})
+        table = ccdcpp.qa_tables.hls_fmask(screened.options()[0], True)
+        got = every_entry(DATES, CUBE_PHYS, fmask, profile=screened)
+        assert_same(self, got, every_entry(DATES, CUBE_PHYS, fmask, profile=base, qa_table=table))
+        codes = np.where(aerosol, np.uint8(CLOUD), CODES)
+        assert_same(self, got, every_entry(DATES, CUBE_PHYS, codes, profile=base, qa_table=None))
+        self.assertNotEqual(
+            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], profile=base)["processing_mask"]
+            .tobytes(),
+            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], profile=screened)["processing_mask"]
+            .tobytes())
+
+    def test_validation(self):
+        cases = [
+            (presets.landsat_c1_dn(), dict(qa_table_options={"exclude_high_aerosol": True}),
+             "needs a qa_table_builder"),
+            (presets.landsat_c2(), dict(qa_table_options={"exclude_high_aerosol": True}),
+             "landsat_c2_qa_pixel does not take qa_table_options"),
+            (self.hls(), dict(qa_table_options={"high_aerosol": True}),
+             "hls_fmask does not take qa_table_options {'high_aerosol': True}"),
+            (self.hls(), dict(qa_table_options=(("exclude_high_aerosol", True),
+                                                ("exclude_high_aerosol", False))),
+             "qa_table_options repeats a name"),
+            (self.hls(), dict(qa_table_options={"exclude_high_aerosol": [True]}),
+             "unhashable value"),
+        ]
+        for base, change, expected in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaises(ValueError) as caught:
+                    dataclasses.replace(base, **change)
+                self.assertIn(expected, str(caught.exception))
 
 
 class BoundFlags(unittest.TestCase):
@@ -654,12 +781,12 @@ def ten_band_profile():
     return ccdcpp.SensorProfile(
         name="test_ten_band",
         band_names=("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"),
-        roles=("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
-               "nir_narrow", "swir1", "swir2"),
+        roles=("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad",
+               "nir", "swir1", "swir2"),
         detection=("green", "red", "red_edge_2", "nir", "swir1", "swir2"),
         tmask=("green", "swir1"),
-        saturation=("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
-                    "nir_narrow", "swir1", "swir2"),
+        saturation=("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
+                    "nir_broad", "nir", "swir1", "swir2"),
         units=ccdcpp.REFLECTANCE,
         alpha=1e-4,
         coef_floor=1e-4,
@@ -715,7 +842,7 @@ class TenBand(unittest.TestCase):
         dates, cube, scl = ten_band_inputs()
         h = ccdcpp.HarmonicOptions()
         h.NUM_BANDS = 10
-        h.DETECTION_BANDS = [1, 2, 4, 6, 8, 9]
+        h.DETECTION_BANDS = [1, 2, 4, 7, 8, 9]
         h.TMASK_BANDS = [1, 8]
         h.SATURATION_BANDS = list(range(10))
         h.GREEN_IDX = 1

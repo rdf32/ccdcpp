@@ -77,7 +77,9 @@ from .ccdcpp import (
 
 #: The roles a band can play. Every role but ``"other"`` names at most one
 #: band of a profile; ``"other"`` bands are fitted and reported, and no list
-#: can name them.
+#: can name them. ``"nir"`` is the Landsat near infrared: TM/ETM+ band 4,
+#: OLI band 5 (865 nm), and on Sentinel-2 the 865 nm B8A; the broad 842 nm
+#: Sentinel-2 B08 is ``"nir_broad"``.
 ROLES = (
     "blue",
     "green",
@@ -90,7 +92,7 @@ ROLES = (
     "red_edge_1",
     "red_edge_2",
     "red_edge_3",
-    "nir_narrow",
+    "nir_broad",
     "other",
 )
 
@@ -542,6 +544,11 @@ class Preprocess:
 
 
 Cadence = Union[Mapping[str, float], Tuple[Tuple[str, float], ...]]
+QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]
+
+#: The ``HarmonicOptions`` QA code fields a table is built with, in the order
+#: ``_build_table`` takes them.
+_TABLE_CODE_FIELDS = ("QA_FILL", "QA_CLEAR", "QA_WATER", "QA_SHADOW", "QA_SNOW", "QA_CLOUD")
 
 
 @dataclass(frozen=True)
@@ -596,6 +603,13 @@ class SensorProfile:
         A :class:`Preprocess`, or None (the default) for the default plan of
         the profile's options. The entry points run it in place of the
         default plan; see :meth:`preprocess_plan`.
+    qa_table_options
+        Keyword arguments of ``qa_table_builder`` beyond the options, as a
+        mapping or ``(name, value)`` pairs, stored sorted by name; empty
+        (the default) for none. ``{"exclude_high_aerosol": True}`` makes
+        ``hls_fmask`` decode high aerosol as cloud. Values must be hashable.
+        Requires ``qa_table_builder``; a name the builder does not take
+        raises ValueError when the profile is constructed.
 
     Profiles are immutable, hashable and picklable, so one can be handed to
     worker processes where option objects cannot.
@@ -618,6 +632,7 @@ class SensorProfile:
     qa_table_builder: Optional[str] = None
     green_filter_scope: str = "stat_window"
     preprocess: Optional[Preprocess] = None
+    qa_table_options: QaTableOptions = field(default=())
 
     def __post_init__(self):
         for name in ("band_names", "roles", "detection", "tmask", "saturation"):
@@ -627,6 +642,10 @@ class SensorProfile:
             object.__setattr__(self, "green_filter_scope", names[self.green_filter_scope])
         items = self.cadence.items() if isinstance(self.cadence, Mapping) else self.cadence
         object.__setattr__(self, "cadence", tuple(sorted((str(k), v) for k, v in items)))
+        items = (self.qa_table_options.items() if isinstance(self.qa_table_options, Mapping)
+                 else self.qa_table_options)
+        object.__setattr__(self, "qa_table_options",
+                           tuple(sorted((str(k), v) for k, v in items)))
         self._validate()
 
     def _fail(self, message):
@@ -689,6 +708,29 @@ class SensorProfile:
             getattr(qa_tables, self.qa_table_builder, None)
         ):
             self._fail(f"ccdcpp.qa_tables has no builder {self.qa_table_builder!r}")
+        self._validate_qa_table_options()
+
+    def _validate_qa_table_options(self):
+        options = self.qa_table_options
+        if not options:
+            return
+        if self.qa_table_builder is None:
+            self._fail(f"qa_table_options {dict(options)} needs a qa_table_builder")
+        names = [name for name, _ in options]
+        if len(set(names)) != len(names):
+            self._fail(f"qa_table_options repeats a name: {names}")
+        try:
+            hash(options)
+        except TypeError:
+            self._fail(f"qa_table_options {options} holds an unhashable value")
+        defaults = HarmonicOptions()
+        codes = tuple(int(getattr(defaults, name)) for name in _TABLE_CODE_FIELDS)
+        try:
+            _build_table(self.qa_table_builder, codes, options)
+        except TypeError as error:
+            self._fail(
+                f"ccdcpp.qa_tables.{self.qa_table_builder} does not take "
+                f"qa_table_options {dict(options)}: {error}")
 
     def index(self, role):
         """The row of the band with ``role``."""
@@ -764,18 +806,15 @@ class SensorProfile:
         pre-classified input.
 
         Built with the ``QA_*`` codes of ``options`` (default: this
-        profile's own), so pass the options the run uses. Tables are cached
-        per builder and codes, and are read-only.
+        profile's own), so pass the options the run uses, and with
+        ``qa_table_options`` as keyword arguments. Tables are cached per
+        builder, codes and builder arguments, and are read-only.
         """
         if self.qa_table_builder is None:
             return None
         h = self.options()[0] if options is None else options
-        codes = tuple(
-            int(getattr(h, name))
-            for name in ("QA_FILL", "QA_CLEAR", "QA_WATER", "QA_SHADOW",
-                         "QA_SNOW", "QA_CLOUD")
-        )
-        return _build_table(self.qa_table_builder, codes)
+        codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
+        return _build_table(self.qa_table_builder, codes, self.qa_table_options)
 
     def preprocess_plan(self, options=None):
         """The ``ccdcpp.PreprocessPlan`` this profile runs, a new object.
@@ -810,7 +849,8 @@ class SensorProfile:
 
 
 @lru_cache(maxsize=None)
-def _build_table(builder, codes):
+def _build_table(builder, codes, builder_options=()):
     h = HarmonicOptions()
-    (h.QA_FILL, h.QA_CLEAR, h.QA_WATER, h.QA_SHADOW, h.QA_SNOW, h.QA_CLOUD) = codes
-    return getattr(qa_tables, builder)(h)
+    for name, code in zip(_TABLE_CODE_FIELDS, codes):
+        setattr(h, name, code)
+    return getattr(qa_tables, builder)(h, **dict(builder_options))
