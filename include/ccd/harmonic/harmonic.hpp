@@ -424,8 +424,10 @@ public:
     // Constructor
     //----------------------------------------------------------------------
 
-    // The workspace keeps its own copy of `options`: the Standard procedure
-    // adjusts PEEK_SIZE and CHANGE_THRESHOLD per pixel.
+    // The workspace refers to `options`, as it refers to the arrays, and never
+    // writes them: what a procedure derives per pixel (the Standard
+    // procedure's adjusted peek and change threshold) it keeps in its own
+    // records. `options` must outlive the workspace.
     HarmonicWorkspace(
         ArrayView<const std::int64_t, 1> dates,
         ArrayView<const scalar_t, 2> spectral,
@@ -440,6 +442,14 @@ public:
     {   
         validate();
     }
+
+    // A temporary would not outlive the workspace.
+    HarmonicWorkspace(
+        ArrayView<const std::int64_t, 1> dates,
+        ArrayView<const scalar_t, 2> spectral,
+        ArrayView<const std::uint8_t, 1> qas,
+        const HarmonicOptions&& options
+    ) = delete;
 
     //----------------------------------------------------------------------
     // Validation
@@ -475,11 +485,6 @@ public:
         return qas_;
     }
 
-    HarmonicOptions& options()
-    {
-        return options_;
-    }
-
     const HarmonicOptions& options() const
     {
         return options_;
@@ -491,7 +496,7 @@ private:
     ArrayView<const scalar_t, 2> spectral_;
     ArrayView<const std::uint8_t, 1> qas_;
 
-    HarmonicOptions options_;
+    const HarmonicOptions& options_;
 
 };
 

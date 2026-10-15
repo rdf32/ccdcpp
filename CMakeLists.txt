@@ -112,6 +112,7 @@ add_library(
     src/ccd/preprocess/preprocess.cpp
 
     src/ccd/procedure/fit.cpp
+    src/ccd/procedure/series.cpp
     src/ccd/procedure/standard.cpp
 
     src/ccd/ccd.cpp
@@ -450,6 +451,30 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The per-pixel records below detect_pixel: Series, Variogram, Cadence.
+    add_executable(
+        test_series
+
+        tests/ccd/procedure/test_series.cpp
+    )
+
+
+    target_link_libraries(
+        test_series
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_series
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
     add_executable(
@@ -675,6 +700,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_units)
     gtest_discover_tests(test_filters)
     gtest_discover_tests(test_validation)
+    gtest_discover_tests(test_series)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_transitions)

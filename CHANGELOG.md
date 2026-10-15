@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Changed (C++ internals; outputs bit for bit)
+
+- The Standard procedure keeps its per-pixel state in records instead of
+  hand-kept pairs and the options. `ccd::Series`
+  (`include/ccd/procedure/series.hpp`) owns the processing mask and the
+  observations it keeps, and is the only way to drop one: `drop(position,
+  window)` and Initialise's tentative Tmask removal `drop_outliers_if`,
+  each moving the caller's window by one rule. `ccd::standard::Cadence`
+  holds the adjusted peek and change threshold (`measure_cadence`), and
+  `ccd::Variogram` the per-band variogram, so the caller's `PEEK_SIZE` and
+  `CHANGE_THRESHOLD` are no longer overwritten in a per-pixel copy.
+- `HarmonicWorkspace` refers to the caller's `HarmonicOptions` instead of
+  copying them, and `options()` is const only; it cannot be built from a
+  temporary. `FitProcedure::run` and `StandardProcedure::run` take a const
+  workspace. `tmask()` and `stable()` take a `const Variogram&`.
+- Removed, unused: `update_processing_mask` (both overloads), and
+  `remove_outliers` / `remove_observation` (now inside `Series`), the
+  vector-returning `StandardProcedure::calc_residuals`, `Window::rewind`
+  and `Window::extend`.
+
 ### Tests
 
 - `tests/ccd/golden/test_transitions.cpp` (ctest `Transitions.*`): 17

@@ -69,7 +69,7 @@ public:
     //----------------------------------------------------------------------
 
     FitResult run(
-        HarmonicWorkspace& hworkspace,
+        const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver
@@ -118,16 +118,6 @@ struct Window
     {
         ++start;
         ++stop;
-    }
-
-    void rewind(index_t amount)
-    {
-        start -= amount;
-    }
-
-    void extend(index_t amount)
-    {
-        stop += amount;
     }
 };
 
@@ -179,6 +169,31 @@ bool check_variogram(
     const std::vector<scalar_t>& variogram
 );
 
+//------------------------------------------------------------------------------
+// Variogram
+//
+// One pixel's per-band noise floor: adjusted_variogram() of its
+// statistics-window observations, one value per spectral row, in row order.
+// Computed once per pixel and read, never written, by Tmask, the stability
+// check and the change magnitudes. Not tied to a procedure.
+//------------------------------------------------------------------------------
+struct Variogram
+{
+    std::vector<scalar_t> bands;
+
+    scalar_t operator[](index_t band) const
+    {
+        return bands[band];
+    }
+
+    // No band is NaN (check_variogram()). A procedure stops without
+    // segments on a variogram that is not usable.
+    bool usable() const
+    {
+        return check_variogram(bands);
+    }
+};
+
 // timeseries window operations
 bool enough_time(
     ArrayView<const std::int64_t, 1> dates_window,
@@ -192,8 +207,8 @@ bool enough_samples(
 
 bool stable(
     ArrayView<const std::int64_t, 1> dates_window,
-    std::vector<scalar_t>& variogram,
-    std::vector<LassoResult>& results,
+    const Variogram& variogram,
+    const std::vector<LassoResult>& results,
     scalar_t change_threshold,
     const BandList& detection_bands
 );
@@ -221,33 +236,9 @@ std::vector<scalar_t> change_magnitude(
 ProcessingMask tmask(
     ArrayView<const std::int64_t, 1> dates_window,
     ArrayView<const scalar_t, 2> spect_window,
-    std::vector<scalar_t>& variogram,
+    const Variogram& variogram,
     const BandList& bands,
     scalar_t t_const
-);
-
-ProcessingMask update_processing_mask(
-    const ProcessingMask& mask,
-    const ProcessingMask& outliers,
-    const Window& window
-);
-
-ProcessingMask update_processing_mask(
-    const ProcessingMask& mask,
-    index_t masked_index
-);
-
-// update_processing_mask(mask, outliers, window), in place.
-void remove_outliers(
-    ProcessingMask& mask,
-    const ProcessingMask& outliers,
-    const Window& window
-);
-
-// update_processing_mask(mask, masked_index), in place.
-void remove_observation(
-    ProcessingMask& mask,
-    index_t masked_index
 );
 
 std::vector<index_t> find_closest_doy(

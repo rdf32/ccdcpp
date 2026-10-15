@@ -13,7 +13,7 @@ namespace ccd
 {
 
 FitResult FitProcedure::run(
-    HarmonicWorkspace& hworkspace,
+    const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver
@@ -359,8 +359,8 @@ bool enough_samples(
 
 bool stable(
     ArrayView<const std::int64_t, 1> dates_window,
-    std::vector<scalar_t>& variogram,
-    std::vector<LassoResult>& results,
+    const Variogram& variogram,
+    const std::vector<LassoResult>& results,
     scalar_t change_threshold,
     const BandList& detection_bands
 ) {
@@ -468,7 +468,7 @@ std::vector<scalar_t> change_magnitude(
 ProcessingMask tmask(
     ArrayView<const std::int64_t, 1> dates_window,
     ArrayView<const scalar_t, 2> spect_window,
-    std::vector<scalar_t>& variogram,
+    const Variogram& variogram,
     const BandList& bands,
     scalar_t t_const
 ) {
@@ -535,126 +535,6 @@ ProcessingMask tmask(
     }
 
     return outliers;
-}
-
-ProcessingMask update_processing_mask(
-    const ProcessingMask& mask,
-    const ProcessingMask& outliers,
-    const Window& window
-) {
-    ProcessingMask result(mask);
-    //----------------------------------------------------------
-    // Build mapping:
-    // masked index -> original index
-    //----------------------------------------------------------
-    std::vector<index_t> active;
-    active.reserve(mask.count());
-
-    for (index_t i = 0; i < mask.size(); ++i)
-    {
-        if (mask[i])
-        {
-            active.push_back(i);
-        }
-    }
-    //----------------------------------------------------------
-    // Remove outliers
-    //----------------------------------------------------------
-    for (index_t i = 0; i < outliers.size(); ++i)
-    {
-        if (!outliers[i])
-            continue;
-
-        result.set(
-            active[window.start + i],
-            false
-        );
-    }
-
-    return result;
-}
-
-ProcessingMask update_processing_mask(
-    const ProcessingMask& mask,
-    index_t masked_index
-)
-{
-    ProcessingMask result(mask);
-
-    //----------------------------------------------------------
-    // Build mapping:
-    // masked index -> original index
-    //----------------------------------------------------------
-    std::vector<index_t> active;
-    active.reserve(mask.count());
-
-    for (index_t i = 0; i < mask.size(); ++i)
-    {
-        if (mask[i])
-        {
-            active.push_back(i);
-        }
-    }
-
-    assert(masked_index < active.size());
-
-    //----------------------------------------------------------
-    // Disable the corresponding original observation
-    //----------------------------------------------------------
-    result.set(
-        active[masked_index],
-        false
-    );
-
-    return result;
-}
-
-void remove_outliers(
-    ProcessingMask& mask,
-    const ProcessingMask& outliers,
-    const Window& window
-)
-{
-    //----------------------------------------------------------
-    // Walk the active observations, counting masked positions;
-    // clear the ones outliers marks. Clearing the current entry
-    // after testing it leaves the count of the rest unchanged.
-    //----------------------------------------------------------
-    index_t masked = 0;
-    for (index_t i = 0; i < mask.size(); ++i)
-    {
-        if (!mask[i])
-            continue;
-
-        if (masked >= window.start &&
-            masked - window.start < outliers.size() &&
-            outliers[masked - window.start])
-        {
-            mask.set(i, false);
-        }
-        ++masked;
-    }
-}
-
-void remove_observation(
-    ProcessingMask& mask,
-    index_t masked_index
-)
-{
-    index_t masked = 0;
-    for (index_t i = 0; i < mask.size(); ++i)
-    {
-        if (!mask[i])
-            continue;
-
-        if (masked == masked_index)
-        {
-            mask.set(i, false);
-            return;
-        }
-        ++masked;
-    }
-    assert(false && "masked_index out of range");
 }
 
 std::vector<index_t> find_closest_doy(
