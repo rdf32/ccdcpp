@@ -137,8 +137,9 @@ void bind_qa_tables(py::module_& m)
         "shadow; bit 4 snow; bit 5 water; otherwise clear. Bits 6-7 "
         "(aerosol) are ignored unless exclude_high_aerosol, which makes high "
         "aerosol (11) cloud. Values above 255 are fill. Decodes as the HLS "
-        "v2.0 User Guide says on all 38 values present in the T16SGC "
-        "2020-2023 sample; no production run has used it yet."
+        "v2.0 User Guide says on all 43 values present in the T16SGC "
+        "2020-2023 sample (38 in L30, 43 in S30); no production run has "
+        "used it yet."
     );
 
     sub.def(

@@ -12,16 +12,18 @@ on the entry points, and real-data regression fixtures. Outputs are those of
   near Atlanta cut to MGRS tile T16SGC, 2020-01-01 to 2023-12-31, from
   Microsoft Planetary Computer (HLS v2.0 L30 and S30; Sentinel-2 L2A at
   20 m), against Landsat Collection 2 ARD of the same cell and years. Four
-  years of one cell is the whole record; each docstring and the README say
-  so.
+  years of one cell is the whole record, as the README and the module
+  docstring say; each preset docstring names the cell and 2020-2023.
 - `hls_l30()`: validated. Break agreement with Landsat 8+9 ARD kappa 0.44
   (Landsat 7 added to the ARD: 0.43), matched breaks a median 8 days apart,
   model levels within 0.004 reflectance.
 - `hls_s30()` and `hls()`: validated, with a caveat: Fmask over bright
-  surfaces. Fmask on Sentinel-2 calls bright barren land cloud (61% of
-  observations on the cell's quarries; 1,145 of about 1,860 quarry pixels
-  go to InsufficientClear in S30, 2 in L30); `hls()` sends 1,741 of 300,288
-  pixels there.
+  surfaces. Fmask on Sentinel-2 calls bright barren land cloud: over all
+  1,862 quarry (land cover 31) pixels on the HLS grid it flags 63% of S30
+  observations as cloud, and 1,145 of them go to InsufficientClear in S30
+  (68% cloud over those); Landsat goes InsufficientClear there far less
+  (170 of ARD's 173 such pixels, both of L30's 2, are quarries). `hls()`
+  sends 1,741 of 300,288 pixels there.
 - `sentinel2_l2a()`: validated at median level on Planetary Computer's
   Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled. Levels
   about 0.01 above S30 with about twice the RMSE; the per-scene offset holds

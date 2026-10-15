@@ -228,9 +228,11 @@ def hls_s30():
     out of the saturation screen changes no output. Fmask decodes as
     documented on every value present. Caveat, Fmask over bright surfaces:
     Fmask on Sentinel-2, which has no thermal band, calls bright barren land
-    cloud. On the cell's quarries 61% of S30 observations are cloud, and
-    1,145 of about 1,860 quarry pixels go to the InsufficientClear procedure
-    (L30: 2; Landsat ARD: 170).
+    cloud. Over all 1,862 quarry (land cover 31) pixels on the HLS grid it
+    flags 63% of S30 observations as cloud, and 1,145 of those pixels go to
+    the InsufficientClear procedure (68% cloud over them). Quarries are
+    where Landsat goes InsufficientClear too, far less often: 170 of Landsat
+    ARD's 173 such pixels, and both of L30's 2.
     """
     return SensorProfile(
         name="hls_s30",
@@ -275,10 +277,11 @@ def hls():
     h024v013 chunk 00030008), 2020-2023, read from Planetary Computer (LP
     DAAC's HLS v2.0). The series mostly follows S30: break agreement per
     pixel, kappa 0.71 with :func:`hls_s30` and 0.45 with :func:`hls_l30`.
-    L30 first on a shared date worked on all 85 dates the products share.
-    Caveat, Fmask over bright surfaces, through the S30 observations: 1,741
-    of 300,288 pixels go to the InsufficientClear procedure (hls_s30: 2,101;
-    hls_l30: 2), as described for :func:`hls_s30`.
+    L30 first on a shared date worked on all 85 same-date pairs (84 dates;
+    on 2021-11-17 L30 has two granules). Caveat, Fmask over bright surfaces,
+    through the S30 observations: 1,741 of 300,288 pixels go to the
+    InsufficientClear procedure (hls_s30: 2,101; hls_l30: 2), as described
+    for :func:`hls_s30`.
     """
     return SensorProfile(
         name="hls",
@@ -338,11 +341,13 @@ def sentinel2_l2a():
     (collection ``sentinel-2-l2a``, at 20 m, with the 10 m bands averaged to
     20 m). With the per-scene offset applied, the window around the 2022
     baseline change looks like any other (0.34% of pixels break within 60
-    days of it; 92.3% without the offset). Against :func:`hls_s30` the two
-    agree at median level: model levels about 0.01 above S30's with about
-    twice the RMSE (no BRDF or bandpass adjustment), break agreement per
-    pixel kappa 0.48, and fewer break pixels (2.35% against 3.62%). SCL
-    decodes as documented on every class present (0, 2-11).
+    days of it; 92.3% without the offset), apart from 24 water pixels (0.60%
+    of water pixels against a 0.08% baseline), a seasonal winter-to-spring
+    step. Against :func:`hls_s30` the two agree at median level: model
+    levels about 0.01 above S30's with about twice the RMSE (no BRDF or
+    bandpass adjustment), break agreement per pixel kappa 0.48, and fewer
+    break pixels (2.35% against 3.62%). SCL decodes as documented on every
+    class present (0, 2-11).
     """
     return SensorProfile(
         name="sentinel2_l2a",

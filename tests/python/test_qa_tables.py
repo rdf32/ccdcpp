@@ -171,10 +171,11 @@ class Tables(unittest.TestCase):
         self.assertIn("bits 1, 2 (cloud, adjacent to cloud or shadow) cloud", fmask)
         self.assertIn("2, 3 (cast shadows, cloud shadows) shadow", scl)
         self.assertNotIn("dark area", scl.lower())
-        for doc, present in ((fmask, "all 38 values present in the T16SGC 2020-2023 sample"),
+        for doc, present in ((fmask, "all 43 values present in the T16SGC 2020-2023 sample (38 in L30, 43 in S30)"),
                              (scl, "every class present in the T16SGC 2020-2023 sample (0, 2-11)")):
             self.assertIn(present, doc)
             self.assertIn("no production run has used it yet", doc)
+            self.assertNotIn("all 38 values", doc)
             self.assertNotIn("Not yet validated", doc)
         self.assertIn("(MGRS tile T16SGC, 2020-2023); no production run has used them yet",
                       module)

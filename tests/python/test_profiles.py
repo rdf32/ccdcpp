@@ -1214,9 +1214,15 @@ class SensorPresets(unittest.TestCase):
                 self.assertIn("Validated, with a caveat: Fmask over bright surfaces.",
                               flat(doc.split("\n\n")[0]))
                 self.assertIn("Caveat, Fmask over bright surfaces", doc)
-        self.assertIn("1,145 of about 1,860 quarry pixels go to the InsufficientClear",
-                      flat(presets.hls_s30.__doc__))
-        self.assertIn("61% of S30 observations are cloud", flat(presets.hls_s30.__doc__))
+        s30 = flat(presets.hls_s30.__doc__)
+        self.assertIn("Over all 1,862 quarry (land cover 31) pixels on the HLS grid it flags "
+                      "63% of S30 observations as cloud, and 1,145 of those pixels go to the "
+                      "InsufficientClear procedure (68% cloud over them)", s30)
+        self.assertIn("170 of Landsat ARD's 173 such pixels, and both of L30's 2", s30)
+        self.assertNotIn("61%", s30)
+        self.assertIn("85 same-date pairs (84 dates", flat(presets.hls.__doc__))
+        self.assertIn("apart from 24 water pixels (0.60% of water pixels against a 0.08% "
+                      "baseline)", flat(presets.sentinel2_l2a.__doc__))
         self.assertIn("1,741 of 300,288 pixels go to the InsufficientClear",
                       flat(presets.hls.__doc__))
         # Sentinel-2: median level, PC's processing, not ESA's.

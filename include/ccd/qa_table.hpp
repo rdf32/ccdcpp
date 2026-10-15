@@ -67,8 +67,8 @@ using QaTablePtr = std::shared_ptr<const QaTable>;
 // Sentinel-2 tables follow the products' published definitions, are tested
 // here, and decode as that documentation says on every value present in the
 // real sample the HLS and Sentinel-2 presets were validated on (MGRS tile
-// T16SGC, 2020-2023: 38 Fmask values; SCL classes 0 and 2-11). No production
-// run has used them yet.
+// T16SGC, 2020-2023: 43 Fmask values, 38 in L30 and 43 in S30; SCL classes 0
+// and 2-11). No production run has used them yet.
 //
 //==============================================================================
 
