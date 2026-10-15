@@ -88,9 +88,11 @@ void bind_qa_tables(py::module_& m)
         "the HarmonicOptions it is given (default HarmonicOptions()), so "
         "build with the options the run uses. Precedence is most-excluding "
         "first: fill, cloud, shadow, snow, water, clear. The Landsat tables "
-        "are validated for production use; the HLS and Sentinel-2 tables "
-        "follow the products' definitions and are tested, but are not yet "
-        "validated in production."
+        "are validated for production use. The HLS and Sentinel-2 tables "
+        "follow the products' definitions, are tested, and decode as that "
+        "documentation says on every value present in the real sample the "
+        "HLS and Sentinel-2 presets were validated on (MGRS tile T16SGC, "
+        "2020-2023); no production run has used them yet."
     );
 
     // `import ccdcpp.qa_tables` as well as `ccdcpp.qa_tables`.
@@ -129,11 +131,14 @@ void bind_qa_tables(py::module_& m)
         },
         py::arg("options") = ccd::HarmonicOptions{},
         py::arg("exclude_high_aerosol") = false,
-        "HLS v2.0 Fmask (uint8). 255 fill; bits 1, 2, 0 (cloud, adjacent "
-        "to cloud or shadow, cirrus) cloud; bit 3 shadow; bit 4 snow; bit 5 "
-        "water; otherwise clear. Bits 6-7 (aerosol) are ignored unless "
-        "exclude_high_aerosol, which makes high aerosol (11) cloud. Values "
-        "above 255 are fill. Not yet validated in production."
+        "HLS v2.0 Fmask (uint8). 255 fill; bits 1, 2 (cloud, adjacent to "
+        "cloud or shadow) cloud; bit 0, reserved and unused in v2.0 (Fmask "
+        "folds cirrus into cloud), cloud should it ever be set; bit 3 "
+        "shadow; bit 4 snow; bit 5 water; otherwise clear. Bits 6-7 "
+        "(aerosol) are ignored unless exclude_high_aerosol, which makes high "
+        "aerosol (11) cloud. Values above 255 are fill. Decodes as the HLS "
+        "v2.0 User Guide says on all 38 values present in the T16SGC "
+        "2020-2023 sample; no production run has used it yet."
     );
 
     sub.def(
@@ -143,8 +148,11 @@ void bind_qa_tables(py::module_& m)
             return held(ccd::qa_tables::sentinel2_scl(o));
         },
         py::arg("options") = ccd::HarmonicOptions{},
-        "Sentinel-2 L2A SCL (uint8). 0, 1 fill; 2, 3 shadow; 4, 5 clear; "
-        "6 water; 7-10 cloud; 11 snow; anything else fill. Not yet "
-        "validated in production."
+        "Sentinel-2 L2A SCL (uint8). 0, 1 fill; 2, 3 (cast shadows, cloud "
+        "shadows) shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud "
+        "medium and high probability, thin cirrus) cloud; 11 snow; anything "
+        "else fill. Decodes as SentiWiki says on every class present in the "
+        "T16SGC 2020-2023 sample (0, 2-11); no production run has used it "
+        "yet."
     );
 }

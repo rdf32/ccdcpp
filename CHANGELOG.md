@@ -59,7 +59,10 @@ on the entry points, and real-data regression fixtures. Outputs are those of
   peek 19–24; S30 and Sentinel-2 5 days, peek 19) in place of the 2–4 days
   and 32–48 documented before. The Fmask bit 0 is named reserved, in the
   README and in `qa_table.hpp`, where SCL 2 is named cast shadows (comments
-  only).
+  only), and in the `qa_tables` docstrings, which no longer call it cirrus.
+  Those docstrings now say the HLS and Sentinel-2 tables decode as
+  documented on every value present in the T16SGC 2020-2023 sample and that
+  no production run has used them yet.
 
 ## 0.6.0 - 2026-10-15
 

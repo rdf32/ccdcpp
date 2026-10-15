@@ -160,6 +160,26 @@ class Tables(unittest.TestCase):
         self.assertIs(q, ccdcpp.qa_tables)
         self.assertIn("Landsat", q.__doc__)
 
+    def test_docstrings(self):
+        def flat(text):
+            return " ".join(text.split())
+        q = ccdcpp.qa_tables
+        fmask, scl, module = flat(q.hls_fmask.__doc__), flat(q.sentinel2_scl.__doc__), flat(q.__doc__)
+        # HLS v2.0 reserves Fmask bit 0; it is not cirrus.
+        self.assertNotIn("cirrus)", fmask)
+        self.assertIn("bit 0, reserved and unused in v2.0", fmask)
+        self.assertIn("bits 1, 2 (cloud, adjacent to cloud or shadow) cloud", fmask)
+        self.assertIn("2, 3 (cast shadows, cloud shadows) shadow", scl)
+        self.assertNotIn("dark area", scl.lower())
+        for doc, present in ((fmask, "all 38 values present in the T16SGC 2020-2023 sample"),
+                             (scl, "every class present in the T16SGC 2020-2023 sample (0, 2-11)")):
+            self.assertIn(present, doc)
+            self.assertIn("no production run has used it yet", doc)
+            self.assertNotIn("Not yet validated", doc)
+        self.assertIn("(MGRS tile T16SGC, 2020-2023); no production run has used them yet",
+                      module)
+        self.assertNotIn("not yet validated", module)
+
     def test_codes_is_a_copy(self):
         table = ccdcpp.qa_tables.sentinel2_scl()
         codes = table.codes
