@@ -479,13 +479,75 @@ class QaTableOptionsField(unittest.TestCase):
                                                 ("exclude_high_aerosol", False))),
              "qa_table_options repeats a name"),
             (self.hls(), dict(qa_table_options={"exclude_high_aerosol": [True]}),
-             "unhashable value"),
+             "'exclude_high_aerosol' is [True] (list); ccdcpp.qa_tables.hls_fmask takes a "
+             "bool"),
         ]
         for base, change, expected in cases:
             with self.subTest(expected=expected):
                 with self.assertRaises(ValueError) as caught:
                     dataclasses.replace(base, **change)
                 self.assertIn(expected, str(caught.exception))
+
+
+    def test_values_are_the_declared_type(self):
+        # A bool option takes True or False; nothing else is read as one.
+        for value in (None, 0, 1, 2, 1.0, "True", "", np.bool_(True)):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError) as caught:
+                    self.hls(qa_table_options={"exclude_high_aerosol": value})
+                message = str(caught.exception)
+                self.assertIn(f"'exclude_high_aerosol' is {value!r} "
+                              f"({type(value).__name__})", message)
+                self.assertIn("ccdcpp.qa_tables.hls_fmask takes a bool", message)
+                self.assertNotIn("does not take", message)
+
+    def test_declared_options_are_the_bindings(self):
+        builders = sorted(name for name in dir(ccdcpp.qa_tables)
+                          if not name.startswith("_")
+                          and callable(getattr(ccdcpp.qa_tables, name)))
+        self.assertEqual(sorted(ccdcpp.QA_TABLE_OPTIONS), builders)
+        for builder, declared in ccdcpp.QA_TABLE_OPTIONS.items():
+            with self.subTest(builder=builder):
+                signature = getattr(ccdcpp.qa_tables, builder).__doc__.splitlines()[0]
+                self.assertEqual(signature.count(": "), 1 + len(declared), signature)
+                self.assertIn(f"{builder}(options: ", signature)
+                for name, (kind, default) in declared.items():
+                    self.assertIn(f"{name}: {kind.__name__} = {default!r}", signature)
+
+    def test_malformed_input_raises(self):
+        cases = [
+            (None, "qa_table_options is None; it is a mapping or (name, value) pairs"),
+            ("ab", "qa_table_options is 'ab'; it is a mapping or (name, value) pairs"),
+            (5, "qa_table_options is 5"),
+            (("exclude_high_aerosol",), "entry 'exclude_high_aerosol' is not a (name, value) "
+             "pair"),
+            ((("exclude_high_aerosol", True, 1),), "is not a (name, value) pair"),
+            ({1: True}, "qa_table_options name 1 is not a str"),
+            ((("exclude_high_aerosol", [1]), ("exclude_high_aerosol", {})),
+             "qa_table_options repeats a name"),
+            ((("exclude_high_aerosol", True), ("exclude_high_aerosol", True)),
+             "qa_table_options repeats a name"),
+        ]
+        for value, expected in cases:
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError) as caught:
+                    self.hls(qa_table_options=value)
+                self.assertTrue(str(caught.exception).startswith("SensorProfile "),
+                                str(caught.exception))
+                self.assertIn(expected, str(caught.exception))
+
+    def test_default_arguments_normalise_away(self):
+        explicit = self.hls(qa_table_options={"exclude_high_aerosol": False})
+        self.assertEqual(explicit.qa_table_options, ())
+        self.assertEqual(explicit, self.hls())
+        self.assertEqual(hash(explicit), hash(self.hls()))
+        self.assertIs(explicit.qa_table(), self.hls().qa_table())
+        for preset in (presets.hls_l30, presets.hls_s30, presets.hls):
+            with self.subTest(preset=preset.__name__):
+                self.assertEqual(
+                    dataclasses.replace(preset(), qa_table_options=(("exclude_high_aerosol",
+                                                                      False),)),
+                    preset())
 
 
 class BoundFlags(unittest.TestCase):
@@ -1069,6 +1131,19 @@ class SensorPresets(unittest.TestCase):
         self.assertIn("NOT VALIDATED IN PRODUCTION", presets.__doc__)
         self.assertIn("BOA_ADD_OFFSET", presets.sentinel2_l2a.__doc__)
         self.assertIn("put L30 before S30", presets.hls.__doc__)
+        # S30 detects on bands HLS adjusts to OLI, but B01 and B02 are
+        # adjusted too, and Sentinel-2C is part of the cadence.
+        self.assertIn("HLS\n    adjusts these, and B01 and B02, to the OLI bandpasses",
+                      presets.hls_s30.__doc__)
+        for preset in (presets.hls_s30, presets.sentinel2_l2a):
+            with self.subTest(preset=preset.__name__):
+                self.assertIn("2C from 2024", preset.__doc__)
+
+    def test_docstrings_are_wrapped(self):
+        for obj in [presets] + [getattr(presets, name) for name in presets.__all__]:
+            with self.subTest(name=obj.__name__):
+                for line in obj.__doc__.splitlines():
+                    self.assertLessEqual(len(line), 79, line)
 
     def test_profiles_are_hashable_and_picklable(self):
         for preset in NEW_PRESETS:

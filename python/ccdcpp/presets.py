@@ -194,12 +194,12 @@ def hls_s30():
     the raw ``Fmask`` layer (uint8), decoded by
     ``ccdcpp.qa_tables.hls_fmask``, aerosol ignored, as for :func:`hls_l30`.
 
-    Detection: B03, B04, B8A, B11, B12, the bands HLS adjusts to the OLI
-    bandpasses, with the default thresholds. The red edges and B08 are not
-    bandpass-adjusted; they are fitted, reported and saturation-screened,
+    Detection: B03, B04, B8A, B11, B12, with the default thresholds. HLS
+    adjusts these, and B01 and B02, to the OLI bandpasses; the red edges and
+    B08 are not adjusted. They are fitted, reported and saturation-screened,
     with every other row. No statistics cutoff. The cadence is 10 days with
-    Sentinel-2A alone (from 2015) and 5 with 2B (from 2017), denser
-    where orbits overlap; the peek window follows it.
+    Sentinel-2A alone (from 2015) and 5 with two satellites (2B from 2017,
+    2C from 2024), denser where orbits overlap; the peek window follows it.
     """
     return SensorProfile(
         name="hls_s30",
@@ -258,9 +258,9 @@ def sentinel2_l2a():
     uncorrected scenes jumps by the offset and detects false breaks. Some
     archives distribute the bands already corrected while their metadata
     still declares the offset (earth-search's ``sentinel-2-l2a`` COGs); do
-    not apply it a second time. DN 0 (no data) becomes 0 or negative and is dropped, as is any
-    value at or above 1.0. Resampling the 10 m and 20 m bands to one grid is
-    the caller's. Rows:
+    not apply it a second time. DN 0 (no data) becomes 0 or negative and is
+    dropped, as is any value at or above 1.0. Resampling the 10 m and 20 m
+    bands to one grid is the caller's. Rows:
 
         B02 blue, B03 green, B04 red, B05 red_edge_1, B06 red_edge_2,
         B07 red_edge_3, B08 nir_broad (842 nm), B8A nir (865 nm),
@@ -275,7 +275,8 @@ def sentinel2_l2a():
     Detection: B03, B04, B8A, B11, B12, the default thresholds. The red
     edges and B08 are fitted, reported and saturation-screened. No
     statistics cutoff. The cadence is 10 days with Sentinel-2A alone (from
-    mid-2015), 5 with 2B (from 2017), denser where orbits overlap. Two
+    mid-2015) and 5 with two satellites (2B from 2017, 2C from 2024), denser
+    where orbits overlap. Two
     observations on one date (overlapping granules or datastrips): the
     filters keep the first in array order; merge them first to choose.
     """

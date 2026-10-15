@@ -24,6 +24,7 @@ from .profiles import (
     OUTLIER_PROBABILITY,
     PROCEDURES,
     QA_CODE_FIELDS,
+    QA_TABLE_OPTIONS,
     REFLECTANCE,
     ROLES,
     AddQa,

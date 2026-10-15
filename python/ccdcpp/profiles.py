@@ -55,6 +55,7 @@ keeping snow observations::
 """
 from dataclasses import dataclass, field
 from functools import lru_cache
+from types import MappingProxyType
 from typing import Mapping, Optional, Tuple, Union
 import warnings
 
@@ -548,6 +549,16 @@ class Preprocess:
 Cadence = Union[Mapping[str, float], Tuple[Tuple[str, float], ...]]
 QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]
 
+#: The keyword arguments each ``ccdcpp.qa_tables`` builder takes beyond
+#: ``options``, as its binding declares them: builder -> {name: (type,
+#: default)}. ``SensorProfile.qa_table_options`` is checked against it.
+QA_TABLE_OPTIONS = MappingProxyType({
+    "landsat_c2_qa_pixel": MappingProxyType({}),
+    "landsat_c1_pixel_qa": MappingProxyType({}),
+    "hls_fmask": MappingProxyType({"exclude_high_aerosol": (bool, False)}),
+    "sentinel2_scl": MappingProxyType({}),
+})
+
 #: The ``HarmonicOptions`` QA code fields a table is built with, in the order
 #: ``_build_table`` takes them.
 _TABLE_CODE_FIELDS = ("QA_FILL", "QA_CLEAR", "QA_WATER", "QA_SHADOW", "QA_SNOW", "QA_CLOUD")
@@ -607,10 +618,16 @@ class SensorProfile:
         default plan; see :meth:`preprocess_plan`.
     qa_table_options
         Keyword arguments of ``qa_table_builder`` beyond the options, as a
-        mapping or ``(name, value)`` pairs, stored sorted by name; empty
-        (the default) for none. ``{"exclude_high_aerosol": True}`` makes
-        ``hls_fmask`` decode high aerosol as cloud. Values must be hashable.
-        Requires ``qa_table_builder``; a name the builder does not take
+        mapping or ``(name, value)`` pairs; empty (the default) for none.
+        ``{"exclude_high_aerosol": True}`` makes ``hls_fmask`` decode high
+        aerosol as cloud. Each name and the type of its value are those
+        :data:`QA_TABLE_OPTIONS` lists for the builder, and the value is of
+        exactly that type (``exclude_high_aerosol`` takes True or False, not
+        None or 1). Stored sorted by name, without the arguments equal to the
+        builder's defaults, so ``{"exclude_high_aerosol": False}`` is the
+        profile with ``()``. Anything else (options without
+        ``qa_table_builder``, a name given twice, a name the builder does not
+        take, a value of another type, input that is not a mapping or pairs)
         raises ValueError when the profile is constructed.
 
     Profiles are immutable, hashable and picklable, so one can be handed to
@@ -644,10 +661,7 @@ class SensorProfile:
             object.__setattr__(self, "green_filter_scope", names[self.green_filter_scope])
         items = self.cadence.items() if isinstance(self.cadence, Mapping) else self.cadence
         object.__setattr__(self, "cadence", tuple(sorted((str(k), v) for k, v in items)))
-        items = (self.qa_table_options.items() if isinstance(self.qa_table_options, Mapping)
-                 else self.qa_table_options)
-        object.__setattr__(self, "qa_table_options",
-                           tuple(sorted((str(k), v) for k, v in items)))
+        object.__setattr__(self, "qa_table_options", self._canonical_qa_table_options())
         self._validate()
 
     def _fail(self, message):
@@ -712,27 +726,62 @@ class SensorProfile:
             self._fail(f"ccdcpp.qa_tables has no builder {self.qa_table_builder!r}")
         self._validate_qa_table_options()
 
+    def _canonical_qa_table_options(self):
+        """``qa_table_options`` checked as given, then stored canonically:
+        sorted by name, without the arguments equal to the builder's
+        defaults."""
+        given = self.qa_table_options
+        if isinstance(given, Mapping):
+            pairs = tuple(given.items())
+        elif isinstance(given, (tuple, list)):
+            pairs = tuple(given)
+            for pair in pairs:
+                if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+                    self._fail(f"qa_table_options entry {pair!r} is not a (name, value) pair")
+        else:
+            self._fail(
+                f"qa_table_options is {given!r}; it is a mapping or (name, value) pairs")
+        if not pairs:
+            return ()
+        names = [name for name, _ in pairs]
+        for name in names:
+            if not isinstance(name, str):
+                self._fail(f"qa_table_options name {name!r} is not a str")
+        if len(set(names)) != len(names):
+            self._fail(f"qa_table_options repeats a name: {names}")
+        if self.qa_table_builder is None:
+            self._fail(f"qa_table_options {dict(pairs)} needs a qa_table_builder")
+        declared = QA_TABLE_OPTIONS.get(self.qa_table_builder)
+        if declared is None:
+            self._fail(
+                f"qa_table_options {dict(pairs)}: ccdcpp.qa_tables has no builder "
+                f"{self.qa_table_builder!r} in QA_TABLE_OPTIONS")
+        unknown = {name: value for name, value in pairs if name not in declared}
+        if unknown:
+            self._fail(
+                f"ccdcpp.qa_tables.{self.qa_table_builder} does not take qa_table_options "
+                f"{unknown}; it takes {tuple(declared) or 'none'}")
+        for name, value in pairs:
+            kind = declared[name][0]
+            if type(value) is not kind:
+                self._fail(
+                    f"qa_table_options {name!r} is {value!r} ({type(value).__name__}); "
+                    f"ccdcpp.qa_tables.{self.qa_table_builder} takes a {kind.__name__}")
+        return tuple(sorted((name, value) for name, value in pairs
+                            if value != declared[name][1]))
+
     def _validate_qa_table_options(self):
         options = self.qa_table_options
         if not options:
             return
-        if self.qa_table_builder is None:
-            self._fail(f"qa_table_options {dict(options)} needs a qa_table_builder")
-        names = [name for name, _ in options]
-        if len(set(names)) != len(names):
-            self._fail(f"qa_table_options repeats a name: {names}")
-        try:
-            hash(options)
-        except TypeError:
-            self._fail(f"qa_table_options {options} holds an unhashable value")
         defaults = HarmonicOptions()
         codes = tuple(int(getattr(defaults, name)) for name in _TABLE_CODE_FIELDS)
         try:
             _build_table(self.qa_table_builder, codes, options)
         except TypeError as error:
             self._fail(
-                f"ccdcpp.qa_tables.{self.qa_table_builder} does not take "
-                f"qa_table_options {dict(options)}: {error}")
+                f"ccdcpp.qa_tables.{self.qa_table_builder} rejects qa_table_options "
+                f"{dict(options)}, which QA_TABLE_OPTIONS allows: {error}")
 
     def index(self, role):
         """The row of the band with ``role``."""

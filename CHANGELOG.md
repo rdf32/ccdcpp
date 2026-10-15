@@ -24,12 +24,20 @@ only; outputs are those of 0.5.2, bit for bit.
   (`qa_tables.sentinel2_scl`). The single-product presets name their rows
   by product band ID, `hls()` by role.
 - `SensorProfile.qa_table_options`: keyword arguments for the
-  `qa_table_builder`, a mapping or `(name, value)` pairs, stored sorted;
-  default empty. `dataclasses.replace(presets.hls_l30(),
+  `qa_table_builder`, a mapping or `(name, value)` pairs; default empty.
+  `dataclasses.replace(presets.hls_l30(),
   qa_table_options={"exclude_high_aerosol": True})` decodes high aerosol as
-  cloud. Tables are cached per builder, codes and arguments. Options without
-  a builder, a repeated or unhashable option, or a name the builder does not
-  take raise `ValueError` at construction.
+  cloud. Each value is of exactly the type the builder declares, listed in
+  `ccdcpp.QA_TABLE_OPTIONS` (`exclude_high_aerosol` takes `True` or `False`;
+  `None`, `0`, `1` or `"True"` raise). Arguments are stored sorted, without
+  those equal to the builder's defaults, so `{"exclude_high_aerosol": False}`
+  is the profile with none: equal, same hash, one cached table. Tables are
+  cached per builder, codes and arguments. Options without a builder, a
+  repeated name, a name the builder does not take, a value of another type,
+  or input that is not a mapping or `(name, value)` pairs raise `ValueError`
+  at construction.
+- `ccdcpp.QA_TABLE_OPTIONS`: per `ccdcpp.qa_tables` builder, the keyword
+  arguments it takes beyond `options`, with their types and defaults.
 - The role `nir_broad`, for the broad 842 nm Sentinel-2 B08.
 
 ### Changed (Python API)
