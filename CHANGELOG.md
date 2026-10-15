@@ -49,8 +49,9 @@ on the entry points, and real-data regression fixtures. Outputs are those of
 - `tests/python/fixtures/t16sgc_2020_2023`: four pixels (evergreen forest
   `481_393`, named 1-based (column, row); open water; high-intensity
   developed; a pixel with a 2022 break) in HLS L30, HLS S30 and Sentinel-2
-  L2A, as raw values and raw QA with each scene's Sentinel-2 offset, the
-  STAC item ids, a provenance and license note, and the output of every
+  L2A, and a fifth in L30 and S30 whose result depends on the coastal B01
+  low bound (7 L30 and 2 S30 observations dropped by it alone), as raw
+  values and raw QA with each scene's Sentinel-2 offset, the STAC item ids, a provenance and license note, and the output of every
   HLS and Sentinel-2 preset on them. `test_real_fixtures.py`, ctest
   `python_real_fixtures`, compares against that output.
 

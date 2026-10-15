@@ -18,6 +18,7 @@ names it (px=481, py=393): 0-based chunk row 392, column 480. Its tests say
 so in their names.
 """
 import csv
+import dataclasses
 import datetime as dt
 import json
 import os
@@ -45,7 +46,14 @@ PIXELS = {
     "water": ("ard301_173", "water"),
     "developed_high": ("ard161_27", "developed_high"),
     "break": ("ard0_90", "break"),
+    "coastal": ("hls10_142", "coastal_hls10_142"),
 }
+
+#: Pixels held in the HLS products only: "coastal" is HLS window row 10,
+#: column 142 (0-based), chosen because its runs depend on the coastal B01
+#: low bound (B01 <= 0 on 7 L30 and 2 S30 observations whose other bands
+#: are in range).
+HLS_ONLY = {"coastal"}
 
 #: Preset -> the product files its input is read from.
 PRODUCTS = {"hls_l30": ("hls_l30",), "hls_s30": ("hls_s30",), "hls": ("hls_l30", "hls_s30"),
@@ -142,9 +150,14 @@ def breaks(out):
             for m in out["models"] if m["change_probability"] >= 1.0]
 
 
+def pixels_of(preset):
+    """The fixture pixels a preset has input for."""
+    return [p for p in PIXELS if preset != "sentinel2_l2a" or p not in HLS_ONLY]
+
+
 def write_expected():
     for preset in PRODUCTS:
-        stored = {pixel: as_stored(run(preset, pixel)) for pixel in PIXELS}
+        stored = {pixel: as_stored(run(preset, pixel)) for pixel in pixels_of(preset)}
         # One pixel per line: small, and a change shows which pixel moved.
         lines = [f"{json.dumps(pixel)}: {json.dumps(out, separators=(',', ':'))}"
                  for pixel, out in stored.items()]
@@ -181,7 +194,8 @@ def _pinned_test(preset, pixel):
 
 
 for _preset in PRODUCTS:
-    for _pixel, (_, _label) in PIXELS.items():
+    for _pixel in pixels_of(_preset):
+        _label = PIXELS[_pixel][1]
         setattr(Pinned, f"test_{_preset}_{_label}", _pinned_test(_preset, _pixel))
 
 
@@ -197,6 +211,8 @@ class Fixtures(unittest.TestCase):
             scenes = self.scenes(product)
             ordinals = np.array([int(s["ordinal"]) for s in scenes])
             for pixel in PIXELS:
+                if product == "s2_l2a" and pixel in HLS_ONLY:
+                    continue
                 with self.subTest(product=product, pixel=pixel):
                     dates, raw, qa, offset, names = read_product(product, pixel)
                     np.testing.assert_array_equal(dates, ordinals)
@@ -254,6 +270,31 @@ class Findings(unittest.TestCase):
         self.assertEqual(breaks(run("sentinel2_l2a", "fixture_481_393")), [])
         self.assertEqual(breaks(run("sentinel2_l2a", "fixture_481_393", apply_offset=False)),
                          ["2022-01-26"])
+
+    def test_coastal_hls10_142_depends_on_the_coastal_low_bound(self):
+        # Observations QA keeps with every band in range but B01 <= 0 are
+        # dropped, and without coastal in the saturation screen the result
+        # is another one.
+        for preset, count in (("hls_l30", 7), ("hls_s30", 2)):
+            with self.subTest(preset=preset):
+                dates, spectral, qa, names = preset_input(preset, "coastal")
+                out = run(preset, "coastal")
+                others = np.delete(spectral, names.index("B01"), axis=0)
+                if preset == "hls_l30":
+                    others = others[:-1]  # B10, thermal bounds
+                coastal_only = ((spectral[names.index("B01")] <= 0)
+                                & ((others > 0) & (others < 1)).all(axis=0)
+                                & np.isin(getattr(presets, preset)().qa_table().codes[qa],
+                                          (ccdcpp.HarmonicOptions().QA_CLEAR,
+                                           ccdcpp.HarmonicOptions().QA_WATER)))
+                self.assertEqual(int(coastal_only.sum()), count)
+                self.assertFalse(out["processing_mask"][coastal_only].any())
+                profile = getattr(presets, preset)()
+                unscreened = dataclasses.replace(
+                    profile, saturation=tuple(r for r in profile.saturation if r != "coastal"))
+                other = ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
+                                      profile=unscreened, band_names=names)
+                self.assertNotEqual(as_stored(other), as_stored(out))
 
     def test_s2_store_order_is_refused(self):
         dates, spectral, scl, names = preset_input("sentinel2_l2a", "water")

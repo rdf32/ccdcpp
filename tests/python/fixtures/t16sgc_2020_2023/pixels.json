@@ -116,5 +116,32 @@
     "2022-09-01"
    ]
   }
+ },
+ "coastal": {
+  "hls_window_rowcol": [
+   10,
+   142
+  ],
+  "hls_tile_rowcol": [
+   2382,
+   1932
+  ],
+  "ard_chunk_rowcol": [
+   0,
+   91
+  ],
+  "landcover_2023_hls_grid": 21,
+  "products": [
+   "hls_l30",
+   "hls_s30"
+  ],
+  "coastal_only_drops": {
+   "hls_l30": 7,
+   "hls_s30": 2
+  },
+  "without_coastal_screen": {
+   "hls_l30": "a break where the preset has none",
+   "hls_s30": "two more observations in the first segment"
+  }
  }
 }

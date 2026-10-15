@@ -1,10 +1,10 @@
 # Real-data fixtures: MGRS T16SGC, 2020-2023
 
-Four pixels near Atlanta, each in three products, as the products store them: HLS v2.0 L30, HLS v2.0 S30 and Sentinel-2 L2A at 20 m, 2020-01-01 to 2023-12-31. `tests/python/test_real_fixtures.py` runs `hls_l30()`, `hls_s30()`, `hls()` and `sentinel2_l2a()` on every pixel and compares the output with `expected_<preset>.json`. They are the pixels the real-data validation of the presets reported on; the record is four years (2020-2023) of one cell, tile T16SGC.
+Five pixels near Atlanta, four of them in three products and one in the two HLS products, as the products store them: HLS v2.0 L30, HLS v2.0 S30 and Sentinel-2 L2A at 20 m, 2020-01-01 to 2023-12-31. `tests/python/test_real_fixtures.py` runs `hls_l30()`, `hls_s30()`, `hls()` and `sentinel2_l2a()` on every pixel it has input for and compares the output with `expected_<preset>.json`. Four are the pixels the real-data validation of the presets reported on, the fifth one whose result depends on the coastal B01 screen; the record is four years (2020-2023) of one cell, tile T16SGC.
 
 ## Pixels
 
-The cell is Landsat ARD tile h024v013, chunk 00030008 (500 x 500 ARD pixels). File names carry the pixel's **0-based** chunk row and column (`ard392_480` is row 392, column 480).
+The cell is Landsat ARD tile h024v013, chunk 00030008 (500 x 500 ARD pixels). File names carry the pixel's **0-based** chunk row and column (`ard392_480` is row 392, column 480); the `coastal` pixel's carry its 0-based HLS window row and column (`hls10_142`), since it was chosen on the HLS grid.
 
 | Name | ARD chunk row, col (0-based) | Land cover 2023 | HLS window row, col | S2 20 m window row, col |
 |---|---|---|---|---|
@@ -12,6 +12,7 @@ The cell is Landsat ARD tile h024v013, chunk 00030008 (500 x 500 ARD pixels). Fi
 | `water` | 301, 173 | 11 open water | 316, 194 | 474, 291 |
 | `developed_high` | 161, 27 | 24 developed, high intensity | 163, 62 | 245, 93 |
 | `break` | 0, 90 | 23 developed, medium intensity | 10, 141 | 15, 212 |
+| `coastal` | (0, 91, the ARD pixel containing its centre) | 21 developed, open space (HLS grid) | 10, 142 | HLS only |
 
 **`481_393` is 1-based (column, row)**: the production CCD table's `px=481, py=393`, the pixel of `tests/ccd/procedure/test_atlanta_024013_00030008_481_393.csv`, which is 0-based row 392, column 480. Its tests are named `..._fixture_481_393_one_based_col_row`. An ARD pixel maps to the HLS pixel containing its centre, an HLS pixel to the S2 20 m pixel containing its centre; `pixels.json` holds the positions (HLS tile row 2807, column 2283 for the fixture pixel) and the breaks the validation found.
 
@@ -24,7 +25,9 @@ The cell is Landsat ARD tile h024v013, chunk 00030008 (500 x 500 ARD pixels). Fi
 - `expected_<preset>.json`: per pixel, the `ccdcpp.detect` output: the processing mask and every segment's fields and per-band intercept, coefficients, RMSE and magnitude, in row order. For `hls()` the L30 and S30 rows are merged by date, L30 first on a shared date.
 - `pixels.json`: the positions above, land cover, and the validation's break dates.
 
-Size: 15 CSV and 5 JSON files, about 430 kB.
+**The `coastal` pixel** is in `hls_l30` and `hls_s30` only. QA keeps 7 L30 and 2 S30 observations whose bands are all in range except B01, which is at or below 0; the coastal saturation screen drops them. Without coastal in the screen `hls_l30()` finds a break the preset does not and `hls_s30()` keeps two more observations, so the pinned outputs go red if the screen is removed. `test_coastal_hls10_142_depends_on_the_coastal_low_bound` checks both on the fixture itself.
+
+Size: 17 CSV and 5 JSON files, about 490 kB.
 
 ## Provenance
 
