@@ -51,6 +51,10 @@
   and 7 move a pin off the fixture platform too.
 - `tests/ccd/procedure/test_series.cpp` (ctest `Series.*`, `Variogram.*`,
   `StandardCadence.*`, `HarmonicWorkspace.*`): the records' contracts.
+- `tools/bench/`: the refactor's timing harness under version control: the
+  synthetic corpus generator, the synthetic bench (`bench.sh`) and the
+  real-cell bench (`bench_cell.py`), data paths as arguments, and the method
+  in its README.
 
 ## 0.6.1 - 2026-10-15
 
