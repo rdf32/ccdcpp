@@ -19,6 +19,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+from datetime import date
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
 del sys.argv[1:3]
@@ -51,6 +52,9 @@ C2_RAW = {FILL: 1, CLEAR: 21824, WATER: 21952, SHADOW: 23888, SNOW: 30048, CLOUD
 #: One raw HLS v2.0 Fmask value per class: fill 255, bit 5 water, bit 3
 #: shadow, bit 4 snow, bit 1 cloud; 0 is clear with climatology aerosol.
 FMASK_RAW = {FILL: 255, CLEAR: 0, WATER: 32, SHADOW: 8, SNOW: 16, CLOUD: 2}
+
+
+LANDSAT_PRESETS = (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2)
 
 
 def fields(obj):
@@ -229,7 +233,7 @@ class LandsatPhysical(unittest.TestCase):
                     every_entry(DATES, CUBE_PHYS, CODES, hoptions=h, loptions=lo))
 
     def test_presets_state_units_and_band_order(self):
-        for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
+        for preset in LANDSAT_PRESETS:
             with self.subTest(preset=preset.__name__):
                 self.assertIn("Input:", preset.__doc__)
                 self.assertIn("QA:", preset.__doc__)
@@ -237,7 +241,8 @@ class LandsatPhysical(unittest.TestCase):
                                  ("blue", "green", "red", "nir", "swir1", "swir2", "thermal"))
                 self.assertEqual(preset().name, preset.__name__)
         self.assertIn("blue, green, red, nir, swir1, swir2, thermal", presets.__doc__)
-        self.assertEqual(presets.__all__, ["landsat_c1_dn", "landsat_c1_physical", "landsat_c2"])
+        self.assertEqual(presets.__all__, ["landsat_c1_dn", "landsat_c1_physical", "landsat_c2",
+                                           "hls_l30", "hls_s30", "hls", "sentinel2_l2a"])
 
 
 def permuted(profile, order):
@@ -866,12 +871,14 @@ class TenBand(unittest.TestCase):
         code = doc.split("::\n", 1)[1].split("\n\nThe detection count", 1)[0]
         namespace = {}
         exec(compile(inspect.cleandoc("\n" + code), "<profiles docstring>", "exec"), namespace)
-        profile = namespace["hls_l30"]()
-        self.assertFalse(hasattr(presets, "hls_l30"))
+        profile = namespace["landsat_oli_c2"]()
+        self.assertFalse(hasattr(presets, "landsat_oli_c2"))
         h, lo = profile.options()
         self.assertEqual((h.NUM_BANDS, h.GREEN_IDX, h.THERMAL_IDX), (8, 2, 7))
         self.assertEqual(h.DETECTION_BANDS, [2, 3, 4, 5, 6])
-        self.assertIsInstance(profile.qa_table(), ccdcpp.QaTable)
+        self.assertEqual(h.STAT_ORD, ccdcpp.HarmonicOptions().STAT_ORD)
+        np.testing.assert_array_equal(profile.qa_table().codes,
+                                      ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
 
     def test_stat_ord_matters_after_2017(self):
         dates, cube, scl = ten_band_inputs()
@@ -879,6 +886,350 @@ class TenBand(unittest.TestCase):
         out = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=landsat)
         self.assertNotEqual(set(out["curve_qa"].tolist()), {8})
 
+
+#------------------------------------------------------------------------------
+# The HLS and Sentinel-2 presets, on synthetic series in each preset's units.
+#------------------------------------------------------------------------------
+
+#: Raw HLS v2.0 Fmask values the HLS User Guide (Table 9) defines, with their
+#: decoded code when the aerosol bits are ignored: 0, 64, 128, 192 clear at
+#: each aerosol level; 32 water; 2 cloud; 4 adjacent to cloud/shadow; 8
+#: shadow; 16 snow; 100 water + adjacent + low aerosol (the guide's example,
+#: cloud by precedence); 255 fill.
+FMASK_VALUES = np.array([0, 64, 128, 192, 32, 2, 4, 8, 16, 100, 255], dtype=np.uint8)
+FMASK_CODES = np.array([CLEAR, CLEAR, CLEAR, CLEAR, WATER, CLOUD, CLOUD, SHADOW, SNOW, CLOUD,
+                        FILL], dtype=np.uint8)
+FMASK_P = [0.45, 0.15, 0.08, 0.04, 0.03, 0.08, 0.05, 0.04, 0.02, 0.02, 0.04]
+
+#: Raw Sentinel-2 L2A SCL classes and their decoded codes: 4 vegetation, 5
+#: not vegetated (clear); 6 water; 7 unclassified, 8, 9 cloud, 10 cirrus; 2
+#: cast shadows, 3 cloud shadows; 11 snow; 0 no data, 1 saturated.
+SCL_ALL = np.array([4, 5, 6, 7, 8, 9, 10, 2, 3, 11, 0, 1], dtype=np.uint8)
+SCL_CODES = np.array([CLEAR, CLEAR, WATER, CLOUD, CLOUD, CLOUD, CLOUD, SHADOW, SHADOW, SNOW,
+                      FILL, FILL], dtype=np.uint8)
+SCL_P = [0.45, 0.17, 0.03, 0.05, 0.08, 0.06, 0.04, 0.02, 0.03, 0.02, 0.03, 0.02]
+
+L30_START = date(2013, 4, 11).toordinal()
+S2_START = date(2015, 7, 4).toordinal()
+S2_OFFSET_DATE = date(2022, 1, 25).toordinal()  # processing baseline 04.00
+
+
+def optical_cube(dates, bands, H, W, rng, breaks=True):
+    """(H, W, bands, T) reflectance: a seasonal curve per band, a level
+    change per pixel past the middle when ``breaks``."""
+    T = dates.size
+    phase = 2 * np.pi * (dates - dates[0]) / 365.25
+    cube = np.empty((H, W, bands, T))
+    for p in range(H * W):
+        r, c = divmod(p, W)
+        base = (0.03 + 0.025 * np.arange(bands))[:, None]
+        season = (0.02 + 0.004 * p) * np.sin(phase + p)[None, :]
+        level = np.where(np.arange(T) > T // 2 + 11 * p, 0.07, 0.0)[None, :] if breaks else 0.0
+        cube[r, c] = base + season + level + rng.normal(0, 0.004, (bands, T))
+    return cube
+
+
+def hls_inputs(bands, thermal=False, step=8, start=L30_START, years=7, H=2, W=2, seed=3):
+    """(dates, spectral, fmask, raw): an HLS series as the preset takes it,
+    every layer the int16 the product stores times 0.0001. ``raw`` is the
+    int16 cube; with ``thermal`` the last row is B10, degrees Celsius x 100.
+    """
+    rng = np.random.default_rng(seed)
+    dates = (start + step * np.arange(int(years * 365.25 / step))).astype(np.int64)
+    optical = bands - 1 if thermal else bands
+    cube = optical_cube(dates, optical, H, W, rng)
+    raw = np.round(cube * 10000.0).astype(np.int16)
+    if thermal:
+        phase = 2 * np.pi * (dates - dates[0]) / 365.25
+        celsius = 18.0 + 12.0 * np.sin(phase) + rng.normal(0, 1.0, (H, W, dates.size))
+        raw = np.concatenate([raw, np.round(celsius * 100.0).astype(np.int16)[:, :, None]], axis=2)
+    fmask = rng.choice(FMASK_VALUES, size=(H, W, dates.size), p=FMASK_P)
+    return dates, raw * 1e-4, fmask, raw
+
+
+def s2_inputs(H=2, W=2, seed=9, breaks=True, years=8):
+    """(dates, spectral, scl, dn): a Sentinel-2 L2A series, 5-day, from
+    2015-07, as the preset takes it: offset-corrected reflectance, the DN
+    stored with BOA_ADD_OFFSET -1000 from baseline 04.00 and 0 before."""
+    rng = np.random.default_rng(seed)
+    dates = (S2_START + 5 * np.arange(int(years * 365.25 / 5))).astype(np.int64)
+    cube = optical_cube(dates, 10, H, W, rng, breaks=breaks)
+    offset = np.where(dates >= S2_OFFSET_DATE, -1000, 0)
+    dn = (np.round(cube * 10000.0) - offset).astype(np.uint16)
+    scl = rng.choice(SCL_ALL, size=(H, W, dates.size), p=SCL_P)
+    return dates, (dn + offset) / 10000.0, scl, dn
+
+
+#: Each preset's options, written out: HarmonicOptions() fields that differ.
+#: Every unnamed field, the thresholds included, is the default.
+PHYSICAL = dict(REFL_MIN=0.0, REFL_MAX=1.0, MEDIAN_GREEN_FILTER=0.04, STAT_ORD=2**63 - 1)
+EXPECTED = {
+    "hls_l30": dict(
+        PHYSICAL, NUM_BANDS=8, DETECTION_BANDS=[2, 3, 4, 5, 6], TMASK_BANDS=[2, 5],
+        SATURATION_BANDS=[0, 1, 2, 3, 4, 5, 6], BLUE_IDX=1, GREEN_IDX=2, RED_IDX=3, NIR_IDX=4,
+        SWIR1_IDX=5, SWIR2_IDX=6, THERMAL_IDX=7, THERMAL_SCALE=1.0, THERMAL_OFFSET=0.0,
+        THERM_MIN=-0.932, THERM_MAX=0.707),
+    "hls_s30": dict(
+        PHYSICAL, NUM_BANDS=11, DETECTION_BANDS=[2, 3, 8, 9, 10], TMASK_BANDS=[2, 9],
+        SATURATION_BANDS=list(range(11)), BLUE_IDX=1, GREEN_IDX=2, RED_IDX=3, NIR_IDX=8,
+        SWIR1_IDX=9, SWIR2_IDX=10, THERMAL_IDX=ccdcpp.NO_BAND),
+    "hls": dict(
+        PHYSICAL, NUM_BANDS=7, DETECTION_BANDS=[2, 3, 4, 5, 6], TMASK_BANDS=[2, 5],
+        SATURATION_BANDS=list(range(7)), BLUE_IDX=1, GREEN_IDX=2, RED_IDX=3, NIR_IDX=4,
+        SWIR1_IDX=5, SWIR2_IDX=6, THERMAL_IDX=ccdcpp.NO_BAND),
+    "sentinel2_l2a": dict(
+        PHYSICAL, NUM_BANDS=10, DETECTION_BANDS=[1, 2, 7, 8, 9], TMASK_BANDS=[1, 8],
+        SATURATION_BANDS=list(range(10)), BLUE_IDX=0, GREEN_IDX=1, RED_IDX=2, NIR_IDX=7,
+        SWIR1_IDX=8, SWIR2_IDX=9, THERMAL_IDX=ccdcpp.NO_BAND),
+}
+BAND_NAMES = {
+    "hls_l30": ("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10"),
+    "hls_s30": ("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"),
+    "hls": ("coastal", "blue", "green", "red", "nir", "swir1", "swir2"),
+    "sentinel2_l2a": ("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"),
+}
+BUILDERS = {"hls_l30": "hls_fmask", "hls_s30": "hls_fmask", "hls": "hls_fmask",
+            "sentinel2_l2a": "sentinel2_scl"}
+NEW_PRESETS = (presets.hls_l30, presets.hls_s30, presets.hls, presets.sentinel2_l2a)
+
+
+def hand_built(name):
+    """(HarmonicOptions, LassoOptions, QaTable) of preset ``name``, by hand."""
+    h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+    for key, value in EXPECTED[name].items():
+        setattr(h, key, value)
+    lo.alpha = lo.coef_floor = 1e-4
+    return h, lo, getattr(ccdcpp.qa_tables, BUILDERS[name])(h)
+
+
+def preset_inputs(name):
+    """(dates, spectral, raw QA) for preset ``name``, in its units."""
+    if name == "hls_l30":
+        return hls_inputs(8, thermal=True)[:3]
+    if name == "hls_s30":
+        return hls_inputs(11, step=5, start=S2_START)[:3]
+    if name == "hls":
+        return hls_inputs(7, step=3)[:3]
+    return s2_inputs()[:3]
+
+
+def models(out):
+    """The fitted models of a detect output, without the per-date mask."""
+    return without(out, "processing_mask")
+
+
+class SensorPresets(unittest.TestCase):
+    def test_options_are_the_written_out_options(self):
+        defaults = ccdcpp.HarmonicOptions()
+        for preset in NEW_PRESETS:
+            name = preset.__name__
+            with self.subTest(preset=name):
+                h, lo = preset().options()
+                expected, elo, table = hand_built(name)
+                self.assertEqual(fields(h), fields(expected))
+                self.assertEqual(fields(lo), fields(elo))
+                for key in ("CHANGE_THRESHOLD", "OUTLIER_THRESHOLD"):
+                    self.assertEqual(getattr(h, key).hex(), getattr(defaults, key).hex())
+                self.assertEqual(h.STAT_ORD, ccdcpp.NO_STAT_CUTOFF)
+                self.assertEqual(preset().band_names, BAND_NAMES[name])
+                self.assertEqual(preset().qa_table_options, ())
+                np.testing.assert_array_equal(preset().qa_table().codes, table.codes)
+                for key in ccdcpp.CADENCE_FIELDS:
+                    self.assertEqual(getattr(h, key), getattr(defaults, key))
+
+    def test_red_edge_and_broad_nir_are_fitted_not_detected(self):
+        for preset in (presets.hls_s30, presets.sentinel2_l2a):
+            with self.subTest(preset=preset.__name__):
+                p = preset()
+                h, _ = p.options()
+                for role in ("red_edge_1", "red_edge_2", "red_edge_3", "nir_broad"):
+                    self.assertNotIn(p.index(role), h.DETECTION_BANDS)
+                    self.assertIn(p.index(role), h.SATURATION_BANDS)
+                self.assertEqual(p.band_names[p.index("nir")], "B8A")
+                self.assertEqual(p.band_names[p.index("nir_broad")], "B08")
+
+    def test_no_warning(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            for preset in NEW_PRESETS:
+                preset().options()
+                preset().qa_table()
+
+    def test_docstrings(self):
+        for preset in NEW_PRESETS:
+            with self.subTest(preset=preset.__name__):
+                doc = preset.__doc__
+                self.assertIn("Not validated in production.", doc)
+                self.assertIn("Input:", doc)
+                self.assertIn("QA:", doc)
+                self.assertIn(BUILDERS[preset.__name__], doc)
+                self.assertEqual(preset().name, preset.__name__)
+                for band in BAND_NAMES[preset.__name__]:
+                    self.assertIn(band, doc)
+        self.assertIn("NOT VALIDATED IN PRODUCTION", presets.__doc__)
+        self.assertIn("BOA_ADD_OFFSET", presets.sentinel2_l2a.__doc__)
+        self.assertIn("put L30 before S30", presets.hls.__doc__)
+
+    def test_profiles_are_hashable_and_picklable(self):
+        for preset in NEW_PRESETS:
+            with self.subTest(preset=preset.__name__):
+                p = preset()
+                self.assertEqual(hash(p), hash(preset()))
+                self.assertEqual(pickle.loads(pickle.dumps(p)), p)
+
+    def test_is_the_hand_built_run(self):
+        for preset in NEW_PRESETS:
+            name = preset.__name__
+            with self.subTest(preset=name):
+                dates, cube, qa = preset_inputs(name)
+                h, lo, table = hand_built(name)
+                profiled = every_entry(dates, cube, qa, threads=2, profile=preset())
+                assert_same(self, strip_band_names(profiled),
+                            every_entry(dates, cube, qa, threads=2, hoptions=h, loptions=lo,
+                                        qa_table=table))
+                cols = profiled["detect_cube_columns"]
+                self.assertEqual(cols["failures"], [])
+                self.assertEqual(cols["band_names"], BAND_NAMES[name])
+                self.assertEqual(set(cols["curve_qa"].tolist()), {8})  # Standard
+                self.assertGreater(len(cols["row"]), 4)  # every pixel breaks
+
+    def test_raw_qa_is_the_decoded_codes(self):
+        for preset, values, codes in ((presets.hls_l30, FMASK_VALUES, FMASK_CODES),
+                                      (presets.sentinel2_l2a, SCL_ALL, SCL_CODES)):
+            with self.subTest(preset=preset.__name__):
+                np.testing.assert_array_equal(preset().qa_table().codes[values], codes)
+                dates, cube, qa = preset_inputs(preset.__name__)
+                lookup = dict(zip(values.tolist(), codes.tolist()))
+                decoded = np.vectorize(lookup.get, otypes=[np.uint8])(qa)
+                assert_same(self,
+                            every_entry(dates, cube, qa, threads=2, profile=preset()),
+                            every_entry(dates, cube, decoded, threads=2, profile=preset(),
+                                        qa_table=None))
+
+    def test_permutation(self):
+        order = [10, 0, 9, 1, 8, 2, 7, 3, 6, 4, 5]
+        base = presets.hls_s30()
+        dates, cube, fmask = preset_inputs("hls_s30")
+        expected = every_entry(dates, cube, fmask, threads=2, profile=base)
+        got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), fmask, threads=2,
+                          profile=permuted(base, order))
+        assert_same(self, unpermute(got, order), expected)
+
+
+class HlsInput(unittest.TestCase):
+    """The HLS presets take every int16 layer times 0.0001."""
+
+    def run_pixel(self, profile, dates, cube, fmask, keep=None):
+        if keep is not None:
+            dates, cube, fmask = dates[keep], cube[..., keep], fmask[..., keep]
+        return ccdcpp.detect(dates, np.ascontiguousarray(cube), fmask, profile=profile)
+
+    def test_scale(self):
+        dates, cube, _, raw = hls_inputs(8, thermal=True)
+        self.assertEqual(raw.dtype, np.int16)
+        np.testing.assert_array_equal(cube, raw * 1e-4)
+        # Thermal B10 is degrees Celsius x 100; times 0.0001 it is degrees
+        # Celsius / 100, inside CELSIUS_HUNDREDTHS' -0.932..0.707.
+        h, _ = presets.hls_l30().options()
+        self.assertTrue(((cube[:, :, 7] > h.THERM_MIN) & (cube[:, :, 7] < h.THERM_MAX)).all())
+
+    def test_fill_is_dropped(self):
+        dates, cube, fmask, raw = hls_inputs(8, thermal=True, H=1, W=1)
+        clear = np.flatnonzero(fmask[0, 0] == 0)
+        optical, thermal = clear[5::40], clear[25::40]
+        raw = raw[0, 0].copy()
+        raw[3, optical] = -9999  # B04
+        raw[7, thermal] = -9999  # B10
+        filled = raw * 1e-4
+        profile = presets.hls_l30()
+        out = self.run_pixel(profile, dates, filled, fmask[0, 0])
+        self.assertFalse(out["processing_mask"][optical].any())
+        self.assertFalse(out["processing_mask"][thermal].any())
+        self.assertTrue(out["processing_mask"][clear[1::40]].all())
+        keep = np.ones(dates.size, dtype=bool)
+        keep[optical] = keep[thermal] = False
+        assert_same(self, models(out),
+                    models(self.run_pixel(profile, dates, filled, fmask[0, 0], keep)))
+
+    def test_coastal_is_screened(self):
+        # 10000 (1.0) is out of the exclusive reflectance range, 9999 in.
+        dates, cube, fmask, raw = hls_inputs(8, thermal=True, H=1, W=1)
+        clear = np.flatnonzero(fmask[0, 0] == 0)
+        high, edge = clear[7::40], clear[27::40]
+        raw = raw[0, 0].copy()
+        raw[0, high] = 10000
+        raw[0, edge] = 9999
+        out = self.run_pixel(presets.hls_l30(), dates, raw * 1e-4, fmask[0, 0])
+        self.assertFalse(out["processing_mask"][high].any())
+        self.assertTrue(out["processing_mask"][edge].all())
+
+    def test_hls_same_date_keeps_the_first(self):
+        # An S30 observation on the date of an L30 one, right after it: the
+        # L30 observation is kept and the run is the run without the S30 one.
+        dates, cube, fmask, _ = hls_inputs(7, step=4, H=1, W=1)
+        cube, fmask = cube[0, 0], fmask[0, 0]
+        clear = np.flatnonzero(fmask == 0)
+        twins = clear[3::9]
+        order = np.sort(np.concatenate([np.arange(dates.size), twins]))
+        second = np.flatnonzero(np.diff(order) == 0) + 1
+        pair_dates = dates[order]
+        pair_fmask = fmask[order]
+        pair_cube = cube[:, order].copy()
+        pair_cube[:, second] += 0.05  # the S30 observation differs
+        profile = presets.hls()
+        out = self.run_pixel(profile, pair_dates, pair_cube, pair_fmask)
+        self.assertTrue(out["processing_mask"][second - 1].all())
+        self.assertFalse(out["processing_mask"][second].any())
+        keep = np.ones(order.size, dtype=bool)
+        keep[second] = False
+        assert_same(self, models(out),
+                    models(self.run_pixel(profile, pair_dates, pair_cube, pair_fmask, keep)))
+        # The other order keeps the other observation.
+        swapped = np.arange(order.size)
+        swapped[second], swapped[second - 1] = second - 1, second
+        other = self.run_pixel(profile, pair_dates, pair_cube[:, swapped], pair_fmask)
+        self.assertNotEqual(str(models(other)), str(models(out)))
+
+
+class Sentinel2Input(unittest.TestCase):
+    """sentinel2_l2a takes offset-corrected BOA reflectance."""
+
+    def test_offset_corrected_input(self):
+        dates, cube, scl, dn = s2_inputs()
+        offset = np.where(dates >= S2_OFFSET_DATE, -1000, 0)
+        np.testing.assert_array_equal(cube, (dn + offset) / 10000.0)
+        out = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2,
+                                         profile=presets.sentinel2_l2a())
+        self.assertEqual(out["failures"], [])
+        self.assertGreater(len(out["row"]), 4)
+
+    def test_uncorrected_input_differs(self):
+        # dn / 10000 without the offset: 0.1 too bright from 2022-01-25.
+        dates, cube, scl, dn = s2_inputs(breaks=False)
+        profile = presets.sentinel2_l2a()
+        corrected = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=profile)
+        raw = ccdcpp.detect_cube_columns(dates, dn / 10000.0, scl, threads=2, profile=profile)
+        # One segment per pixel without the jump; a break at the baseline
+        # change with it.
+        self.assertEqual(len(corrected["row"]), 4)
+        self.assertGreater(len(raw["row"]), len(corrected["row"]))
+        breaks = raw["break_day"][raw["break_day"] > 0]
+        self.assertTrue((np.abs(breaks - S2_OFFSET_DATE) < 60).any(), breaks)
+
+    def test_no_data_is_dropped(self):
+        dates, cube, scl, dn = s2_inputs(H=1, W=1)
+        clear = np.flatnonzero(np.isin(scl[0, 0], (4, 5)))
+        before = clear[(dates[clear] < S2_OFFSET_DATE)][3::30]
+        after = clear[(dates[clear] >= S2_OFFSET_DATE)][3::30]
+        dn = dn[0, 0].copy()
+        dn[2, before] = 0
+        dn[2, after] = 0
+        offset = np.where(dates >= S2_OFFSET_DATE, -1000, 0)
+        out = ccdcpp.detect(dates, (dn + offset) / 10000.0, scl[0, 0],
+                            profile=presets.sentinel2_l2a())
+        self.assertFalse(out["processing_mask"][before].any())
+        self.assertFalse(out["processing_mask"][after].any())
+        self.assertTrue(out["processing_mask"][clear[1::30]].all())
 
 if __name__ == "__main__":
     unittest.main()

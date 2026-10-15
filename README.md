@@ -18,7 +18,7 @@ A high-performance C++17 implementation of the Continuous Change Detection and C
 - OpenMP parallel processing for image cubes
 - Zero-copy NumPy interface
 - Raw QA input decoded through optional lookup tables (Landsat C1/C2; HLS and Sentinel-2 building blocks)
-- Sensor profiles: band roles, units and options in one object, with Landsat presets (`ccdcpp.presets`)
+- Sensor profiles: band roles, units and options in one object, with Landsat presets and HLS and Sentinel-2 presets not yet validated in production (`ccdcpp.presets`)
 - Designed to reproduce PyCCD algorithm behavior and outputs
 - Cross-platform CMake build system
 
@@ -187,10 +187,10 @@ Each builder writes the `QA_*` codes of the `HarmonicOptions` it is given (defau
 
 - **Landsat C2 `QA_PIXEL`:** bit 0 fill; bits 3, 1, 2 (cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; bit 7 water; otherwise clear. Bit 6 (clear) and the confidence bits 8-15 are not read. This is the table the millworks nlcd plugin builds, entry for entry.
 - **Landsat C1 `pixel_qa`:** pyccd's `qabitval`: bit 0 fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 clear; bits 8 and 9 together, or bit 10, clear. A value pyccd rejects decodes to fill.
-- **HLS `Fmask`:** 255 fill; bits 1, 2, 0 (cloud, adjacent to cloud or shadow, cirrus) cloud; bit 3 shadow; bit 4 snow; bit 5 water; otherwise clear. The aerosol level (bits 6-7) is ignored unless `exclude_high_aerosol=True`, which makes high aerosol cloud. Values above 255 are fill.
-- **Sentinel-2 `SCL`:** 0, 1 fill; 2, 3 shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud medium and high probability, thin cirrus) cloud; 11 snow; anything else fill.
+- **HLS `Fmask`:** 255 fill; bits 1, 2, 0 (cloud, adjacent to cloud or shadow, cirrus) cloud; bit 3 shadow; bit 4 snow; bit 5 water; otherwise clear. The aerosol level (bits 6-7) is ignored unless `exclude_high_aerosol=True`, which makes high aerosol cloud. Values above 255 are fill. The HLS v2.0 User Guide lists bit 0 as reserved and not used in v2.0 (Fmask folds cirrus into cloud), so it decodes to cloud only should it ever be set.
+- **Sentinel-2 `SCL`:** 0, 1 fill; 2, 3 (cast shadows, cloud shadows) shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud medium and high probability, thin cirrus) cloud; 11 snow; anything else fill.
 
-The HLS and Sentinel-2 tables follow the products' definitions and are tested, but no production run has used them yet; only the Landsat tables are blessed for production use so far. For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
+The HLS and Sentinel-2 tables follow the products' definitions and are tested, but no production run has used them yet; only the Landsat tables are blessed for production use so far. The HLS and Sentinel-2 presets decode with them and carry the same label (see [Presets](#presets)). For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
 
 ## Cadence Parameters
 
@@ -236,15 +236,38 @@ The profile supplies `hoptions`, `loptions`, `qa_table` and `preprocess` (see [P
 
 ### Presets
 
-`ccdcpp.presets` holds the inputs ccdcpp is validated on: Landsat. All three take seven bands in the order blue, green, red, nir, swir1, swir2, thermal (TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6; OLI/TIRS bands 2, 3, 4, 5, 6, 7, 10).
+`ccdcpp.presets` holds the inputs ccdcpp is validated on, Landsat, and presets for HLS v2.0 and Sentinel-2 L2A that are **not validated in production**: their values follow the products' documentation and are tested on synthetic series, but no real sample has been run through them yet.
 
-| Preset | Optical input | Thermal input | QA input |
-|--------|---------------|---------------|----------|
-| `landsat_c1_dn()` | reflectance x 10000 | Kelvin x 10 | pre-classified codes |
-| `landsat_c1_physical()` | reflectance 0..1 (DN / 10000) | degrees Celsius / 100 | pre-classified codes |
-| `landsat_c2()` | reflectance 0..1 (`SR_B* * 2.75e-5 - 0.2`) | degrees Celsius / 100 | raw `QA_PIXEL` (uint16) |
+The three Landsat presets take seven bands in the order blue, green, red, nir, swir1, swir2, thermal (TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6; OLI/TIRS bands 2, 3, 4, 5, 6, 7, 10).
+
+| Preset | Optical input | Thermal input | QA input | Validated for production |
+|--------|---------------|---------------|----------|--------------------------|
+| `landsat_c1_dn()` | reflectance x 10000 | Kelvin x 10 | pre-classified codes | yes |
+| `landsat_c1_physical()` | reflectance 0..1 (DN / 10000) | degrees Celsius / 100 | pre-classified codes | yes |
+| `landsat_c2()` | reflectance 0..1 (`SR_B* * 2.75e-5 - 0.2`) | degrees Celsius / 100 | raw `QA_PIXEL` (uint16) | yes |
+| `hls_l30()` | reflectance 0..1 (`B* * 0.0001`) | B10 degrees Celsius / 100 (`B10 * 0.0001`) | raw `Fmask` (uint8) | not yet |
+| `hls_s30()` | reflectance 0..1 (`B* * 0.0001`) | none | raw `Fmask` (uint8) | not yet |
+| `hls()` | reflectance 0..1 (`B* * 0.0001`), L30 and S30 | none | raw `Fmask` (uint8) | not yet |
+| `sentinel2_l2a()` | reflectance 0..1 (`(DN + BOA_ADD_OFFSET) / 10000`) | none | raw `SCL` (uint8) | not yet |
 
 `landsat_c1_dn().options()` is `HarmonicOptions()` and `LassoOptions()`, field for field. `landsat_c1_physical()` is the physical-unit preset (see the input unit convention in `harmonic.hpp`): `REFL_MIN`/`REFL_MAX` 0 and 1, `THERM_MIN`/`THERM_MAX` -0.932 and 0.707, `MEDIAN_GREEN_FILTER` 0.04, `alpha` and `coef_floor` 1e-4, which is every absolute threshold and both Lasso constants of the DN preset divided by 10000, and the identity thermal transform. It is the same fit as the DN preset, with coefficients in the input's units. `landsat_c2()` has the same thresholds (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL` with `qa_tables.landsat_c2_qa_pixel`.
+
+The HLS and Sentinel-2 presets have the thresholds and Lasso constants of `landsat_c1_physical()`, detect change on the five Landsat-equivalent bands green, red, nir, swir1 and swir2 with the default chi-squared(5) thresholds, use green and swir1 for Tmask, saturation-screen every optical row, have no statistics cutoff (`stat_ord=None`) and keep pyccd's cadence values (see [Cadence Parameters](#cadence-parameters)). The single-product presets name their rows by product band ID; `hls()` names them by role, since its rows mix two numberings.
+
+| Preset | Rows (role) | Left out |
+|--------|-------------|----------|
+| `hls_l30()` | B01 (coastal), B02 (blue), B03 (green), B04 (red), B05 (nir), B06 (swir1), B07 (swir2), B10 (thermal) | B09 cirrus, B11 TIRS 2 |
+| `hls_s30()` | B01 (coastal), B02 (blue), B03 (green), B04 (red), B05, B06, B07 (red_edge_1..3), B08 (nir_broad), B8A (nir), B11 (swir1), B12 (swir2) | B09 water vapour, B10 cirrus |
+| `hls()` | coastal, blue, green, red, nir (L30 B05, S30 B8A), swir1, swir2 | thermal, which S30 lacks |
+| `sentinel2_l2a()` | B02 (blue), B03 (green), B04 (red), B05, B06, B07 (red_edge_1..3), B08 (nir_broad), B8A (nir), B11 (swir1), B12 (swir2) | B01, B09 (60 m, atmospheric); L2A has no B10 |
+
+- **HLS scaling.** Every HLS layer is `int16` times 0.0001. For the reflective bands that is the product's scale factor; L30 B10 is brightness temperature in degrees Celsius with scale factor 0.01, so `B10 * 0.0001` is degrees Celsius / 100, `CELSIUS_HUNDREDTHS`, and one divisor serves every row. The fill, -9999, becomes -0.9999 and is dropped by the reflectance and thermal bounds.
+- **HLS QA.** `Fmask` decodes through `qa_tables.hls_fmask` with the aerosol level ignored; `dataclasses.replace(preset, qa_table_options={"exclude_high_aerosol": True})` treats high aerosol as cloud.
+- **S30 and Sentinel-2 bands.** The red edges and B08 are fitted, reported and saturation-screened but not detected on; HLS does not adjust them to the OLI bandpasses.
+- **Sentinel-2 offset.** From processing baseline 04.00 (25 January 2022) L2A stores `DN = reflectance * 10000 - BOA_ADD_OFFSET`, with a negative, band-dependent `BOA_ADD_OFFSET` in each product's metadata (0 before). The offset varies by scene and ccdcpp never sees the metadata, so the caller applies it; a series that mixes corrected and uncorrected scenes jumps at the baseline change and detects a false break. Some archives distribute corrected bands while their metadata still declares the offset (earth-search's `sentinel-2-l2a` COGs), and there it must not be applied a second time. DN 0 (no data) becomes 0 or negative and is dropped.
+- **Sentinel-2 QA.** `SCL` decodes through `qa_tables.sentinel2_scl`; class 7 (unclassified) is cloud.
+- **L30 and S30 in one series.** An L30 and an S30 observation on one date are deduplicated like any other pair, and the first in array order is kept: put L30 before S30 on a shared date.
+- **Dense cadences.** The peek window follows the cadence (about 12 observations at 8 days, 19 at 5, 32-48 at 2-3), with the change threshold that goes with it. `MEOW_SIZE` and the `RETRAIN_*` counts stay pyccd's observation counts, as described under Denser cadences.
 
 ### Roles and thresholds
 
@@ -254,15 +277,15 @@ The roles are `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coast
 
 ### Adding a sensor
 
-A sensor is one `SensorProfile` call. **Not shipped:** the HLS L30 profile below shows the shape; its values are not validated, and HLS and Sentinel-2 presets are not part of `ccdcpp.presets` yet.
+A sensor is one `SensorProfile` call; `ccdcpp.presets` writes its profiles that way. **Not shipped:** the Landsat 8/9 Collection 2 profile below, with the coastal band, shows the shape; its values are not validated and it is not part of `ccdcpp.presets`.
 
 ```python
 from ccdcpp import CELSIUS_HUNDREDTHS, REFLECTANCE, SensorProfile
 
-def hls_l30():
+def landsat_oli_c2():
     return SensorProfile(
-        name="hls_l30",
-        band_names=("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10"),
+        name="landsat_oli_c2",
+        band_names=("SR_B1", "SR_B2", "SR_B3", "SR_B4", "SR_B5", "SR_B6", "SR_B7", "ST_B10"),
         roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"),
         detection=("green", "red", "nir", "swir1", "swir2"),
         tmask=("green", "swir1"),
@@ -271,12 +294,12 @@ def hls_l30():
         alpha=1e-4,
         coef_floor=1e-4,
         thermal=CELSIUS_HUNDREDTHS,
-        stat_ord=None,  # no statistics cutoff; 2017-12-31 is Landsat's
-        qa_table_builder="hls_fmask",
+        stat_ord=736694,  # 2017-12-31, the Landsat statistics cutoff
+        qa_table_builder="landsat_c2_qa_pixel",
     )
 ```
 
-`units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`, and `refl_inclusive=(lo, hi)` for `REFL_MIN_INCLUSIVE`/`REFL_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE` are the two Landsat blocks), `thermal` a `ccdcpp.Thermal` (transform and bounds, and `inclusive=(lo, hi)` for `THERM_MIN_INCLUSIVE`/`THERM_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None` for an input without one, and `cadence` a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`). `green_filter_scope` is `"stat_window"` (the default), `"all"` or `"off"` (`ccdcpp.GREEN_FILTER_SCOPES`), for `GREEN_FILTER_SCOPE`. `alpha` and `coef_floor` have no default because both are statements about the input unit and a wrong value does not raise. A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, thermal band without `thermal=`) raises `ValueError` when it is constructed.
+`units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`, and `refl_inclusive=(lo, hi)` for `REFL_MIN_INCLUSIVE`/`REFL_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE` are the two Landsat blocks), `thermal` a `ccdcpp.Thermal` (transform and bounds, and `inclusive=(lo, hi)` for `THERM_MIN_INCLUSIVE`/`THERM_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None` for an input without one, and `cadence` a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`). `green_filter_scope` is `"stat_window"` (the default), `"all"` or `"off"` (`ccdcpp.GREEN_FILTER_SCOPES`), for `GREEN_FILTER_SCOPE`. `qa_table_options` is a mapping of keyword arguments for the `qa_table_builder` (default empty); a name the builder does not take, or options without a builder, raise `ValueError`. `alpha` and `coef_floor` have no default because both are statements about the input unit and a wrong value does not raise. A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, thermal band without `thermal=`) raises `ValueError` when it is constructed.
 
 ## Preprocessing
 

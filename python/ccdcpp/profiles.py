@@ -7,18 +7,20 @@ so the same profile text holds for any band order. ``ccdcpp.detect``,
 ``ccdcpp.detect_cube`` and ``ccdcpp.detect_cube_columns`` take one as
 ``profile=``.
 
-A new sensor is one constructor call. NOT SHIPPED: the profile below is an
-example of the shape, its values are not validated, and ccdcpp.presets does
-not contain it::
+A new sensor is one constructor call; ``ccdcpp.presets`` writes its profiles
+that way. NOT SHIPPED: the profile below is an example of the shape, its
+values are not validated, and ccdcpp.presets does not contain it::
 
     from ccdcpp import CELSIUS_HUNDREDTHS, REFLECTANCE, SensorProfile
 
-    def hls_l30():
-        # HLS v2.0 L30 surface reflectance divided by 10000, thermal B10 in
-        # degrees Celsius / 100. Fmask QA.
+    def landsat_oli_c2():
+        # Landsat 8/9 Collection 2 Level-2 with the coastal band, in the
+        # units of presets.landsat_c2: reflectance and degrees Celsius / 100.
+        # Raw QA_PIXEL.
         return SensorProfile(
-            name="hls_l30",
-            band_names=("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10"),
+            name="landsat_oli_c2",
+            band_names=("SR_B1", "SR_B2", "SR_B3", "SR_B4", "SR_B5", "SR_B6",
+                        "SR_B7", "ST_B10"),
             roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2",
                    "thermal"),
             detection=("green", "red", "nir", "swir1", "swir2"),
@@ -29,8 +31,8 @@ not contain it::
             alpha=1e-4,
             coef_floor=1e-4,
             thermal=CELSIUS_HUNDREDTHS,
-            stat_ord=None,
-            qa_table_builder="hls_fmask",
+            stat_ord=736694,  # 2017-12-31, the Landsat statistics cutoff
+            qa_table_builder="landsat_c2_qa_pixel",
         )
 
 The detection count sets the chi-squared degrees of freedom of the change and
