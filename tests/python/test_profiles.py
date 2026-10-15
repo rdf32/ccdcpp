@@ -1174,14 +1174,14 @@ class SensorPresets(unittest.TestCase):
         for preset in NEW_PRESETS:
             with self.subTest(preset=preset.__name__):
                 doc = preset.__doc__
-                self.assertIn("Not validated in production.", doc)
+                self.assertNotIn("not validated", doc.lower())
                 self.assertIn("Input:", doc)
                 self.assertIn("QA:", doc)
                 self.assertIn(BUILDERS[preset.__name__], doc)
                 self.assertEqual(preset().name, preset.__name__)
                 for band in BAND_NAMES[preset.__name__]:
                     self.assertIn(band, doc)
-        self.assertIn("NOT VALIDATED IN PRODUCTION", presets.__doc__)
+        self.assertNotIn("not validated", presets.__doc__.lower())
         self.assertIn("BOA_ADD_OFFSET", presets.sentinel2_l2a.__doc__)
         self.assertIn("put L30 before S30", presets.hls.__doc__)
         # S30 detects on bands HLS adjusts to OLI, but B01 and B02 are
@@ -1191,6 +1191,49 @@ class SensorPresets(unittest.TestCase):
         for preset in (presets.hls_s30, presets.sentinel2_l2a):
             with self.subTest(preset=preset.__name__):
                 self.assertIn("2C from 2024", preset.__doc__)
+
+    def test_docstrings_state_the_validation(self):
+        def flat(text):
+            return " ".join(text.split())
+        # The record every one was validated on.
+        for preset in NEW_PRESETS:
+            with self.subTest(preset=preset.__name__):
+                doc = flat(preset.__doc__)
+                self.assertIn("Validation: one cell of MGRS tile T16SGC near Atlanta", doc)
+                self.assertIn("2020-2023, read from Planetary Computer", doc)
+        self.assertIn("2020-2023, read from Planetary Computer, four years of one cell",
+                      flat(presets.__doc__))
+        # hls_l30 is promoted outright; the summary line carries no caveat.
+        self.assertEqual(presets.hls_l30.__doc__.splitlines()[0],
+                         "HLS v2.0 L30 (Landsat 8/9 OLI/TIRS at 30 m).")
+        self.assertIn("kappa 0.44", flat(presets.hls_l30.__doc__))
+        # S30 and hls: the Fmask-over-bright-surfaces caveat, with numbers.
+        for preset in (presets.hls_s30, presets.hls):
+            with self.subTest(preset=preset.__name__):
+                doc = flat(preset.__doc__)
+                self.assertIn("Validated, with a caveat: Fmask over bright surfaces.",
+                              flat(doc.split("\n\n")[0]))
+                self.assertIn("Caveat, Fmask over bright surfaces", doc)
+        self.assertIn("1,145 of about 1,860 quarry pixels go to the InsufficientClear",
+                      flat(presets.hls_s30.__doc__))
+        self.assertIn("61% of S30 observations are cloud", flat(presets.hls_s30.__doc__))
+        self.assertIn("1,741 of 300,288 pixels go to the InsufficientClear",
+                      flat(presets.hls.__doc__))
+        # Sentinel-2: median level, PC's processing, not ESA's.
+        label = ("Validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A, "
+                 "2020–23; ESA's own processing not sampled.")
+        s2 = flat(presets.sentinel2_l2a.__doc__)
+        self.assertTrue(s2.startswith("Sentinel-2 L2A (ESA Sen2Cor), native bands. " + label), s2)
+        self.assertIn(label, flat(presets.__doc__).replace(":func:`sentinel2_l2a` is v", "V"))
+        # SCL 7 stays cloud; the water trade-off with the measured counts.
+        self.assertIn("7-10 cloud (7, unclassified, included)", s2)
+        self.assertIn("sends 1,355 of 3,983 water pixels, and 3,426 pixels in all", s2)
+        self.assertIn("decoding 7 as fill would send 2,545, as clear 587. It stays cloud.", s2)
+        # The measured hls cadence, not the 2-4 days once documented.
+        hls_doc = flat(presets.hls.__doc__)
+        self.assertIn("median gap of 4-5 days, and the peek window grew to 19-24", hls_doc)
+        self.assertNotIn("2-4 days", hls_doc)
+        self.assertNotIn("32-48", hls_doc)
 
     def test_docstrings_are_wrapped(self):
         for obj in [presets] + [getattr(presets, name) for name in presets.__all__]:

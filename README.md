@@ -18,7 +18,7 @@ A high-performance C++17 implementation of the Continuous Change Detection and C
 - OpenMP parallel processing for image cubes
 - Zero-copy NumPy interface
 - Raw QA input decoded through optional lookup tables (Landsat C1/C2; HLS and Sentinel-2 building blocks)
-- Sensor profiles: band roles, units and options in one object, with Landsat presets and HLS and Sentinel-2 presets not yet validated in production (`ccdcpp.presets`)
+- Sensor profiles: band roles, units and options in one object, with Landsat presets and HLS and Sentinel-2 presets validated on a real sample (`ccdcpp.presets`)
 - Designed to reproduce PyCCD algorithm behavior and outputs
 - Cross-platform CMake build system
 
@@ -180,17 +180,17 @@ columns = ccdcpp.detect_cube_columns(
 |---------|---------|--------------------------|
 | `landsat_c2_qa_pixel(options)` | Landsat Collection 2 `QA_PIXEL` (uint16) | yes |
 | `landsat_c1_pixel_qa(options)` | Landsat Collection 1 `pixel_qa` (uint16) | yes |
-| `hls_fmask(options, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | not yet |
-| `sentinel2_scl(options)` | Sentinel-2 L2A `SCL` (uint8) | not yet |
+| `hls_fmask(options, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | decode checked on real data: all 38 values present match the HLS v2.0 User Guide (T16SGC, 2020–2023) |
+| `sentinel2_scl(options)` | Sentinel-2 L2A `SCL` (uint8) | decode checked on real data: every class present (0, 2–11) matches SentiWiki (T16SGC, 2020–2023) |
 
 Each builder writes the `QA_*` codes of the `HarmonicOptions` it is given (default `HarmonicOptions()`), so build the table from the options the run uses. Each decodes most-excluding first: fill, then cloud, then shadow, then snow, then water, then clear.
 
 - **Landsat C2 `QA_PIXEL`:** bit 0 fill; bits 3, 1, 2 (cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; bit 7 water; otherwise clear. Bit 6 (clear) and the confidence bits 8-15 are not read. This is the table the millworks nlcd plugin builds, entry for entry.
 - **Landsat C1 `pixel_qa`:** pyccd's `qabitval`: bit 0 fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 clear; bits 8 and 9 together, or bit 10, clear. A value pyccd rejects decodes to fill.
-- **HLS `Fmask`:** 255 fill; bits 1, 2, 0 (cloud, adjacent to cloud or shadow, cirrus) cloud; bit 3 shadow; bit 4 snow; bit 5 water; otherwise clear. The aerosol level (bits 6-7) is ignored unless `exclude_high_aerosol=True`, which makes high aerosol cloud. Values above 255 are fill. The HLS v2.0 User Guide lists bit 0 as reserved and not used in v2.0 (Fmask folds cirrus into cloud), so it decodes to cloud only should it ever be set.
+- **HLS `Fmask`:** 255 fill; bits 1, 2, 0 (cloud, adjacent to cloud or shadow, reserved) cloud; bit 3 shadow; bit 4 snow; bit 5 water; otherwise clear. The aerosol level (bits 6-7) is ignored unless `exclude_high_aerosol=True`, which makes high aerosol cloud. Values above 255 are fill. The HLS v2.0 User Guide lists bit 0 as reserved and not used in v2.0 (Fmask folds cirrus into cloud), so it decodes to cloud only should it ever be set.
 - **Sentinel-2 `SCL`:** 0, 1 fill; 2, 3 (cast shadows, cloud shadows) shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud medium and high probability, thin cirrus) cloud; 11 snow; anything else fill.
 
-The HLS and Sentinel-2 tables follow the products' definitions and are tested, but no production run has used them yet; only the Landsat tables are blessed for production use so far. The HLS and Sentinel-2 presets decode with them and carry the same label (see [Presets](#presets)). For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
+The HLS and Sentinel-2 tables follow the products' definitions, are tested, and were checked against that documentation on every value present in the real sample the presets were validated on, one cell of MGRS tile T16SGC, 2020–2023 (Fmask bit 0 was never set; SCL class 1 was absent). What the decode costs on that sample, Fmask over bright surfaces and SCL 7 over water, is under [Validation on real data](#validation-on-real-data). For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
 
 ## Cadence Parameters
 
@@ -215,9 +215,9 @@ h.CHANGE_THRESHOLD = ccdcpp.chi2_quantile(h.CHANGE_PROBABILITY, len(h.DETECTION_
 
 A value that makes no sense raises `ValueError` before any pixel runs: zero or negative days, a count below 1, a probability outside (0, 1), a factor or divisor of zero or less.
 
-**Denser cadences.** The peek size follows the cadence through `PEEK_REFERENCE_DAYS`: it is `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / (median gap + 0.001))`, never below `PEEK_SIZE`, where the gap is between consecutive observations the processing mask keeps, up to `STAT_ORD`. At 8 days it is 12, and at the 2–3 day cadence of HLS it grows to about 32–48 observations (`6 * 16 / 3 ≈ 32`, `6 * 16 / 2 = 48`). The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: it is the chi-squared quantile, with one degree of freedom per detection band, at `1 - (1 - CHANGE_PROBABILITY) ** (PEEK_SIZE / peek)`. With the defaults that is 9.24 at a peek of 12 (8 days), 4.95 at 32 and 3.91 at 48. Both are computed per pixel from the `PEEK_SIZE` and `CHANGE_THRESHOLD` the caller passes, as pyccd's `adjustpeek` and `adjustchgthresh` do. A series whose median gap is about 14.8 days or more keeps `PEEK_SIZE` and `CHANGE_THRESHOLD` as given.
+**Denser cadences.** The peek size follows the cadence through `PEEK_REFERENCE_DAYS`: it is `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / (median gap + 0.001))`, never below `PEEK_SIZE`, where the gap is between consecutive observations the processing mask keeps, up to `STAT_ORD`. At 8 days it is 12 and at 5 days 19 (`6 * 16 / 5 ≈ 19`). On the cell the HLS and Sentinel-2 presets were validated on (T16SGC, 2020–2023) `hls_s30()` and `sentinel2_l2a()` ran at a median gap of 5 days, peek 19, and the combined `hls()` at 4–5 days, peek 19–24 (`6 * 16 / 4 = 24`); `hls_l30()` at 16 days, keeping `PEEK_SIZE`. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: it is the chi-squared quantile, with one degree of freedom per detection band, at `1 - (1 - CHANGE_PROBABILITY) ** (PEEK_SIZE / peek)`. With the defaults that is 9.24 at a peek of 12 (8 days), 6.83 at 19 (5 days) and 5.90 at 24 (4 days). Both are computed per pixel from the `PEEK_SIZE` and `CHANGE_THRESHOLD` the caller passes, as pyccd's `adjustpeek` and `adjustchgthresh` do. A series whose median gap is about 14.8 days or more keeps `PEEK_SIZE` and `CHANGE_THRESHOLD` as given.
 
-`MEOW_SIZE` and the `RETRAIN_*` constants are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 2–3 day cadence, 12 observations are about a month and 24 about two, where at 16 days they are about half a year and a year. A caller who wants them in time rather than in observations sets them from the cadence.
+`MEOW_SIZE` and the `RETRAIN_*` constants are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at the 4–5 day cadence of `hls()` on the validation cell, 12 observations are about 50–60 days and 24 about 100–120, where at 16 days they are about half a year and a year. A caller who wants them in time rather than in observations sets them from the cadence.
 
 ## Sensor Profiles
 
@@ -236,7 +236,7 @@ The profile supplies `hoptions`, `loptions`, `qa_table` and `preprocess` (see [P
 
 ### Presets
 
-`ccdcpp.presets` holds the inputs ccdcpp is validated on, Landsat, and presets for HLS v2.0 and Sentinel-2 L2A that are **not validated in production**: their values follow the products' documentation and are tested on synthetic series, but no real sample has been run through them yet.
+`ccdcpp.presets` holds the inputs ccdcpp is validated on, Landsat, and presets for HLS v2.0 and Sentinel-2 L2A. Their values follow the products' documentation, are tested on synthetic series, and were validated on a real sample: one cell of MGRS tile T16SGC near Atlanta, 2020–2023, four years (see [Validation on real data](#validation-on-real-data)).
 
 The three Landsat presets take seven bands in the order blue, green, red, nir, swir1, swir2, thermal (TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6; OLI/TIRS bands 2, 3, 4, 5, 6, 7, 10).
 
@@ -245,10 +245,10 @@ The three Landsat presets take seven bands in the order blue, green, red, nir, s
 | `landsat_c1_dn()` | reflectance x 10000 | Kelvin x 10 | pre-classified codes | yes |
 | `landsat_c1_physical()` | reflectance 0..1 (DN / 10000) | degrees Celsius / 100 | pre-classified codes | yes |
 | `landsat_c2()` | reflectance 0..1 (`SR_B* * 2.75e-5 - 0.2`) | degrees Celsius / 100 | raw `QA_PIXEL` (uint16) | yes |
-| `hls_l30()` | reflectance 0..1 (`B* * 0.0001`) | B10 degrees Celsius / 100 (`B10 * 0.0001`) | raw `Fmask` (uint8) | not yet |
-| `hls_s30()` | reflectance 0..1 (`B* * 0.0001`) | none | raw `Fmask` (uint8) | not yet |
-| `hls()` | reflectance 0..1 (`B* * 0.0001`), L30 and S30 | none | raw `Fmask` (uint8) | not yet |
-| `sentinel2_l2a()` | reflectance 0..1 (`(DN + BOA_ADD_OFFSET) / 10000`) | none | raw `SCL` (uint8) | not yet |
+| `hls_l30()` | reflectance 0..1 (`B* * 0.0001`) | B10 degrees Celsius / 100 (`B10 * 0.0001`) | raw `Fmask` (uint8) | yes (T16SGC, 2020–2023) |
+| `hls_s30()` | reflectance 0..1 (`B* * 0.0001`) | none | raw `Fmask` (uint8) | yes, with a caveat: Fmask over bright surfaces (T16SGC, 2020–2023) |
+| `hls()` | reflectance 0..1 (`B* * 0.0001`), L30 and S30 | none | raw `Fmask` (uint8) | yes, with a caveat: Fmask over bright surfaces (T16SGC, 2020–2023) |
+| `sentinel2_l2a()` | reflectance 0..1 (`(DN + BOA_ADD_OFFSET) / 10000`) | none | raw `SCL` (uint8) | validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled |
 
 `landsat_c1_dn().options()` is `HarmonicOptions()` and `LassoOptions()`, field for field. `landsat_c1_physical()` is the physical-unit preset (see the input unit convention in `harmonic.hpp`): `REFL_MIN`/`REFL_MAX` 0 and 1, `THERM_MIN`/`THERM_MAX` -0.932 and 0.707, `MEDIAN_GREEN_FILTER` 0.04, `alpha` and `coef_floor` 1e-4, which is every absolute threshold and both Lasso constants of the DN preset divided by 10000, and the identity thermal transform. It is the same fit as the DN preset, with coefficients in the input's units. `landsat_c2()` has the same thresholds (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL` with `qa_tables.landsat_c2_qa_pixel`.
 
@@ -265,9 +265,26 @@ The HLS and Sentinel-2 presets have the thresholds and Lasso constants of `lands
 - **HLS QA.** `Fmask` decodes through `qa_tables.hls_fmask` with the aerosol level ignored; `dataclasses.replace(preset, qa_table_options={"exclude_high_aerosol": True})` treats high aerosol as cloud.
 - **S30 and Sentinel-2 bands.** The red edges and B08 are fitted, reported and saturation-screened but not detected on; HLS does not adjust them to the OLI bandpasses.
 - **Sentinel-2 offset.** From processing baseline 04.00 (25 January 2022) L2A stores `DN = reflectance * 10000 - BOA_ADD_OFFSET`, with a negative, band-dependent `BOA_ADD_OFFSET` in each product's metadata (0 before). The offset varies by scene and ccdcpp never sees the metadata, so the caller applies it; a series that mixes corrected and uncorrected scenes jumps at the baseline change and detects a false break. Some archives distribute corrected bands while their metadata still declares the offset (earth-search's `sentinel-2-l2a` COGs), and there it must not be applied a second time. DN 0 (no data) becomes 0 or negative and is dropped.
-- **Sentinel-2 QA.** `SCL` decodes through `qa_tables.sentinel2_scl`; class 7 (unclassified) is cloud.
+- **Sentinel-2 QA.** `SCL` decodes through `qa_tables.sentinel2_scl`; class 7 (unclassified) is cloud, which costs water pixels (see [Validation on real data](#validation-on-real-data)). A caller who wants them passes `qa_table=ccdcpp.QaTable(codes)`, with `codes` the preset table's codes and entry 7 changed.
 - **L30 and S30 in one series.** An L30 and an S30 observation on one date are deduplicated like any other pair, and the first in array order is kept: put L30 before S30 on a shared date.
-- **Dense cadences.** The peek window follows the cadence (about 12 observations at 8 days, 19 at 5, 32-48 at 2-3), with the change threshold that goes with it. `MEOW_SIZE` and the `RETRAIN_*` counts stay pyccd's observation counts, as described under Denser cadences.
+- **Dense cadences.** The peek window follows the cadence (about 12 observations at 8 days, 19 at 5, 24 at 4; on the validation cell `hls()` ran at 4–5 days, peek 19–24), with the change threshold that goes with it. `MEOW_SIZE` and the `RETRAIN_*` counts stay pyccd's observation counts, as described under Denser cadences.
+
+### Validation on real data
+
+The HLS and Sentinel-2 presets were run on one cell: Landsat ARD tile h024v013 chunk 00030008 near Atlanta, cut to MGRS tile T16SGC, 2020-01-01 to 2023-12-31, read from Microsoft Planetary Computer (`hls2-l30` and `hls2-s30`, which are LP DAAC's HLS v2.0, and `sentinel-2-l2a` at 20 m). The reference was Landsat Collection 2 ARD of the same cell and years run with `landsat_c2()` without its statistics cutoff. Four years of one cell is the whole record; nothing here was measured elsewhere.
+
+| Preset | Pixels, dates | Status | What was measured |
+|--------|---------------|--------|-------------------|
+| `hls_l30()` | 300,288 at 30 m, 238 | validated | Break agreement per pixel with Landsat 8+9 ARD kappa 0.44, where adding Landsat 7 to the ARD gives 0.43; matched breaks a median 8 days apart, 85% within 96 days, no date bias; model levels within 0.004 reflectance. With a thin 2020 (37 scenes, half partial) no break is detected before the second half of 2021. |
+| `hls_s30()` | 300,288, 461 | validated, with a caveat: Fmask over bright surfaces | 41% more break pixels than L30, a median 16 days earlier, in classes that change. Fmask on Sentinel-2 (no thermal band) calls bright barren land cloud: 61% of observations on the cell's quarries, and 1,145 of about 1,860 quarry pixels go to InsufficientClear (L30: 2; ARD: 170). |
+| `hls()` | 300,288, 699 | validated, with a caveat: Fmask over bright surfaces | Mostly follows S30 (kappa 0.71 with S30, 0.45 with L30). L30 first on a shared date worked on all 85 shared dates. 1,741 pixels go to InsufficientClear (S30: 2,101; L30: 2). |
+| `sentinel2_l2a()` | 675,648 at 20 m, 565 | validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled | With the per-scene offset the 2022 baseline change looks like any other window (0.34% of pixels break within 60 days of it; 92.3% without). Against S30, levels about 0.01 higher and about twice the RMSE (no BRDF or bandpass adjustment), kappa 0.48, fewer break pixels (2.35% against 3.62%). |
+
+- **SCL 7 stays cloud, at a cost in water pixels.** SCL 7 (unclassified) is 2.13% of the cell's non-fill observations. As cloud, together with SCL 2 (cast shadows) on small water bodies, it sends 1,355 of the cell's 3,983 water pixels, and 3,426 pixels in all, to the InsufficientClear procedure. Decoded as fill it would send 2,545, and as clear 587.
+- **QA decode.** `hls_fmask` matches the HLS v2.0 User Guide on all 38 values present and `sentinel2_scl` matches SentiWiki on every class present (0, 2–11). High aerosol is flagged on about half the observations; treating it as cloud would remove another 16.5% (L30) and 16.8% (S30) of what QA keeps, which is why the presets ignore it.
+- **Coastal B01.** Its saturation screen drops 0.1–0.8% of observations, all at or below 0, none at 1.0; without it 99.0% (L30) and 99.4% (S30) of breaks are unchanged. It stays in the screen.
+- **Band order.** Only the band count of a stack is checked unless `band_names=` is passed; the sample's Sentinel-2 store kept B08 with the 10 m bands, which `sentinel2_l2a()` would have read as red edge 1 without complaint (see [Sensor Profiles](#sensor-profiles)).
+- **Fixtures.** Four of the sample's pixels (an evergreen-forest pixel, open water, high-intensity developed and a pixel with a 2022 break) in all three products are pinned in `tests/python/fixtures/t16sgc_2020_2023`, raw values and raw QA with each scene's Sentinel-2 offset, with every preset's output on them (`tests/python/test_real_fixtures.py`). The forest pixel, `481_393`, is named 1-based (column, row) as the production CCD table names it.
 
 ### Roles and thresholds
 

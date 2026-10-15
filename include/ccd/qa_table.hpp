@@ -64,8 +64,11 @@ using QaTablePtr = std::shared_ptr<const QaTable>;
 // caller that renumbers them gets a table that agrees with its run.
 //
 // The Landsat tables are the ones validated for production use. The HLS and
-// Sentinel-2 tables follow the products' published definitions and are
-// tested here, but no production run has used them yet.
+// Sentinel-2 tables follow the products' published definitions, are tested
+// here, and decode as that documentation says on every value present in the
+// real sample the HLS and Sentinel-2 presets were validated on (MGRS tile
+// T16SGC, 2020-2023: 38 Fmask values; SCL classes 0 and 2-11). No production
+// run has used them yet.
 //
 //==============================================================================
 
@@ -116,7 +119,7 @@ QaTablePtr landsat_c1_pixel_qa(const HarmonicOptions& options = HarmonicOptions{
 //     bit 1       cloud              -> QA_CLOUD
 //     bit 2       adjacent to cloud
 //                 or shadow          -> QA_CLOUD
-//     bit 0       cirrus             -> QA_CLOUD
+//     bit 0       reserved           -> QA_CLOUD
 //     bits 6-7    high aerosol (11)  -> QA_CLOUD, when exclude_high_aerosol
 //     bit 3       cloud shadow       -> QA_SHADOW
 //     bit 4       snow or ice        -> QA_SNOW
@@ -125,7 +128,9 @@ QaTablePtr landsat_c1_pixel_qa(const HarmonicOptions& options = HarmonicOptions{
 //
 // Tested in that order. The aerosol level is ignored unless
 // exclude_high_aerosol is set. Values above 255 are not Fmask values and
-// decode to QA_FILL.
+// decode to QA_FILL. The HLS v2.0 User Guide lists bit 0 as reserved and not
+// used in v2.0 (Fmask folds cirrus into cloud); it decodes to QA_CLOUD only
+// should it ever be set.
 //------------------------------------------------------------------------------
 QaTablePtr hls_fmask(
     const HarmonicOptions& options = HarmonicOptions{},
@@ -136,7 +141,7 @@ QaTablePtr hls_fmask(
 // Sentinel-2 L2A scene classification, SCL (uint8).
 //
 //     0  no data, 1 saturated or defective         -> QA_FILL
-//     2  dark area, 3 cloud shadow                 -> QA_SHADOW
+//     2  cast shadows, 3 cloud shadows             -> QA_SHADOW
 //     4  vegetation, 5 not vegetated               -> QA_CLEAR
 //     6  water                                     -> QA_WATER
 //     7  unclassified, 8 cloud medium probability,

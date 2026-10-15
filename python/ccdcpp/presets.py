@@ -11,15 +11,20 @@ which is TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6 and OLI/TIRS bands 2, 3, 4, 5, 6,
 7, 10. They differ in the unit of the input and in the QA they expect.
 
 The HLS and Sentinel-2 presets, :func:`hls_l30`, :func:`hls_s30`,
-:func:`hls` and :func:`sentinel2_l2a`, are NOT VALIDATED IN PRODUCTION: their
-values follow the products' documentation and are tested on synthetic
-series, but no real sample has been run through them. All four take
-physical units (reflectance 0..1, thermal in degrees Celsius / 100), detect
-change on the five Landsat-equivalent bands (green, red, nir, swir1, swir2)
-with the default thresholds, have no statistics cutoff (``stat_ord=None``)
-and keep pyccd's cadence values. The single-product presets name their
-rows by product band ID (``B01``, ``B8A``, ...); :func:`hls`, whose rows mix
-two numberings, names them by role.
+:func:`hls` and :func:`sentinel2_l2a`, are validated on a real sample: one
+cell of MGRS tile T16SGC near Atlanta (Landsat ARD h024v013 chunk 00030008),
+2020-2023, read from Planetary Computer, four years of one cell.
+:func:`hls_l30` is validated; :func:`hls_s30` and :func:`hls` are validated
+with a caveat, Fmask over bright surfaces; :func:`sentinel2_l2a` is
+validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A,
+2020–23; ESA's own processing not sampled. Each docstring gives the measured
+numbers, and tests/python/fixtures/t16sgc_2020_2023 pins four of the
+sample's pixels. All four take physical units (reflectance 0..1, thermal in
+degrees Celsius / 100), detect change on the five Landsat-equivalent bands
+(green, red, nir, swir1, swir2) with the default thresholds, have no
+statistics cutoff (``stat_ord=None``) and keep pyccd's cadence values. The
+single-product presets name their rows by product band ID (``B01``, ``B8A``,
+...); :func:`hls`, whose rows mix two numberings, names them by role.
 
 Every preset leaves ``preprocess`` None, so it runs the default plan of its
 options (``ccdcpp.default_plan``); ``dataclasses.replace(preset(),
@@ -124,7 +129,7 @@ def landsat_c2():
 
 
 #------------------------------------------------------------------------------
-# HLS v2.0 and Sentinel-2 L2A. Not validated in production.
+# HLS v2.0 and Sentinel-2 L2A. Validated on one cell of T16SGC, 2020-2023.
 #------------------------------------------------------------------------------
 
 #: What the HLS and Sentinel-2 presets share: physical units with the
@@ -146,7 +151,7 @@ _MSI_ROLES = ("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
 
 
 def hls_l30():
-    """HLS v2.0 L30 (Landsat 8/9 OLI/TIRS at 30 m). Not validated in production.
+    """HLS v2.0 L30 (Landsat 8/9 OLI/TIRS at 30 m).
 
     Input: every HLS ``int16`` layer times 0.0001. For B01-B07 that is the
     product's scale factor, giving reflectance; B10 is brightness
@@ -168,6 +173,18 @@ def hls_l30():
     optical row, coastal included, is saturation-screened. No statistics
     cutoff. The cadence is 16 days with Landsat 8 alone (from 2013) and 8
     with Landsat 9 (from late 2021); the peek window follows it.
+
+    Validation: one cell of MGRS tile T16SGC near Atlanta (Landsat ARD
+    h024v013 chunk 00030008), 2020-2023, read from Planetary Computer (LP
+    DAAC's HLS v2.0), against Landsat Collection 2 ARD of the same cell and
+    years run with :func:`landsat_c2`. Break agreement per pixel, kappa 0.44
+    against Landsat 8+9 ARD, where adding Landsat 7 to the ARD gives 0.43;
+    matched breaks a median 8 days apart, 85% within 96 days, with no date
+    bias; model levels within 0.004 reflectance. Fmask decodes as the HLS
+    v2.0 User Guide documents on all 38 values present. L30's 2020 is thin
+    on this cell (37 scenes, half of them partial) and Fmask keeps 25-30%
+    fewer clear observations than ARD QA_PIXEL, so over the four years no
+    break is detected before the second half of 2021.
     """
     return SensorProfile(
         name="hls_l30",
@@ -181,7 +198,8 @@ def hls_l30():
 
 
 def hls_s30():
-    """HLS v2.0 S30 (Sentinel-2 MSI at 30 m). Not validated in production.
+    """HLS v2.0 S30 (Sentinel-2 MSI at 30 m). Validated, with a caveat: Fmask
+    over bright surfaces.
 
     Input: the HLS ``int16`` layers times the product's scale factor,
     0.0001: reflectance. Fill -9999 becomes -0.9999 and is dropped. Rows:
@@ -200,6 +218,19 @@ def hls_s30():
     with every other row. No statistics cutoff. The cadence is 10 days with
     Sentinel-2A alone (from 2015) and 5 with two satellites (2B from 2017,
     2C from 2024), denser where orbits overlap; the peek window follows it.
+
+    Validation: one cell of MGRS tile T16SGC near Atlanta (Landsat ARD
+    h024v013 chunk 00030008), 2020-2023, read from Planetary Computer (LP
+    DAAC's HLS v2.0). S30 ran at a median gap of 5 days (peek window 19,
+    change threshold 6.83). It finds 41% more break pixels than
+    :func:`hls_l30` on the same cell, a median 16 days earlier, in classes
+    that change rather than in stable forest; taking the red edges and B08
+    out of the saturation screen changes no output. Fmask decodes as
+    documented on every value present. Caveat, Fmask over bright surfaces:
+    Fmask on Sentinel-2, which has no thermal band, calls bright barren land
+    cloud. On the cell's quarries 61% of S30 observations are cloud, and
+    1,145 of about 1,860 quarry pixels go to the InsufficientClear procedure
+    (L30: 2; Landsat ARD: 170).
     """
     return SensorProfile(
         name="hls_s30",
@@ -215,7 +246,8 @@ _HLS_ROLES = ("coastal", "blue", "green", "red", "nir", "swir1", "swir2")
 
 
 def hls():
-    """HLS v2.0 L30 and S30 in one series. Not validated in production.
+    """HLS v2.0 L30 and S30 in one series. Validated, with a caveat: Fmask over
+    bright surfaces.
 
     Input: the bands the two products share, in reflectance (the HLS
     ``int16`` layers times 0.0001), rows named by role because the products
@@ -230,12 +262,23 @@ def hls():
     ignored.
 
     Detection: green, red, nir, swir1, swir2, the default thresholds; every
-    row is saturation-screened. No statistics cutoff. At 2-4 days the peek
-    window grows to about 32-48 observations; ``MEOW_SIZE`` and the
-    ``RETRAIN_*`` counts stay pyccd's observation counts.
+    row is saturation-screened. No statistics cutoff. On the validation cell
+    the series ran at a median gap of 4-5 days, and the peek window grew to
+    19-24 observations (19 at 5 days, 24 at 4; change threshold 6.83 to
+    5.90); ``MEOW_SIZE`` and the ``RETRAIN_*`` counts stay pyccd's
+    observation counts, so 12 observations span about 50-60 days.
 
     An L30 and an S30 observation on one date: the filters keep the first in
     array order, so put L30 before S30 on a shared date.
+
+    Validation: one cell of MGRS tile T16SGC near Atlanta (Landsat ARD
+    h024v013 chunk 00030008), 2020-2023, read from Planetary Computer (LP
+    DAAC's HLS v2.0). The series mostly follows S30: break agreement per
+    pixel, kappa 0.71 with :func:`hls_s30` and 0.45 with :func:`hls_l30`.
+    L30 first on a shared date worked on all 85 dates the products share.
+    Caveat, Fmask over bright surfaces, through the S30 observations: 1,741
+    of 300,288 pixels go to the InsufficientClear procedure (hls_s30: 2,101;
+    hls_l30: 2), as described for :func:`hls_s30`.
     """
     return SensorProfile(
         name="hls",
@@ -248,7 +291,9 @@ def hls():
 
 
 def sentinel2_l2a():
-    """Sentinel-2 L2A (ESA Sen2Cor), native bands. Not validated in production.
+    """Sentinel-2 L2A (ESA Sen2Cor), native bands. Validated at median level on
+    Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing
+    not sampled.
 
     Input: BOA reflectance with the product's offset removed,
     ``(DN + BOA_ADD_OFFSET) / 10000``. From processing baseline 04.00 (25
@@ -272,6 +317,14 @@ def sentinel2_l2a():
     7-10 cloud (7, unclassified, included); 11 snow; 0, 1 and anything else
     fill.
 
+    SCL 7 as cloud costs water pixels. On the validation cell SCL 7 is 2.13%
+    of the non-fill observations, and with SCL 2 (cast shadows) on small
+    water bodies it sends 1,355 of 3,983 water pixels, and 3,426 pixels in
+    all, to the InsufficientClear procedure; decoding 7 as fill would send
+    2,545, as clear 587. It stays cloud. A caller who wants the water pixels
+    passes ``qa_table=ccdcpp.QaTable(codes)``, with ``codes`` the table's
+    codes and entry 7 changed.
+
     Detection: B03, B04, B8A, B11, B12, the default thresholds. The red
     edges and B08 are fitted, reported and saturation-screened. No
     statistics cutoff. The cadence is 10 days with Sentinel-2A alone (from
@@ -279,6 +332,17 @@ def sentinel2_l2a():
     where orbits overlap. Two observations on one date (overlapping granules
     or datastrips): the filters keep the first in array order; merge them
     first to choose.
+
+    Validation: one cell of MGRS tile T16SGC near Atlanta (Landsat ARD
+    h024v013 chunk 00030008), 2020-2023, read from Planetary Computer
+    (collection ``sentinel-2-l2a``, at 20 m, with the 10 m bands averaged to
+    20 m). With the per-scene offset applied, the window around the 2022
+    baseline change looks like any other (0.34% of pixels break within 60
+    days of it; 92.3% without the offset). Against :func:`hls_s30` the two
+    agree at median level: model levels about 0.01 above S30's with about
+    twice the RMSE (no BRDF or bandpass adjustment), break agreement per
+    pixel kappa 0.48, and fewer break pixels (2.35% against 3.62%). SCL
+    decodes as documented on every class present (0, 2-11).
     """
     return SensorProfile(
         name="sentinel2_l2a",
