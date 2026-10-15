@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.6.0 - 2026-10-15
+
+Presets for HLS v2.0 and Sentinel-2 L2A, not validated in production, and
+QA-table builder arguments on sensor profiles. Python and documentation
+only; outputs are those of 0.5.2, bit for bit.
+
+### Added (Python API)
+
+- `ccdcpp.presets.hls_l30()`, `hls_s30()`, `hls()` (L30 and S30 in one
+  series) and `sentinel2_l2a()`, each labelled "not validated in
+  production": the values follow the HLS v2.0 User Guide and ESA's
+  Sentinel-2 L2A documentation and are tested on synthetic series only. All
+  four take physical units (HLS: every `int16` layer times 0.0001, which
+  puts L30 B10 in degrees Celsius / 100; Sentinel-2: offset-corrected BOA
+  reflectance, `(DN + BOA_ADD_OFFSET) / 10000`), have the thresholds and
+  Lasso constants of `landsat_c1_physical()`, detect on green, red, nir
+  (B05 on L30, B8A on S30 and Sentinel-2), swir1 and swir2 with the default
+  thresholds, saturation-screen every optical row (coastal B01 included),
+  have no statistics cutoff and keep pyccd's cadence values. The red edges
+  and B08 are fitted and reported, not detected on. QA is raw `Fmask`
+  (`qa_tables.hls_fmask`, aerosol ignored) or raw `SCL`
+  (`qa_tables.sentinel2_scl`). The single-product presets name their rows
+  by product band ID, `hls()` by role.
+- `SensorProfile.qa_table_options`: keyword arguments for the
+  `qa_table_builder`, a mapping or `(name, value)` pairs, stored sorted;
+  default empty. `dataclasses.replace(presets.hls_l30(),
+  qa_table_options={"exclude_high_aerosol": True})` decodes high aerosol as
+  cloud. Tables are cached per builder, codes and arguments. Options without
+  a builder, a repeated or unhashable option, or a name the builder does not
+  take raise `ValueError` at construction.
+- The role `nir_broad`, for the broad 842 nm Sentinel-2 B08.
+
+### Changed (Python API)
+
+- The role `nir_narrow` is removed; `nir` is the 865 nm Landsat-equivalent
+  near infrared on every sensor, B8A on Sentinel-2. A profile naming
+  `nir_narrow` raises `ValueError` (unknown role). No preset used it.
+
+### Documentation
+
+- README: the Presets section lists the HLS and Sentinel-2 presets with
+  their rows, units, QA and validation status, the Sentinel-2 offset the
+  caller applies, and the L30-before-S30 order on a shared date; the HLS
+  `Fmask` notes that the User Guide reserves bit 0; the SCL shadow classes
+  are named. The `ccdcpp.profiles` and README "Adding a sensor" example is
+  a Landsat 8/9 Collection 2 profile with the coastal band, not shipped.
+
 ## 0.5.2 - 2026-10-14
 
 ### Fixed (build)
