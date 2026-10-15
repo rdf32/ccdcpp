@@ -276,9 +276,9 @@ def sentinel2_l2a():
     edges and B08 are fitted, reported and saturation-screened. No
     statistics cutoff. The cadence is 10 days with Sentinel-2A alone (from
     mid-2015) and 5 with two satellites (2B from 2017, 2C from 2024), denser
-    where orbits overlap. Two
-    observations on one date (overlapping granules or datastrips): the
-    filters keep the first in array order; merge them first to choose.
+    where orbits overlap. Two observations on one date (overlapping granules
+    or datastrips): the filters keep the first in array order; merge them
+    first to choose.
     """
     return SensorProfile(
         name="sentinel2_l2a",

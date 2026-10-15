@@ -19,6 +19,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+from unittest import mock
 from datetime import date
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
@@ -488,7 +489,6 @@ class QaTableOptionsField(unittest.TestCase):
                     dataclasses.replace(base, **change)
                 self.assertIn(expected, str(caught.exception))
 
-
     def test_values_are_the_declared_type(self):
         # A bool option takes True or False; nothing else is read as one.
         for value in (None, 0, 1, 2, 1.0, "True", "", np.bool_(True)):
@@ -536,18 +536,67 @@ class QaTableOptionsField(unittest.TestCase):
                                 str(caught.exception))
                 self.assertIn(expected, str(caught.exception))
 
-    def test_default_arguments_normalise_away(self):
-        explicit = self.hls(qa_table_options={"exclude_high_aerosol": False})
-        self.assertEqual(explicit.qa_table_options, ())
-        self.assertEqual(explicit, self.hls())
-        self.assertEqual(hash(explicit), hash(self.hls()))
-        self.assertIs(explicit.qa_table(), self.hls().qa_table())
+    def test_declared_defaults_are_written_out(self):
+        written = (("exclude_high_aerosol", False),)
+        given = [(), {}, {"exclude_high_aerosol": False}, written]
+        profiles = [self.hls(qa_table_options=options) for options in given]
+        for options, p in zip(given, profiles):
+            with self.subTest(options=options):
+                self.assertEqual(p.qa_table_options, written)
+                self.assertEqual(p, profiles[0])
+                self.assertEqual(hash(p), hash(profiles[0]))
+                self.assertIs(p.qa_table(), profiles[0].qa_table())
+                self.assertIn("qa_table_options=(('exclude_high_aerosol', False),)", repr(p))
         for preset in (presets.hls_l30, presets.hls_s30, presets.hls):
             with self.subTest(preset=preset.__name__):
-                self.assertEqual(
-                    dataclasses.replace(preset(), qa_table_options=(("exclude_high_aerosol",
-                                                                      False),)),
-                    preset())
+                self.assertEqual(preset().qa_table_options, written)
+                self.assertEqual(dataclasses.replace(preset(), qa_table_options=()), preset())
+                self.assertEqual(pickle.loads(pickle.dumps(preset())).qa_table_options,
+                                 written)
+        # Builders that declare nothing, and no builder, store nothing.
+        for preset in (presets.landsat_c1_dn, presets.landsat_c2, presets.sentinel2_l2a):
+            with self.subTest(preset=preset.__name__):
+                self.assertEqual(preset().qa_table_options, ())
+
+    def test_names_are_stored_as_str(self):
+        class Name(str):
+            pass
+
+        p = self.hls(qa_table_options={Name("exclude_high_aerosol"): True})
+        self.assertIs(type(p.qa_table_options[0][0]), str)
+
+    def test_numpy_scalar_hint(self):
+        with self.assertRaises(ValueError) as caught:
+            self.hls(qa_table_options={"exclude_high_aerosol": np.bool_(True)})
+        self.assertIn("takes a bool; pass bool(value) for a numpy scalar", str(caught.exception))
+        for value in (None, 1, np.int64(1)):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError) as caught:
+                    self.hls(qa_table_options={"exclude_high_aerosol": value})
+                self.assertNotIn("pass bool(value)", str(caught.exception))
+
+    def test_builder_rejecting_a_declared_option(self):
+        # QA_TABLE_OPTIONS declaring an argument the binding does not take.
+        declared = dict(ccdcpp.profiles.QA_TABLE_OPTIONS)
+        declared["sentinel2_scl"] = {"exclude_haze": (bool, False)}
+        with mock.patch.object(ccdcpp.profiles, "QA_TABLE_OPTIONS", declared):
+            with self.assertRaises(ValueError) as caught:
+                presets.sentinel2_l2a()
+        message = str(caught.exception)
+        self.assertTrue(message.startswith("SensorProfile 'sentinel2_l2a'"), message)
+        self.assertIn("ccdcpp.qa_tables.sentinel2_scl rejects qa_table_options "
+                      "{'exclude_haze': False}, which QA_TABLE_OPTIONS allows", message)
+
+    def test_builder_name_is_a_str(self):
+        for builder in (1, ["hls_fmask"], b"hls_fmask"):
+            for options in ((), {"exclude_high_aerosol": True}):
+                with self.subTest(builder=builder, options=options):
+                    with self.assertRaises(ValueError) as caught:
+                        dataclasses.replace(presets.landsat_c1_physical(),
+                                            qa_table_builder=builder,
+                                            qa_table_options=options)
+                    self.assertIn(f"qa_table_builder is {builder!r}; it is a str or None",
+                                  str(caught.exception))
 
 
 class BoundFlags(unittest.TestCase):
@@ -1094,7 +1143,9 @@ class SensorPresets(unittest.TestCase):
                     self.assertEqual(getattr(h, key).hex(), getattr(defaults, key).hex())
                 self.assertEqual(h.STAT_ORD, ccdcpp.NO_STAT_CUTOFF)
                 self.assertEqual(preset().band_names, BAND_NAMES[name])
-                self.assertEqual(preset().qa_table_options, ())
+                self.assertEqual(preset().qa_table_options,
+                                 dict(sentinel2_l2a=()).get(
+                                     name, (("exclude_high_aerosol", False),)))
                 np.testing.assert_array_equal(preset().qa_table().codes, table.codes)
                 for key in ccdcpp.CADENCE_FIELDS:
                     self.assertEqual(getattr(h, key), getattr(defaults, key))
@@ -1142,8 +1193,23 @@ class SensorPresets(unittest.TestCase):
     def test_docstrings_are_wrapped(self):
         for obj in [presets] + [getattr(presets, name) for name in presets.__all__]:
             with self.subTest(name=obj.__name__):
-                for line in obj.__doc__.splitlines():
+                lines = obj.__doc__.splitlines()
+                for line in lines:
                     self.assertLessEqual(len(line), 79, line)
+                # Prose is filled: a line is not broken where the next word,
+                # or the next ``literal`` whole, fits with room to spare.
+                for line, following in zip(lines, lines[1:]):
+                    indent = len(line) - len(line.lstrip())
+                    if (not line.strip() or not following.strip() or indent > 4
+                            or len(following) - len(following.lstrip()) != indent
+                            or line.endswith(":")):
+                        continue
+                    word = following.split()[0]
+                    if word.startswith("``"):
+                        rest = following.strip()
+                        end = rest.find("``", 2)
+                        word = rest if end < 0 else rest[:end + 2]
+                    self.assertGreater(len(line) + 1 + len(word), 70, (line, following))
 
     def test_profiles_are_hashable_and_picklable(self):
         for preset in NEW_PRESETS:

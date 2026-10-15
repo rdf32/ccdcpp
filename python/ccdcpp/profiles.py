@@ -623,9 +623,11 @@ class SensorProfile:
         aerosol as cloud. Each name and the type of its value are those
         :data:`QA_TABLE_OPTIONS` lists for the builder, and the value is of
         exactly that type (``exclude_high_aerosol`` takes True or False, not
-        None or 1). Stored sorted by name, without the arguments equal to the
-        builder's defaults, so ``{"exclude_high_aerosol": False}`` is the
-        profile with ``()``. Anything else (options without
+        None or 1). Stored sorted by name with every argument the builder
+        declares, its default written out where none is given: with
+        ``hls_fmask``, ``()`` and ``{"exclude_high_aerosol": False}`` both
+        store ``(("exclude_high_aerosol", False),)``; without a builder
+        nothing is stored. Anything else (options without
         ``qa_table_builder``, a name given twice, a name the builder does not
         take, a value of another type, input that is not a mapping or pairs)
         raises ValueError when the profile is constructed.
@@ -728,8 +730,11 @@ class SensorProfile:
 
     def _canonical_qa_table_options(self):
         """``qa_table_options`` checked as given, then stored canonically:
-        sorted by name, without the arguments equal to the builder's
-        defaults."""
+        every argument :data:`QA_TABLE_OPTIONS` declares for the builder,
+        sorted by name, its default written out where none is given."""
+        builder = self.qa_table_builder
+        if builder is not None and not isinstance(builder, str):
+            self._fail(f"qa_table_builder is {builder!r}; it is a str or None")
         given = self.qa_table_options
         if isinstance(given, Mapping):
             pairs = tuple(given.items())
@@ -741,18 +746,20 @@ class SensorProfile:
         else:
             self._fail(
                 f"qa_table_options is {given!r}; it is a mapping or (name, value) pairs")
-        if not pairs:
-            return ()
         names = [name for name, _ in pairs]
         for name in names:
             if not isinstance(name, str):
                 self._fail(f"qa_table_options name {name!r} is not a str")
         if len(set(names)) != len(names):
             self._fail(f"qa_table_options repeats a name: {names}")
-        if self.qa_table_builder is None:
-            self._fail(f"qa_table_options {dict(pairs)} needs a qa_table_builder")
-        declared = QA_TABLE_OPTIONS.get(self.qa_table_builder)
+        if builder is None:
+            if pairs:
+                self._fail(f"qa_table_options {dict(pairs)} needs a qa_table_builder")
+            return ()
+        declared = QA_TABLE_OPTIONS.get(builder)
         if declared is None:
+            if not pairs:
+                return ()
             self._fail(
                 f"qa_table_options {dict(pairs)}: ccdcpp.qa_tables has no builder "
                 f"{self.qa_table_builder!r} in QA_TABLE_OPTIONS")
@@ -764,11 +771,15 @@ class SensorProfile:
         for name, value in pairs:
             kind = declared[name][0]
             if type(value) is not kind:
+                hint = ""
+                if isinstance(value, np.generic) and type(value.item()) is kind:
+                    hint = f"; pass {kind.__name__}(value) for a numpy scalar"
                 self._fail(
                     f"qa_table_options {name!r} is {value!r} ({type(value).__name__}); "
-                    f"ccdcpp.qa_tables.{self.qa_table_builder} takes a {kind.__name__}")
-        return tuple(sorted((name, value) for name, value in pairs
-                            if value != declared[name][1]))
+                    f"ccdcpp.qa_tables.{self.qa_table_builder} takes a {kind.__name__}{hint}")
+        given = dict(pairs)
+        return tuple(sorted((name, given.get(name, default))
+                            for name, (_, default) in declared.items()))
 
     def _validate_qa_table_options(self):
         options = self.qa_table_options
