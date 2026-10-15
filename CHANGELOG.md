@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Tests
+
+- `tests/ccd/golden/test_transitions.cpp` (ctest `Transitions.*`): 17
+  characterisation pixels (`characterisation.hpp`) built for the Standard
+  procedure's transitions, guards and pyccd quirks that the golden corpus
+  misses or only Python reaches: Lookback reading below the previous break
+  and Lookback's `PEEK_SIZE - 1` peek each deciding an output, the re-entry
+  after a series-end segment at peek 32 with its unused Tmask and Lookback
+  exclusions, the peek guard, the variogram NaN exit, `COEFFICIENT_MIN`
+  against Initialise's literal 4, and the procedure choice at both
+  thresholds. Their output is pinned byte for byte in
+  `transitions_fixture.txt`, written by v0.6.1. The test's header lists
+  which pixel takes which transition and which pinned pixels each decided
+  0.8.0 fix moves. No library change.
+
 ## 0.6.1 - 2026-10-15
 
 The HLS and Sentinel-2 presets promoted on a real sample, a band-order check

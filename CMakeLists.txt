@@ -482,6 +482,39 @@ if(CCD_BUILD_TESTS)
             CCD_GOLDEN_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/golden_fixture.txt"
     )
 
+    # The Standard procedure's transitions, guards and pyccd quirks that the
+    # golden corpus misses, on pixels built for them, against a fixture
+    # written by v0.6.1. See tests/ccd/golden/test_transitions.cpp.
+    add_executable(
+        test_transitions
+
+        tests/ccd/golden/test_transitions.cpp
+    )
+
+
+    target_link_libraries(
+        test_transitions
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_transitions
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    target_compile_definitions(
+        test_transitions
+
+        PRIVATE
+            CCD_TRANSITIONS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/transitions_fixture.txt"
+    )
+
     # Band layouts other than Landsat's: a second fixture of synthetic
     # profiles, and the layout equivalences. See tests/ccd/golden/test_bands.cpp.
     add_executable(
@@ -644,6 +677,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
+    gtest_discover_tests(test_transitions)
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)
     gtest_discover_tests(test_cadence)
