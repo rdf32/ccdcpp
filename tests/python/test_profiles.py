@@ -783,10 +783,12 @@ class Unprofiled(unittest.TestCase):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
                 self.assertEqual(list(params),
-                                 positional + ["qa_table", "preprocess", "profile"])
+                                 positional + ["qa_table", "preprocess", "profile",
+                                               "band_names"])
                 kinds = [p.kind for p in params.values()]
                 self.assertEqual(kinds, [inspect.Parameter.POSITIONAL_OR_KEYWORD] * len(positional)
-                                 + [inspect.Parameter.KEYWORD_ONLY] * 3)
+                                 + [inspect.Parameter.KEYWORD_ONLY] * 4)
+                self.assertIsNone(params["band_names"].default)
                 if "threads" in params:
                     self.assertEqual(params["threads"].default, 0)
 
@@ -1255,6 +1257,107 @@ class SensorPresets(unittest.TestCase):
         got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), fmask, threads=2,
                           profile=permuted(base, order))
         assert_same(self, unpermute(got, order), expected)
+
+
+#: The band order of a Sentinel-2 store that keeps the 10 m bands first
+#: (B08 before the red edges), as the validation sample's store does.
+S2_STORE_ORDER = ("B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12")
+
+
+class BandNamesCheck(unittest.TestCase):
+    """band_names= on the entry points: the stack's row names, which must be
+    the profile's in the profile's order."""
+
+    def entries(self, dates, cube, qa, **kw):
+        return {
+            "detect": lambda: ccdcpp.detect(dates, cube[0, 0], qa[0, 0], **kw),
+            "detect_cube": lambda: ccdcpp.detect_cube(dates, cube, qa, threads=2, **kw),
+            "detect_cube_columns": lambda: ccdcpp.detect_cube_columns(
+                dates, cube, qa, threads=2, **kw),
+        }
+
+    def test_profile_order_runs_unchanged(self):
+        runs = [(p, preset_inputs(p.__name__)) for p in NEW_PRESETS]
+        runs.append((presets.landsat_c1_dn, (DATES, CUBE_DN, CODES)))
+        for preset, (dates, cube, qa) in runs:
+            with self.subTest(preset=preset.__name__):
+                profile = preset()
+                expected = every_entry(dates, cube, qa, threads=2, profile=profile)
+                for names in (profile.band_names, list(profile.band_names),
+                              np.array(profile.band_names)):
+                    assert_same(self, every_entry(dates, cube, qa, threads=2, profile=profile,
+                                                  band_names=names), expected)
+
+    def test_refuses_a_misordered_sentinel2_stack(self):
+        profile = presets.sentinel2_l2a()
+        dates, cube, scl = preset_inputs("sentinel2_l2a")
+        store = [profile.band_names.index(b) for b in S2_STORE_ORDER]
+        stacked = np.ascontiguousarray(cube[:, :, store])
+        for name, call in self.entries(dates, stacked, scl, profile=profile,
+                                       band_names=S2_STORE_ORDER).items():
+            with self.subTest(entry=name):
+                with self.assertRaises(ValueError) as caught:
+                    call()
+                message = str(caught.exception)
+                self.assertIn("SensorProfile 'sentinel2_l2a'", message)
+                self.assertIn("in another order: row 3 is 'B08', where the profile has 'B05'",
+                              message)
+                self.assertIn("reorder the band axis of spectral to B02, B03, B04, B05", message)
+        # What the check prevents: without band_names the same stack runs,
+        # B08 read as red edge 1, and gives another result.
+        silent = ccdcpp.detect_cube_columns(dates, stacked, scl, threads=2, profile=profile)
+        right = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=profile)
+        self.assertEqual(silent["failures"], [])
+        self.assertNotEqual(str(without(silent, "threads")), str(without(right, "threads")))
+        # Reordered by the names, it is the right run.
+        order = [S2_STORE_ORDER.index(b) for b in profile.band_names]
+        assert_same(self, ccdcpp.detect_cube_columns(
+            dates, np.ascontiguousarray(stacked[:, :, order]), scl, threads=2,
+            profile=profile, band_names=tuple(np.array(S2_STORE_ORDER)[order])), right)
+
+    def test_other_names_raise(self):
+        profile = presets.hls_l30()
+        dates, cube, fmask = preset_inputs("hls_l30")
+        names = profile.band_names
+        cases = [
+            (names[:-1] + ("B11",), "missing B10; not in the profile: B11"),
+            (names[:-1], "missing B10"),
+            (names + ("B11",), "not in the profile: B11"),
+            (names[:-1] + ("B07",), "missing B10; repeated: B07"),
+            (tuple(n.lower() for n in names), "not in the profile: b01"),
+        ]
+        for given, text in cases:
+            with self.subTest(given=given):
+                with self.assertRaises(ValueError) as caught:
+                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], profile=profile,
+                                  band_names=given)
+                self.assertIn(text, str(caught.exception))
+                self.assertIn("the profile has B01, B02", str(caught.exception))
+        for given in ("B01B02B03B04B05B06B07B10", b"B01", ("B01",) * 7 + (10,)):
+            with self.subTest(given=given):
+                with self.assertRaises(TypeError):
+                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], profile=profile,
+                                  band_names=given)
+
+    def test_needs_a_profile(self):
+        h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        names = presets.landsat_c1_dn().band_names
+        for name, call in self.entries(DATES, CUBE_DN, CODES, hoptions=h, loptions=lo,
+                                       band_names=names).items():
+            with self.subTest(entry=name):
+                with self.assertRaises(TypeError) as caught:
+                    call()
+                self.assertIn("needs profile=", str(caught.exception))
+
+    def test_check_takes_band_names(self):
+        profile = presets.sentinel2_l2a()
+        profile.check(np.zeros((10, 3)), profile.band_names)
+        with self.assertRaises(ValueError):
+            profile.check(np.zeros((10, 3)), S2_STORE_ORDER)
+        # The count is checked first.
+        with self.assertRaises(ValueError) as caught:
+            profile.check(np.zeros((9, 3)), profile.band_names)
+        self.assertIn("has 9 bands", str(caught.exception))
 
 
 class HlsInput(unittest.TestCase):

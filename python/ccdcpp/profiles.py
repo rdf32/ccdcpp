@@ -890,12 +890,17 @@ class SensorProfile:
             return default_plan(h)
         return self.preprocess.plan(self, h)
 
-    def check(self, spectral):
+    def check(self, spectral, band_names=None):
         """Raise ValueError unless the band axis of ``spectral`` has one row
-        per band of the profile.
+        per band of the profile, and, with ``band_names``, unless those names
+        are the profile's ``band_names`` in the profile's order.
 
         The band axis is second from last: ``(B, T)`` for ``detect``,
-        ``(H, W, B, T)`` for the cube entry points.
+        ``(H, W, B, T)`` for the cube entry points. ``band_names`` names the
+        rows of ``spectral`` as the caller holds them (a store's band list,
+        say), a sequence of str; a single str raises ``TypeError``. Without
+        it only the count is checked, and a stack of the right count in
+        another order runs as if it were in the profile's order.
         """
         shape = np.shape(spectral)
         if len(shape) < 2:
@@ -908,6 +913,44 @@ class SensorProfile:
                 f"spectral has {shape[-2]} bands on its band axis (shape {shape}); "
                 f"the profile has {len(self.band_names)}: {', '.join(self.band_names)}"
             )
+        if band_names is not None:
+            self._check_band_names(band_names)
+
+    def _check_band_names(self, band_names):
+        if isinstance(band_names, (str, bytes)):
+            raise TypeError(
+                f"SensorProfile {self.name!r}: band_names is a sequence of "
+                f"names, one per row, not a single {type(band_names).__name__}"
+            )
+        given = tuple(band_names)
+        if not all(isinstance(b, str) for b in given):
+            raise TypeError(
+                f"SensorProfile {self.name!r}: band_names holds "
+                f"{', '.join(sorted({type(b).__name__ for b in given if not isinstance(b, str)}))}; "
+                f"every name is a str"
+            )
+        given = tuple(str(b) for b in given)
+        if given == self.band_names:
+            return
+        expected = ", ".join(self.band_names)
+        if sorted(given) == sorted(self.band_names):
+            row = next(i for i, (a, b) in enumerate(zip(given, self.band_names)) if a != b)
+            self._fail(
+                f"band_names are the profile's bands in another order: row {row} "
+                f"is {given[row]!r}, where the profile has {self.band_names[row]!r}; "
+                f"reorder the band axis of spectral to {expected}"
+            )
+        missing = [b for b in self.band_names if b not in given]
+        extra = [b for b in given if b not in self.band_names]
+        repeated = sorted({b for b in given if given.count(b) > 1})
+        parts = [f"band_names are {', '.join(given)}"]
+        if missing:
+            parts.append(f"missing {', '.join(missing)}")
+        if extra:
+            parts.append(f"not in the profile: {', '.join(extra)}")
+        if repeated:
+            parts.append(f"repeated: {', '.join(repeated)}")
+        self._fail("; ".join(parts) + f"; the profile has {expected}")
 
 
 @lru_cache(maxsize=None)

@@ -48,7 +48,7 @@ from .profiles import (
 # Each forwards to the extension function of the same name
 # (ccdcpp.ccdcpp.detect, ...). Without profile= the arguments reach it as
 # given, so a call is the extension call. hoptions and loptions are optional
-# only together with a profile.
+# only together with a profile, and band_names is accepted only with one.
 #------------------------------------------------------------------------------
 
 class _FromProfile:
@@ -81,8 +81,14 @@ def _plan(entry, preprocess, profile, hoptions):
     return preprocess
 
 
-def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile):
+def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
+             band_names=None):
     if profile is None:
+        if band_names is not None:
+            raise TypeError(
+                f"{entry}(): band_names= is checked against a profile's band "
+                f"names and needs profile="
+            )
         if hoptions is None or loptions is None:
             raise TypeError(
                 f"{entry}() needs hoptions and loptions, or profile="
@@ -95,7 +101,7 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile)
             f"{entry}(): profile must be a ccdcpp.SensorProfile, not "
             f"{type(profile).__name__}"
         )
-    profile.check(spectral)
+    profile.check(spectral, band_names)
     if hoptions is None or loptions is None:
         h, lo = profile.options()
         hoptions = h if hoptions is None else hoptions
@@ -106,7 +112,8 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile)
 
 
 def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
-           qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None):
+           qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
+           band_names=None):
     """CCD on one pixel.
 
     dates
@@ -134,13 +141,20 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         preprocess=None for the default plan. The table and the plan are
         built with the hoptions the run uses. spectral is checked against
         the profile's band count first (ValueError).
+    band_names
+        The names of spectral's rows, in the caller's order (a store's band
+        list, say), or None. Given, they must be the profile's band_names
+        in the profile's order: a stack in another order raises ValueError
+        before anything runs, where without it only the count is checked
+        and a misordered stack runs. Needs profile= (TypeError otherwise).
 
     Returns a dict: models (one dict per segment, each with a bands list of
     B entries in row order), processing_mask and num_bands, plus band_names
     (a tuple) with a profile.
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
-        "detect", spectral, hoptions, loptions, qa_table, preprocess, profile)
+        "detect", spectral, hoptions, loptions, qa_table, preprocess, profile,
+        band_names)
     out = _extension.detect(
         dates, spectral, qas, hoptions, loptions, qa_table=qa_table,
         preprocess=preprocess)
@@ -150,7 +164,8 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
 
 
 def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
-                *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None):
+                *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
+                band_names=None):
     """CCD on every pixel of a cube, in parallel.
 
     dates
@@ -179,12 +194,19 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
         preprocess=None for the default plan. The table and the plan are
         built with the hoptions the run uses. spectral is checked against
         the profile's band count first (ValueError).
+    band_names
+        The names of spectral's rows, in the caller's order (a store's band
+        list, say), or None. Given, they must be the profile's band_names
+        in the profile's order: a stack in another order raises ValueError
+        before anything runs, where without it only the count is checked
+        and a misordered stack runs. Needs profile= (TypeError otherwise).
 
     Returns a list of per-pixel dicts in raster order: row, col, models and
     processing_mask, as detect's. They carry no band_names.
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
-        "detect_cube", spectral, hoptions, loptions, qa_table, preprocess, profile)
+        "detect_cube", spectral, hoptions, loptions, qa_table, preprocess, profile,
+        band_names)
     return _extension.detect_cube(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
         preprocess=preprocess)
@@ -192,7 +214,7 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
 
 def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
                         threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-                        profile=None):
+                        profile=None, band_names=None):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     Arguments as detect_cube. Returns a dict of arrays with one entry per
@@ -204,7 +226,7 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "detect_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
-        profile)
+        profile, band_names)
     out = _extension.detect_cube_columns(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
         preprocess=preprocess)
