@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.6.1 - 2026-10-15
+
+The HLS and Sentinel-2 presets promoted on a real sample, a band-order check
+on the entry points, and real-data regression fixtures. Outputs are those of
+0.6.0, bit for bit.
+
+### Changed (validation status)
+
+- The presets were run on one cell, Landsat ARD h024v013 chunk 00030008
+  near Atlanta cut to MGRS tile T16SGC, 2020-01-01 to 2023-12-31, from
+  Microsoft Planetary Computer (HLS v2.0 L30 and S30; Sentinel-2 L2A at
+  20 m), against Landsat Collection 2 ARD of the same cell and years. Four
+  years of one cell is the whole record; each docstring and the README say
+  so.
+- `hls_l30()`: validated. Break agreement with Landsat 8+9 ARD kappa 0.44
+  (Landsat 7 added to the ARD: 0.43), matched breaks a median 8 days apart,
+  model levels within 0.004 reflectance.
+- `hls_s30()` and `hls()`: validated, with a caveat: Fmask over bright
+  surfaces. Fmask on Sentinel-2 calls bright barren land cloud (61% of
+  observations on the cell's quarries; 1,145 of about 1,860 quarry pixels
+  go to InsufficientClear in S30, 2 in L30); `hls()` sends 1,741 of 300,288
+  pixels there.
+- `sentinel2_l2a()`: validated at median level on Planetary Computer's
+  Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled. Levels
+  about 0.01 above S30 with about twice the RMSE; the per-scene offset holds
+  across the 2022 baseline change.
+- SCL 7 (unclassified) stays cloud. Documented: with SCL 2 on small water
+  bodies it sends 1,355 of 3,983 water pixels, 3,426 pixels in all, to
+  InsufficientClear (2,545 as fill, 587 as clear).
+
+### Added (Python API)
+
+- `band_names=` on `detect`, `detect_cube` and `detect_cube_columns`,
+  keyword only, default `None`: the names of `spectral`'s rows as the caller
+  holds them. Given, they must be the profile's `band_names` in the
+  profile's order; a misordered stack (a Sentinel-2 store with B08 among the
+  10 m bands) raises `ValueError` naming the first row that differs, other
+  names raise `ValueError` listing what is missing, extra or repeated, and a
+  str or a non-str name raises `TypeError`. Only with `profile=`
+  (`TypeError` otherwise). Without it a call is unchanged.
+  `SensorProfile.check(spectral, band_names=None)` takes the same argument.
+
+### Tests
+
+- `tests/python/fixtures/t16sgc_2020_2023`: four pixels (evergreen forest
+  `481_393`, named 1-based (column, row); open water; high-intensity
+  developed; a pixel with a 2022 break) in HLS L30, HLS S30 and Sentinel-2
+  L2A, as raw values and raw QA with each scene's Sentinel-2 offset, the
+  STAC item ids, a provenance and license note, and the output of every
+  HLS and Sentinel-2 preset on them. `test_real_fixtures.py`, ctest
+  `python_real_fixtures`, compares against that output.
+
+### Documentation
+
+- README: Presets and QA-table rows carry the validation status; a
+  Validation on real data section; the measured cadence (`hls()` 4–5 days,
+  peek 19–24; S30 and Sentinel-2 5 days, peek 19) in place of the 2–4 days
+  and 32–48 documented before. The Fmask bit 0 is named reserved, in the
+  README and in `qa_table.hpp`, where SCL 2 is named cast shadows (comments
+  only).
+
 ## 0.6.0 - 2026-10-15
 
 Presets for HLS v2.0 and Sentinel-2 L2A, not validated in production, and
