@@ -24,7 +24,9 @@
 //
 //   * Transitions.PathsAsDocumented: the structure of each result (segment
 //     count, curve_qa, change probability, observation counts, the mask) and
-//     the observable signature of the quirk a pixel is for. Platform free.
+//     the observable signature of the quirk a pixel is for, and on the
+//     pixels whose output a quirk decides without moving that structure, the
+//     values it decides, to a tolerance. Platform free.
 //
 // The pyccd quirks the refactor keeps exactly, numbered as in the design
 // notes (each is decided for 0.8.0):
@@ -36,8 +38,10 @@
 //      COEFFICIENT_MIN / COEFFICIENT_MAX say
 //   5  the early exits return an empty processing mask
 //   6  the series-end check in Extend is dead (a), so a series-end segment's
-//      end day is its break day (b), and at peek >= 25 the machine re-enters
-//      Initialise after it and can mark exclusions no segment uses (c)
+//      end day is its break day (b), and after it the outer guard passes
+//      again at peek >= 25: at 25 Initialise exits at once, at peek >= 26 it
+//      runs on the last observations and can mark exclusions no segment
+//      uses (c)
 //   7  Extend refits while the window has < RETRAIN_MIN_OBS observations but
 //      compares against the model RMSE while it has <= RETRAIN_MIN_OBS
 //
@@ -141,9 +145,11 @@
 //     room -> Initialise                 lookback_below_break, peek_guard_tail
 //     no room -> Tail                    start_catch, ...
 //     room after a series-end segment
-//       (quirk 6c, peek >= 25), and in
-//       it a Tmask commit and a Lookback
-//       drop that no segment uses        reentry_after_series_end
+//       (quirk 6c: the guard passes at
+//       peek >= 25, Initialise runs at
+//       peek >= 26), and in it a Tmask
+//       commit and a Lookback drop that
+//       no segment uses                  reentry_after_series_end
 //   Tail
 //     End segment                        standard_no_room,
 //                                        constant_detection_band,
@@ -173,6 +179,12 @@
 //   7  refit while <= RETRAIN_MIN_OBS  lookback_peek_minus_one_decides;
 //                                      177 corpus pixels
 //   (3 is intent and keeps the output.)
+//
+// Off the fixture platform PathsAsDocumented still fails on each fix alone:
+// 1, 5 and 6 through the shapes and masks, 2 through
+// lookback_below_break_decides's mask count, 4 and 7 through the RMSE values
+// of coefficient_min_6 and lookback_peek_minus_one_decides (checked by
+// applying each to v0.6.1).
 //
 //==============================================================================
 
@@ -219,6 +231,29 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
         if (p.name == name)
             return p;
     throw std::runtime_error("no characterisation pixel " + name);
+}
+
+// The values fixes 4 and 7 decide on pixels whose shapes they leave alone:
+// each band's RMSE of one segment. Each fix, applied alone to v0.6.1, moves
+// every one of these by at least 8.8e-4 relative (7: 8.8e-4 to 4.8e-2; 4:
+// 4.2e-3 to 1.0e-1); building v0.6.1 with -ffp-contract=off, which stands in
+// for another compiler's contraction, moves them by under 1e-13, and
+// -ffp-contract=fast not at all. A relative 1e-6 sits between the two.
+constexpr double DECIDED_RTOL = 1e-6;
+
+void expect_rmse(
+    const std::string& name,
+    const ccd::FitResult& r,
+    std::size_t segment,
+    const std::vector<double>& expected
+)
+{
+    ASSERT_LT(segment, r.models.size()) << name;
+    const auto& bands = r.models[segment].bands;
+    ASSERT_EQ(bands.size(), expected.size()) << name;
+    for (std::size_t b = 0; b < expected.size(); ++b)
+        EXPECT_NEAR(bands[b].score.rmse, expected[b], DECIDED_RTOL * expected[b])
+            << name << " segment " << segment << " band " << b;
 }
 
 // One segment's shape: curve_qa, change probability, observation count.
@@ -361,16 +396,37 @@ TEST(Transitions, PathsAsDocumented)
     }
 
     // The pixels whose output a quirk decides (see the table above): their
-    // shapes, so a path change reads as one even off the fixture platform.
-    expect_shapes("lookback_below_break_decides",
-        run_detect(pixel(all, "lookback_below_break_decides")),
-        {{6, 1.0, 22}, {8, 1.0, 188}, {8, 0.0, 242}});
-    expect_shapes("lookback_peek_minus_one_decides",
-        run_detect(pixel(all, "lookback_peek_minus_one_decides")),
-        {{8, 1.0, 99}, {8, 1.0, 109}, {8, 0.0, 61}});
-    expect_shapes("coefficient_min_6",
-        run_detect(pixel(all, "coefficient_min_6")),
-        {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 308}});
+    // shapes, so a path change reads as one even off the fixture platform,
+    // and where a fix keeps the shapes, what it does move.
+    {
+        // Fix 2 keeps every segment and moves only the mask: it keeps 10
+        // more observations (493).
+        const auto r = run_detect(pixel(all, "lookback_below_break_decides"));
+        expect_shapes("lookback_below_break_decides", r,
+            {{6, 1.0, 22}, {8, 1.0, 188}, {8, 0.0, 242}});
+        EXPECT_EQ(r.mask.count(), 483u);
+    }
+    {
+        // Fix 1 moves the shapes; fix 7 only the first segment's fit.
+        const auto r = run_detect(pixel(all, "lookback_peek_minus_one_decides"));
+        expect_shapes("lookback_peek_minus_one_decides", r,
+            {{8, 1.0, 99}, {8, 1.0, 109}, {8, 0.0, 61}});
+        expect_rmse("lookback_peek_minus_one_decides", r, 0,
+            {36.24151163, 49.6614777, 47.72221929, 123.7609953, 68.2605607,
+             66.3021312, 236.0055942});
+    }
+    {
+        // Fix 4 moves the fits of the first two segments.
+        const auto r = run_detect(pixel(all, "coefficient_min_6"));
+        expect_shapes("coefficient_min_6", r,
+            {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 308}});
+        expect_rmse("coefficient_min_6", r, 0,
+            {33.98750948, 41.98759122, 50.12372659, 117.7534882, 93.13544933,
+             64.747995, 211.9343041});
+        expect_rmse("coefficient_min_6", r, 1,
+            {65.4233493, 63.69229807, 84.5716549, 187.0748164, 118.5062873,
+             78.32135257, 167.267371});
+    }
 
     // The peek guard sends the second Initialise to Tail.
     expect_shapes("peek_guard_tail",

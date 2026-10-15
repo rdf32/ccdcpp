@@ -44,6 +44,13 @@
   `transitions_fixture.txt`, written by v0.6.1. The test's header lists
   which pixel takes which transition and which pinned pixels each decided
   0.8.0 fix moves. No library change.
+- `Transitions.PathsAsDocumented` also pins, to a tolerance, the values the
+  quirks decide on the pixels whose shapes they leave alone (the mask count
+  of `lookback_below_break_decides`; the per-band RMSE of
+  `lookback_peek_minus_one_decides` and `coefficient_min_6`), so fixes 2, 4
+  and 7 move a pin off the fixture platform too.
+- `tests/ccd/procedure/test_series.cpp` (ctest `Series.*`, `Variogram.*`,
+  `StandardCadence.*`, `HarmonicWorkspace.*`): the records' contracts.
 
 ## 0.6.1 - 2026-10-15
 

@@ -23,6 +23,9 @@
 // Values are Collection-1 DN: six optical bands as reflectance x 10000 and the
 // thermal band as Kelvin x 10. Fill observations carry -9999 in every band.
 //
+// WARNING: characterisation.hpp builds its pixels from Rng and detail:: here;
+// any change to them changes those pixels and their transitions_fixture.txt.
+//
 //==============================================================================
 
 #include <array>
