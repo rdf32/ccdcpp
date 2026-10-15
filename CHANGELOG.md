@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- `PEEK_SIZE` below 2 is refused by `ccd::validate()` and every entry point
+  (`ValueError` in Python: "PEEK_SIZE is 1; it must be at least 2"). It
+  crashed `detect()` before: Lookback peeks `PEEK_SIZE - 1` observations far
+  from the previous break, and both peeks read their first magnitude. Valid
+  inputs are unchanged.
+
 ### Changed (C++ internals; outputs bit for bit)
 
 - The Standard procedure keeps its per-pixel state in records instead of

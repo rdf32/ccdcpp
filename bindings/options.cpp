@@ -46,7 +46,10 @@ void bind_options(py::module_& m)
     )
     .def_readwrite(
         "PEEK_SIZE",
-        &ccd::HarmonicOptions::PEEK_SIZE
+        &ccd::HarmonicOptions::PEEK_SIZE,
+        "Observations (default 6). The Standard procedure's peek window at "
+        "PEEK_REFERENCE_DAYS; at least 2, else ccdcpp.detect* raise "
+        "ValueError."
     )
     .def_readwrite(
         "DAY_DELTA",

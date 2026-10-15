@@ -56,6 +56,9 @@ struct HarmonicOptions
     // Processing window parameters
     //----------------------------------------------------------------------
     index_t MEOW_SIZE = 12;
+
+    // At least 2 (ccd::validate()): Lookback peeks PEEK_SIZE - 1
+    // observations far from the previous break.
     index_t PEEK_SIZE = 6;
 
     std::int64_t DAY_DELTA = 365;

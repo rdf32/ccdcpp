@@ -179,6 +179,17 @@ void validate(const HarmonicOptions& options, index_t bands)
             );
         }
     }
+    // Both peeks read the magnitude of their first observation, and far
+    // from the previous break Lookback peeks PEEK_SIZE - 1 observations, so
+    // a PEEK_SIZE below 2 leaves a peek empty.
+    if (options.PEEK_SIZE < 2)
+    {
+        throw std::invalid_argument(
+            "PEEK_SIZE is " + std::to_string(options.PEEK_SIZE) +
+            "; it must be at least 2"
+        );
+    }
+
     validate_cadence(options);
 }
 

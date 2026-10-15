@@ -268,6 +268,8 @@ class LayoutValidation(unittest.TestCase):
             (broken(CHANGE_PROBABILITY=1.0), "CHANGE_PROBABILITY is 1.000000; it must be in (0, 1)"),
             (broken(CHANGE_PROBABILITY=1.5), "CHANGE_PROBABILITY is 1.500000"),
             (broken(CHANGE_PROBABILITY=nan), "CHANGE_PROBABILITY is nan"),
+            (broken(PEEK_SIZE=0), "PEEK_SIZE is 0; it must be at least 2"),
+            (broken(PEEK_SIZE=1), "PEEK_SIZE is 1; it must be at least 2"),
         ]
         for h, expected in cases:
             self.assert_rejected(h, 7, expected)

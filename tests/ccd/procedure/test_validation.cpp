@@ -24,6 +24,8 @@
 
 #include "ccd/ccd.hpp"
 
+#include "../golden/characterisation.hpp"
+
 namespace
 {
 
@@ -316,8 +318,16 @@ TEST(Validation, CadenceRules)
     expect_error([](auto& h) { h.CHANGE_PROBABILITY = 1.0; },
         "CHANGE_PROBABILITY is 1.000000; it must be in (0, 1)");
 
+    // PEEK_SIZE 0 and 1 leave a peek empty (they crashed detect() before
+    // the check).
+    expect_error([](auto& h) { h.PEEK_SIZE = 0; },
+        "PEEK_SIZE is 0; it must be at least 2");
+    expect_error([](auto& h) { h.PEEK_SIZE = 1; },
+        "PEEK_SIZE is 1; it must be at least 2");
+
     // The smallest accepted values.
     ccd::HarmonicOptions h;
+    h.PEEK_SIZE = 2;
     h.PEEK_REFERENCE_DAYS = 1e-9;
     h.VARIOGRAM_MIN_LAG_DAYS = 1;
     h.RETRAIN_MIN_OBS = 1;
@@ -355,6 +365,30 @@ TEST(Validation, DetectRejectsACadenceOption)
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {1, 1, T}),
             h, ccd::LassoOptions(), 1),
         std::invalid_argument);
+}
+
+// PEEK_SIZE 1 crashed detect() before the check; the smallest accepted
+// value runs every transition the characterisation pixels take.
+TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
+{
+    for (auto p : golden::characterisation_pixels())
+    {
+        const std::size_t T = p.dates.size();
+        const auto run = [&]()
+        {
+            return ccd::detect(
+                ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
+                ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
+                ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
+                p.h, p.l);
+        };
+
+        p.h.PEEK_SIZE = 1;
+        EXPECT_THROW(run(), std::invalid_argument) << p.name;
+
+        p.h.PEEK_SIZE = 2;
+        EXPECT_NO_THROW(run()) << p.name;
+    }
 }
 
 TEST(Validation, BandListRejectsWhatItCannotHold)
