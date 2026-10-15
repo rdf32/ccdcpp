@@ -1,0 +1,271 @@
+"""The HLS and Sentinel-2 presets on real pixels, pinned.
+
+usage: python test_real_fixtures.py <module_dir> <source_dir> [--write-expected] [unittest args]
+
+<module_dir> holds the built extension; <source_dir> is the repository root.
+The package is test_profiles' (imported from beside this file). ctest runs
+this as `python_real_fixtures`.
+
+The inputs are the raw values of four pixels of MGRS tile T16SGC, 2020-2023,
+in HLS v2.0 L30 and S30 and Sentinel-2 L2A, from Planetary Computer; see
+fixtures/t16sgc_2020_2023/README.md for their provenance. Each preset runs on
+each pixel through ccdcpp.detect and is compared with the output stored in
+expected_<preset>.json. --write-expected rewrites those files from the
+current build instead of comparing: only for an intended output change.
+
+Pixel `481_393` is named 1-based (column, row), as the production CCD table
+names it (px=481, py=393): 0-based chunk row 392, column 480. Its tests say
+so in their names.
+"""
+import csv
+import datetime as dt
+import json
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import test_profiles as tp  # noqa: E402  (reads and removes argv[1:3])
+
+import numpy as np  # noqa: E402
+
+import ccdcpp  # noqa: E402
+from ccdcpp import presets  # noqa: E402
+
+WRITE = "--write-expected" in sys.argv
+if WRITE:
+    sys.argv.remove("--write-expected")
+
+FIXTURES = os.path.join(tp.SOURCE_DIR, "tests", "python", "fixtures", "t16sgc_2020_2023")
+
+#: Fixture pixel -> file suffix (0-based chunk row and column of ARD chunk
+#: h024v013/00030008) and the name its tests carry.
+PIXELS = {
+    "fixture_481_393": ("ard392_480", "fixture_481_393_one_based_col_row"),
+    "water": ("ard301_173", "water"),
+    "developed_high": ("ard161_27", "developed_high"),
+    "break": ("ard0_90", "break"),
+}
+
+#: Preset -> the product files its input is read from.
+PRODUCTS = {"hls_l30": ("hls_l30",), "hls_s30": ("hls_s30",), "hls": ("hls_l30", "hls_s30"),
+            "sentinel2_l2a": ("s2_l2a",)}
+
+#: hls() rows by role, from each product's band IDs.
+HLS_ROWS = {
+    "hls_l30": ("B01", "B02", "B03", "B04", "B05", "B06", "B07"),
+    "hls_s30": ("B01", "B02", "B03", "B04", "B8A", "B11", "B12"),
+}
+
+S2_OFFSET = -1000
+
+# Float tolerance against the stored output. On the machine that wrote it the
+# comparison is exact; the tolerance allows another compiler's last bits.
+RTOL, ATOL = 1e-7, 1e-12
+
+
+def read_product(product, pixel):
+    """(dates, raw (B, T) int64, qa (T,) uint8, offset (T,) int64 or None,
+    band IDs) of one fixture CSV."""
+    path = os.path.join(FIXTURES, f"{product}_{pixel}_{PIXELS[pixel][0]}.csv")
+    with open(path) as f:
+        header = f.readline().lstrip("# ").split(" ")[0].strip().split(",")
+    data = np.loadtxt(path, delimiter=",", dtype=np.int64, comments="#")
+    offset = None
+    if product == "s2_l2a":
+        assert header[-2:] == ["SCL", "offset_to_apply"], header
+        offset = data[:, -1]
+        data = data[:, :-1]
+    else:
+        assert header[-1] == "Fmask", header
+    assert header[0] == "ordinal", header
+    return data[:, 0], data[:, 1:-1].T, data[:, -1].astype(np.uint8), offset, tuple(header[1:-1 if offset is None else -2])
+
+
+def preset_input(preset, pixel, apply_offset=True):
+    """(dates, spectral (B, T) float64, raw QA, band names in row order): the
+    fixture pixel as `preset` takes it. HLS: every int16 layer times 0.0001.
+    Sentinel-2: (DN + offset_to_apply) * 0.0001, per scene. hls(): L30 and S30
+    rows by role, merged by date with L30 first on a shared date."""
+    if preset in ("hls_l30", "hls_s30"):
+        dates, raw, qa, _, names = read_product(preset, pixel)
+        return dates, raw * 1e-4, qa, names
+    if preset == "sentinel2_l2a":
+        dates, raw, qa, offset, names = read_product("s2_l2a", pixel)
+        dn = raw + offset[None, :] if apply_offset else raw
+        return dates, dn * 1e-4, qa, names
+    assert preset == "hls", preset
+    parts = []
+    for product in PRODUCTS["hls"]:
+        dates, raw, qa, _, names = read_product(product, pixel)
+        rows = [names.index(b) for b in HLS_ROWS[product]]
+        parts.append((dates, raw[rows], qa))
+    dates = np.concatenate([p[0] for p in parts])
+    order = np.argsort(dates, kind="stable")
+    spectral = np.concatenate([p[1] for p in parts], axis=1)[:, order]
+    qa = np.concatenate([p[2] for p in parts])[order]
+    return dates[order], spectral * 1e-4, qa, presets.hls().band_names
+
+
+def run(preset, pixel, **kw):
+    dates, spectral, qa, names = preset_input(preset, pixel, **kw)
+    return ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
+                         profile=getattr(presets, preset)(), band_names=names)
+
+
+def as_stored(out):
+    """A detect output as expected_<preset>.json holds it."""
+    return {
+        "processing_mask": "".join(str(int(x)) for x in out["processing_mask"]),
+        "models": [
+            {**{k: m[k] for k in ("start_day", "end_day", "break_day", "observation_count",
+                                  "change_probability", "curve_qa")},
+             "bands": [{"intercept": b["intercept"], "coefficients": list(b["coefficients"]),
+                        "rmse": b["rmse"], "magnitude": b["magnitude"]} for b in m["bands"]]}
+            for m in out["models"]
+        ],
+    }
+
+
+def expected_path(preset):
+    return os.path.join(FIXTURES, f"expected_{preset}.json")
+
+
+def load_expected(preset):
+    with open(expected_path(preset)) as f:
+        return json.load(f)
+
+
+def breaks(out):
+    """Break dates (ISO) of the segments that end in a change."""
+    return [dt.date.fromordinal(m["break_day"]).isoformat()
+            for m in out["models"] if m["change_probability"] >= 1.0]
+
+
+def write_expected():
+    for preset in PRODUCTS:
+        stored = {pixel: as_stored(run(preset, pixel)) for pixel in PIXELS}
+        # One pixel per line: small, and a change shows which pixel moved.
+        lines = [f"{json.dumps(pixel)}: {json.dumps(out, separators=(',', ':'))}"
+                 for pixel, out in stored.items()]
+        with open(expected_path(preset), "w") as f:
+            f.write("{\n" + ",\n".join(lines) + "\n}\n")
+        print("wrote", expected_path(preset))
+
+
+class Pinned(unittest.TestCase):
+    """Each preset on each pixel gives the stored output."""
+
+    def check(self, preset, pixel):
+        got = as_stored(run(preset, pixel))
+        want = load_expected(preset)[pixel]
+        self.assertEqual(got["processing_mask"], want["processing_mask"])
+        self.assertEqual(len(got["models"]), len(want["models"]))
+        for i, (g, w) in enumerate(zip(got["models"], want["models"])):
+            with self.subTest(segment=i):
+                for key in ("start_day", "end_day", "break_day", "observation_count",
+                            "curve_qa", "change_probability"):
+                    self.assertEqual(g[key], w[key], key)
+                self.assertEqual(len(g["bands"]), len(w["bands"]))
+                for b, (gb, wb) in enumerate(zip(g["bands"], w["bands"])):
+                    for key in ("intercept", "coefficients", "rmse", "magnitude"):
+                        np.testing.assert_allclose(gb[key], wb[key], rtol=RTOL, atol=ATOL,
+                                                   err_msg=f"band {b} {key}")
+
+
+def _pinned_test(preset, pixel):
+    def test(self):
+        self.check(preset, pixel)
+    test.__doc__ = f"{preset} on pixel {pixel}, against expected_{preset}.json."
+    return test
+
+
+for _preset in PRODUCTS:
+    for _pixel, (_, _label) in PIXELS.items():
+        setattr(Pinned, f"test_{_preset}_{_label}", _pinned_test(_preset, _pixel))
+
+
+class Fixtures(unittest.TestCase):
+    """The fixture files agree with each other and with the products."""
+
+    def scenes(self, product):
+        with open(os.path.join(FIXTURES, f"scenes_{product}.csv"), newline="") as f:
+            return list(csv.DictReader(f))
+
+    def test_every_pixel_has_the_product_dates_and_scenes(self):
+        for product in ("hls_l30", "hls_s30", "s2_l2a"):
+            scenes = self.scenes(product)
+            ordinals = np.array([int(s["ordinal"]) for s in scenes])
+            for pixel in PIXELS:
+                with self.subTest(product=product, pixel=pixel):
+                    dates, raw, qa, offset, names = read_product(product, pixel)
+                    np.testing.assert_array_equal(dates, ordinals)
+                    self.assertTrue((np.diff(dates) >= 0).all())
+                    self.assertEqual(dt.date.fromordinal(int(dates[0])).year, 2020)
+                    self.assertEqual(dt.date.fromordinal(int(dates[-1])).year, 2023)
+                    if offset is not None:
+                        np.testing.assert_array_equal(
+                            offset, [int(s["offset_to_apply"]) for s in scenes])
+
+    def test_band_ids_are_the_presets(self):
+        for product, preset in (("hls_l30", presets.hls_l30), ("hls_s30", presets.hls_s30),
+                                ("s2_l2a", presets.sentinel2_l2a)):
+            with self.subTest(product=product):
+                self.assertEqual(read_product(product, "water")[4], preset().band_names)
+
+    def test_item_ids_name_the_tile(self):
+        for product in ("hls_l30", "hls_s30", "s2_l2a"):
+            for s in self.scenes(product):
+                ids = s.get("item_id") or s["item_ids"]
+                for item in ids.split(";"):
+                    self.assertIn("T16SGC", item)
+
+    def test_s2_offset_follows_the_baseline(self):
+        # BOA_ADD_OFFSET is -1000 from processing baseline 04.00, 0 before;
+        # some 2021 scenes were reprocessed at 04.00, so the first -1000
+        # scene comes before the 2022-01-25 cut.
+        scenes = self.scenes("s2_l2a")
+        for s in scenes:
+            self.assertEqual(int(s["offset_to_apply"]),
+                             S2_OFFSET if s["processing_baseline"] >= "04.00" else 0, s)
+        first = min(int(s["ordinal"]) for s in scenes if int(s["offset_to_apply"]))
+        self.assertEqual(dt.date.fromordinal(first), dt.date(2021, 11, 10))
+
+
+class Findings(unittest.TestCase):
+    """What the validation reported on these pixels, checked on the fixtures."""
+
+    def test_fixture_481_393_one_based_col_row_is_one_stable_segment(self):
+        for preset in PRODUCTS:
+            with self.subTest(preset=preset):
+                out = run(preset, "fixture_481_393")
+                self.assertEqual(len(out["models"]), 1)
+                self.assertEqual(breaks(out), [])
+
+    def test_break_pixel_breaks_where_the_validation_found(self):
+        with open(os.path.join(FIXTURES, "pixels.json")) as f:
+            found = json.load(f)["break"]["breaks"]
+        self.assertEqual(breaks(run("hls_l30", "break")), found["l30"])
+        self.assertEqual(breaks(run("hls_s30", "break")), found["s30"])
+
+    def test_fixture_481_393_one_based_col_row_s2_without_offset_breaks_at_the_cut(self):
+        # Without the per-scene offset the series jumps by 0.1 at the
+        # baseline change and the run breaks there.
+        self.assertEqual(breaks(run("sentinel2_l2a", "fixture_481_393")), [])
+        self.assertEqual(breaks(run("sentinel2_l2a", "fixture_481_393", apply_offset=False)),
+                         ["2022-01-26"])
+
+    def test_s2_store_order_is_refused(self):
+        dates, spectral, scl, names = preset_input("sentinel2_l2a", "water")
+        store = ("B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12")
+        rows = [names.index(b) for b in store]
+        with self.assertRaises(ValueError):
+            ccdcpp.detect(dates, np.ascontiguousarray(spectral[rows]), scl,
+                          profile=presets.sentinel2_l2a(), band_names=store)
+
+
+if __name__ == "__main__":
+    if WRITE:
+        write_expected()
+    else:
+        unittest.main()

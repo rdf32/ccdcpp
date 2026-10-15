@@ -793,6 +793,17 @@ if(CCD_BUILD_PYTHON)
                 ${PROJECT_SOURCE_DIR}
         )
 
+        # The HLS and Sentinel-2 presets on real pixels, against pinned
+        # outputs (tests/python/fixtures/t16sgc_2020_2023).
+        add_test(
+            NAME python_real_fixtures
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_real_fixtures.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
+
         # The Landsat QA tables against the millworks nlcd plugin's table and
         # pyccd's qabitval. Both are found through PYTHONPATH, set for this
         # test alone from CCD_REFERENCE_PYTHONPATH (os.pathsep-separated, e.g.
