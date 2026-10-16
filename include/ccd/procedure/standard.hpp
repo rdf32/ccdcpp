@@ -52,8 +52,8 @@ Cadence measure_cadence(
 
 // What Initialize tests a candidate window against on a pixel of `cadence`:
 // the options' MEOW_SIZE, DAY_DELTA, TMASK_BANDS, T_CONST and
-// DETECTION_BANDS, the 4-coefficient stability fits pyccd hard-codes
-// (quirk 4) and the cadence's change threshold. Built once per pixel, in
+// DETECTION_BANDS, stability fits of COEFFICIENT_MIN coefficients and the
+// cadence's change threshold. Built once per pixel, in
 // Prepare.
 InitializeCriteria initialize_criteria(
     const HarmonicOptions& options,
@@ -339,13 +339,13 @@ struct Context
 Phase prepare(const Context& context, State& state);
 
 // One ccd::initialize_step() on the window against the pixel's
-// initialize_criteria (4-coefficient stability fits, quirk 4; the cadence's
+// initialize_criteria (COEFFICIENT_MIN-coefficient stability fits; the cadence's
 // change threshold), into init_models. Next: Initialize after a grow or a shift; after_stable_start()
 // when stable; EndCatch (InitializeExhausted) when no candidate is left.
 Phase initialize(const Context& context, State& state);
 
 // One Lookback step: tests the observations of lookback_peek() against
-// init_models, whose RMSE is the comparison RMSE (quirk 3), and makes the
+// init_models, whose RMSE is the comparison RMSE, and makes the
 // decision on the record. Pre: window.start > prev_break. In order:
 //
 //   * every peek magnitude above the change threshold: Change, the window

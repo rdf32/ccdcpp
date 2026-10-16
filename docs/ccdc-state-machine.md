@@ -105,12 +105,17 @@ The guards inside one call, in the order they are tested:
 - **Lookback** (`lookback_step`): every peek magnitude above the change threshold (`Change`, the
   window stays); the first magnitude above `OUTLIER_THRESHOLD` (`Dropped`, the observation
   before the window leaves the series); otherwise `Included` (`window.start - 1`). The peek
-  window is `lookback_peek`'s.
+  window is `lookback_peek`'s. The comparison RMSE is the stable start window's: nothing is
+  refitted while the window grows backward, as in Zhu's TrendSeasonalFit.
 - **Extend** (`extend_step`): first the refit schedule (refit when untrained, below
   `RETRAIN_MIN_OBS` observations, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
   fit); then every magnitude above the threshold (`Change`); the first above
   `OUTLIER_THRESHOLD` (`Dropped`, the observation at `window.stop` leaves the series); otherwise
   `Grown` (`window.stop + 1`).
+
+Initialize fits `COEFFICIENT_MIN` coefficients, Extend's fits follow `coefficient_count`
+(`COEFFICIENT_MIN`, `_MID` or `_MAX` by window length), and both peek bases are `COEFFICIENT_MAX`
+wide: a model predicts with zeros above its own count.
 
 The routing between phases is a set of named predicates and routers, so a guard has one place:
 `room_to_initialize`, `peek_fits`, `start_catch_due`, `after_stable_start`, `after_lookback`
@@ -255,8 +260,6 @@ test:
 |---|---|
 | Lookback's far peek reads the adjusted peek minus one observations | `lookback_peek`, first case |
 | Lookback's peek near the series start reads below the previous break | `lookback_peek`, second case |
-| Lookback compares against the start window's RMSE | `lookback_step` |
-| Initialize fits 4 coefficients and both peek bases have 8 | `initialize_criteria`; the `peek_basis.build(..., 8)` calls in `lookback_step` and `extend_step` |
 | The early exits return an empty processing mask | `State::take_result`; `fit_whole_series` |
 | The series-end check before Extend's grow is dead; a series-end segment's end day is its break day; Restart re-enters Initialize after it | the assert in `extend_step`; `write_extended_segment` |
 | Extend refits while the window holds fewer than `RETRAIN_MIN_OBS` observations but compares against the model RMSE while it holds at most that many | `extend_step` |

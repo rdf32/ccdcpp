@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Changed (pyccd's intent, not its literals)
+
+- Initialize fits `COEFFICIENT_MIN` coefficients and both peek bases (Lookback's
+  and Extend's) are `COEFFICIENT_MAX` wide, as in Zhu's TrendSeasonalFit
+  (`min_num_c`, `max_num_c`), in place of pyccd's literals 4 and 8. The
+  defaults are 4 and 8, so default output is unchanged; a run with other
+  counts changes. Pins moved: in the transitions fixture,
+  `coefficient_min_6` (`COEFFICIENT_MIN` = 6), the fits of its first two
+  segments (RMSE 0.4% to 10%), shapes unchanged; no golden dump.
+- Lookback compares against the stable start window's RMSE as a stated rule
+  (TrendSeasonalFit refits nothing while growing backward either); no output
+  change.
+
+### Fixed
+
+- `ccd::validate()` and every entry point refuse a `COEFFICIENT_MIN` below 1,
+  coefficient counts that decrease from `COEFFICIENT_MIN` to `COEFFICIENT_MAX`,
+  and a `COEFFICIENT_MAX` above 8, the harmonic basis's width: a model wider
+  than the peek basis, or a basis wider than its storage, had no defined
+  result.
+
 ### Changed (C++ API; outputs bit for bit)
 
 - A segment's per-band fit is a `ccd::BandFit` (`include/ccd/procedure/fit.hpp`):

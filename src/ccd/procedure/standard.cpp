@@ -55,7 +55,7 @@ InitializeCriteria initialize_criteria(
         options.TMASK_BANDS,
         options.T_CONST,
         options.DETECTION_BANDS,
-        4,   // pyccd's literal, not COEFFICIENT_MIN (quirk 4)
+        options.COEFFICIENT_MIN,
         cadence.change_threshold
     };
 }
@@ -551,8 +551,9 @@ LookbackOutcome lookback_step(const Context& context, State& state)
             {bands, samples}
         );
 
-    // The 8-coefficient basis, whatever the models' count (quirk 4).
-    peek_basis.build(masked_dates_window, 8);
+    // COEFFICIENT_MAX wide, the widest model's count: the models predict
+    // with zeros above their own.
+    peek_basis.build(masked_dates_window, options.COEFFICIENT_MAX);
 
     peek_residuals(
         peek_basis,
@@ -562,8 +563,8 @@ LookbackOutcome lookback_step(const Context& context, State& state)
         residuals
     );
 
-    // use original model rmse like python code
-    // not sure if this is intended or python bug
+    // The comparison RMSE is the stable start window's: nothing is refitted
+    // while the window grows backward (Zhu's TrendSeasonalFit, pyccd).
     for (index_t i = 0; i < detection_bands.size(); ++i)
     {
         comp_rmses[i] = models[detection_bands[i]].score.rmse;
@@ -742,8 +743,12 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // The peek's residuals, comparison RMSE and magnitudes
     //--------------------------------------------------------------------------
 
-    // The 8-coefficient basis, whatever the models' count (quirk 4).
-    peek_basis.build(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
+    // COEFFICIENT_MAX wide, the widest model's count: the models predict
+    // with zeros above their own.
+    peek_basis.build(
+        masked_dates.slice(range(peek_window.start, peek_window.stop)),
+        options.COEFFICIENT_MAX
+    );
 
     peek_residuals(
         peek_basis,

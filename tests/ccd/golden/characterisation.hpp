@@ -388,9 +388,8 @@ inline std::vector<CharPixel> characterisation_pixels()
     out.push_back(constant_detection_band());
     out.push_back(start_catch(2));
     {
-        // COEFFICIENT_MIN raised to 6: Extend's coefficient schedule and the
-        // Start/End fits read it; Initialize's 4 coefficients and the 8-term
-        // peek basis are literals and do not (quirk 4).
+        // COEFFICIENT_MIN raised to 6: Initialize, Extend's coefficient
+        // schedule and the Start/End fits all read it.
         CharPixel p = sparse_random("coefficient_min_6", 3);
         p.h.COEFFICIENT_MIN = 6;
         out.push_back(std::move(p));

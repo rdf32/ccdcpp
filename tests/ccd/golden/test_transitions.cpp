@@ -35,15 +35,12 @@
 //     pixels whose output a quirk decides without moving that structure, the
 //     values it decides, to a tolerance. Platform free.
 //
-// The pyccd quirks the refactor keeps exactly, numbered as in the design
-// notes (each is decided for 0.8.0):
+// The pyccd quirks the code still keeps, numbered as in the design notes
+// (each is fixed in 0.8.0):
 //
 //   1  far from the previous break, Lookback peeks peek - 1 observations (the
 //      adjusted peek, Cadence::peek, minus one)
 //   2  near the series start, Lookback's peek reads below the previous break
-//   3  Lookback compares against the initialization models' RMSE
-//   4  Initialize fits 4 coefficients and the peek basis has 8, whatever
-//      COEFFICIENT_MIN / COEFFICIENT_MAX say
 //   5  the early exits return an empty processing mask
 //   6  the series-end check in Extend is dead (a), so a series-end segment's
 //      end day is its break day (b), and after it the outer guard passes
@@ -52,6 +49,11 @@
 //      uses (c)
 //   7  Extend refits while the window has < RETRAIN_MIN_OBS observations but
 //      compares against the model RMSE while it has <= RETRAIN_MIN_OBS
+//
+// Two rules pyccd and Zhu's TrendSeasonalFit share, which the same numbers
+// name in the design notes: Lookback compares against the stable start
+// window's RMSE, refitting nothing (3); Initialize fits COEFFICIENT_MIN
+// coefficients and both peek bases are COEFFICIENT_MAX wide (4).
 //
 // Which pixel takes which transition. The states are the machine's
 // (Select, the whole-series fit, Prepare, Initialize, Lookback, StartCatch,
@@ -115,8 +117,8 @@
 //                                        bounds:dn
 //     include one                        lookback_below_break, peek_guard_tail
 //     reached prev_break                 peek_guard_tail, reentry_*
-//     compares against the
-//       initialization RMSE (quirk 3)    every Lookback step above
+//     compares against the start
+//       window's RMSE (rule 3)           every Lookback step above
 //   StartCatch
 //     emits a Start segment              start_catch; corpus bounds:dn
 //     off: gap <= peek                   every first segment but start_catch
@@ -134,8 +136,9 @@
 //     compare: seasonal RMSE             series_end_after_outlier
 //     coefficients 4 / 6 / 8             select_clear_at_threshold (4, 6),
 //                                        lookback_below_break (4, 8)
-//     4-coefficient Initialize, 8-term
-//       peek basis (quirk 4)             every Extend step above; with
+//     COEFFICIENT_MIN Initialize,
+//       COEFFICIENT_MAX peek basis
+//       (rule 4)                         every Extend step above; with
 //                                        COEFFICIENT_MIN = 6,
 //                                        coefficient_min_6
 //     change                             lookback_below_break, peek_guard_tail
@@ -177,8 +180,6 @@
 //                                      (golden corpus: none)
 //   2  Lookback stops at prev_break    lookback_below_break_decides
 //                                      (golden corpus: none)
-//   4  Initialize reads COEFFICIENT_MIN  coefficient_min_6 (at the defaults
-//                                      the fix changes nothing)
 //   5  early exits keep the mask       variogram_nan; standard_too_few and
 //                                      128 corpus pixels; snow_too_few and 18
 //                                      corpus pixels
@@ -187,13 +188,11 @@
 //                                      (golden corpus: none)
 //   7  refit while <= RETRAIN_MIN_OBS  lookback_peek_minus_one_decides;
 //                                      177 corpus pixels
-//   (3 is intent and keeps the output.)
 //
 // Off the fixture platform PathsAsDocumented still fails on each fix alone:
 // 1, 5 and 6 through the shapes and masks, 2 through
-// lookback_below_break_decides's mask count, 4 and 7 through the RMSE values
-// of coefficient_min_6 and lookback_peek_minus_one_decides (checked by
-// applying each to v0.6.1).
+// lookback_below_break_decides's mask count, 7 through the RMSE values of
+// lookback_peek_minus_one_decides (checked by applying each to v0.6.1).
 //
 //==============================================================================
 
@@ -245,12 +244,13 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
     throw std::runtime_error("no characterization pixel " + name);
 }
 
-// The values fixes 4 and 7 decide on pixels whose shapes they leave alone:
-// each band's RMSE of one segment. Each fix, applied alone to v0.6.1, moves
-// every one of these by at least 8.8e-4 relative (7: 8.8e-4 to 4.8e-2; 4:
-// 4.2e-3 to 1.0e-1); building v0.6.1 with -ffp-contract=off, which stands in
-// for another compiler's contraction, moves them by under 1e-13, and
-// -ffp-contract=fast not at all. A relative 1e-6 sits between the two.
+// The values rule 4 and fix 7 decide on pixels whose shapes they leave
+// alone: each band's RMSE of one segment. Each moves every one of these by
+// at least 8.8e-4 relative (fix 7 applied alone to v0.6.1: 8.8e-4 to 4.8e-2;
+// rule 4 against pyccd's literal 4 and 8: 4.2e-3 to 1.0e-1); building with
+// -ffp-contract=off, which stands in for another compiler's contraction,
+// moves them by under 1e-13, and -ffp-contract=fast not at all. A relative
+// 1e-6 sits between the two.
 constexpr double DECIDED_RTOL = 1e-6;
 
 void expect_rmse(
@@ -476,16 +476,17 @@ TEST(Transitions, PathsAsDocumented)
              66.3021312, 236.0055942});
     }
     {
-        // Fix 4 moves the fits of the first two segments.
+        // Rule 4 decides the fits of the first two segments: Initialize
+        // fits COEFFICIENT_MIN = 6 coefficients.
         const auto r = run_detect(pixel(all, "coefficient_min_6"));
         expect_shapes("coefficient_min_6", r,
             {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 308}});
         expect_rmse("coefficient_min_6", r, 0,
-            {33.98750948, 41.98759122, 50.12372659, 117.7534882, 93.13544933,
-             64.747995, 211.9343041});
+            {33.84482982, 41.67944514, 50.41066257, 122.4179905, 92.36000081,
+             65.21865399, 223.7726019});
         expect_rmse("coefficient_min_6", r, 1,
-            {65.4233493, 63.69229807, 84.5716549, 187.0748164, 118.5062873,
-             78.32135257, 167.267371});
+            {61.42278107, 58.15066275, 75.88209759, 179.3754244, 114.9040179,
+             75.02686201, 172.548894});
     }
 
     // The peek guard sends the second Initialize to EndCatch.

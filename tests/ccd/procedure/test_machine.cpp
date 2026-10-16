@@ -132,14 +132,15 @@ struct Record
     }
 
     // Initialize's stable fits over (start, stop), as a Stable step leaves
-    // them for Lookback: the detection bands, 4 coefficients, residuals kept.
+    // them for Lookback: the detection bands, COEFFICIENT_MIN coefficients,
+    // residuals kept.
     void with_init_models(index_t start, index_t stop)
     {
         state.init_models.resize(7);
         ccd::fit_bands(
             state.series.dates().slice(ccd::range(start, stop)),
             state.series.spectral().slice(ccd::all(), ccd::range(start, stop)),
-            4,
+            options.COEFFICIENT_MIN,
             options.DETECTION_BANDS,
             ccd::KeepResiduals::Yes,
             lasso,
@@ -353,15 +354,15 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     EXPECT_EQ(r.state.cadence.peek, r.options.PEEK_SIZE);
     EXPECT_EQ(r.state.cadence.change_threshold, r.options.CHANGE_THRESHOLD);
 
-    // Initialize's criteria, once for the pixel: the options', the literal 4
-    // (quirk 4) and the cadence's threshold.
+    // Initialize's criteria, once for the pixel: the options' (COEFFICIENT_MIN
+    // coefficients among them) and the cadence's threshold.
     const ccd::InitializeCriteria& c = r.state.initialize_criteria;
     EXPECT_EQ(c.meow_size, r.options.MEOW_SIZE);
     EXPECT_EQ(c.day_delta, r.options.DAY_DELTA);
     EXPECT_EQ(c.t_const, r.options.T_CONST);
     EXPECT_EQ(c.tmask_bands.size(), r.options.TMASK_BANDS.size());
     EXPECT_EQ(c.detection_bands.size(), r.options.DETECTION_BANDS.size());
-    EXPECT_EQ(c.num_coefficients, 4u);
+    EXPECT_EQ(c.num_coefficients, r.options.COEFFICIENT_MIN);
     EXPECT_EQ(c.change_threshold, r.state.cadence.change_threshold);
     EXPECT_EQ(r.state.variogram.bands.size(), 7u);
 }
