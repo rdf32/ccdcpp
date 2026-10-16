@@ -406,7 +406,7 @@ Phase initialize(const Context& context, State& state)
 
     state.init_models.resize(state.series.spectral().extent(0));
 
-    const bool initialized = ccd::initialize(
+    const InitializeOutcome outcome = initialize_step(
         state.series,
         state.cursor.window,
         criteria,
@@ -415,13 +415,23 @@ Phase initialize(const Context& context, State& state)
         context.solver,
         state.init_models
     );
+    LOG_DEBUG("Initialize: " << to_string(outcome));
 
-    if (!initialized) {
-        LOG_DEBUG("Model initialization failed");
-        return end_catch_because(state, Exit::InitializeExhausted);
+    switch (outcome)
+    {
+        case InitializeOutcome::Exhausted:
+            return end_catch_because(state, Exit::InitializeExhausted);
+
+        case InitializeOutcome::Stable:
+            return after_stable_start(context, state);
+
+        case InitializeOutcome::ShortSpan:
+        case InitializeOutcome::AllOutliers:
+        case InitializeOutcome::RejectedOutliers:
+        case InitializeOutcome::Unstable:
+            break;
     }
-
-    return after_stable_start(context, state);
+    return Phase::Initialize;
 }
 
 Phase lookback(const Context& context, State& state)

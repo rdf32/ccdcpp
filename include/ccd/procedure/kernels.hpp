@@ -19,10 +19,10 @@ namespace ccd
 // The procedures' shared kernels
 //
 // Plain functions that a procedure composes: the per-band Lasso fit of a
-// window, the catch segment written from it, and the start-window search
-// (Initialise). Each takes what it reads as arguments, never a procedure's
-// state, and none fixes a coefficient count or a threshold of its own: the
-// caller passes them.
+// window, the catch segment written from it, and one step of the
+// start-window search (Initialise). Each takes what it reads as arguments,
+// never a procedure's state, and none fixes a coefficient count or a
+// threshold of its own: the caller passes them.
 //
 // Every fit over a window builds the HarmonicBasis of that window's dates
 // (column order in ccd/regression/harmonic_basis.hpp) in the LassoWorkspace.
@@ -114,22 +114,42 @@ struct InitializeCriteria
     scalar_t change_threshold;  // stable() below this
 };
 
-// Searches for a stable start window from `window`, which holds at least
-// criteria.meow_size observations.
+// What one step of the start-window search did, in the order the step tests
+// them.
+enum class InitializeOutcome : std::uint8_t
+{
+    Exhausted,         // window.stop + meow_size reached the series size: no
+                       // candidate left, nothing tested or changed
+    ShortSpan,         // the window spans fewer than day_delta days: grown
+    AllOutliers,       // Tmask flags every observation in it: grown
+    RejectedOutliers,  // what Tmask's outliers leave is too short or too
+                       // few: grown, nothing dropped
+    Unstable,          // fitted (after any Tmask drop), not stable: shifted
+    Stable             // fitted (after any Tmask drop) and stable
+};
+
+const char* to_string(InitializeOutcome outcome);
+
+// One step of the search for a stable start window: one candidate window.
+// `window` holds at least criteria.meow_size observations.
 //
-// One candidate per step, in this order: a window spanning fewer than
-// day_delta days grows by one; Tmask's outliers in it are dropped from
-// `series` if what is left still spans day_delta days and holds meow_size
-// observations (MaskedSeries::drop_outliers_if()), and the window grows
-// instead when Tmask flags every observation or what is left fails; the
-// detection bands are fitted (fit_bands(), residuals kept) into
-// models[band], and the window shifts by one unless stable() holds.
+// In this order:
 //
-// Returns true with `window` the stable window and `models` its fits, or
-// false once window.stop + meow_size reaches series.size() (exhausted), with
-// `window` where the search stopped. Only the detection bands' entries of
-// `models` are written.
-bool initialize(
+//   * window.stop + meow_size < series.size() fails: Exhausted;
+//   * the window spans fewer than day_delta days: it grows by one;
+//   * Tmask flags every observation of the window: it grows by one;
+//   * Tmask flags some: they are dropped from `series` if what is left of
+//     the window still spans day_delta days and holds meow_size
+//     observations (MaskedSeries::drop_outliers_if(), which shortens the
+//     window); otherwise the window grows by one with nothing dropped;
+//   * the detection bands are fitted over the window (fit_bands(),
+//     residuals kept) into models[band]: Stable when stable() holds, with
+//     `window` the stable window and `models` its fits; otherwise the window
+//     shifts by one.
+//
+// Only the detection bands' entries of `models` are written, and only on
+// Unstable and Stable.
+InitializeOutcome initialize_step(
     MaskedSeries& series,
     Window& window,
     const InitializeCriteria& criteria,

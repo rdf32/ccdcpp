@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -107,33 +108,41 @@ void change_magnitude(
 //
 // pyccd's standard procedure as a per-pixel state machine. drive()
 // (machine.hpp) steps it from Prepare to Done; each phase's transition does
-// its work on the State and returns the next phase. Lookback, Extend
-// and Initialize still run their whole loop in one call.
+// its work on the State and returns the next phase. Initialize tests one
+// candidate window per call; Lookback and Extend still run their whole loop
+// in one call.
 //
 //     Prepare ──┬─────────────────────────────────────────────► Done
 //               │  (too few observations, or a NaN variogram)
 //               ▼
-//     ┌──► Initialize ── exhausted ───────────────────┐
-//     │         │ stable                              │
-//     │         ▼                                     │
-//     │     Lookback (when window.start > prev_break) │
-//     │         ▼                                     │
-//     │     StartCatch (first segment only)           │
-//     │         │ no full peek after the window ──────┤
-//     │         ▼                                     │
-//     │     Extend                                    │
-//     │         ▼                                     ▼
-//     └── Restart ── no room to initialize ──────► EndCatch ──► Done
+//     ┌──► Initialize ◄┐ grow, shift ─────── exhausted ──┐
+//     │         │ └────┘                                │
+//     │         │ stable                                │
+//     │         ▼                                       │
+//     │     Lookback ◄┐ include, drop                   │
+//     │         │ └───┘ (while window.start > prev_break)
+//     │         ▼                                       │
+//     │     StartCatch (first segment only)             │
+//     │         │ no full peek after the window ────────┤
+//     │         ▼                                       │
+//     │     Extend ◄┐ grow, drop (while a peek fits)    │
+//     │         │ └─┘                                   │
+//     │         ▼ change, or series end                 ▼
+//     └── Restart ── no room to initialize ────────► EndCatch ──► Done
 //
 // Prepare enters Initialize, or EndCatch when there is no room; StartCatch
 // and the peek guard follow Lookback, or the stable start directly.
+//
+// Invariants the transitions assert: in Initialize the window holds at least
+// MEOW_SIZE observations; in Lookback window.start > prev_break; in Extend a
+// full peek fits after the window (peek_fits()).
 //
 //==============================================================================
 
 enum class Phase : std::uint8_t
 {
     Prepare,       // the early exits, the statistics window, cadence, variogram
-    Initialize,    // the start-window search (ccd::initialize)
+    Initialize,    // one candidate start window (ccd::initialize_step)
     Lookback,      // the backward extension towards prev_break
     StartCatch,    // the leading observations of the first segment
     Extend,        // the forward extension and its change test
@@ -227,8 +236,8 @@ struct Context
 };
 
 //------------------------------------------------------------------------------
-// Transitions: one per phase but Done. Each returns the next phase; a route
-// into EndCatch sets state.exit to why.
+// Transitions: one per phase but Done. Each makes one decision and returns
+// the next phase; a route into EndCatch sets state.exit to why.
 //------------------------------------------------------------------------------
 
 // Done (TooFewObservations) when the series holds at most MEOW_SIZE
@@ -238,10 +247,10 @@ struct Context
 // prev_break at 0. Next: Initialize, or EndCatch (NoRoomToInitialize).
 Phase prepare(const Context& context, State& state);
 
-// ccd::initialize() from the window, with the 4-coefficient stability fits
-// pyccd hard-codes (quirk 4) and the cadence's change threshold, into
-// init_models. Next: after_stable_start(), or EndCatch
-// (InitializeExhausted).
+// One ccd::initialize_step() on the window, with the 4-coefficient stability
+// fits pyccd hard-codes (quirk 4) and the cadence's change threshold, into
+// init_models. Next: Initialize after a grow or a shift; after_stable_start()
+// when stable; EndCatch (InitializeExhausted) when no candidate is left.
 Phase initialize(const Context& context, State& state);
 
 // Extends the window backward towards prev_break one observation at a time,
@@ -253,8 +262,7 @@ Phase initialize(const Context& context, State& state);
 Phase lookback(const Context& context, State& state);
 
 // Writes the Start segment over (prev_break, window.start) with
-// COEFFICIENT_MIN coefficients. Next: Extend, or EndCatch
-// (PeekBeyondEnd).
+// COEFFICIENT_MIN coefficients. Next: Extend, or EndCatch (PeekBeyondEnd).
 Phase start_catch(const Context& context, State& state);
 
 // Grows the window one observation at a time while a full peek fits in the
@@ -290,12 +298,10 @@ bool start_catch_due(const State& state);
 // after_lookback().
 Phase after_stable_start(const Context& context, State& state);
 
-// After Lookback: StartCatch when start_catch_due(), else
-// peek_guard().
+// After Lookback: StartCatch when start_catch_due(), else peek_guard().
 Phase after_lookback(const Context& context, State& state);
 
-// The peek guard: Extend when peek_fits(), else EndCatch
-// (PeekBeyondEnd).
+// The peek guard: Extend when peek_fits(), else EndCatch (PeekBeyondEnd).
 Phase peek_guard(const Context& context, State& state);
 
 //------------------------------------------------------------------------------

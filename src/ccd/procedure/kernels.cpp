@@ -1,5 +1,6 @@
 #include "ccd/procedure/kernels.hpp"
 
+#include <cassert>
 #include <utility>
 
 #include "ccd/logger.hpp"
@@ -156,7 +157,21 @@ ChangeModel catch_segment(
     return result;
 }
 
-bool initialize(
+const char* to_string(InitializeOutcome outcome)
+{
+    switch (outcome)
+    {
+        case InitializeOutcome::Exhausted:        return "exhausted";
+        case InitializeOutcome::ShortSpan:        return "short span, grown";
+        case InitializeOutcome::AllOutliers:      return "all Tmask outliers, grown";
+        case InitializeOutcome::RejectedOutliers: return "Tmask drop rejected, grown";
+        case InitializeOutcome::Unstable:         return "unstable, shifted";
+        case InitializeOutcome::Stable:           return "stable";
+    }
+    return "?";
+}
+
+InitializeOutcome initialize_step(
     MaskedSeries& series,
     Window& window,
     const InitializeCriteria& criteria,
@@ -166,132 +181,131 @@ bool initialize(
     std::vector<LassoResult>& models
 )
 {
+    assert(window.size() >= criteria.meow_size);
+
+    //--------------------------------------------------------------------------
+    // No candidate left before the end of the series
+    //--------------------------------------------------------------------------
+    if (!(window.stop + criteria.meow_size < series.size()))
+    {
+        LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
+        return InitializeOutcome::Exhausted;
+    }
+
+    // The window's observations; a Tmask drop below replaces them.
+    auto dates =
+        series.dates().slice(range(window.start, window.stop));
+    auto spectral =
+        series.spectral().slice(all(), range(window.start, window.stop));
+
+    //--------------------------------------------------------------------------
+    // Check minimum time span
+    //--------------------------------------------------------------------------
+    if (!enough_time(dates, criteria.day_delta))
+    {
+        window.grow();
+        return InitializeOutcome::ShortSpan;
+    }
+
     LOG_DEBUG(
-        "Initial model window ("
+        "Checking window ("
         << window.start
         << ", "
         << window.stop
         << ")"
     );
-
-    while (window.stop + criteria.meow_size < series.size())
-    {
-        // The window's observations; a Tmask drop below replaces them.
-        auto dates =
-            series.dates().slice(range(window.start, window.stop));
-        auto spectral =
-            series.spectral().slice(all(), range(window.start, window.stop));
-
-        //----------------------------------------------------------------------
-        // Check minimum time span
-        //----------------------------------------------------------------------
-        if (!enough_time(dates, criteria.day_delta))
-        {
-            window.grow();
-            continue;
-        }
-
-        LOG_DEBUG(
-            "Checking window ("
-            << window.start
-            << ", "
-            << window.stop
-            << ")"
-        );
-        //----------------------------------------------------------------------
-        // Run TMask
-        //----------------------------------------------------------------------
-        auto outliers =
-            tmask(
-                dates,
-                spectral,
-                variogram,
-                criteria.tmask_bands,
-                criteria.t_const
-            );
-        LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
-        //----------------------------------------------------------------------
-        // TMask removed everything
-        //----------------------------------------------------------------------
-        if (outliers.count() == window.size())
-        {
-            window.grow();
-            continue;
-        }
-
-        //---------------------------------------------------------------------
-        // Update persistent mask
-        //---------------------------------------------------------------------
-        if (outliers.any())
-        {
-            //--------------------------------------------------------------
-            // Drop them only if the shortened window is still usable;
-            // otherwise grow, with nothing dropped
-            //--------------------------------------------------------------
-            const bool dropped = series.drop_outliers_if(
-                outliers,
-                window,
-                [&criteria](ArrayView<const std::int64_t, 1> shortened)
-                {
-                    return enough_time(shortened, criteria.day_delta) &&
-                        enough_samples(shortened, criteria.meow_size);
-                }
-            );
-
-            if (!dropped)
-            {
-                window.grow();
-                continue;
-            }
-
-            dates = series.dates().slice(range(window.start, window.stop));
-            spectral = series.spectral().slice(all(), range(window.start, window.stop));
-        }
-
-        LOG_DEBUG("Generating models to check for stability");
-        LOG_DEBUG(
-            "window for stability: ("
-            << window.start
-            << ", "
-            << window.stop
-            << ")"
-        );
-        //----------------------------------------------------------------------
-        // Fit the detection bands
-        //
-        // Only these are read: stable() here and the caller after it. The
-        // magnitude of these models is never read.
-        //----------------------------------------------------------------------
-        fit_bands(
+    //--------------------------------------------------------------------------
+    // Run TMask
+    //--------------------------------------------------------------------------
+    auto outliers =
+        tmask(
             dates,
             spectral,
-            criteria.num_coefficients,
-            criteria.detection_bands,
-            KeepResiduals::Yes,
-            lworkspace,
-            solver,
-            models
+            variogram,
+            criteria.tmask_bands,
+            criteria.t_const
+        );
+    LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
+    //--------------------------------------------------------------------------
+    // TMask removed everything
+    //--------------------------------------------------------------------------
+    if (outliers.count() == window.size())
+    {
+        window.grow();
+        return InitializeOutcome::AllOutliers;
+    }
+
+    //--------------------------------------------------------------------------
+    // Update persistent mask
+    //--------------------------------------------------------------------------
+    if (outliers.any())
+    {
+        //----------------------------------------------------------------------
+        // Drop them only if the shortened window is still usable; otherwise
+        // grow, with nothing dropped
+        //----------------------------------------------------------------------
+        const bool dropped = series.drop_outliers_if(
+            outliers,
+            window,
+            [&criteria](ArrayView<const std::int64_t, 1> shortened)
+            {
+                return enough_time(shortened, criteria.day_delta) &&
+                    enough_samples(shortened, criteria.meow_size);
+            }
         );
 
-        //----------------------------------------------------------------------
-        // Stability check
-        //----------------------------------------------------------------------
-        if (stable(
-                dates,
-                variogram,
-                models,
-                criteria.change_threshold,
-                criteria.detection_bands))
+        if (!dropped)
         {
-            LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
-            LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
-            return true;
+            window.grow();
+            return InitializeOutcome::RejectedOutliers;
         }
-        window.shift();
-        LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
+
+        dates = series.dates().slice(range(window.start, window.stop));
+        spectral = series.spectral().slice(all(), range(window.start, window.stop));
     }
-    LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
-    return false;
+
+    LOG_DEBUG("Generating models to check for stability");
+    LOG_DEBUG(
+        "window for stability: ("
+        << window.start
+        << ", "
+        << window.stop
+        << ")"
+    );
+    //--------------------------------------------------------------------------
+    // Fit the detection bands
+    //
+    // Only these are read: stable() here and the caller after it. The
+    // magnitude of these models is never read.
+    //--------------------------------------------------------------------------
+    fit_bands(
+        dates,
+        spectral,
+        criteria.num_coefficients,
+        criteria.detection_bands,
+        KeepResiduals::Yes,
+        lworkspace,
+        solver,
+        models
+    );
+
+    //--------------------------------------------------------------------------
+    // Stability check
+    //--------------------------------------------------------------------------
+    if (stable(
+            dates,
+            variogram,
+            models,
+            criteria.change_threshold,
+            criteria.detection_bands))
+    {
+        LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
+        return InitializeOutcome::Stable;
+    }
+
+    window.shift();
+    LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
+    return InitializeOutcome::Unstable;
 }
 
 } // namespace ccd
