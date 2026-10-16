@@ -12,7 +12,9 @@
 //   * Steps: one transition call of Initialize, Lookback and Extend per row
 //     of their guard tables (the brief's 1.4, 1.5 and 1.8), on a short
 //     smooth series with the observation that decides it edited in, against
-//     the next phase and the record; lookback_peek()'s three cases.
+//     the next phase and the record, and the same record's step function
+//     (initialize_step, lookback_step, extend_step) against the outcome it
+//     reports; lookback_peek()'s three cases.
 //   * Whole pixels stepped by hand: every self-transition is one decision,
 //     and the result is the driven machine's.
 //   * Exits: standard::run() on the characterisation pixels that end the
@@ -31,6 +33,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -593,13 +596,31 @@ void in_lookback(Record& r, index_t start, index_t stop, index_t prev_break = 0)
     r.state.phase = Phase::Lookback;
 }
 
+// What lookback_step() reports for a record set up as `setup` leaves it, on
+// a record of its own; also the window the step leaves, which the
+// transition keeps whatever it routes to.
+template<typename Setup>
+std::pair<ccd::standard::LookbackOutcome, ccd::Window> lookback_outcome_of(index_t n, Setup setup)
+{
+    Record r(n);
+    setup(r);
+    const auto outcome = ccd::standard::lookback_step(r.context, r.state);
+    return {outcome, r.state.cursor.window};
+}
+
 TEST(StandardLookback, AChangeStopsWithTheWindowWhereItIs)
 {
     // Every observation before position 10 is far off the models. The gap
     // to the series start is 10 > peek: the start catch is next.
+    const auto setup = [](Record& r)
+    {
+        r.edit([](index_t b, index_t i, double v) { return (i < 10 && b >= 1 && b <= 5) ? v + 3000 : v; });
+        in_lookback(r, 10, 34);
+    };
+    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::standard::LookbackOutcome::Change);
+
     Record r(60);
-    r.edit([](index_t b, index_t i, double v) { return (i < 10 && b >= 1 && b <= 5) ? v + 3000 : v; });
-    in_lookback(r, 10, 34);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::StartCatch);
     EXPECT_EQ(r.state.cursor.window.start, 10u);
     EXPECT_EQ(r.state.series.size(), 60u);
@@ -607,9 +628,15 @@ TEST(StandardLookback, AChangeStopsWithTheWindowWhereItIs)
 
 TEST(StandardLookback, AnOutlierIsDroppedAndTheWindowMovesWithTheSeries)
 {
+    const auto setup = [](Record& r)
+    {
+        r.edit([](index_t b, index_t i, double v) { return (i == 9 && b >= 1 && b <= 5) ? v + 3000 : v; });
+        in_lookback(r, 10, 34);
+    };
+    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::standard::LookbackOutcome::Dropped);
+
     Record r(60);
-    r.edit([](index_t b, index_t i, double v) { return (i == 9 && b >= 1 && b <= 5) ? v + 3000 : v; });
-    in_lookback(r, 10, 34);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Lookback);
     EXPECT_EQ(r.state.series.size(), 59u);
     EXPECT_FALSE(r.state.series.mask()[9]);
@@ -619,8 +646,14 @@ TEST(StandardLookback, AnOutlierIsDroppedAndTheWindowMovesWithTheSeries)
 
 TEST(StandardLookback, AnObservationThatFitsIsIncluded)
 {
+    const auto setup = [](Record& r)
+    {
+        in_lookback(r, 10, 34);
+    };
+    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::standard::LookbackOutcome::Included);
+
     Record r(60);
-    in_lookback(r, 10, 34);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Lookback);
     EXPECT_EQ(r.state.series.size(), 60u);
     EXPECT_EQ(r.state.cursor.window.start, 9u);
@@ -630,9 +663,17 @@ TEST(StandardLookback, AnObservationThatFitsIsIncluded)
 TEST(StandardLookback, ReachingThePreviousBreakRoutesOn)
 {
     // The include that reaches prev_break is the last Lookback step.
+    const auto setup = [](Record& r)
+    {
+        r.with_segment();
+        in_lookback(r, 21, 45, 20);
+    };
+    const auto [outcome, window] = lookback_outcome_of(60, setup);
+    EXPECT_EQ(outcome, ccd::standard::LookbackOutcome::Included);
+    EXPECT_EQ(window.start, 20u);
+
     Record r(60);
-    r.with_segment();
-    in_lookback(r, 21, 45, 20);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Extend);
     EXPECT_EQ(r.state.cursor.window.start, 20u);
     EXPECT_EQ(r.state.exit, Exit::None);
@@ -650,10 +691,27 @@ void in_extend(Record& r, index_t start, index_t stop, index_t prev_break = 0)
     r.state.phase = Phase::Extend;
 }
 
+// What extend_step() reports for a record set up as `setup` leaves it, on a
+// record of its own, and the segments it leaves (it writes none).
+template<typename Setup>
+std::pair<ccd::standard::ExtendOutcome, std::size_t> extend_outcome_of(index_t n, Setup setup)
+{
+    Record r(n);
+    setup(r);
+    const auto outcome = ccd::standard::extend_step(r.context, r.state);
+    return {outcome, r.state.segments.size()};
+}
+
 TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
 {
+    const auto setup = [](Record& r)
+    {
+        in_extend(r, 0, 24);
+    };
+    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::standard::ExtendOutcome::Grown);
+
     Record r(80);
-    in_extend(r, 0, 24);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Extend);
     const ccd::standard::Extension& e = r.state.extension;
     EXPECT_TRUE(e.trained);
@@ -711,9 +769,18 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
 
 TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
 {
+    // The step decides; the transition writes the segment.
+    const auto setup = [](Record& r)
+    {
+        r.edit([](index_t b, index_t i, double v) { return (i >= 24 && b >= 1 && b <= 5) ? v + 3000 : v; });
+        in_extend(r, 0, 24);
+    };
+    const auto [outcome, segments] = extend_outcome_of(80, setup);
+    EXPECT_EQ(outcome, ccd::standard::ExtendOutcome::Change);
+    EXPECT_EQ(segments, 0u);
+
     Record r(80);
-    r.edit([](index_t b, index_t i, double v) { return (i >= 24 && b >= 1 && b <= 5) ? v + 3000 : v; });
-    in_extend(r, 0, 24);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Restart);
     ASSERT_EQ(r.state.segments.size(), 1u);
 
@@ -731,9 +798,15 @@ TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
 
 TEST(StandardExtend, AnOutlierIsDroppedAndTheWindowKeepsItsCoordinates)
 {
+    const auto setup = [](Record& r)
+    {
+        r.edit([](index_t b, index_t i, double v) { return (i == 24 && b >= 1 && b <= 5) ? v + 3000 : v; });
+        in_extend(r, 0, 24);
+    };
+    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::standard::ExtendOutcome::Dropped);
+
     Record r(80);
-    r.edit([](index_t b, index_t i, double v) { return (i == 24 && b >= 1 && b <= 5) ? v + 3000 : v; });
-    in_extend(r, 0, 24);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Extend);
     EXPECT_EQ(r.state.series.size(), 79u);
     EXPECT_FALSE(r.state.series.mask()[24]);
@@ -746,8 +819,16 @@ TEST(StandardExtend, TheSeriesEndAfterAGrowHasEndDayEqualToBreakDay)
 {
     // (0, 74) of 80 with peek 6: the last full peek. The grow leaves none,
     // so the segment is written with change probability 0 (quirk 6b).
+    const auto setup = [](Record& r)
+    {
+        in_extend(r, 0, 74);
+    };
+    const auto [outcome, segments] = extend_outcome_of(80, setup);
+    EXPECT_EQ(outcome, ccd::standard::ExtendOutcome::Grown);
+    EXPECT_EQ(segments, 0u);
+
     Record r(80);
-    in_extend(r, 0, 74);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Restart);
     ASSERT_EQ(r.state.segments.size(), 1u);
 
@@ -763,9 +844,15 @@ TEST(StandardExtend, TheSeriesEndAfterAGrowHasEndDayEqualToBreakDay)
 
 TEST(StandardExtend, TheSeriesEndAfterADropBreaksAfterTheDroppedObservation)
 {
+    const auto setup = [](Record& r)
+    {
+        r.edit([](index_t b, index_t i, double v) { return (i == 74 && b >= 1 && b <= 5) ? v + 3000 : v; });
+        in_extend(r, 0, 74);
+    };
+    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::standard::ExtendOutcome::Dropped);
+
     Record r(80);
-    r.edit([](index_t b, index_t i, double v) { return (i == 74 && b >= 1 && b <= 5) ? v + 3000 : v; });
-    in_extend(r, 0, 74);
+    setup(r);
     EXPECT_EQ(r.step(), Phase::Restart);
     ASSERT_EQ(r.state.segments.size(), 1u);
 

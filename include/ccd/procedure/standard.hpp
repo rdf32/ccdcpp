@@ -199,6 +199,18 @@ struct ReversePeek
 //   * else: start - 1 down to prev_break.
 ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek);
 
+// What one Lookback step did, in the order it tests them.
+enum class LookbackOutcome : std::uint8_t
+{
+    Change,    // every peek magnitude above the change threshold: the window
+               // stays
+    Dropped,   // the observation before the window is an outlier: dropped,
+               // the window moving down one with the series
+    Included   // it fits: window.start - 1
+};
+
+const char* to_string(LookbackOutcome outcome);
+
 // Lookback's buffers, kept for their capacity; every one is rewritten
 // before it is read.
 struct LookbackScratch
@@ -240,6 +252,18 @@ struct Extension
     std::vector<scalar_t> comp_rmse;   // by position in DETECTION_BANDS
     std::vector<scalar_t> magnitude;
 };
+
+// What one Extend step did, in the order it tests them.
+enum class ExtendOutcome : std::uint8_t
+{
+    Change,    // every peek magnitude above the change threshold: the segment
+               // ends at the window
+    Dropped,   // the first peek observation, at window.stop, is an outlier:
+               // dropped, the window keeping its coordinates
+    Grown      // window.stop + 1
+};
+
+const char* to_string(ExtendOutcome outcome);
 
 //------------------------------------------------------------------------------
 // State
@@ -319,39 +343,46 @@ Phase prepare(const Context& context, State& state);
 // when stable; EndCatch (InitializeExhausted) when no candidate is left.
 Phase initialize(const Context& context, State& state);
 
-// Tests the observations of lookback_peek() against init_models, whose RMSE
-// is the comparison RMSE (quirk 3). Pre: window.start > prev_break. In order:
+// One Lookback step: tests the observations of lookback_peek() against
+// init_models, whose RMSE is the comparison RMSE (quirk 3), and makes the
+// decision on the record. Pre: window.start > prev_break. In order:
 //
-//   * every peek magnitude above the change threshold: a change, the window
-//     stays; next after_lookback();
-//   * the first above OUTLIER_THRESHOLD: the observation before the window is
-//     dropped from the series, and the window moves down with it;
-//   * otherwise it is included: window.start - 1.
-//
-// After a drop or an include, next Lookback while window.start > prev_break,
-// else after_lookback().
+//   * every peek magnitude above the change threshold: Change, the window
+//     stays;
+//   * the first above OUTLIER_THRESHOLD: Dropped, the observation before the
+//     window dropped from the series and the window moved down with it;
+//   * otherwise Included: window.start - 1.
+LookbackOutcome lookback_step(const Context& context, State& state);
+
+// lookback_step(), then the route: after a drop or an include, Lookback
+// while window.start > prev_break; after a change, or once window.start
+// reaches prev_break, after_lookback().
 Phase lookback(const Context& context, State& state);
 
 // Writes the Start segment over (prev_break, window.start) with
 // COEFFICIENT_MIN coefficients. Next: Extend, or EndCatch (PeekBeyondEnd).
 Phase start_catch(const Context& context, State& state);
 
-// One peek test after the window. Pre: peek_fits(). Refits every band over
-// the window when the extension is not trained, the window holds fewer than
-// RETRAIN_MIN_OBS observations, or it spans at least RETRAIN_SPAN_FACTOR
-// times the last fit's span (quirk 7); then, in order:
+// One Extend step, one peek test after the window. Pre: peek_fits().
+// Refits every band over the window when the extension is not trained, the
+// window holds fewer than RETRAIN_MIN_OBS observations, or it spans at least
+// RETRAIN_SPAN_FACTOR times the last fit's span (quirk 7); then, in order:
 //
-//   * every peek magnitude above the change threshold: writes the segment
-//     with change probability 1; next Restart;
-//   * the first above OUTLIER_THRESHOLD: drops that observation (at
-//     window.stop), the window keeping its coordinates;
-//   * otherwise the window grows by one. pyccd's series-end check before the
-//     grow can never hold here (quirk 6a) and is an assert.
+//   * every peek magnitude above the change threshold: Change, the window
+//     stays;
+//   * the first above OUTLIER_THRESHOLD: Dropped, that observation (at
+//     window.stop) dropped, the window keeping its coordinates;
+//   * otherwise Grown, the window one longer. pyccd's series-end check
+//     before the grow can never hold here (quirk 6a) and is an assert.
 //
-// After a drop or a grow, next Extend while a peek fits; else writes the
-// segment with change probability 0, the series end, and next Restart (also
-// after a no-change segment: quirk 6c). The segment's curve_qa and break day
-// are the last test's (quirk 6b).
+// It writes no segment: extend() does.
+ExtendOutcome extend_step(const Context& context, State& state);
+
+// extend_step(), then the route. After a change, writes the segment with
+// change probability 1; next Restart. After a drop or a grow, next Extend
+// while a peek fits; else writes the segment with change probability 0, the
+// series end, and next Restart (also after a no-change segment: quirk 6c).
+// The segment's curve_qa and break day are the last test's (quirk 6b).
 Phase extend(const Context& context, State& state);
 
 // prev_break moves to window.stop and the window to (stop, stop +

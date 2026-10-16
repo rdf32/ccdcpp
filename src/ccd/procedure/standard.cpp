@@ -213,6 +213,28 @@ const char* to_string(Phase phase)
     return "?";
 }
 
+const char* to_string(LookbackOutcome outcome)
+{
+    switch (outcome)
+    {
+        case LookbackOutcome::Change:   return "change";
+        case LookbackOutcome::Dropped:  return "outlier dropped";
+        case LookbackOutcome::Included: return "included";
+    }
+    return "?";
+}
+
+const char* to_string(ExtendOutcome outcome)
+{
+    switch (outcome)
+    {
+        case ExtendOutcome::Change:  return "change";
+        case ExtendOutcome::Dropped: return "outlier dropped";
+        case ExtendOutcome::Grown:   return "grown";
+    }
+    return "?";
+}
+
 const char* to_string(Exit exit)
 {
     switch (exit)
@@ -459,7 +481,7 @@ ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek
     return ReversePeek{start, static_cast<std::ptrdiff_t>(prev_break) - 1};
 }
 
-Phase lookback(const Context& context, State& state)
+LookbackOutcome lookback_step(const Context& context, State& state)
 {
     const auto& options = context.options;
     MaskedSeries& series = state.series;
@@ -558,8 +580,8 @@ Phase lookback(const Context& context, State& state)
     //--------------------------------------------------------------------------
     if (detect_change(magnitude, cadence.change_threshold))
     {
-        LOG_DEBUG("Lookback: change before " << window.start);
-        return after_lookback(context, state);
+        LOG_DEBUG("Change before " << window.start);
+        return LookbackOutcome::Change;
     }
     //--------------------------------------------------------------------------
     // Outlier detected: drop the observation immediately before the window;
@@ -567,19 +589,25 @@ Phase lookback(const Context& context, State& state)
     //--------------------------------------------------------------------------
     else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
     {
-        LOG_DEBUG("Lookback: outlier dropped at " << peek_window.start);
+        LOG_DEBUG("Outlier dropped at " << peek_window.start);
         series.drop(static_cast<index_t>(peek_window.start), window);
+        return LookbackOutcome::Dropped;
     }
     //--------------------------------------------------------------------------
     // Otherwise include it
     //--------------------------------------------------------------------------
-    else
-    {
-        LOG_DEBUG("Lookback: included " << peek_window.start);
-        window.start = static_cast<index_t>(peek_window.start);
-    }
+    LOG_DEBUG("Included " << peek_window.start);
+    window.start = static_cast<index_t>(peek_window.start);
+    return LookbackOutcome::Included;
+}
 
-    if (window.start > prev_break)
+Phase lookback(const Context& context, State& state)
+{
+    const LookbackOutcome outcome = lookback_step(context, state);
+    LOG_DEBUG("Lookback: " << to_string(outcome));
+
+    if (outcome != LookbackOutcome::Change &&
+        state.cursor.window.start > state.cursor.prev_break)
         return Phase::Lookback;
 
     return after_lookback(context, state);
@@ -645,7 +673,7 @@ Phase write_extended_segment(State& state, scalar_t change_probability)
 
 } // namespace
 
-Phase extend(const Context& context, State& state)
+ExtendOutcome extend_step(const Context& context, State& state)
 {
     const auto& options = context.options;
     MaskedSeries& series = state.series;
@@ -762,7 +790,7 @@ Phase extend(const Context& context, State& state)
     if (detect_change(extension.magnitude, cadence.change_threshold))
     {
         LOG_DEBUG("Change detected at: " << peek_window.start);
-        return write_extended_segment(state, 1.0);
+        return ExtendOutcome::Change;
     }
     //--------------------------------------------------------------------------
     // Outlier detected: drop the first peek observation, at window.stop; the
@@ -774,17 +802,25 @@ Phase extend(const Context& context, State& state)
         LOG_DEBUG("mag: " << extension.magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD);
         LOG_DEBUG("Updating processing mask extend");
         series.drop(peek_window.start, window);
+        return ExtendOutcome::Dropped;
     }
     //--------------------------------------------------------------------------
     // Otherwise grow. pyccd checks for the series end first (procedures.py
     // 691-692), which cannot hold: the peek fitted at the top of this step
     // and nothing since changed the window or the series (quirk 6a).
     //--------------------------------------------------------------------------
-    else
-    {
-        assert(peek_fits(state));
-        window = Window(window.start, window.stop + 1);
-    }
+    assert(peek_fits(state));
+    window = Window(window.start, window.stop + 1);
+    return ExtendOutcome::Grown;
+}
+
+Phase extend(const Context& context, State& state)
+{
+    const ExtendOutcome outcome = extend_step(context, state);
+    LOG_DEBUG("Extend: " << to_string(outcome));
+
+    if (outcome == ExtendOutcome::Change)
+        return write_extended_segment(state, 1.0);
 
     if (peek_fits(state))
         return Phase::Extend;
