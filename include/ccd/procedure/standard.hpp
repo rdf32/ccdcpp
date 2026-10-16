@@ -2,7 +2,9 @@
 
 #include "ccd/harmonic/filter.hpp"
 #include "ccd/procedure/fit.hpp"
+#include "ccd/procedure/kernels.hpp"
 #include "ccd/procedure/series.hpp"
+#include "ccd/regression/harmonic_basis.hpp"
 
 namespace ccd
 {
@@ -41,16 +43,100 @@ Cadence measure_cadence(
     const HarmonicOptions& options
 );
 
+//------------------------------------------------------------------------------
+// The Standard procedure's kernels
+//
+// Plain functions of the procedure's steps, over the pixel's Series. Their
+// arithmetic, and the order of it, is pyccd's.
+//------------------------------------------------------------------------------
+
+// Extend's coefficient count for a window of `observations` observations:
+// COEFFICIENT_MIN below COEFFICIENT_MID * NUM_OBS_FACTOR observations,
+// COEFFICIENT_MID below COEFFICIENT_MAX * NUM_OBS_FACTOR, else
+// COEFFICIENT_MAX.
+index_t coefficient_count(
+    index_t observations,
+    const HarmonicOptions& options
+);
+
+// |y - prediction| of models[b] at each peek observation, for every b in
+// `bands`, into residuals[b] (resized to the peek's length; the other
+// entries are not touched). `peek_basis` is built over the peek's dates with
+// at least the models' coefficient count, and `peek_spectral` (B, peek
+// length) holds the peek's observations in the same order.
+void peek_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 2> peek_spectral,
+    const std::vector<LassoResult>& models,
+    const BandList& bands,
+    std::vector<std::vector<scalar_t>>& residuals
+);
+
+// peek_residuals() of every row of `peek_spectral`; residuals has B entries.
+void peek_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 2> peek_spectral,
+    const std::vector<LassoResult>& models,
+    std::vector<std::vector<scalar_t>>& residuals
+);
+
+// The change magnitude of each peek observation j, into `magnitude`:
+//
+//     sum over i of (residuals[bands[i]][j] / max(variogram[bands[i]], rmse[i]))^2
+//
+// in the order of `bands`, a band whose max(...) is not above 0 adding
+// nothing. rmse[i] is the comparison RMSE of bands[i]; every residuals[b]
+// named has the peek's length. Empty for an empty `bands`.
+void change_magnitude(
+    const std::vector<std::vector<scalar_t>>& residuals,
+    const BandList& bands,
+    const Variogram& variogram,
+    const std::vector<scalar_t>& rmse,
+    std::vector<scalar_t>& magnitude
+);
+
+// Lookback: extends `window` backward towards prev_break one observation at
+// a time, testing the observations before it against `models`, the
+// initialisation fits (their RMSE is the comparison RMSE). Stops at
+// prev_break or on a change (returns true); drops an outlier from `series`
+// and tests again. `peek_basis` is scratch.
+bool lookback(
+    Series& series,
+    Window& window,
+    index_t prev_break,
+    const std::vector<LassoResult>& models,
+    const Cadence& cadence,
+    const Variogram& variogram,
+    const HarmonicOptions& options,
+    HarmonicBasis& peek_basis
+);
+
+// Extend: grows `window` one observation at a time while a full peek fits
+// in the series, refitting every band on the refit schedule and testing the
+// peek after the window; drops an outlier at the first peek observation and
+// tests again. Returns the segment, change probability 1 on a change and 0
+// at the series end. `peek_basis` is scratch.
+ChangeModel lookforward(
+    Series& series,
+    Window& window,
+    const Cadence& cadence,
+    const Variogram& variogram,
+    const HarmonicOptions& options,
+    HarmonicBasis& peek_basis,
+    LassoWorkspace& lworkspace,
+    LassoSolver& solver
+);
+
 } // namespace standard
 
 //==============================================================================
 //
 // StandardProcedure
 //
-// pyccd's standard procedure: the start-window search (initialize), the
-// backward extension (lookback), the start and end catches (catch_model)
-// and the forward extension with its change test (lookforward), over the
-// pixel's Series.
+// pyccd's standard procedure: the start-window search (ccd::initialize),
+// the backward extension (standard::lookback), the start and end catches
+// (ccd::catch_segment) and the forward extension with its change test
+// (standard::lookforward), over the pixel's Series.
 //
 //==============================================================================
 
@@ -87,66 +173,15 @@ public:
 
 protected:
 
-    // subfunctions
-    bool initialize(
-        const HarmonicWorkspace& workspace,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver,
-        const Variogram& variogram,
-        scalar_t change_threshold,
-        Window& window,
-        std::vector<LassoResult>& models
-    );
-
-    bool lookback(
-        const HarmonicWorkspace& workspace,
-        LassoWorkspace& lworkspace,
-        const standard::Cadence& cadence,
-        const Variogram& variogram,
-        Window& window,
-        const std::vector<LassoResult>& models,
-        index_t prev_break
-    );
-
-    ChangeModel catch_model(
-        const HarmonicWorkspace& workspace,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver,
-        const Window& window,
-        CurveQA curve_qa
-    );
-
-    ChangeModel lookforward(
-        const HarmonicWorkspace& workspace,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver,
-        const standard::Cadence& cadence,
-        const Variogram& variogram,
-        Window& window
-    );
     //----------------------------------------------------------------------
-    // Harmonic complexity
+    // Harmonic complexity: standard::coefficient_count()
     //----------------------------------------------------------------------
     index_t coefficient_count(
         ArrayView<const std::int64_t, 1> dates,
         const HarmonicOptions& options
     ) const override
-    {   
-        const index_t span =
-            dates.size() / options.NUM_OBS_FACTOR;
-
-        if (span < options.COEFFICIENT_MID)
-        {
-            return options.COEFFICIENT_MIN;
-        }
-        else if (span < options.COEFFICIENT_MAX)
-        {
-            return options.COEFFICIENT_MID;
-        }
-        else
-        {
-            return options.COEFFICIENT_MAX;
-        }
+    {
+        return standard::coefficient_count(dates.size(), options);
     }
 
     //----------------------------------------------------------------------
@@ -158,22 +193,16 @@ protected:
         return CurveQA::Start;
     }
 
-    // |y - preds| into `residuals`, reusing its storage.
-    void calc_residuals(
-        ArrayView<const scalar_t, 1> y,
-        const std::vector<scalar_t>& preds,
-        std::vector<scalar_t>& residuals
-    );
-
 private:
 
     //----------------------------------------------------------------------
-    // The pixel's processing mask and kept observations, which the
-    // subfunctions share and change only through it. A member so that its
-    // buffers keep their capacity across the pixels one procedure object
-    // runs.
+    // The pixel's processing mask and kept observations, which the steps
+    // share and change only through it, and the peek bases' storage.
+    // Members so that their buffers keep their capacity across the pixels
+    // one procedure object runs.
     //----------------------------------------------------------------------
     Series series_;
+    HarmonicBasis peek_basis_;
 };
 
 inline scalar_t span(

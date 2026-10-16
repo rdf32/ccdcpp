@@ -105,6 +105,7 @@ add_library(
 
     src/ccd/regression/lasso_solver.cpp
     src/ccd/regression/robust_solver.cpp
+    src/ccd/regression/harmonic_basis.cpp
 
     src/ccd/harmonic/filter.cpp
     src/ccd/harmonic/harmonic.cpp
@@ -112,6 +113,7 @@ add_library(
     src/ccd/preprocess/preprocess.cpp
 
     src/ccd/procedure/fit.cpp
+    src/ccd/procedure/kernels.cpp
     src/ccd/procedure/series.cpp
     src/ccd/procedure/standard.cpp
 
@@ -475,6 +477,39 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The shared kernels against the per-site loops they stand for, bit for
+    # bit. See tests/ccd/procedure/test_kernels.cpp.
+    add_executable(
+        test_kernels
+
+        tests/ccd/procedure/test_kernels.cpp
+    )
+
+
+    target_link_libraries(
+        test_kernels
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_kernels
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    target_compile_definitions(
+        test_kernels
+
+        PRIVATE
+            CCD_PYCCD_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test_3657_3610_observations.csv"
+            CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv"
+    )
+
     # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
     add_executable(
@@ -701,6 +736,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_filters)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_series)
+    gtest_discover_tests(test_kernels)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_transitions)

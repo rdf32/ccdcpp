@@ -7,6 +7,7 @@
 #include "ccd/types.hpp"
 #include "ccd/constants.hpp"
 #include "ccd/array_view.hpp"
+#include "ccd/regression/harmonic_basis.hpp"
 
 namespace ccd
 {
@@ -90,6 +91,10 @@ struct LassoOptions {
 //
 // Reused for every fit.
 // No coefficient allocation.
+//
+// The design is a HarmonicBasis (its column order is documented there);
+// build_basis() builds it and the centred copy and column norms the solver
+// reads.
 //==============================================================================
 struct LassoWorkspace
 {   
@@ -99,8 +104,8 @@ struct LassoWorkspace
     std::vector<scalar_t> y_cent; // fit
     std::vector<scalar_t> y_resi; // fit
 
-    std::vector<scalar_t> X_store;   // prediction
-    std::vector<scalar_t> X_center;  // prediction
+    HarmonicBasis basis;             // prediction
+    std::vector<scalar_t> X_center;  // fit
 
     std::array<scalar_t, CCD_MAX_COEFS> X_mean{}; // prediction
     std::array<scalar_t, CCD_MAX_COEFS> column_norm2{}; // prediction
@@ -113,7 +118,6 @@ struct LassoWorkspace
         y_cent.resize(max_samples);
         y_resi.resize(max_samples);
 
-        X_store.resize(max_samples);
         X_center.resize(max_samples);
 
         predictions.resize(max_samples);
@@ -134,6 +138,8 @@ struct LassoWorkspace
         weights.fill(scalar_t(0));
     }
 
+    // basis.build(dates, num_coefficients), then the centred columns,
+    // their means and their squared norms.
     void build_basis(
         ArrayView<const std::int64_t, 1> dates,
         index_t num_coefficients
@@ -141,10 +147,7 @@ struct LassoWorkspace
 
     ArrayView<const scalar_t, 2> X() const noexcept
     {
-        return ArrayView<const scalar_t, 2>::contiguous(
-            X_store.data(),
-            {CCD_MAX_COEFS, n_samples}
-        );
+        return basis.X();
     }
 };
 

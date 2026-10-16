@@ -1,4 +1,5 @@
 #include "ccd/procedure/fit.hpp"
+#include "ccd/procedure/kernels.hpp"
 
 #include <iostream>
 #include <algorithm>
@@ -47,12 +48,6 @@ FitResult FitProcedure::run(
         coefficient_count(masked_dates, options);
 
     //----------------------------------------------------------
-    // Build harmonic basis
-    //----------------------------------------------------------
-    lworkspace.resize(mask.count());
-    lworkspace.build_basis(masked_dates, num_coef);
-
-    //----------------------------------------------------------
     // Build result
     //----------------------------------------------------------
     FitResult results;
@@ -66,46 +61,19 @@ FitResult FitProcedure::run(
     result.curve_qa = curve_qa();
 
     //----------------------------------------------------------
-    // Fit every spectral band
+    // Fit every spectral band over every kept observation. The
+    // magnitude of these segments is 0 and nothing reads a
+    // returned segment's residuals.
     //----------------------------------------------------------
-    result.bands.resize(masked_spectral.extent(0));
-    for (index_t band = 0; band < masked_spectral.extent(0); ++band)
-    {   
-        lworkspace.reset();
-        auto y = masked_spectral.slice(
-            fixed(band), 
-            all()
-        );
-
-        LassoModel model = solver.fit(
-            lworkspace,
-            y
-        );
-
-        model.predict(
-            lworkspace.X(),
-            lworkspace.predictions
-        );
-
-        // The magnitude of these segments is 0 and nothing reads a returned
-        // segment's residuals, so only the RMSE is computed.
-        LassoScore metrics{
-            rmse(
-                y,
-                lworkspace.predictions,
-                lworkspace.residuals,
-                num_coef,
-                true
-            ),
-            0.0,
-            {}
-        };
-
-        result.bands[band] = LassoResult{
-            std::move(model),
-            std::move(metrics)
-        };
-    }
+    fit_bands(
+        masked_dates,
+        masked_spectral,
+        num_coef,
+        KeepResiduals::No,
+        lworkspace,
+        solver,
+        result.bands
+    );
 
     results.models.push_back(std::move(result));
     results.mask = std::move(mask);
@@ -420,49 +388,6 @@ bool detect_change(
         magnitudes.begin(),
         magnitudes.end()
     ) > change_threshold;
-}
-
-std::vector<scalar_t> change_magnitude(
-    const std::vector<std::vector<scalar_t>>& residuals,
-    const std::vector<scalar_t>& variogram,
-    const std::vector<scalar_t>& rmse
-)
-{
-    assert(residuals.size() == variogram.size());
-    assert(residuals.size() == rmse.size());
-
-    if(residuals.empty())
-        return {};
-
-    const index_t count = 
-        residuals.front().size();
-
-    LOG_DEBUG("residuals: " << residuals);
-    LOG_DEBUG("rmses: " << rmse);
-
-    std::vector<scalar_t> magnitude(count, 0.0);
-    for(index_t band = 0; band < residuals.size(); ++band)
-    {
-        const scalar_t norm =
-            std::max(
-                variogram[band],
-                rmse[band]
-            );
-
-        if(norm <= 0.0)
-            continue;
-
-        for (index_t i = 0; i < count; ++i)
-        {
-            const scalar_t value =
-                residuals[band][i] / norm;
-
-            magnitude[i] += value * value;
-        }
-    }
-    LOG_DEBUG("Magnitudes of change: " << magnitude);
-
-    return magnitude;
 }
 
 ProcessingMask tmask(

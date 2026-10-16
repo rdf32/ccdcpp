@@ -17,54 +17,11 @@ void LassoWorkspace::build_basis(
     ArrayView<const std::int64_t, 1> dates,
     index_t num_coefficients
 ) {
-    n_samples = dates.size();
-    // Current CCD implementation:
-    // column layout:
-    // 0: time
-    // 1: cos(annual)
-    // 2: sin(annual)
-    // 3: cos(2 annual)
-    // 4: sin(2 annual)
-    // 5: cos(3 annual)
-    // 6: sin(3 annual)
-    X_store.resize(CCD_MAX_COEFS * n_samples);
+    basis.build(dates, num_coefficients);
+    n_samples = basis.samples();
     X_center.resize(CCD_MAX_COEFS * n_samples);
-    const scalar_t omega = 2.0 * PI / AVG_DAYS_YR;
 
-    for (index_t i = 0; i < n_samples; ++i) {
-
-        const scalar_t t =
-            static_cast<scalar_t>(
-                dates(i)
-            );
-        const scalar_t wt = omega * t;
-
-        X_store[0 * n_samples + i] = t;
-        X_store[1 * n_samples + i] = std::cos(wt);
-        X_store[2 * n_samples + i] = std::sin(wt);
-
-        // initialize 0 //
-        X_store[3 * n_samples + i] = scalar_t{0};
-        X_store[4 * n_samples + i] = scalar_t{0};
-        X_store[5 * n_samples + i] = scalar_t{0};
-        X_store[6 * n_samples + i] = scalar_t{0};
-
-        if(num_coefficients >= 6) {
-            const scalar_t w2t =
-                static_cast<scalar_t>(2.0) * wt;
-
-            X_store[3 * n_samples + i] = std::cos(w2t);
-            X_store[4 * n_samples + i] = std::sin(w2t);
-        }
-
-        if(num_coefficients >= 8) {
-            const scalar_t w3t =
-                static_cast<scalar_t>(3.0) * wt;
-
-            X_store[5 * n_samples + i] = std::cos(w3t);
-            X_store[6 * n_samples + i] = std::sin(w3t);
-        }
-    }
+    const auto X = basis.X();
     //----------------------------------------------------------
     // Center X & Column Norms
     //----------------------------------------------------------
@@ -72,13 +29,13 @@ void LassoWorkspace::build_basis(
         scalar_t s = 0.0;
         scalar_t mean = 0.0;
         for(index_t i = 0; i < n_samples; ++i) {
-            mean += X_store[j * n_samples + i];
+            mean += X(j, i);
         }
         mean /= n_samples;
         X_mean[j] = mean;
 
         for(index_t i = 0; i < n_samples; ++i) {
-            scalar_t val = X_store[j * n_samples + i] - mean;
+            scalar_t val = X(j, i) - mean;
             X_center[j * n_samples + i] = val;
             scalar_t v = val;
             s += v * v;
@@ -115,7 +72,7 @@ LassoModel LassoSolver::fit(
 )
 {   
     // workspace -> y_cent, y_resi, weights
-    // problem -> X, X_store, X_center, X_mean, column_norm2
+    // problem -> X, X_center, X_mean, column_norm2
     auto X = workspace.X();
     const index_t num_feat = X.extent(0);
     const index_t num_samp = X.extent(1);

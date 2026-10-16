@@ -825,12 +825,12 @@ py::list detect_cube_wrapper(
 //
 // Band order is the input's row order, B = HarmonicOptions.NUM_BANDS rows;
 // under the default layout that is blue, green, red, nir, swir1, swir2,
-// thermal. Coefficient order is build_basis()'s -- slope, cos1, sin1, cos2, sin2, cos3,
-// sin3 -- and the intercept is NOT among them, which is why it is a separate
-// array. Coefficients above the model's own count are zero, not absent; zero
-// is also a legitimate fitted value under L1, so a caller that needs to know
-// which coefficients were fitted must derive the count from curve_qa and must
-// not test values against zero.
+// thermal. Coefficient order is HarmonicBasis's column order -- slope, cos1,
+// sin1, cos2, sin2, cos3, sin3 -- and the intercept is NOT among them, which
+// is why it is a separate array. Coefficients above the model's own count are
+// zero, not absent; zero is also a legitimate fitted value under L1, so a
+// caller that needs to know which coefficients were fitted must derive the
+// count from curve_qa and must not test values against zero.
 //------------------------------------------------------------------------------
 
 py::dict detect_cube_columns_wrapper(

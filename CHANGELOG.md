@@ -23,8 +23,27 @@
   `CHANGE_THRESHOLD` are no longer overwritten in a per-pixel copy.
 - `HarmonicWorkspace` refers to the caller's `HarmonicOptions` instead of
   copying them, and `options()` is const only; it cannot be built from a
-  temporary. `FitProcedure::run` and `StandardProcedure::run` take a const
-  workspace. `tmask()` and `stable()` take a `const Variogram&`.
+  temporary. `FitProcedure::run`, `StandardProcedure::run` and the
+  `PermanentSnow` / `InsufficientClear` convenience `run` overloads take a
+  const workspace. `tmask()` and `stable()` take a `const Variogram&`.
+- The procedures share kernels instead of near-copies of each loop.
+  `ccd::HarmonicBasis` (`include/ccd/regression/harmonic_basis.hpp`) builds
+  the harmonic design with its column order documented; `LassoWorkspace`
+  builds its basis through it, and the peek predictions use one directly
+  (without the centring only a fit reads). `ccd::fit_bands`
+  (`include/ccd/procedure/kernels.hpp`) is the one per-band fit loop of
+  Initialise, Extend's refit, both catches and the whole-series fits, the
+  latter without its redundant workspace reset; `ccd::catch_segment` writes
+  the start and end catches; `ccd::initialize`, the start-window search,
+  takes its `Series` and an `InitializeCriteria` (Standard passes its 4
+  stability coefficients there) instead of reading a procedure's members.
+  The Standard procedure's own steps are free functions in
+  `ccd::standard`: `lookback`, `lookforward`, `coefficient_count`,
+  `peek_residuals` (both peeks' residual loop) and `change_magnitude`,
+  which replaces `ccd::change_magnitude` and the internal
+  `detection_magnitude` (the same sum in the same order) and reads the
+  `Variogram` directly. The 8-coefficient peek bases stay at Standard's
+  call sites.
 - Removed, unused: `update_processing_mask` (both overloads), and
   `remove_outliers` / `remove_observation` (now inside `Series`), the
   vector-returning `StandardProcedure::calc_residuals`, `Window::rewind`
@@ -49,6 +68,11 @@
   of `lookback_below_break_decides`; the per-band RMSE of
   `lookback_peek_minus_one_decides` and `coefficient_min_6`), so fixes 2, 4
   and 7 move a pin off the fixture platform too.
+- `tests/ccd/procedure/test_kernels.cpp` (ctest `HarmonicBasis.*`,
+  `FitBands.*`, `PeekResiduals.*`, `ChangeMagnitude.*`, `CatchSegment.*`):
+  each shared kernel against the per-site loop it stands for, bit for bit,
+  on the masked series of the pyccd reference pixel and the Collection 2
+  pixel.
 - `tests/ccd/procedure/test_series.cpp` (ctest `Series.*`, `Variogram.*`,
   `StandardCadence.*`, `HarmonicWorkspace.*`): the records' contracts.
 - `tools/bench/`: the refactor's timing harness under version control: the

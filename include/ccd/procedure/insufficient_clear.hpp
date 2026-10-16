@@ -31,7 +31,7 @@ public:
     //----------------------------------------------------------------------
 
     FitResult run(
-        HarmonicWorkspace& hworkspace,
+        const HarmonicWorkspace& hworkspace,
         LassoWorkspace& lworkspace,
         LassoSolver& solver
     )
