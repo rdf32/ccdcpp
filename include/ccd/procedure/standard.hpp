@@ -107,10 +107,11 @@ void change_magnitude(
 // The Standard machine
 //
 // pyccd's standard procedure as a per-pixel state machine. drive()
-// (machine.hpp) steps it from Prepare to Done; each phase's transition does
-// its work on the State and returns the next phase. Initialize tests one
-// candidate window per call and Lookback one observation; Extend still runs
-// its whole loop in one call.
+// (machine.hpp) steps it from Prepare to Done; each call of a phase's
+// transition makes one decision on the State and returns the next phase.
+// Initialize tests one candidate window per call, Lookback one observation
+// before the window, Extend one peek after it; each repeats itself until a
+// guard sends it on.
 //
 //     Prepare ──┬─────────────────────────────────────────────► Done
 //               │  (too few observations, or a NaN variogram)
@@ -145,7 +146,7 @@ enum class Phase : std::uint8_t
     Initialize,    // one candidate start window (ccd::initialize_step)
     Lookback,      // one observation before the window, towards prev_break
     StartCatch,    // the leading observations of the first segment
-    Extend,        // the forward extension and its change test
+    Extend,        // one peek test after the window
     Restart,       // the cursor after a segment
     EndCatch,      // the trailing observations
     Done
@@ -197,6 +198,37 @@ struct LookbackScratch
     std::vector<scalar_t> magnitude;
 };
 
+// What Extend carries from one peek test to the next, within one segment.
+// The buffers keep their capacity across segments and pixels.
+struct Extension
+{
+    // Whether `models` are this segment's: false until the segment's first
+    // refit, and again once its segment is written (pyccd's `models is None`).
+    bool trained = false;
+
+    // The window and span of the last refit, which the refit schedule and
+    // the seasonal RMSE read.
+    Window fit_window;
+    scalar_t fit_span = 0;
+
+    // Of the last peek test; the segment reads both: num_coef is its
+    // curve_qa, which may not be the count `models` were fitted with, and
+    // peek.start its break observation.
+    index_t num_coef = 0;
+    Window peek;
+
+    // Every band's fit, moved into the segment when it is written.
+    std::vector<LassoResult> models;
+
+    // Every band's residuals over the last peek, whose medians are the
+    // segment's magnitudes.
+    std::vector<std::vector<scalar_t>> residuals;
+
+    // Scratch, rewritten by every test.
+    std::vector<scalar_t> comp_rmse;   // by position in DETECTION_BANDS
+    std::vector<scalar_t> magnitude;
+};
+
 //------------------------------------------------------------------------------
 // State
 //
@@ -221,12 +253,15 @@ struct State
     // which Lookback tests against.
     std::vector<LassoResult> init_models;
 
+    // Extend's carried state.
+    Extension extension;
+
     // Scratch.
     HarmonicBasis peek_basis;
     LookbackScratch lookback;
 
     // Starts a pixel: Prepare, no exit, the series of `workspace` that
-    // `mask` keeps, the cursor at 0, no segments.
+    // `mask` keeps, the cursor at 0, no segments, no extension trained.
     void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);
 
     // The pixel's result once Done: the segments and the processing mask,
@@ -288,11 +323,22 @@ Phase lookback(const Context& context, State& state);
 // COEFFICIENT_MIN coefficients. Next: Extend, or EndCatch (PeekBeyondEnd).
 Phase start_catch(const Context& context, State& state);
 
-// Grows the window one observation at a time while a full peek fits in the
-// series, refitting every band on the refit schedule and testing the peek
-// after the window; drops an outlier at the first peek observation and tests
-// again. Writes the segment: change probability 1 on a change, 0 at the
-// series end. Next: Restart.
+// One peek test after the window. Pre: peek_fits(). Refits every band over
+// the window when the extension is not trained, the window holds fewer than
+// RETRAIN_MIN_OBS observations, or it spans at least RETRAIN_SPAN_FACTOR
+// times the last fit's span (quirk 7); then, in order:
+//
+//   * every peek magnitude above the change threshold: writes the segment
+//     with change probability 1; next Restart;
+//   * the first above OUTLIER_THRESHOLD: drops that observation (at
+//     window.stop), the window keeping its coordinates;
+//   * otherwise the window grows by one. pyccd's series-end check before the
+//     grow can never hold here (quirk 6a) and is an assert.
+//
+// After a drop or a grow, next Extend while a peek fits; else writes the
+// segment with change probability 0, the series end, and next Restart (also
+// after a no-change segment: quirk 6c). The segment's curve_qa and break day
+// are the last test's (quirk 6b).
 Phase extend(const Context& context, State& state);
 
 // prev_break moves to window.stop and the window to (stop, stop +

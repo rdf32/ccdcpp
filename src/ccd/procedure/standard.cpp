@@ -223,6 +223,7 @@ void State::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
     segments.clear();
 
     cadence = Cadence{};
+    extension.trained = false;
 }
 
 FitResult State::take_result()
@@ -600,6 +601,46 @@ Phase start_catch(const Context& context, State& state)
     return peek_guard(context, state);
 }
 
+namespace
+{
+
+// Writes the segment Extend has grown, from its last peek test, and ends the
+// extension. change_probability is 1 on a change, 0 at the series end.
+Phase write_extended_segment(State& state, scalar_t change_probability)
+{
+    const MaskedSeries& series = state.series;
+    const Window& window = state.cursor.window;
+    Extension& extension = state.extension;
+
+    assert(extension.trained);
+
+    const auto masked_dates = series.dates();
+    const index_t num_bands = series.spectral().extent(0);
+
+    ChangeModel result;
+    result.start_day = masked_dates(window.start);
+    result.end_day = masked_dates(window.stop - 1);
+    result.break_day = masked_dates(extension.peek.start);
+    result.observation_count = window.stop - window.start;
+    result.change_probability = change_probability;
+    result.curve_qa = static_cast<CurveQA>(extension.num_coef);
+
+    result.bands = std::move(extension.models);
+    for (index_t band = 0; band < num_bands; ++band) {
+        result.bands[band].score.magn = median(extension.residuals[band]);
+
+        // The fit-window residuals were for seasonal_rmse(); nothing reads
+        // a returned segment's residuals.
+        result.bands[band].score.residuals = std::vector<scalar_t>();
+    }
+
+    state.segments.push_back(std::move(result));
+    extension.trained = false;
+    return Phase::Restart;
+}
+
+} // namespace
+
 Phase extend(const Context& context, State& state)
 {
     const auto& options = context.options;
@@ -610,150 +651,144 @@ Phase extend(const Context& context, State& state)
     HarmonicBasis& peek_basis = state.peek_basis;
     LassoWorkspace& lworkspace = context.lasso;
     LassoSolver& solver = context.solver;
+    Extension& extension = state.extension;
 
-    assert(peek_fits(state));
-
-    LOG_DEBUG("initial model window extend: " << window.start << ", " << window.stop);
-    ChangeModel result;
     const BandList& detection_bands = options.DETECTION_BANDS;
 
-    index_t change = 0;
-    auto fit_window = window;
-    auto fit_span = span(series.dates(), window);
-    Window peek_window;
-    index_t num_coef = options.COEFFICIENT_MIN;
-    auto num_bands = series.spectral().extent(0);
-    std::vector<std::vector<scalar_t>> full_resids(num_bands);
-    std::vector<LassoResult> models(num_bands);
-    bool trained = false;
-
-    // Indexed by position in DETECTION_BANDS.
-    std::vector<scalar_t> comp_rmses(detection_bands.size());
-    std::vector<scalar_t> magnitude;
-
     // while model_window.stop + peek_size <= period.shape[0]:
-    while (window.stop + cadence.peek <= series.size()) {
+    assert(peek_fits(state));
 
-        const auto masked_dates = series.dates();
-        const auto masked_spectral = series.spectral();
-
-        num_coef = coefficient_count(window.size(), options);
-
-        peek_window = 
-            Window(window.stop, window.stop + cadence.peek);
-
-        // # Used for comparison against fit_span
-        auto model_span = span(masked_dates, window);
-        
-        LOG_DEBUG("detecting change for: " << peek_window.start << ", " << peek_window.stop);
-
-        if (!trained || window.stop - window.start < options.RETRAIN_MIN_OBS || model_span >= options.RETRAIN_SPAN_FACTOR * fit_span) 
-        {   
-            trained = true;
-            fit_window = window;
-            fit_span = span(masked_dates, fit_window);
-            LOG_DEBUG("Retrain models");
-
-            // seasonal_rmse() reads the residuals; the magnitude is set
-            // from the peek residuals when the segment is returned.
-            fit_bands(
-                masked_dates.slice(range(fit_window.start, fit_window.stop)),
-                masked_spectral.slice(all(), range(fit_window.start, fit_window.stop)),
-                num_coef,
-                KeepResiduals::Yes,
-                lworkspace,
-                solver,
-                models
-            );
-        }
-
-        // The 8-coefficient basis, whatever the models' count (quirk 4).
-        peek_basis.build(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
-
-        peek_residuals(
-            peek_basis,
-            masked_spectral.slice(all(), range(peek_window.start, peek_window.stop)),
-            models,
-            full_resids
-        );
-
-        if (window.stop - window.start <= options.RETRAIN_MIN_OBS) {
-            LOG_DEBUG("normal residuals and rmse");
-            for (index_t i = 0; i < detection_bands.size(); ++i)
-            {   
-                comp_rmses[i] = models[detection_bands[i]].score.rmse;
-            }
-        } else {
-
-            LOG_DEBUG("closest day residuals and rmse");
-            auto closest_indexes = 
-                find_closest_doy(masked_dates, peek_window.stop - 1, fit_window, options.SEASONAL_RMSE_COUNT);
-            
-            LOG_DEBUG("period: " << masked_dates);
-            LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
-            LOG_DEBUG("fit window: (" << fit_window.start << ", " << fit_window.stop << ")");
-            LOG_DEBUG("closest inds: " << closest_indexes);
-   
-            for (index_t i = 0; i < detection_bands.size(); ++i)
-            {   
-                comp_rmses[i] = seasonal_rmse(models[detection_bands[i]], closest_indexes, options.SEASONAL_RMSE_DIVISOR);
-            }
-        }
-
-        change_magnitude(
-            full_resids,
-            detection_bands,
-            variogram,
-            comp_rmses,
-            magnitude
-        );
-
-        if (detect_change(magnitude, cadence.change_threshold))
-        {   
-            LOG_DEBUG("Change detected at: " << peek_window.start);
-            change = 1;
-            break;
-        } 
-        else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
-        {   
-            LOG_DEBUG("Outlier detected at: " << peek_window.start);
-            LOG_DEBUG("mag: " << magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD);
-            LOG_DEBUG("Updating processing mask extend");
-            //----------------------------------------------------------
-            // Drop the first peek observation, at window.stop; the
-            // window keeps its coordinates
-            //----------------------------------------------------------
-            series.drop(peek_window.start, window);
-            continue;
-        }
-
-        if (window.stop + cadence.peek > series.size()) {
-            break;
-        }
-
-        window = Window(window.start, window.stop + 1);
+    if (!extension.trained)
+    {
+        LOG_DEBUG("initial model window extend: " << window.start << ", " << window.stop);
     }
 
     const auto masked_dates = series.dates();
+    const auto masked_spectral = series.spectral();
 
-    result.start_day = masked_dates(window.start);
-    result.end_day = masked_dates(window.stop - 1);
-    result.break_day = masked_dates(peek_window.start);
-    result.observation_count = window.stop - window.start;
-    result.change_probability = static_cast<scalar_t>(change);
-    result.curve_qa = static_cast<CurveQA>(num_coef);
+    // Indexed by band.
+    extension.residuals.resize(masked_spectral.extent(0));
+    // Indexed by position in DETECTION_BANDS.
+    extension.comp_rmse.resize(detection_bands.size());
 
-    result.bands = std::move(models);
-    for (index_t band = 0; band < num_bands; ++band) {
-        result.bands[band].score.magn = median(full_resids[band]);
+    extension.num_coef = coefficient_count(window.size(), options);
 
-        // The fit-window residuals were for seasonal_rmse(); nothing reads
-        // a returned segment's residuals.
-        result.bands[band].score.residuals = std::vector<scalar_t>();
+    const Window& peek_window = extension.peek =
+        Window(window.stop, window.stop + cadence.peek);
+
+    // # Used for comparison against fit_span
+    auto model_span = span(masked_dates, window);
+
+    LOG_DEBUG("detecting change for: " << peek_window.start << ", " << peek_window.stop);
+
+    //--------------------------------------------------------------------------
+    // The refit schedule
+    //--------------------------------------------------------------------------
+    if (!extension.trained ||
+        window.stop - window.start < options.RETRAIN_MIN_OBS ||
+        model_span >= options.RETRAIN_SPAN_FACTOR * extension.fit_span)
+    {
+        extension.trained = true;
+        extension.fit_window = window;
+        extension.fit_span = span(masked_dates, extension.fit_window);
+        LOG_DEBUG("Retrain models");
+
+        // seasonal_rmse() reads the residuals; the magnitude is set from the
+        // peek residuals when the segment is written.
+        fit_bands(
+            masked_dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
+            masked_spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
+            extension.num_coef,
+            KeepResiduals::Yes,
+            lworkspace,
+            solver,
+            extension.models
+        );
     }
 
-    state.segments.push_back(std::move(result));
-    return Phase::Restart;
+    //--------------------------------------------------------------------------
+    // The peek's residuals, comparison RMSE and magnitudes
+    //--------------------------------------------------------------------------
+
+    // The 8-coefficient basis, whatever the models' count (quirk 4).
+    peek_basis.build(masked_dates.slice(range(peek_window.start, peek_window.stop)), 8);
+
+    peek_residuals(
+        peek_basis,
+        masked_spectral.slice(all(), range(peek_window.start, peek_window.stop)),
+        extension.models,
+        extension.residuals
+    );
+
+    std::vector<scalar_t>& comp_rmses = extension.comp_rmse;
+    if (window.stop - window.start <= options.RETRAIN_MIN_OBS) {
+        LOG_DEBUG("normal residuals and rmse");
+        for (index_t i = 0; i < detection_bands.size(); ++i)
+        {
+            comp_rmses[i] = extension.models[detection_bands[i]].score.rmse;
+        }
+    } else {
+
+        LOG_DEBUG("closest day residuals and rmse");
+        auto closest_indexes =
+            find_closest_doy(masked_dates, peek_window.stop - 1, extension.fit_window, options.SEASONAL_RMSE_COUNT);
+
+        LOG_DEBUG("period: " << masked_dates);
+        LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
+        LOG_DEBUG("fit window: (" << extension.fit_window.start << ", " << extension.fit_window.stop << ")");
+        LOG_DEBUG("closest inds: " << closest_indexes);
+
+        for (index_t i = 0; i < detection_bands.size(); ++i)
+        {
+            comp_rmses[i] = seasonal_rmse(extension.models[detection_bands[i]], closest_indexes, options.SEASONAL_RMSE_DIVISOR);
+        }
+    }
+
+    change_magnitude(
+        extension.residuals,
+        detection_bands,
+        variogram,
+        comp_rmses,
+        extension.magnitude
+    );
+
+    //--------------------------------------------------------------------------
+    // Change detected: the segment ends at the window
+    //--------------------------------------------------------------------------
+    if (detect_change(extension.magnitude, cadence.change_threshold))
+    {
+        LOG_DEBUG("Change detected at: " << peek_window.start);
+        return write_extended_segment(state, 1.0);
+    }
+    //--------------------------------------------------------------------------
+    // Outlier detected: drop the first peek observation, at window.stop; the
+    // window keeps its coordinates
+    //--------------------------------------------------------------------------
+    else if (detect_outlier(extension.magnitude[0], options.OUTLIER_THRESHOLD))
+    {
+        LOG_DEBUG("Outlier detected at: " << peek_window.start);
+        LOG_DEBUG("mag: " << extension.magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD);
+        LOG_DEBUG("Updating processing mask extend");
+        series.drop(peek_window.start, window);
+    }
+    //--------------------------------------------------------------------------
+    // Otherwise grow. pyccd checks for the series end first (procedures.py
+    // 691-692), which cannot hold: the peek fitted at the top of this step
+    // and nothing since changed the window or the series (quirk 6a).
+    //--------------------------------------------------------------------------
+    else
+    {
+        assert(peek_fits(state));
+        window = Window(window.start, window.stop + 1);
+    }
+
+    if (peek_fits(state))
+        return Phase::Extend;
+
+    //--------------------------------------------------------------------------
+    // Series end: no full peek after the window
+    //--------------------------------------------------------------------------
+    return write_extended_segment(state, 0.0);
 }
 
 Phase restart(const Context& context, State& state)
