@@ -1,4 +1,6 @@
 #include "ccd/procedure/standard.hpp"
+#include "ccd/procedure/insufficient_clear.hpp"
+#include "ccd/procedure/permanent_snow.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -822,5 +824,59 @@ FitResult StandardProcedure::run(
 
     return standard::run(context, state_, std::move(mask));
 }
+
+namespace standard
+{
+
+FitProcedureType Detector::select(
+    const Quality::Statistics& statistics,
+    const HarmonicOptions& options
+) const
+{
+    if (!statistics.enough_clear(options.CLEAR_PCT_THRESHOLD)) {
+        if (statistics.enough_snow(options.SNOW_PCT_THRESHOLD)) {
+            return FitProcedureType::PermanentSnow;
+        } else {
+            return FitProcedureType::InsufficientClear;
+        }
+    }
+    return FitProcedureType::Standard;
+}
+
+FitResult Detector::fit(
+    FitProcedureType procedure,
+    const HarmonicWorkspace& hworkspace,
+    ProcessingMask mask,
+    LassoWorkspace& lworkspace,
+    LassoSolver& solver
+)
+{
+    switch (procedure)
+    {
+        case FitProcedureType::Standard:
+        {
+            LOG_DEBUG("Standard");
+            return standard_.run(hworkspace, std::move(mask), lworkspace, solver);
+        }
+
+        case FitProcedureType::InsufficientClear:
+        {
+            LOG_DEBUG("Clear");
+            InsufficientClear fit_procedure;
+            return fit_procedure.run(hworkspace, std::move(mask), lworkspace, solver);
+        }
+
+        case FitProcedureType::PermanentSnow:
+        {
+            LOG_DEBUG("Snow");
+            PermanentSnow fit_procedure;
+            return fit_procedure.run(hworkspace, std::move(mask), lworkspace, solver);
+        }
+    }
+
+    return {};
+}
+
+} // namespace standard
 
 } // namespace ccd

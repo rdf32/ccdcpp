@@ -63,11 +63,11 @@ public:
                     ? clear_water / valid
                     : 0.0;
         }
-        const bool enough_clear(scalar_t threshold) {
+        bool enough_clear(scalar_t threshold) const {
             return clear_probability >= threshold;
         }
 
-        const bool enough_snow(scalar_t threshold) {
+        bool enough_snow(scalar_t threshold) const {
             return snow_probability >= threshold;
         }
     };

@@ -14,8 +14,6 @@
 #include "ccd/harmonic/quality.hpp"
 
 #include "ccd/procedure/standard.hpp"
-#include "ccd/procedure/permanent_snow.hpp"
-#include "ccd/procedure/insufficient_clear.hpp"
 #include "ccd/logger.hpp"
 
 
@@ -341,8 +339,9 @@ const preprocess::PreprocessPlan& resolve_plan(
 // One pixel, from a (B, T) view of any supported element type.
 //
 // The steps run in order: decode the QA, compute the QA statistics, select
-// the procedure, apply its plan's transform, run its plan's chain to build
-// the processing mask, and fit that mask.
+// the procedure (the run's detector), apply its plan's transform, run its
+// plan's chain to build the processing mask, and fit that mask (the
+// detector again).
 //
 // The procedures read a contiguous scalar_t (B, T) block. When the input is
 // already that and the plan has no transform, it is read in place; otherwise
@@ -363,6 +362,11 @@ FitResult detect_pixel(
     const ArrayView<const std::uint8_t, 1> qas =
         qa_codes<Qa>(raw_qas, qa_table, scratch.qas);
 
+    // The run's change detector: it chooses the pixel's procedure here and
+    // fits it below. Standard is the only detector so far; a second one is
+    // picked per run, here, and makes the same two calls.
+    standard::Detector& detector = scratch.standard;
+
     Quality quality;
     Quality::Statistics quality_stat = quality.compute_until(
         qas,
@@ -370,16 +374,8 @@ FitResult detect_pixel(
         hoptions
     );
 
-    FitProcedureType fit_type;
-    if (!quality_stat.enough_clear(hoptions.CLEAR_PCT_THRESHOLD)) {
-        if (quality_stat.enough_snow(hoptions.SNOW_PCT_THRESHOLD)) {
-            fit_type = FitProcedureType::PermanentSnow;
-        } else {
-            fit_type = FitProcedureType::InsufficientClear;
-        }
-    } else {
-        fit_type = FitProcedureType::Standard;
-    }
+    const FitProcedureType fit_type =
+        detector.select(quality_stat, hoptions);
 
     const preprocess::ProcedurePlan& procedure =
         procedure_plan(fit_type, plan);
@@ -460,50 +456,13 @@ FitResult detect_pixel(
         loptions
     );
 
-    FitResult final_result;
-    switch(fit_type)
-    {
-        case FitProcedureType::Standard:
-        {   
-            LOG_DEBUG("Standard");
-            StandardProcedure& fit_procedure = scratch.standard;
-            final_result = fit_procedure.run(
-                hworkspace,
-                std::move(mask),
-                lworkspace,
-                solver
-            );
-            break;
-        }
-
-        case FitProcedureType::InsufficientClear:
-        {   
-            LOG_DEBUG("Clear");
-            InsufficientClear fit_procedure;
-            final_result = fit_procedure.run(
-                hworkspace,
-                std::move(mask),
-                lworkspace,
-                solver
-            );
-            break;
-        }
-
-        case FitProcedureType::PermanentSnow:
-        {   
-            LOG_DEBUG("Snow");
-            PermanentSnow fit_procedure;
-            final_result = fit_procedure.run(
-                hworkspace,
-                std::move(mask),
-                lworkspace,
-                solver
-            );
-            break;
-        }
-    }
-
-    return final_result;
+    return detector.fit(
+        fit_type,
+        hworkspace,
+        std::move(mask),
+        lworkspace,
+        solver
+    );
 }
 
 template<typename Value, typename Qa>

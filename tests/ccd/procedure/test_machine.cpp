@@ -1,7 +1,7 @@
 //==============================================================================
 //
-// The Standard machine's routing, from hand-built records, and its exit
-// reasons, on whole pixels.
+// The Standard machine's routing, from hand-built records, its exit reasons,
+// on whole pixels, and the Standard detector's per-pixel choice.
 //
 //   * Routing: each guard between phases (room_to_initialize, peek_fits,
 //     start_catch_due) and each routing step (after_stable_start,
@@ -12,6 +12,8 @@
 //     segment loop each way, with the same preprocessing ccd::detect() runs,
 //     against the Exit the run leaves in the record. The result of each run
 //     is also checked against detect()'s, field for field.
+//   * Detector::select(): the clear percentage first, then the snow
+//     percentage, each threshold on its >= side.
 //
 // The outputs themselves are pinned by the golden and transitions fixtures;
 // these tests say which route moved if one ever does.
@@ -469,3 +471,26 @@ TEST(StandardMachine, OneStateServesManyPixels)
 }
 
 } // namespace
+
+//------------------------------------------------------------------------------
+// The detector's per-pixel choice
+//------------------------------------------------------------------------------
+
+TEST(StandardDetector, SelectsByTheClearThenTheSnowPercentage)
+{
+    const ccd::HarmonicOptions options;   // clear 0.25, snow 0.75
+    const ccd::standard::Detector detector{};
+
+    auto stats = [](scalar_t clear, scalar_t snow)
+    {
+        ccd::Quality::Statistics s;
+        s.clear_probability = clear;
+        s.snow_probability = snow;
+        return s;
+    };
+
+    EXPECT_EQ(detector.select(stats(0.25, 0.9), options), ccd::FitProcedureType::Standard);
+    EXPECT_EQ(detector.select(stats(0.2499, 0.75), options), ccd::FitProcedureType::PermanentSnow);
+    EXPECT_EQ(detector.select(stats(0.2499, 0.7499), options),
+              ccd::FitProcedureType::InsufficientClear);
+}

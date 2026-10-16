@@ -31,6 +31,15 @@ enum class CurveQA : std::uint8_t {
     Disturbance       = 84
 };
 
+// A pixel's procedure, chosen per pixel from its QA statistics by the run's
+// change detector (standard::Detector::select()).
+enum class FitProcedureType
+{
+    Standard,
+    InsufficientClear,
+    PermanentSnow
+};
+
 struct ChangeModel {
 
     std::int64_t start_day;

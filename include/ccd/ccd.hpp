@@ -18,14 +18,6 @@
 namespace ccd
 {
 
-    
-enum class FitProcedureType
-{
-    Standard,
-    InsufficientClear,
-    PermanentSnow
-};
-
 struct PixelResult
 {
     index_t row;
@@ -167,7 +159,9 @@ inline void print_change_models(
 struct DetectScratch
 {
     LassoWorkspace lasso{0};
-    StandardProcedure standard;
+
+    // The run's change detector, with its per-pixel record.
+    standard::Detector standard;
 
     // The pixel's (B, T) as scalar_t, when it has to be converted or its
     // thermal band transformed.

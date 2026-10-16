@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ccd/harmonic/filter.hpp"
+#include "ccd/harmonic/quality.hpp"
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/kernels.hpp"
 #include "ccd/procedure/machine.hpp"
@@ -387,6 +388,55 @@ private:
     //----------------------------------------------------------------------
     standard::State state_;
 };
+
+namespace standard
+{
+
+//==============================================================================
+//
+// Detector
+//
+// The Standard change detector, the one a run uses for every pixel of a call
+// (the only detector so far: a second one, BFP, is a sibling class with the
+// same two calls, and the run picks one). Per pixel it chooses the procedure
+// from the pixel's QA statistics, select(), and after the caller has built
+// the processing mask with that procedure's plan, fits it, fit(): this
+// machine for Standard, the whole-series fit for PermanentSnow and
+// InsufficientClear. The per-pixel choice is the detector's own.
+//
+// Holds the machine's record: one Detector per thread reuses its buffers
+// across the pixels it fits.
+//
+//==============================================================================
+
+class Detector
+{
+public:
+
+    // pyccd's choice: Standard when the clear percentage reaches
+    // CLEAR_PCT_THRESHOLD; otherwise PermanentSnow when the snow percentage
+    // reaches SNOW_PCT_THRESHOLD; otherwise InsufficientClear.
+    FitProcedureType select(
+        const Quality::Statistics& statistics,
+        const HarmonicOptions& options
+    ) const;
+
+    // Fits the observations of `hworkspace` that `mask` keeps with
+    // `procedure`, as that procedure's run() does.
+    FitResult fit(
+        FitProcedureType procedure,
+        const HarmonicWorkspace& hworkspace,
+        ProcessingMask mask,
+        LassoWorkspace& lworkspace,
+        LassoSolver& solver
+    );
+
+private:
+
+    StandardProcedure standard_;
+};
+
+} // namespace standard
 
 inline scalar_t span(
     ArrayView<const std::int64_t,1> dates,
