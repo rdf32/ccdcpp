@@ -16,6 +16,7 @@
 
 #include "ccd/harmonic/harmonic.hpp"
 
+#include "ccd/harmonic/filter.hpp"
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/standard.hpp"
 
@@ -353,6 +354,7 @@ TEST(CCD, DetectStandard)
     ccd::standard::Procedure fit_procedure;
     ccd::FitResult result = fit_procedure.run(
         hworkspace,
+        ccd::filter::standard(hworkspace),
         lworkspace,
         solver
     );

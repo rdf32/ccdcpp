@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "ccd/harmonic/filter.hpp"
 #include "ccd/harmonic/quality.hpp"
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/kernels.hpp"
@@ -464,23 +463,6 @@ public:
         LassoWorkspace& lworkspace,
         LassoSolver& solver
     );
-
-    //----------------------------------------------------------------------
-    // run() on the mask filter::standard() builds from hworkspace.
-    //----------------------------------------------------------------------
-    FitResult run(
-        const HarmonicWorkspace& hworkspace,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver
-    )
-    {
-        return run(
-            hworkspace,
-            filter::standard(hworkspace),
-            lworkspace,
-            solver
-        );
-    }
 
 private:
 

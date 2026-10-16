@@ -106,7 +106,9 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   `InsufficientClear` classes and their headers
   (`procedure/permanent_snow.hpp`, `procedure/insufficient_clear.hpp`; call
   `fit_whole_series` with the procedure and its filter's mask),
-  `StandardProcedure`'s hook overrides, and `standard::Detector::select`
+  `StandardProcedure`'s hook overrides and its overload that built the
+  standard filter mask itself (pass `filter::standard(workspace)`, as the
+  whole-series fit takes its filter's mask), and `standard::Detector::select`
   (now `ccd::select_procedure`).
 - Removed, unused: `update_processing_mask` (both overloads), and
   `remove_outliers` / `remove_observation` (now inside `MaskedSeries`), the
