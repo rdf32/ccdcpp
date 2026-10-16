@@ -41,7 +41,7 @@ namespace ccd
 // of them, so a model is evaluated correctly on a basis built with at least
 // its own q. The basis knows nothing of which q a procedure uses: those
 // counts are the callers' (the Standard procedure's peek bases are built
-// with 8, its initialisation fits with 4).
+// with 8, its initialization fits with 4).
 //
 // X(j, i) is column j at observation i; each column is contiguous. The
 // storage keeps its capacity across build().

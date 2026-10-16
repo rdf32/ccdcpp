@@ -118,7 +118,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
 ### Tests
 
 - `tests/ccd/golden/test_transitions.cpp` (ctest `Transitions.*`): 17
-  characterisation pixels (`characterisation.hpp`) built for the Standard
+  characterization pixels (`characterisation.hpp`) built for the Standard
   procedure's transitions, guards and pyccd quirks that the golden corpus
   misses or only Python reaches: Lookback reading below the previous break
   and Lookback's `PEEK_SIZE - 1` peek each deciding an output, the re-entry
@@ -145,7 +145,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   `StandardDetector.*`): the machine's guards and routing from hand-built
   records; one transition call per row of Initialize's, Lookback's and
   Extend's guard tables, on a short series with the deciding observation
-  edited in; its exit reason on the characterisation pixels that stop it
+  edited in; its exit reason on the characterization pixels that stop it
   each way (each run also equal to `detect()`'s result); every pixel
   stepped by hand, each self-transition one decision; a record reused
   across pixels. The guard-row tests of Initialize, Lookback and Extend also

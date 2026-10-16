@@ -2,7 +2,7 @@
 
 //==============================================================================
 //
-// Characterisation pixels for the Standard procedure's state machine.
+// Characterization pixels for the Standard procedure's state machine.
 //
 // Each pixel is built so that detect() takes one transition, guard or quirk
 // of the Standard procedure that the synthetic golden corpus does not reach
@@ -231,7 +231,7 @@ inline CharPixel variogram_nan()
 }
 
 // Red (a detection band, not a Tmask band) constant: its variogram is 0, and
-// the initialisation model fits it exactly.
+// the initialization model fits it exactly.
 inline CharPixel constant_detection_band()
 {
     std::vector<std::int64_t> d;

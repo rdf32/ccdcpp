@@ -368,7 +368,7 @@ TEST(Validation, DetectRejectsACadenceOption)
 }
 
 // PEEK_SIZE 1 crashed detect() before the check; the smallest accepted
-// value runs every transition the characterisation pixels take.
+// value runs every transition the characterization pixels take.
 TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
 {
     for (auto p : golden::characterisation_pixels())

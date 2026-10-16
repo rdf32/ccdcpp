@@ -1,6 +1,6 @@
 //==============================================================================
 //
-// Characterisation of the Standard procedure's transitions.
+// Characterization of the Standard procedure's transitions.
 //
 // The golden corpus (test_golden.cpp) is broad but random: it takes most of
 // the Standard procedure's transitions many times and a few never. The pixels
@@ -34,7 +34,7 @@
 //   1  far from the previous break, Lookback peeks peek - 1 observations (the
 //      adjusted peek, Cadence::peek, minus one)
 //   2  near the series start, Lookback's peek reads below the previous break
-//   3  Lookback compares against the initialisation models' RMSE
+//   3  Lookback compares against the initialization models' RMSE
 //   4  Initialize fits 4 coefficients and the peek basis has 8, whatever
 //      COEFFICIENT_MIN / COEFFICIENT_MAX say
 //   5  the early exits return an empty processing mask
@@ -109,7 +109,7 @@
 //     include one                        lookback_below_break, peek_guard_tail
 //     reached prev_break                 peek_guard_tail, reentry_*
 //     compares against the
-//       initialisation RMSE (quirk 3)    every Lookback step above
+//       initialization RMSE (quirk 3)    every Lookback step above
 //   StartCatch
 //     emits a Start segment              start_catch; corpus bounds:dn
 //     off: gap <= peek                   every first segment but start_catch
@@ -232,7 +232,7 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
     for (const auto& p : all)
         if (p.name == name)
             return p;
-    throw std::runtime_error("no characterisation pixel " + name);
+    throw std::runtime_error("no characterization pixel " + name);
 }
 
 // The values fixes 4 and 7 decide on pixels whose shapes they leave alone:

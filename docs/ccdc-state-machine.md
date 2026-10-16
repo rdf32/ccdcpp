@@ -219,7 +219,7 @@ leaves the machine implicit:
 
 - a transition is a `continue` or a `break`, so which state comes next is read off control flow;
 - states are sentinel values: `models is None` means "not yet trained" in one function and
-  "initialisation failed" in another;
+  "initialization failed" in another;
 - the `start` flag duplicates "no segment yet";
 - the per-pixel peek size and change threshold are written into the parameter object and read
   back by name inside every function;
@@ -267,7 +267,7 @@ Initialize's and Extend's guards and nothing else.
 A second change-detection procedure is planned: the band-first probability test (BFP; Tollerud
 et al., "Toward consistent change detection across irregular remote sensing time series
 observations", Remote Sensing of Environment 285, 2023). It replaces Standard's change test and
-keeps its initialisation. The design leaves its place ready:
+keeps its initialization. The design leaves its place ready:
 
 - BFP is a machine of its own, `ccd::bfp`, with its own `Phase`, `Exit`, `State`,
   transitions and `bfp::Procedure` (the machine with its record, as `standard::Procedure`

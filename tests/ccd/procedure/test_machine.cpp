@@ -17,7 +17,7 @@
 //     reports; lookback_peek()'s three cases.
 //   * Whole pixels stepped by hand: every self-transition is one decision,
 //     and the result is the driven machine's.
-//   * Exits: standard::run() on the characterisation pixels that end the
+//   * Exits: standard::run() on the characterization pixels that end the
 //     segment loop each way, with the same preprocessing ccd::detect() runs,
 //     against the Exit the run leaves in the record. The result of each run
 //     is also checked against detect()'s, field for field.
@@ -868,7 +868,7 @@ TEST(StandardExtend, TheSeriesEndAfterADropBreaksAfterTheDroppedObservation)
 // Exits on whole pixels
 //------------------------------------------------------------------------------
 
-// standard::run() on a characterisation pixel, preprocessed as detect() does
+// standard::run() on a characterization pixel, preprocessed as detect() does
 // for the Standard procedure: the plan's transform on a copy, its chain for
 // the mask.
 struct MachineRun
@@ -958,7 +958,7 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
     for (const auto& p : all)
         if (p.name == name)
             return p;
-    throw std::runtime_error("no characterisation pixel " + name);
+    throw std::runtime_error("no characterization pixel " + name);
 }
 
 TEST(StandardExit, EachWayTheMachineStops)
@@ -996,7 +996,7 @@ TEST(StandardExit, TheEarlyExitsReturnNoMask)
 }
 
 // Every self-transition of a whole pixel is one decision, and the stepped
-// machine is the driven one: on each characterisation pixel, stepped by
+// machine is the driven one: on each characterization pixel, stepped by
 // hand, each Initialize -> Initialize grows by one, shifts by one, or shifts
 // after a Tmask drop; each Lookback -> Lookback moves window.start down one
 // (an include, or a drop that moves the window with the series); each Extend
