@@ -19,8 +19,10 @@
 //
 //   * Transitions.InputsAreTheSameOnEveryPlatform: a fingerprint of each
 //     pixel's input (dates, QA, every spectral value's bits), pinned. The
-//     pixels are whole DN, so the fingerprints hold on any platform; a
-//     generator whose output depends on the compiler fails here first.
+//     pixels are whole DN, so the fingerprints hold on any little-endian
+//     platform whose libm moves no value across a .5 rounding (the Mac's
+//     and Linux's agree); a generator whose output depends on the compiler
+//     fails here first.
 //
 //   * Transitions.BitIdenticalToFixture: the dump against the fixture, as
 //     test_golden.cpp does it (a different platform is a skip, not a failure).

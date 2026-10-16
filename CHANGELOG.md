@@ -13,8 +13,8 @@
   over the golden synthetic cubes at twelve.
 - `Transitions.InputsAreTheSameOnEveryPlatform` pins a fingerprint of each
   characterization pixel's input. `sparse_random` drew two values in one
-  call's arguments, whose evaluation order is the compiler's (clang left to
-  right, GCC right to left), so its pixels differed on Linux and
+  call's arguments, whose evaluation order is the compiler's (clang went left
+  to right, GCC right to left), so its pixels differed on Linux and
   `Transitions.PathsAsDocumented` failed there. The draws are sequenced in
   clang's order: the Mac's pixels, and every fixture, are unchanged.
 - `Bands.ChangeThresholdTakesItsDegreesOfFreedom` compares the chi-squared

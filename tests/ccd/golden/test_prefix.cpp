@@ -3,8 +3,9 @@
 // Prefix stability: new observations never rewrite a final segment.
 //
 // The Standard machine reads the length of the series only in its size
-// guards (room for a start window, a full peek after the window, enough
-// observations after the last break), each of the form position + k <= size.
+// guards (enough observations, room for a start window, a full peek after
+// the window, enough observations after the last break), each a comparison
+// of the series size with a position plus a count.
 // Observations dated after T turn no guard that held into one that fails,
 // and every read before the first failing guard lies inside a window those
 // guards bounded. So a run on the observations up to T and a run on the

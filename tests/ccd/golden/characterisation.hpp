@@ -135,9 +135,9 @@ inline CharPixel make_char_pixel(
 // output the quirk's 0.8.0 fix changes (see test_transitions.cpp).
 //
 // Every draw from the stream is its own statement or an element of a braced
-// list, both evaluated in order. Two draws in the arguments of one call would
-// be evaluated in an order the compiler picks (clang left to right, GCC right
-// to left), and the pixel would differ by platform.
+// list, both evaluated in order. Two draws in the arguments of one call are
+// evaluated in an order the compiler picks (here clang went left to right
+// and GCC right to left), and the pixel would differ by platform.
 //------------------------------------------------------------------------------
 
 // 13 observations 34 days apart, then 500 `gap` days apart, all before

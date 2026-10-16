@@ -480,8 +480,12 @@ Series random_series(golden::Rng& rng, const Unit& unit)
             if (b == 6)
                 v = draw_value(rng, unit.therm_lo, unit.therm_hi);
             else if (b == 1 && rng.uniform() < 0.7)
-                v = green_mid + (rng.uniform() < 0.2 ? 3.0 : 0.5) *
-                    unit.green_filter * rng.uniform(-1.0, 3.0);
+            {
+                // Two draws, one statement each: in one expression their
+                // order would be the compiler's.
+                const scalar_t scale = rng.uniform() < 0.2 ? 3.0 : 0.5;
+                v = green_mid + scale * unit.green_filter * rng.uniform(-1.0, 3.0);
+            }
             else if (rng.uniform() < 0.6)
                 v = rng.uniform(unit.refl_lo, unit.refl_hi);
             else
