@@ -340,6 +340,32 @@ TEST(Validation, CadenceRules)
     EXPECT_NO_THROW(ccd::validate(h, 7));
 }
 
+TEST(Validation, CoefficientRules)
+{
+    const auto expect_error = [](auto set, const std::string& expected)
+    {
+        ccd::HarmonicOptions h;
+        set(h);
+        expect_layout_error(h, 7, expected);
+    };
+
+    expect_error([](auto& h) { h.COEFFICIENT_MIN = 0; },
+        "COEFFICIENT_MIN is 0; it must be at least 1");
+    expect_error([](auto& h) { h.COEFFICIENT_MIN = 7; },
+        "COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX are 7, 6, 8; they must not decrease");
+    expect_error([](auto& h) { h.COEFFICIENT_MAX = 5; },
+        "COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX are 4, 6, 5; they must not decrease");
+    expect_error([](auto& h) { h.COEFFICIENT_MAX = 9; },
+        "COEFFICIENT_MAX is 9; the harmonic basis has at most 8");
+
+    // The extremes accepted: one coefficient throughout, and all eight.
+    ccd::HarmonicOptions h;
+    h.COEFFICIENT_MIN = h.COEFFICIENT_MID = h.COEFFICIENT_MAX = 1;
+    EXPECT_NO_THROW(ccd::validate(h, 7));
+    h.COEFFICIENT_MIN = h.COEFFICIENT_MID = h.COEFFICIENT_MAX = 8;
+    EXPECT_NO_THROW(ccd::validate(h, 7));
+}
+
 // The cadence options are checked at the entry points too.
 TEST(Validation, DetectRejectsACadenceOption)
 {
@@ -388,6 +414,29 @@ TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
 
         p.h.PEEK_SIZE = 2;
         EXPECT_NO_THROW(run()) << p.name;
+    }
+}
+
+// The extreme coefficient counts validate() accepts run every transition the
+// characterization pixels take.
+TEST(Validation, CoefficientExtremesThroughDetect)
+{
+    for (const ccd::index_t count : {ccd::index_t{1}, ccd::index_t{8}})
+    {
+        for (auto p : golden::characterisation_pixels())
+        {
+            const std::size_t T = p.dates.size();
+            p.h.COEFFICIENT_MIN = p.h.COEFFICIENT_MID = p.h.COEFFICIENT_MAX = count;
+            ccd::FitResult r;
+            EXPECT_NO_THROW(r = ccd::detect(
+                ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
+                ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
+                ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
+                p.h, p.l)) << p.name << " " << count;
+            for (const auto& m : r.models)
+                for (const auto& b : m.bands)
+                    EXPECT_TRUE(std::isfinite(b.rmse)) << p.name << " " << count;
+        }
     }
 }
 

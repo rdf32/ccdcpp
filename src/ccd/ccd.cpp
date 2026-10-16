@@ -117,6 +117,43 @@ void validate_cadence(const HarmonicOptions& options)
     }
 }
 
+// Initialize fits COEFFICIENT_MIN coefficients, Extend up to
+// COEFFICIENT_MAX, and both peek bases are COEFFICIENT_MAX wide, which must
+// hold every model's coefficients and fit the harmonic basis (the intercept
+// and CCD_MAX_COEFS columns).
+void validate_coefficients(const HarmonicOptions& options)
+{
+    const index_t widest = CCD_MAX_COEFS + 1;
+
+    if (options.COEFFICIENT_MIN < 1)
+    {
+        throw std::invalid_argument(
+            "COEFFICIENT_MIN is " + std::to_string(options.COEFFICIENT_MIN) +
+            "; it must be at least 1"
+        );
+    }
+
+    if (!(options.COEFFICIENT_MIN <= options.COEFFICIENT_MID &&
+          options.COEFFICIENT_MID <= options.COEFFICIENT_MAX))
+    {
+        throw std::invalid_argument(
+            "COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX are " +
+            std::to_string(options.COEFFICIENT_MIN) + ", " +
+            std::to_string(options.COEFFICIENT_MID) + ", " +
+            std::to_string(options.COEFFICIENT_MAX) +
+            "; they must not decrease"
+        );
+    }
+
+    if (options.COEFFICIENT_MAX > widest)
+    {
+        throw std::invalid_argument(
+            "COEFFICIENT_MAX is " + std::to_string(options.COEFFICIENT_MAX) +
+            "; the harmonic basis has at most " + std::to_string(widest)
+        );
+    }
+}
+
 } // namespace
 
 void validate(const HarmonicOptions& options, index_t bands)
@@ -191,6 +228,7 @@ void validate(const HarmonicOptions& options, index_t bands)
     }
 
     validate_cadence(options);
+    validate_coefficients(options);
 }
 
 void validate_dates(ArrayView<const std::int64_t, 1> dates)

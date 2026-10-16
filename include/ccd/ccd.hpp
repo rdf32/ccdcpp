@@ -189,7 +189,14 @@ struct DetectScratch
 //   * PEEK_REFERENCE_DAYS or VARIOGRAM_MIN_LAG_DAYS is not greater than 0;
 //   * RETRAIN_MIN_OBS or SEASONAL_RMSE_COUNT is below 1;
 //   * RETRAIN_SPAN_FACTOR or SEASONAL_RMSE_DIVISOR is not greater than 0;
-//   * CHANGE_PROBABILITY is not in (0, 1).
+//   * CHANGE_PROBABILITY is not in (0, 1);
+//
+// and the coefficient counts when:
+//
+//   * COEFFICIENT_MIN is below 1;
+//   * COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX decrease;
+//   * COEFFICIENT_MAX is above 8, the harmonic basis's width (the intercept
+//     and seven columns).
 //
 // The message names the field and the counts or the value.
 //
