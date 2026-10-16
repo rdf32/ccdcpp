@@ -17,8 +17,10 @@ CFGS=("$@")
 for cfg in "${CFGS[@]}"; do
   read -r dt entry th reps <<< "$cfg"
   # The bench's stdout goes straight out (fd 3); its stderr, where /usr/bin/time writes, is
-  # piped to the filter, so no file is written.
+  # piped to the filter, so no file is written. The filter keeps time's wall and peak RSS lines
+  # and every line of the bench's own: its import check and any traceback.
   { /usr/bin/time -l "$PY" -I "$HERE/bench_synthetic.py" "$MODULE" "$CORPUS" "$dt" "$entry" "$th" "$reps" 2>&1 1>&3 \
-      | grep -E "maximum resident|real" | sed 's/^ */    /'; } 3>&1 \
+      | grep -E "maximum resident| real |bench_synthetic\.py|Traceback|Error|^  File " \
+      | sed 's/^ */    /'; } 3>&1 \
     || { echo "bench.sh: config \"$cfg\" failed; run bench_synthetic.py with it to see why" >&2; exit 1; }
 done

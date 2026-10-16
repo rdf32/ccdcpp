@@ -3,7 +3,7 @@
 The synthetic timing of one build: the corpus of make_corpus.cpp tiled 2x2 (8000 pixels),
 through ccdcpp.detect_cube_columns ("cols") or ccdcpp.detect_cube ("cube") with default
 options, `threads` threads, best of `reps` calls. Prints the best wall time of the call and its
-time per pixel.
+time per pixel, and the file `import ccdcpp` loaded.
 
 `module_dir` is a directory from which `import ccdcpp` loads the build under test: the build
 directory (it holds the bare extension) or a package directory. Input conversion and copying
@@ -53,4 +53,5 @@ for _ in range(reps):
 
 npx = qas.shape[0] * qas.shape[1]
 print(f"{entry} {dtype} t{threads}: {best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
-      f"input {src.nbytes / 1e6:.0f} MB, maxrss_before_call {rss0 / 1e6:.0f} MB")
+      f"input {src.nbytes / 1e6:.0f} MB, maxrss_before_call {rss0 / 1e6:.0f} MB, "
+      f"ccdcpp {ccdcpp.__file__}")
