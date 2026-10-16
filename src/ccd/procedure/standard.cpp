@@ -221,7 +221,6 @@ void State::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
     segments.clear();
 
     cadence = Cadence{};
-    start = true;
 }
 
 FitResult State::take_result()
@@ -283,11 +282,8 @@ bool start_catch_due(const State& state)
     const Cursor& cursor = state.cursor;
     assert(cursor.window.start >= cursor.prev_break);
 
-    // pyccd's flag and the record agree: the flag is cleared when a segment
-    // exists and when the start catch writes one, and nothing else clears it.
-    assert(state.start == state.segments.empty());
-
-    return (cursor.window.start - cursor.prev_break > state.cadence.peek) && state.start;
+    return state.segments.empty() &&
+        cursor.window.start - cursor.prev_break > state.cadence.peek;
 }
 
 Phase after_stable_start(const Context& context, State& state)
@@ -393,9 +389,6 @@ Phase initialize(const Context& context, State& state)
     const auto& options = context.options;
 
     LOG_DEBUG("Initialize for change model #: " << state.segments.size());
-    if (!state.segments.empty()) {
-        state.start = false;
-    }
 
     // Initialise's criteria: the options' and this pixel's change threshold,
     // with the 4-coefficient stability fits pyccd hard-codes (quirk 4).
@@ -589,8 +582,6 @@ Phase start_catch(const Context& context, State& state)
         context.lasso,
         context.solver
     );
-    // append result
-    state.start = false;
     state.segments.push_back(std::move(result));
 
     return before_lookforward(context, state);

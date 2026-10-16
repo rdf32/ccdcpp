@@ -183,7 +183,7 @@ struct State
     // The shared parts (machine.hpp).
     Series series;
     Cursor cursor;
-    std::vector<ChangeModel> segments;
+    std::vector<ChangeModel> segments;   // pyccd's `start` is segments.empty()
 
     // Standard's own: set in Prepare, read by every later phase.
     Cadence cadence{};
@@ -192,10 +192,6 @@ struct State
     // Initialize's stable fits of the detection bands (indexed by band),
     // which Lookback tests against.
     std::vector<LassoResult> init_models;
-
-    // Whether no segment has been written yet: pyccd's `start` flag, equal
-    // to segments.empty() wherever it is read (asserted).
-    bool start = true;
 
     // Scratch.
     HarmonicBasis peek_basis;
