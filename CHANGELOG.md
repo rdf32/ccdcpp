@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-10-16
 
 The Standard procedure as an explicit per-pixel state machine, with the
 parts a second change-detection procedure needs shared, and a document of
