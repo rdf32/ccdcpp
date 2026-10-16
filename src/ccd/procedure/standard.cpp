@@ -258,7 +258,9 @@ void State::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
     cursor = Cursor{};
     segments.clear();
 
+    // Prepare's derived values, set again before anything reads them.
     cadence = Cadence{};
+    initialize_criteria = InitializeCriteria{};
     extension.trained = false;
 }
 

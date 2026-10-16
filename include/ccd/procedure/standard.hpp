@@ -297,7 +297,8 @@ struct State
     LookbackScratch lookback;
 
     // Starts a pixel: Prepare, no exit, the series of `workspace` that
-    // `mask` keeps, the cursor at 0, no segments, no extension trained.
+    // `mask` keeps, the cursor at 0, no segments, the cadence and
+    // Initialize's criteria cleared, no extension trained.
     void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);
 
     // The pixel's result once Done: the segments and the processing mask,
