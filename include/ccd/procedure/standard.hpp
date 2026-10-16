@@ -240,7 +240,8 @@ struct Extension
     index_t num_coef = 0;
     Window peek;
 
-    // Every band's fit, moved into the segment when it is written.
+    // Every band's fit; the segment takes band_fit() of each when it is
+    // written.
     std::vector<LassoResult> models;
 
     // Every band's residuals over the last peek, whose medians are the

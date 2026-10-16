@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed (C++ API; outputs bit for bit)
+
+- A segment's per-band fit is a `ccd::BandFit` (`include/ccd/procedure/fit.hpp`):
+  `intercept`, `coefficients`, `rmse`, `magnitude` and the solver's
+  `iterations`, in place of a `LassoResult`. `ChangeModel::bands` is a
+  `std::vector<BandFit>`; `ccd::band_fit()` converts a Lasso fit. Inside the
+  Standard machine the fits stay `LassoResult`s. The Python outputs are
+  unchanged.
+
 ### Tests
 
 - `PrefixStability.*` (`tests/ccd/golden/test_prefix.cpp`): a run on the

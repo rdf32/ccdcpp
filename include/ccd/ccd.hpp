@@ -100,17 +100,14 @@ inline void print_change_model(const ChangeModel& model)
 
     for (std::size_t band = 0; band < model.bands.size(); ++band)
     {
-        const auto& r = model.bands[band];
-        const auto& m = r.model;
-        const auto& s = r.score;
-        const auto& coef = m.coefficients();
-        // const auto& resi = s.residuals;
+        const BandFit& fit = model.bands[band];
+        const auto& coef = fit.coefficients;
 
         std::cout << "Band " << band << '\n';
-        std::cout << "  Iterations : " << m.iterations() << '\n';
-        std::cout << "  Intercept  : " << m.intercept() << '\n';
-        std::cout << "  RMSE       : " << s.rmse << '\n';
-        std::cout << "  Magnitude  : " << s.magn << '\n';
+        std::cout << "  Iterations : " << fit.iterations << '\n';
+        std::cout << "  Intercept  : " << fit.intercept << '\n';
+        std::cout << "  RMSE       : " << fit.rmse << '\n';
+        std::cout << "  Magnitude  : " << fit.magnitude << '\n';
 
         std::cout << "  Coefficients (" << coef.size() << "): ";
 

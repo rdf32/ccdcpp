@@ -173,6 +173,19 @@ void expect_same_fit(const ccd::LassoResult& a, const ccd::LassoResult& b)
     EXPECT_TRUE(same_bits(a.score.residuals, b.score.residuals));
 }
 
+// A segment's BandFit against the Lasso fit it reports, field by field.
+void expect_same_fit(const ccd::BandFit& a, const ccd::LassoResult& b)
+{
+    EXPECT_EQ(a.iterations, b.model.iterations());
+    EXPECT_TRUE(same_bits(a.intercept, b.model.intercept()));
+    EXPECT_EQ(
+        std::memcmp(a.coefficients.data(), b.model.coefficients().data(),
+                    sizeof(scalar_t) * ccd::CCD_MAX_COEFS),
+        0);
+    EXPECT_TRUE(same_bits(a.rmse, b.score.rmse));
+    EXPECT_TRUE(same_bits(a.magnitude, b.score.magn));
+}
+
 //------------------------------------------------------------------------------
 // The per-site loops, as they were written at each site
 //------------------------------------------------------------------------------

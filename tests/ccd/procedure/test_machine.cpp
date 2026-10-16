@@ -942,10 +942,10 @@ void expect_same(const ccd::FitResult& a, const ccd::FitResult& b, const std::st
         ASSERT_EQ(x.bands.size(), y.bands.size()) << name << " " << m;
         for (std::size_t b = 0; b < x.bands.size(); ++b)
         {
-            EXPECT_EQ(x.bands[b].score.rmse, y.bands[b].score.rmse) << name << " " << m;
-            EXPECT_EQ(x.bands[b].score.magn, y.bands[b].score.magn) << name << " " << m;
-            EXPECT_EQ(x.bands[b].model.intercept(), y.bands[b].model.intercept()) << name;
-            EXPECT_EQ(x.bands[b].model.coefficients(), y.bands[b].model.coefficients()) << name;
+            EXPECT_EQ(x.bands[b].rmse, y.bands[b].rmse) << name << " " << m;
+            EXPECT_EQ(x.bands[b].magnitude, y.bands[b].magnitude) << name << " " << m;
+            EXPECT_EQ(x.bands[b].intercept, y.bands[b].intercept) << name;
+            EXPECT_EQ(x.bands[b].coefficients, y.bands[b].coefficients) << name;
         }
     }
     ASSERT_EQ(a.mask.size(), b.mask.size()) << name;

@@ -295,7 +295,7 @@ std::size_t count_nonzero(const ccd::FitResult& fit)
 
     for (const auto& model : fit.models)
         for (const auto& band : model.bands)
-            for (const auto& c : band.model.coefficients())
+            for (const auto& c : band.coefficients)
                 if (c != 0.0)
                     ++n;
 
@@ -325,12 +325,12 @@ double worst_relative(const ccd::FitResult& dn, const ccd::FitResult& phys)
             const auto& d = dn.models[m].bands[b];
             const auto& p = phys.models[m].bands[b];
 
-            compare(d.model.intercept(), p.model.intercept() * SCALE);
-            compare(d.score.rmse, p.score.rmse * SCALE);
-            compare(d.score.magn, p.score.magn * SCALE);
+            compare(d.intercept, p.intercept * SCALE);
+            compare(d.rmse, p.rmse * SCALE);
+            compare(d.magnitude, p.magnitude * SCALE);
 
-            const auto& dc = d.model.coefficients();
-            const auto& pc = p.model.coefficients();
+            const auto& dc = d.coefficients;
+            const auto& pc = p.coefficients;
 
             for (std::size_t c = 0; c < dc.size(); ++c)
                 compare(dc[c], pc[c] * SCALE);

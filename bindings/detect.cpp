@@ -354,12 +354,12 @@ py::dict detect_wrapper(
             py::dict b;
 
             b["rmse"] =
-                band.score.rmse;
+                band.rmse;
 
             b["magnitude"] =
-                band.score.magn;
+                band.magnitude;
 
-            const auto& c = band.model.coefficients();
+            const auto& c = band.coefficients;
             py::tuple coef(c.size());
 
             for (size_t i = 0; i < c.size(); ++i)
@@ -370,7 +370,7 @@ py::dict detect_wrapper(
 
 
             b["intercept"] =
-                band.model.intercept();
+                band.intercept;
 
 
             bands.append(b);
@@ -721,16 +721,16 @@ py::list detect_cube_wrapper(
                 py::dict b;
 
                 b["rmse"] =
-                    band.score.rmse;
+                    band.rmse;
 
                 b["magnitude"] =
-                    band.score.magn;
+                    band.magnitude;
 
                 b["intercept"] =
-                    band.model.intercept();
+                    band.intercept;
 
                 const auto& coef =
-                    band.model.coefficients();
+                    band.coefficients;
 
                 py::tuple c(coef.size());
 
@@ -965,11 +965,11 @@ py::dict detect_cube_columns_wrapper(
             {
                 const auto& band = model.bands[b];
 
-                int_v(i, b)  = band.model.intercept();
-                rmse_v(i, b) = band.score.rmse;
-                magn_v(i, b) = band.score.magn;
+                int_v(i, b)  = band.intercept;
+                rmse_v(i, b) = band.rmse;
+                magn_v(i, b) = band.magnitude;
 
-                const auto& coef = band.model.coefficients();
+                const auto& coef = band.coefficients;
 
                 for (ccd::index_t c = 0; c < NC; ++c)
                     coef_v(i, b, c) = coef[c];

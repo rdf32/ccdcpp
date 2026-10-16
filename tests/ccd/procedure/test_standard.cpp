@@ -41,17 +41,14 @@ inline void print_change_model(const ccd::ChangeModel& model)
 
     for (std::size_t band = 0; band < model.bands.size(); ++band)
     {
-        const auto& r = model.bands[band];
-        const auto& m = r.model;
-        const auto& s = r.score;
-        const auto& coef = m.coefficients();
-        // const auto& resi = s.residuals;
+        const ccd::BandFit& fit = model.bands[band];
+        const auto& coef = fit.coefficients;
 
         std::cout << "Band " << band << '\n';
-        std::cout << "  Iterations : " << m.iterations() << '\n';
-        std::cout << "  Intercept  : " << m.intercept() << '\n';
-        std::cout << "  RMSE       : " << s.rmse << '\n';
-        std::cout << "  Magnitude  : " << s.magn << '\n';
+        std::cout << "  Iterations : " << fit.iterations << '\n';
+        std::cout << "  Intercept  : " << fit.intercept << '\n';
+        std::cout << "  RMSE       : " << fit.rmse << '\n';
+        std::cout << "  Magnitude  : " << fit.magnitude << '\n';
 
         std::cout << "  Coefficients (" << coef.size() << "): ";
 
@@ -399,25 +396,25 @@ TEST(CCD, DetectStandard)
             const auto& expected_band = expected.bands[b];
 
             EXPECT_NEAR(
-                actual_band.score.rmse,
+                actual_band.rmse,
                 expected_band.rmse,
                 1e-6
             );
 
             EXPECT_NEAR(
-                actual_band.model.intercept(),
+                actual_band.intercept,
                 expected_band.intercept,
                 1e-6
             );
 
             EXPECT_NEAR(
-                actual_band.score.magn,
+                actual_band.magnitude,
                 expected_band.magnitude,
                 1e-6
             );
 
             const auto& coef =
-                actual_band.model.coefficients();
+                actual_band.coefficients;
 
             ASSERT_EQ(
                 coef.size(),
@@ -500,8 +497,8 @@ TEST(CCD, DetectStandardHalfDayMedianGap)
     ASSERT_EQ(m.bands.size(), 7u);
     for (std::size_t b = 0; b < 7; ++b)
     {
-        EXPECT_NEAR(m.bands[b].model.intercept(), expected[b][0], 1e-6) << "band " << b;
-        EXPECT_NEAR(m.bands[b].score.rmse, expected[b][1], 1e-6) << "band " << b;
+        EXPECT_NEAR(m.bands[b].intercept, expected[b][0], 1e-6) << "band " << b;
+        EXPECT_NEAR(m.bands[b].rmse, expected[b][1], 1e-6) << "band " << b;
     }
 
     std::size_t kept = 0;

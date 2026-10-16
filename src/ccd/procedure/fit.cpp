@@ -12,6 +12,17 @@
 namespace ccd
 {
 
+BandFit band_fit(const LassoResult& fit)
+{
+    BandFit out;
+    out.intercept = fit.model.intercept();
+    out.coefficients = fit.model.coefficients();
+    out.rmse = fit.score.rmse;
+    out.magnitude = fit.score.magn;
+    out.iterations = fit.model.iterations();
+    return out;
+}
+
 index_t adjust_peek(
     ArrayView<const std::int64_t, 1> dates,
     index_t defpeek,

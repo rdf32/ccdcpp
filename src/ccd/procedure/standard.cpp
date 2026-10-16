@@ -659,13 +659,11 @@ Phase write_extended_segment(State& state, scalar_t change_probability)
     result.change_probability = change_probability;
     result.curve_qa = static_cast<CurveQA>(extension.num_coef);
 
-    result.bands = std::move(extension.models);
+    result.bands.reserve(num_bands);
     for (index_t band = 0; band < num_bands; ++band) {
-        result.bands[band].score.magn = median(extension.residuals[band]);
-
-        // The fit-window residuals were for seasonal_rmse(); nothing reads
-        // a returned segment's residuals.
-        result.bands[band].score.residuals = std::vector<scalar_t>();
+        BandFit fit = band_fit(extension.models[band]);
+        fit.magnitude = median(extension.residuals[band]);
+        result.bands.push_back(fit);
     }
 
     state.segments.push_back(std::move(result));

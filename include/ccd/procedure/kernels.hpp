@@ -83,7 +83,7 @@ void fit_bands(
 //     observation_count  window.size()
 //     change_probability 0
 //     curve_qa           curve_qa
-//     bands[b].score     rmse, magnitude 0
+//     bands[b]           band_fit() of the band's fit: magnitude 0
 ChangeModel catch_segment(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,

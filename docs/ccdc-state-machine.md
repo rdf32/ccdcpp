@@ -166,7 +166,7 @@ record:
 | `Cursor`, `drive` | `include/ccd/procedure/machine.hpp` |
 | `fit_bands` (the one per-band fit loop), `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/procedure/kernels.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
-| `Variogram`, `adjusted_variogram`, `tmask`, `stable`, `find_closest_doy`, `seasonal_rmse`, `span`, `Window`, `ChangeModel` | `include/ccd/procedure/fit.hpp` |
+| `Variogram`, `adjusted_variogram`, `tmask`, `stable`, `find_closest_doy`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/procedure/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
 (`include/ccd/procedure/standard.hpp`): `Cadence` and `measure_cadence`, `initialize_criteria`,
@@ -281,9 +281,11 @@ keeps its initialization. The design leaves its place ready:
 - The run picks the detector (a `detector=` option, added with BFP); `detect_pixel` is where the
   pick goes.
 
-One shared type is still Standard-shaped: a segment's per-band fit is a `LassoResult`
-(`ChangeModel::bands`). A detector that fits by ordinary least squares needs a neutral per-band
-fit record there first.
+A segment reports each band's fit as a `BandFit` (`ChangeModel::bands`): intercept,
+coefficients, RMSE, magnitude and the solver's iteration count (0 for a fit in closed form), so
+a detector that fits by ordinary least squares writes the same record. Inside the Standard
+machine the fits stay `LassoResult`s, whose residuals the seasonal RMSE reads; `band_fit()`
+converts each when a segment is written.
 
 ### A later batch on the CPU
 

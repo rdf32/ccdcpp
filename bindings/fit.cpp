@@ -107,16 +107,16 @@ void bind_fit(py::module_& m)
                 py::dict b;
 
                 b["rmse"] =
-                    band.score.rmse;
+                    band.rmse;
 
                 b["magnitude"] =
-                    band.score.magn;
+                    band.magnitude;
 
                 b["coefficients"] =
-                    band.model.coefficients();
+                    band.coefficients;
 
                 b["intercept"] =
-                    band.model.intercept();
+                    band.intercept;
 
                 result.append(b);
             }

@@ -130,8 +130,7 @@ ChangeModel catch_segment(
         << ")"
     );
 
-    ChangeModel result;
-
+    std::vector<LassoResult> fits;
     fit_bands(
         dates.slice(range(window.start, window.stop)),
         spectral.slice(all(), range(window.start, window.stop)),
@@ -139,8 +138,13 @@ ChangeModel catch_segment(
         KeepResiduals::No,
         lworkspace,
         solver,
-        result.bands
+        fits
     );
+
+    ChangeModel result;
+    result.bands.reserve(fits.size());
+    for (const LassoResult& fit : fits)
+        result.bands.push_back(band_fit(fit));
 
     if (window.stop >= dates.size()) {
         result.break_day = dates(dates.size() - 1);

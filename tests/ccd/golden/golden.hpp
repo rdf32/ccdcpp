@@ -53,12 +53,12 @@ inline void dump_models(std::string& out, const ccd::FitResult& result)
         for (const auto& b : m.bands)
         {
             append(out, " %zu %a %a %a",
-                static_cast<std::size_t>(b.model.iterations()),
-                b.model.intercept(),
-                b.score.rmse,
-                b.score.magn);
+                static_cast<std::size_t>(b.iterations),
+                b.intercept,
+                b.rmse,
+                b.magnitude);
 
-            for (const auto c : b.model.coefficients())
+            for (const auto c : b.coefficients)
                 append(out, " %a", c);
 
             out.push_back('\n');

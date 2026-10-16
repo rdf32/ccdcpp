@@ -264,7 +264,7 @@ void expect_rmse(
     const auto& bands = r.models[segment].bands;
     ASSERT_EQ(bands.size(), expected.size()) << name;
     for (std::size_t b = 0; b < expected.size(); ++b)
-        EXPECT_NEAR(bands[b].score.rmse, expected[b], DECIDED_RTOL * expected[b])
+        EXPECT_NEAR(bands[b].rmse, expected[b], DECIDED_RTOL * expected[b])
             << name << " segment " << segment << " band " << b;
 }
 

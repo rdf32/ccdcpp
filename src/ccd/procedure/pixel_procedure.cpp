@@ -76,9 +76,9 @@ FitResult fit_whole_series(
 
     //----------------------------------------------------------
     // Fit every spectral band over every kept observation. The
-    // magnitude of these segments is 0 and nothing reads a
-    // returned segment's residuals.
+    // magnitude of these segments is 0.
     //----------------------------------------------------------
+    std::vector<LassoResult> fits;
     fit_bands(
         masked_dates,
         masked_spectral,
@@ -86,8 +86,12 @@ FitResult fit_whole_series(
         KeepResiduals::No,
         lworkspace,
         solver,
-        result.bands
+        fits
     );
+
+    result.bands.reserve(fits.size());
+    for (const LassoResult& fit : fits)
+        result.bands.push_back(band_fit(fit));
 
     results.models.push_back(std::move(result));
     results.mask = std::move(mask);
