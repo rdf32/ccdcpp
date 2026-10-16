@@ -435,20 +435,19 @@ struct Machine
 // Resets `state` for `mask`, drives it to Done and returns its result.
 FitResult run(const Context& context, State& state, ProcessingMask mask);
 
-} // namespace standard
-
 //==============================================================================
 //
-// StandardProcedure
+// Procedure
 //
 // pyccd's standard procedure: the Standard machine and the per-pixel record
 // it steps. The record is a member so that its buffers keep their capacity
 // across the pixels one object fits; run() resets it for each pixel, so a
-// reused object gives every pixel the result a fresh one does.
+// reused object gives every pixel the result a fresh one does. A second
+// machine has its own Procedure in its own namespace (bfp::Procedure).
 //
 //==============================================================================
 
-class StandardProcedure
+class Procedure
 {
 
 public:
@@ -485,11 +484,8 @@ public:
 
 private:
 
-    standard::State state_;
+    State state_;
 };
-
-namespace standard
-{
 
 //==============================================================================
 //
@@ -513,7 +509,7 @@ class Detector
 public:
 
     // Fits the observations of `hworkspace` that `mask` keeps with
-    // `procedure`: StandardProcedure::run() or fit_whole_series().
+    // `procedure`: Procedure::run() or fit_whole_series().
     FitResult fit(
         PixelProcedure procedure,
         const HarmonicWorkspace& hworkspace,
@@ -524,7 +520,7 @@ public:
 
 private:
 
-    StandardProcedure standard_;
+    Procedure procedure_;
 };
 
 } // namespace standard

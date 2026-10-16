@@ -29,7 +29,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   `CHANGE_THRESHOLD` are no longer overwritten in a per-pixel copy.
 - `HarmonicWorkspace` refers to the caller's `HarmonicOptions` instead of
   copying them, and `options()` is const only; it cannot be built from a
-  temporary. `StandardProcedure::run` takes a const workspace. `tmask()`
+  temporary. `standard::Procedure::run` takes a const workspace. `tmask()`
   and `stable()` take a `const Variogram&`.
 - The procedures share kernels instead of near-copies of each loop.
   `ccd::HarmonicBasis` (`include/ccd/regression/harmonic_basis.hpp`) builds
@@ -69,8 +69,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   peek residuals), its buffers kept across segments and pixels. pyccd's
   dead series-end check before Extend's grow is an assert. pyccd's `start`
   flag is `segments.empty()`. `standard::lookback` and `standard::extend`
-  are now these transitions. `StandardProcedure`'s signatures are
-  unchanged.
+  are now these transitions.
 - Each repeating step says what it did. `ccd::initialize_step` returns an
   `InitializeOutcome`, which names the step that drops Tmask's outliers and
   then fits the shortened window (`DroppedThenUnstable`,
@@ -92,9 +91,13 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   segment of `COEFFICIENT_MIN` coefficients, curve_qa 54 / 44).
   `ccd::standard::Detector` has one call, `fit`: the Standard machine for
   Standard pixels and `fit_whole_series` for the others;
-  `DetectScratch::standard` is a `Detector`. `StandardProcedure` is a plain
-  class owning the machine's record. `span()` is in `procedure/fit.hpp`.
-- Renamed (C++): `FitProcedureType` is `PixelProcedure`.
+  `DetectScratch::standard` is a `Detector`. `span()` is in
+  `procedure/fit.hpp`.
+- Renamed (C++): `FitProcedureType` is `PixelProcedure`. `StandardProcedure`
+  is `ccd::standard::Procedure`, a plain class owning the machine's record
+  and kept apart from `Detector`, so that a second machine has its own
+  `Procedure` beside it; its `run(workspace, mask, lasso, solver)` is
+  unchanged.
 - CMake sets policies CMP0167 (`find_package(Boost)` reads Boost's
   `BoostConfig.cmake`) and CMP0135 where the CMake knows them, which
   silences the FindBoost warning on CMake 3.30 and later.

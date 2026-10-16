@@ -1091,7 +1091,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
     // A record reused across pixels gives each pixel the result a fresh one
     // does: reset() starts every pixel from Prepare with nothing carried.
     const auto all = golden::characterisation_pixels();
-    ccd::StandardProcedure reused;
+    ccd::standard::Procedure reused;
 
     for (const auto& p : all)
     {
@@ -1116,7 +1116,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
 
         ccd::LassoWorkspace lasso(0);
         ccd::LassoSolver solver(p.l);
-        ccd::StandardProcedure fresh;
+        ccd::standard::Procedure fresh;
         const ccd::FitResult once = fresh.run(workspace, mask, lasso, solver);
         const ccd::FitResult again = reused.run(workspace, mask, lasso, solver);
         expect_same(again, once, p.name);
@@ -1150,7 +1150,7 @@ TEST(SelectProcedure, TheClearThenTheSnowPercentage)
 
 TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
 {
-    // Standard is StandardProcedure::run(); PermanentSnow and
+    // Standard is standard::Procedure::run(); PermanentSnow and
     // InsufficientClear are the shared whole-series fit, whose curve_qa
     // names the procedure.
     Record r(80);
@@ -1159,7 +1159,7 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
         mask.set(i, true);
 
     ccd::standard::Detector detector;
-    ccd::StandardProcedure standard;
+    ccd::standard::Procedure standard;
     expect_same(
         detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.lasso, r.solver),
         standard.run(r.workspace, mask, r.lasso, r.solver),

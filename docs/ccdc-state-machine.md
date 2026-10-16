@@ -150,8 +150,8 @@ solver with its workspace.
 observations by one rule: a window bound above the dropped position moves down by one.
 
 The record's buffers keep their capacity across pixels: `State::reset` starts a pixel without
-freeing anything. `StandardProcedure` owns one record, `standard::Detector` owns one
-`StandardProcedure`, and `DetectScratch` (`include/ccd/ccd.hpp`) holds one `Detector` per
+freeing anything. `standard::Procedure` owns one record, `standard::Detector` owns one
+`standard::Procedure`, and `DetectScratch` (`include/ccd/ccd.hpp`) holds one `Detector` per
 OpenMP thread.
 
 ## 4. Shared functions and Standard's own
@@ -269,8 +269,9 @@ et al., "Toward consistent change detection across irregular remote sensing time
 observations", Remote Sensing of Environment 285, 2023). It replaces Standard's change test and
 keeps its initialisation. The design leaves its place ready:
 
-- BFP is a machine of its own, `ccd::bfp`, with its own `Phase`, `Exit`, `State` and
-  transitions. Nothing is inherited from Standard's.
+- BFP is a machine of its own, `ccd::bfp`, with its own `Phase`, `Exit`, `State`,
+  transitions and `bfp::Procedure` (the machine with its record, as `standard::Procedure`
+  is Standard's). Nothing is inherited from Standard's.
 - It composes the shared parts: `MaskedSeries`, `Cursor`, the segments, `initialize_step` with
   its own `InitializeCriteria`, `HarmonicBasis`, and `drive` with its trace.
 - Its detector is a sibling of `standard::Detector` with the same `fit` call, and it reuses

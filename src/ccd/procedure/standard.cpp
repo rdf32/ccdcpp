@@ -893,15 +893,13 @@ FitResult run(const Context& context, State& state, ProcessingMask mask)
     return state.take_result();
 }
 
-} // namespace standard
-
-FitResult StandardProcedure::run(
+FitResult Procedure::run(
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver
 ) {
-    const standard::Context context{
+    const Context context{
         hworkspace.options(),
         hworkspace,
         lworkspace,
@@ -910,9 +908,6 @@ FitResult StandardProcedure::run(
 
     return standard::run(context, state_, std::move(mask));
 }
-
-namespace standard
-{
 
 FitResult Detector::fit(
     PixelProcedure procedure,
@@ -925,7 +920,7 @@ FitResult Detector::fit(
     if (procedure == PixelProcedure::Standard)
     {
         LOG_DEBUG("Standard");
-        return standard_.run(hworkspace, std::move(mask), lworkspace, solver);
+        return procedure_.run(hworkspace, std::move(mask), lworkspace, solver);
     }
 
     return fit_whole_series(procedure, hworkspace, std::move(mask), lworkspace, solver);

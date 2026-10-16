@@ -350,7 +350,7 @@ TEST(CCD, DetectStandard)
     ccd::LassoSolver solver(loptions);
     ccd::LassoWorkspace lworkspace(dates.size());
 
-    ccd::StandardProcedure fit_procedure;
+    ccd::standard::Procedure fit_procedure;
     ccd::FitResult result = fit_procedure.run(
         hworkspace,
         lworkspace,
