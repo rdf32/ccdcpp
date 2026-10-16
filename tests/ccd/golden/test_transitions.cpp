@@ -15,7 +15,12 @@
 // reads only its result, so the tests hold whatever the procedure's insides
 // become, and stay valid beside a second change-detection procedure.
 //
-// Two tests:
+// Three tests:
+//
+//   * Transitions.InputsAreTheSameOnEveryPlatform: a fingerprint of each
+//     pixel's input (dates, QA, every spectral value's bits), pinned. The
+//     pixels are whole DN, so the fingerprints hold on any platform; a
+//     generator whose output depends on the compiler fails here first.
 //
 //   * Transitions.BitIdenticalToFixture: the dump against the fixture, as
 //     test_golden.cpp does it (a different platform is a skip, not a failure).
@@ -190,11 +195,14 @@
 //
 //==============================================================================
 
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -281,7 +289,55 @@ void expect_shapes(
     }
 }
 
+// FNV-1a over a pixel's dates, QA codes and spectral bit patterns.
+std::uint64_t fingerprint(const golden::CharPixel& p)
+{
+    std::uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](const void* data, std::size_t bytes)
+    {
+        const auto* c = static_cast<const unsigned char*>(data);
+        for (std::size_t i = 0; i < bytes; ++i)
+            h = (h ^ c[i]) * 1099511628211ull;
+    };
+    mix(p.dates.data(), p.dates.size() * sizeof(std::int64_t));
+    mix(p.qas.data(), p.qas.size());
+    mix(p.spectral.data(), p.spectral.size() * sizeof(double));
+    return h;
+}
+
 } // namespace
+
+TEST(Transitions, InputsAreTheSameOnEveryPlatform)
+{
+    const std::pair<const char*, std::uint64_t> expected[] = {
+        {"select_clear_at_threshold", 0x62f2d01d24261440ull},
+        {"select_clear_below_threshold", 0x9152613b22cd12ecull},
+        {"select_snow_at_threshold", 0xaab87ecbd49eab41ull},
+        {"select_snow_below_threshold", 0x230cdeb343e527f8ull},
+        {"snow_too_few", 0x4069e1afaf2d07ccull},
+        {"standard_too_few", 0xb6c3c5743f25bfa1ull},
+        {"standard_no_room", 0xdcfc9365923140ffull},
+        {"variogram_nan", 0x9afc74b04cafacd8ull},
+        {"constant_detection_band", 0x7fc72ef9b305ecfbull},
+        {"start_catch", 0xf7ca2b6b44163a39ull},
+        {"coefficient_min_6", 0xc6fe65d8c948ae77ull},
+        {"lookback_below_break", 0xaa29a7010494c9b1ull},
+        {"lookback_below_break_decides", 0x2de711abc976bdfdull},
+        {"lookback_peek_minus_one_decides", 0xcbd41435e2ee30deull},
+        {"peek_guard_tail", 0xd019800e2ee6f191ull},
+        {"series_end_after_outlier", 0x73e2bfe02ecda114ull},
+        {"reentry_after_series_end", 0x2b119249d8626b0full},
+    };
+
+    const auto all = golden::characterisation_pixels();
+    ASSERT_EQ(all.size(), std::size(expected));
+    for (std::size_t i = 0; i < all.size(); ++i)
+    {
+        EXPECT_EQ(all[i].name, expected[i].first);
+        EXPECT_EQ(fingerprint(all[i]), expected[i].second)
+            << all[i].name << ": 0x" << std::hex << fingerprint(all[i]);
+    }
+}
 
 TEST(Transitions, BitIdenticalToFixture)
 {

@@ -133,6 +133,11 @@ inline CharPixel make_char_pixel(
 // v0.6.1 by a scan with a trace-instrumented build: for a family built for a
 // path, an early seed that takes it; for the random families, a seed whose
 // output the quirk's 0.8.0 fix changes (see test_transitions.cpp).
+//
+// Every draw from the stream is its own statement or an element of a braced
+// list, both evaluated in order. Two draws in the arguments of one call would
+// be evaluated in an order the compiler picks (clang left to right, GCC right
+// to left), and the pixel would differ by platform.
 //------------------------------------------------------------------------------
 
 // 13 observations 34 days apart, then 500 `gap` days apart, all before
@@ -338,7 +343,9 @@ inline CharPixel sparse_random(const char* name, std::uint64_t seed)
 {
     Rng r(seed * 2862933555777941757ull + 3037000493ull);
     std::vector<std::int64_t> d;
-    append_dates(d, 727000 + static_cast<std::int64_t>(r.below(16)), 300 + r.below(300), 16);
+    const std::int64_t first = 727000 + static_cast<std::int64_t>(r.below(16));
+    const std::size_t count = 300 + r.below(300);
+    append_dates(d, first, count, 16);
     const std::size_t n = d.size();
 
     SeriesSpec s;
