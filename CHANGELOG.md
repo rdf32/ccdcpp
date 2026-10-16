@@ -34,9 +34,11 @@
   (`include/ccd/procedure/kernels.hpp`) is the one per-band fit loop of
   Initialise, Extend's refit, both catches and the whole-series fits, the
   latter without its redundant workspace reset; `ccd::catch_segment` writes
-  the start and end catches; `ccd::initialize`, the start-window search,
-  takes its `MaskedSeries` and an `InitializeCriteria` (Standard passes its 4
-  stability coefficients there) instead of reading a procedure's members.
+  the start and end catches; `ccd::initialize_step`, one candidate window
+  of the start-window search, takes its `MaskedSeries` and an
+  `InitializeCriteria` (Standard passes its 4 stability coefficients there)
+  instead of reading a procedure's members, and returns what it did
+  (`InitializeOutcome`).
   The Standard procedure's own steps are free functions in
   `ccd::standard`: `lookback`, `extend`, `coefficient_count`,
   `peek_residuals` (both peeks' residual loop) and `change_magnitude`,
@@ -47,19 +49,28 @@
 - The Standard procedure is a per-pixel state machine,
   `ccd::standard::Machine` (`include/ccd/procedure/standard.hpp`): a
   `State` record (phase, exit reason, `MaskedSeries`, `Cursor`, segments,
-  `Cadence`, `Variogram`, the stable fits), a read-only `Context`, one
-  transition per phase (`prepare`, `initialize`, `lookback`, `start_catch`,
-  `extend`, `restart`, `end_catch`) and named routing between them.
-  `ccd::drive` (`include/ccd/procedure/machine.hpp`) is the one loop, for
-  this machine and any later one, and logs one DEBUG line per transition.
-  `Initialize`, `Lookback` and `Extend` still run their whole loop per
-  call. pyccd's `start` flag is `segments.empty()`. `standard::lookback` and
-  `standard::extend` are now these transitions. `StandardProcedure`'s
-  signatures are unchanged.
+  `Cadence`, `Variogram`, the stable fits, Extend's `Extension`), a
+  read-only `Context`, one transition per phase (`prepare`, `initialize`,
+  `lookback`, `start_catch`, `extend`, `restart`, `end_catch`) and named
+  routing between them (`after_stable_start`, `after_lookback`,
+  `peek_guard`). `ccd::drive` (`include/ccd/procedure/machine.hpp`) is the
+  one loop, for this machine and any later one, and logs one DEBUG line per
+  transition. Each transition makes one decision: `initialize` tests one
+  candidate window, `lookback` one observation before the window (its peek
+  window is `lookback_peek()`), `extend` one peek after it, each repeating
+  itself until a guard sends it on, so the trace shows every decision.
+  `Extension` carries Extend's state from one peek to the next (training,
+  fit window and span, the last peek and coefficient count, the models, the
+  peek residuals), its buffers kept across segments and pixels. pyccd's
+  dead series-end check before Extend's grow is an assert. pyccd's `start`
+  flag is `segments.empty()`. `standard::lookback` and `standard::extend`
+  are now these transitions. `StandardProcedure`'s signatures are
+  unchanged.
+- Renamed (C++): `FitProcedureType` is `PixelProcedure`.
 - `ccd::standard::Detector` chooses each pixel's procedure from its QA
   statistics (`select`) and fits it (`fit`); `DetectScratch::standard` is a
-  `Detector`. `FitProcedureType` is renamed `PixelProcedure` and declared in
-  `procedure/fit.hpp`. `InitializeCriteria` holds its band lists by value.
+  `Detector`. `PixelProcedure` is declared in `procedure/fit.hpp`.
+  `InitializeCriteria` holds its band lists by value.
 - Removed, unused: `update_processing_mask` (both overloads), and
   `remove_outliers` / `remove_observation` (now inside `MaskedSeries`), the
   vector-returning `StandardProcedure::calc_residuals`, `Window::rewind`
@@ -90,13 +101,18 @@
   on the masked series of the pyccd reference pixel and the Collection 2
   pixel.
 - `tests/ccd/procedure/test_machine.cpp` (ctest `StandardRouting.*`,
-  `StandardPrepare.*`, `StandardExit.*`, `StandardMachine.*`,
+  `StandardPrepare.*`, `StandardInitialize.*`, `StandardLookback.*`,
+  `StandardExtend.*`, `StandardExit.*`, `StandardMachine.*`,
   `StandardDetector.*`): the machine's guards and routing from hand-built
-  records, its exit reason on the characterisation pixels that stop it each
-  way (each run also equal to `detect()`'s result), a record reused across
-  pixels, and the detector's procedure choice.
-- `tests/ccd/procedure/test_series.cpp` (ctest `MaskedSeries.*`, `Variogram.*`,
-  `StandardCadence.*`, `HarmonicWorkspace.*`): the records' contracts.
+  records; one transition call per row of Initialize's, Lookback's and
+  Extend's guard tables, on a short series with the deciding observation
+  edited in; its exit reason on the characterisation pixels that stop it
+  each way (each run also equal to `detect()`'s result); every pixel
+  stepped by hand, each self-transition one decision; a record reused
+  across pixels; and the detector's procedure choice.
+- `tests/ccd/procedure/test_series.cpp` (ctest `MaskedSeries.*`,
+  `Variogram.*`, `StandardCadence.*`, `HarmonicWorkspace.*`): the records'
+  contracts.
 - `tools/bench/`: the refactor's timing harness under version control: the
   synthetic corpus generator, the synthetic bench (`bench.sh`) and the
   real-cell bench (`bench_cell.py`), data paths as arguments, and the method
