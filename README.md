@@ -19,7 +19,7 @@ A high-performance C++17 implementation of the Continuous Change Detection and C
 - Zero-copy NumPy interface
 - Raw QA input decoded through optional lookup tables (Landsat C1/C2; HLS and Sentinel-2 building blocks)
 - Sensor profiles: band roles, units and options in one object, with Landsat presets and HLS and Sentinel-2 presets validated on a real sample (`ccdcpp.presets`)
-- Designed to reproduce PyCCD algorithm behavior and outputs
+- PyCCD's algorithm as it intends, every difference from its code listed ([Differences from pyccd](#differences-from-pyccd))
 - Cross-platform CMake build system
 
 ---
@@ -36,7 +36,7 @@ Key advantages include:
 - Zero-copy NumPy interoperability
 - Automatic multi-core execution with OpenMP
 - Easy integration into existing Python workflows
-- Algorithm behavior designed to closely match PyCCD
+- PyCCD's algorithm, with its evident bugs corrected and each correction listed
 
 ---
 
@@ -71,10 +71,10 @@ The Standard machine; bracketed names are the exit reason the record keeps:
        │   a full peek after the window ? ── no ──────────────────────────► EndCatch [PeekBeyondEnd]
        │                  │ yes
        │                  ▼
-       │      ┌──► Extend  Change / Dropped / Grown
+       │      ┌──► Extend  Change / Dropped / SeriesEnd / Grown
        │      └───────┘  (while a full peek fits)
+       │                  │ series end: segment, change probability 0 ───────────────► EndCatch [SeriesEnd]
        │                  │ Change: segment, change probability 1
-       │                  │ no peek fits: segment, change probability 0 (series end)
        │                  ▼
        └─── room ──── Restart: prev_break = window.stop, window = (stop, stop + MEOW_SIZE)
                           │ no room
@@ -193,7 +193,15 @@ ccdcpp recreates pyccd. Where pyccd's code does not do what it evidently intends
 - **Green median filter.** pyccd's `insufficient_clear_filter` computes the green mask for the observations up to `STAT_ORD` and applies it with `standard_mask[standard_mask][:n] &= green_mask` (`ccd/qa.py`), which writes into a copy, so the filter drops nothing. ccdcpp applies it, with the `StatWindow` scope by default.
 - **Seasonal RMSE ties.** pyccd's `find_closest_doy` (`ccd/change.py`) takes the 24 fit-window observations closest in day of year to the last peek date with `np.argsort(d_yr)[:num]`, which is not a stable sort. Observations a multiple of 1461 days apart are exactly equally distant, so which of the tied observations are kept depends on the sort. ccdcpp breaks ties in window order, so the seasonal RMSE, and with it the change magnitudes, can differ on dense series.
 
-On the synthetic corpus, with pyccd patched for these four (the convergence test as `|x0 - x| > tol`, a stable date sort, the green mask written through `standard_mask[np.flatnonzero(standard_mask)[:n]] &= green_mask`, and `np.argsort(d_yr, kind="stable")` in `find_closest_doy`), ccdcpp's defaults match pyccd to 1e-6 on every InsufficientClear pixel (175 in DN) and on every pixel where a saturation-band value on a bound reaches the saturation filter (106, and the golden test's bounds pixel); with the green filter left unpatched, `Off` matches on the same 175. One more difference is kept on purpose: an undefined raw QA value decodes to fill where pyccd raises (see [QA Input](#qa-input)). One pyccd quirk is kept for parity: the PermanentSnow and InsufficientClear procedures test the untransformed thermal band against the Celsius bounds (see `harmonic.hpp`).
+On the synthetic corpus, with pyccd patched for these four (the convergence test as `|x0 - x| > tol`, a stable date sort, the green mask written through `standard_mask[np.flatnonzero(standard_mask)[:n]] &= green_mask`, and `np.argsort(d_yr, kind="stable")` in `find_closest_doy`), ccdcpp's defaults, with the Standard procedure as pyccd's, match pyccd to 1e-6 on every InsufficientClear pixel (175 in DN) and on every pixel where a saturation-band value on a bound reaches the saturation filter (106, and the golden test's bounds pixel); with the green filter left unpatched, `Off` matches on the same 175. One more difference is kept on purpose: an undefined raw QA value decodes to fill where pyccd raises (see [QA Input](#qa-input)). One pyccd quirk is kept for parity: the PermanentSnow and InsufficientClear procedures test the untransformed thermal band against the Celsius bounds (see `harmonic.hpp`).
+
+The Standard procedure (`ccd/procedures.py`) is pyccd's with five such corrections, each checked against Zhu's MATLAB reference, TrendSeasonalFit, and each in one function of the state machine (see [CCDC as a state machine](docs/ccdc-state-machine.md)):
+
+- **Lookback's peek far from the break.** `slice(start - 1, start - peek, -1)` (line 753) reads one observation fewer than the peek; ccdcpp reads the peek, as Extend does after the window and TrendSeasonalFit does both ways.
+- **Lookback's peek near the break.** The guard against reading past the start of the series (`start - peek <= 0`, line 755) also fires after a break, where it reads the previous segment's observations; ccdcpp reads down to the previous break and never below, as TrendSeasonalFit does. It takes an adjusted peek of 13 or more, a median gap under about 7.4 days (HLS, Sentinel-2), never Landsat's 16 days.
+- **Coefficient counts.** Initialize fits a literal 4 coefficients and the peeks predict with a literal 8-term basis; ccdcpp reads `COEFFICIENT_MIN` and `COEFFICIENT_MAX` (TrendSeasonalFit's `min_num_c`, `max_num_c`). The same at the defaults.
+- **The series end.** The check before Extend's grow (line 691) tests `>` where its comment, and pyccd's own `>=` before it changed its loop guard, mean the window to stop before the grow, so the check never holds and the last curve grows once more: its end day is its break day. ccdcpp stops at the last full peek, so a series-end segment ends one observation earlier, before its break day (as after an outlier drop). That curve is the last: pyccd restarts after it, and at peeks of 25 or more runs Initialize on the last observations and drops observations no segment uses; ccdcpp goes to the End segment's test, as TrendSeasonalFit ends.
+- **Refit at 24 observations.** Extend refits while the window holds fewer than 24 observations (line 632) but compares against the model RMSE while it holds at most 24 (line 646), so at exactly 24 it compares an older fit's RMSE; ccdcpp refits at most 24, as TrendSeasonalFit does with one `<=` for both.
 
 ## QA Input
 
@@ -654,8 +662,8 @@ The original PyCCD implementation was also released into the public domain.
 
 The goals of this project are to:
 
-- preserve PyCCD algorithm behavior
-- reproduce PyCCD outputs
+- preserve PyCCD's algorithm, doing what its code intends where the two differ
+- reproduce PyCCD's outputs except where [Differences from pyccd](#differences-from-pyccd) says otherwise
 - provide a high-performance native C++ implementation
 - enable Python interoperability through pybind11
 
