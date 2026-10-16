@@ -664,8 +664,8 @@ if(CCD_BUILD_TESTS)
         COPYONLY
     )
 
-    # Copy Python reference data into the build directory so the
-    # test can load it using a relative path.
+    # Copy Python reference data into the build directory, where the
+    # tests open it (CCD_TEST_DATA_DIR below).
     configure_file(
         ${PROJECT_SOURCE_DIR}/tests/ccd/regression/lasso_reference.csv
         ${PROJECT_BINARY_DIR}/lasso_reference.csv
@@ -725,6 +725,29 @@ if(CCD_BUILD_TESTS)
         ${PROJECT_BINARY_DIR}/standard_mask_reference.csv
         COPYONLY
     )
+    # The tests that read the CSVs copied above open them under the build
+    # directory by absolute path, so they pass from any working directory,
+    # not only under ctest.
+    foreach(
+        csv_test
+
+        test_lasso
+        test_robust
+        test_clear
+        test_snow
+        test_standard
+        test_units
+        test_preprocess
+        test_golden
+    )
+        target_compile_definitions(
+            ${csv_test}
+
+            PRIVATE
+                CCD_TEST_DATA_DIR="${PROJECT_BINARY_DIR}"
+        )
+    endforeach()
+
     include(GoogleTest)
 
     gtest_discover_tests(test_lasso)

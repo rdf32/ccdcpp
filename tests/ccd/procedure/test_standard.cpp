@@ -108,7 +108,7 @@ TestData read_data(
     const std::string& filename
 )
 {
-    std::ifstream file(filename);
+    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
 
     if(!file)
     {
@@ -217,7 +217,7 @@ std::vector<ExpectedModel> read_reference(
     const std::string& filename
 )
 {
-    std::ifstream file(filename);
+    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
 
     if (!file)
     {
@@ -285,7 +285,7 @@ std::vector<int> read_mask_reference(
     const std::string& filename
 )
 {
-    std::ifstream file(filename);
+    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
 
     if(!file)
         throw std::runtime_error(

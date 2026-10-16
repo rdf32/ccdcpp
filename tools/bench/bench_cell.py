@@ -22,6 +22,7 @@ extension built from it.
 """
 import datetime as dt
 import hashlib
+import os
 import resource
 import sys
 import time
@@ -33,6 +34,11 @@ import numpy as np  # noqa: E402
 import zarr  # noqa: E402
 
 import ccdcpp  # noqa: E402
+
+# A wrong module_dir would silently time whatever ccdcpp the interpreter has installed.
+if not os.path.realpath(ccdcpp.__file__).startswith(os.path.realpath(sys.argv[1]) + os.sep):
+    sys.exit(f"{sys.argv[0]}: ccdcpp loaded from {ccdcpp.__file__}, not from {sys.argv[1]}")
+
 from ccdcpp import presets  # noqa: E402
 
 CUBE = sys.argv[2]

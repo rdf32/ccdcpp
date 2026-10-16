@@ -78,7 +78,12 @@
 - `tools/bench/`: the refactor's timing harness under version control: the
   synthetic corpus generator, the synthetic bench (`bench.sh`) and the
   real-cell bench (`bench_cell.py`), data paths as arguments, and the method
-  in its README.
+  in its README. Both benches refuse a `module_dir` that does not supply the
+  `ccdcpp` they import (a wrong one timed the interpreter's installed
+  package), and `bench.sh` writes no temporary file.
+- The tests that read CSVs open them under the build directory by absolute
+  path (`CCD_TEST_DATA_DIR`), so every test binary passes from any working
+  directory, not only under ctest.
 
 ## 0.6.1 - 2026-10-15
 

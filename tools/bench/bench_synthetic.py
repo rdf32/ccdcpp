@@ -9,6 +9,7 @@ time per pixel.
 directory (it holds the bare extension) or a package directory. Input conversion and copying
 happen outside the timed call.
 """
+import os
 import resource
 import sys
 import time
@@ -17,6 +18,10 @@ sys.path.insert(0, sys.argv[1])
 import numpy as np  # noqa: E402
 
 import ccdcpp  # noqa: E402
+
+# A wrong module_dir would silently time whatever ccdcpp the interpreter has installed.
+if not os.path.realpath(ccdcpp.__file__).startswith(os.path.realpath(sys.argv[1]) + os.sep):
+    sys.exit(f"{sys.argv[0]}: ccdcpp loaded from {ccdcpp.__file__}, not from {sys.argv[1]}")
 
 corpus, dtype, entry = sys.argv[2], sys.argv[3], sys.argv[4]
 threads, reps = int(sys.argv[5]), int(sys.argv[6])

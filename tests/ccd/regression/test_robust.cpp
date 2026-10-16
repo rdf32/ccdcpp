@@ -23,7 +23,7 @@ struct RobustReference
 
 std::vector<RobustReference> load_reference(const std::string& filename)
 {
-    std::ifstream file(filename);
+    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
     if (!file.is_open()) {
         throw std::runtime_error("Could not open: " + filename);
     }
