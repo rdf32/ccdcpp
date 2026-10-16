@@ -1,8 +1,8 @@
 //==============================================================================
 //
 // The Standard machine's routing and its steps, from hand-built records, its
-// exit reasons, on whole pixels, and the Standard detector's per-pixel
-// choice.
+// exit reasons, on whole pixels, the per-pixel procedure choice and the
+// Standard detector's fit of each procedure.
 //
 //   * Routing: each guard between phases (room_to_initialize, peek_fits,
 //     start_catch_due) and each routing step (after_stable_start,
@@ -19,8 +19,9 @@
 //     segment loop each way, with the same preprocessing ccd::detect() runs,
 //     against the Exit the run leaves in the record. The result of each run
 //     is also checked against detect()'s, field for field.
-//   * Detector::select(): the clear percentage first, then the snow
-//     percentage, each threshold on its >= side.
+//   * select_procedure(): the clear percentage first, then the snow
+//     percentage, each threshold on its >= side; Detector::fit(): the
+//     machine for Standard, the shared whole-series fit for the others.
 //
 // The outputs themselves are pinned by the golden and transitions fixtures;
 // these tests say which route moved if one ever does.
@@ -38,6 +39,7 @@
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/preprocess/preprocess.hpp"
 #include "ccd/procedure/machine.hpp"
+#include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
@@ -1002,13 +1004,12 @@ TEST(StandardMachine, OneStateServesManyPixels)
 } // namespace
 
 //------------------------------------------------------------------------------
-// The detector's per-pixel choice
+// The per-pixel procedure and the detector
 //------------------------------------------------------------------------------
 
-TEST(StandardDetector, SelectsByTheClearThenTheSnowPercentage)
+TEST(SelectProcedure, TheClearThenTheSnowPercentage)
 {
     const ccd::HarmonicOptions options;   // clear 0.25, snow 0.75
-    const ccd::standard::Detector detector{};
 
     auto stats = [](scalar_t clear, scalar_t snow)
     {
@@ -1018,8 +1019,45 @@ TEST(StandardDetector, SelectsByTheClearThenTheSnowPercentage)
         return s;
     };
 
-    EXPECT_EQ(detector.select(stats(0.25, 0.9), options), ccd::PixelProcedure::Standard);
-    EXPECT_EQ(detector.select(stats(0.2499, 0.75), options), ccd::PixelProcedure::PermanentSnow);
-    EXPECT_EQ(detector.select(stats(0.2499, 0.7499), options),
+    EXPECT_EQ(ccd::select_procedure(stats(0.25, 0.9), options), ccd::PixelProcedure::Standard);
+    EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.75), options),
+              ccd::PixelProcedure::PermanentSnow);
+    EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.7499), options),
               ccd::PixelProcedure::InsufficientClear);
+}
+
+TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
+{
+    // Standard is StandardProcedure::run(); PermanentSnow and
+    // InsufficientClear are the shared whole-series fit, whose curve_qa
+    // names the procedure.
+    Record r(80);
+    ccd::ProcessingMask mask(80);
+    for (index_t i = 0; i < 80; ++i)
+        mask.set(i, true);
+
+    ccd::standard::Detector detector;
+    ccd::StandardProcedure standard;
+    expect_same(
+        detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.lasso, r.solver),
+        standard.run(r.workspace, mask, r.lasso, r.solver),
+        "standard");
+
+    for (const auto procedure :
+         {ccd::PixelProcedure::PermanentSnow, ccd::PixelProcedure::InsufficientClear})
+    {
+        const ccd::FitResult fit =
+            detector.fit(procedure, r.workspace, mask, r.lasso, r.solver);
+        expect_same(
+            fit,
+            ccd::fit_whole_series(procedure, r.workspace, mask, r.lasso, r.solver),
+            "whole series");
+        ASSERT_EQ(fit.models.size(), 1u);
+        EXPECT_EQ(fit.models[0].curve_qa,
+                  procedure == ccd::PixelProcedure::PermanentSnow
+                      ? ccd::CurveQA::PersistentSnow
+                      : ccd::CurveQA::InsufficientClear);
+        EXPECT_EQ(fit.models[0].observation_count, 80u);
+        EXPECT_EQ(fit.mask.count(), 80u);
+    }
 }

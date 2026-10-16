@@ -16,7 +16,8 @@
 #include "ccd/harmonic/harmonic.hpp"
 
 #include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/insufficient_clear.hpp"
+#include "ccd/harmonic/filter.hpp"
+#include "ccd/procedure/pixel_procedure.hpp"
 
 
 using Clock = std::chrono::high_resolution_clock;
@@ -363,9 +364,10 @@ TEST(CCD, DetectClear)
     ccd::LassoSolver solver(loptions);
     ccd::LassoWorkspace lworkspace(data.dates.size());
 
-    ccd::InsufficientClear fit_procedure;
-    ccd::FitResult result = fit_procedure.run(
+    ccd::FitResult result = ccd::fit_whole_series(
+        ccd::PixelProcedure::InsufficientClear,
         hworkspace,
+        ccd::filter::insufficientclear(hworkspace),
         lworkspace,
         solver
     );

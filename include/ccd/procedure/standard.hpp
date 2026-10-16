@@ -11,6 +11,7 @@
 #include "ccd/procedure/kernels.hpp"
 #include "ccd/procedure/machine.hpp"
 #include "ccd/procedure/masked_series.hpp"
+#include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 
 namespace ccd
@@ -398,17 +399,23 @@ FitResult run(const Context& context, State& state, ProcessingMask mask);
 //
 // StandardProcedure
 //
-// pyccd's standard procedure: the facade of the Standard machine
-// (standard::run()), with the FitProcedure signatures.
+// pyccd's standard procedure: the Standard machine and the per-pixel record
+// it steps. The record is a member so that its buffers keep their capacity
+// across the pixels one object fits; run() resets it for each pixel, so a
+// reused object gives every pixel the result a fresh one does.
 //
 //==============================================================================
 
-class StandardProcedure final : public FitProcedure
+class StandardProcedure
 {
 
 public:
     //----------------------------------------------------------------------
-    // Fits the observations `mask` keeps, as FitProcedure::run() does.
+    // Fits the observations of hworkspace that `mask` keeps (the Standard
+    // procedure's processing mask over its series, built by the caller:
+    // ccd::detect builds it with the procedure's filter chain), through
+    // standard::run(). The result carries the mask, or no segments and an
+    // empty mask after an early exit (quirk 5).
     //----------------------------------------------------------------------
     FitResult run(
         const HarmonicWorkspace& hworkspace,
@@ -434,34 +441,8 @@ public:
         );
     }
 
-protected:
-
-    //----------------------------------------------------------------------
-    // Harmonic complexity: standard::coefficient_count()
-    //----------------------------------------------------------------------
-    index_t coefficient_count(
-        ArrayView<const std::int64_t, 1> dates,
-        const HarmonicOptions& options
-    ) const override
-    {
-        return standard::coefficient_count(dates.size(), options);
-    }
-
-    //----------------------------------------------------------------------
-    // Result QA
-    //----------------------------------------------------------------------
-
-    CurveQA curve_qa() const override
-    {
-        return CurveQA::Start;
-    }
-
 private:
 
-    //----------------------------------------------------------------------
-    // The machine's record, a member so that its buffers keep their
-    // capacity across the pixels one procedure object runs.
-    //----------------------------------------------------------------------
     standard::State state_;
 };
 
@@ -474,11 +455,11 @@ namespace standard
 //
 // The Standard change detector, the one a run uses for every pixel of a call
 // (the only detector so far: a second one, BFP, is a sibling class with the
-// same two calls, and the run picks one). Per pixel it chooses the procedure
-// from the pixel's QA statistics, select(), and after the caller has built
-// the processing mask with that procedure's plan, fits it, fit(): this
-// machine for Standard, the whole-series fit for PermanentSnow and
-// InsufficientClear. The per-pixel choice is the detector's own.
+// same call, and the run picks one). Each pixel's procedure is chosen before
+// it, by the shared ccd::select_procedure() (pixel_procedure.hpp); fit()
+// then fits the pixel's processing mask with this machine for Standard, and
+// with the shared ccd::fit_whole_series() for PermanentSnow and
+// InsufficientClear.
 //
 // Holds the machine's record: one Detector per thread reuses its buffers
 // across the pixels it fits.
@@ -489,16 +470,8 @@ class Detector
 {
 public:
 
-    // pyccd's choice: Standard when the clear percentage reaches
-    // CLEAR_PCT_THRESHOLD; otherwise PermanentSnow when the snow percentage
-    // reaches SNOW_PCT_THRESHOLD; otherwise InsufficientClear.
-    PixelProcedure select(
-        const Quality::Statistics& statistics,
-        const HarmonicOptions& options
-    ) const;
-
     // Fits the observations of `hworkspace` that `mask` keeps with
-    // `procedure`, as that procedure's run() does.
+    // `procedure`: StandardProcedure::run() or fit_whole_series().
     FitResult fit(
         PixelProcedure procedure,
         const HarmonicWorkspace& hworkspace,
@@ -513,18 +486,5 @@ private:
 };
 
 } // namespace standard
-
-inline scalar_t span(
-    ArrayView<const std::int64_t,1> dates,
-    const Window& window
-)
-{
-    assert(window.stop > window.start);
-
-    return static_cast<scalar_t>(
-        dates(window.stop - 1) -
-        dates(window.start)
-    );
-}
 
 } // namespace ccd

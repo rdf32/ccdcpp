@@ -13,6 +13,7 @@
 
 #include "ccd/harmonic/quality.hpp"
 
+#include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/logger.hpp"
 
@@ -340,9 +341,9 @@ const preprocess::PreprocessPlan& resolve_plan(
 // One pixel, from a (B, T) view of any supported element type.
 //
 // The steps run in order: decode the QA, compute the QA statistics, select
-// the procedure (the run's detector), apply its plan's transform, run its
-// plan's chain to build the processing mask, and fit that mask (the
-// detector again).
+// the pixel's procedure (select_procedure()), apply its plan's transform,
+// run its plan's chain to build the processing mask, and fit that mask with
+// the run's change detector.
 //
 // The procedures read a contiguous scalar_t (B, T) block. When the input is
 // already that and the plan has no transform, it is read in place; otherwise
@@ -363,11 +364,6 @@ FitResult detect_pixel(
     const ArrayView<const std::uint8_t, 1> qas =
         qa_codes<Qa>(raw_qas, qa_table, scratch.qas);
 
-    // The run's change detector: it chooses the pixel's procedure here and
-    // fits it below. Standard is the only detector so far; a second one is
-    // picked per run, here, and makes the same two calls.
-    standard::Detector& detector = scratch.standard;
-
     Quality quality;
     Quality::Statistics quality_stat = quality.compute_until(
         qas,
@@ -376,7 +372,7 @@ FitResult detect_pixel(
     );
 
     const PixelProcedure pixel_procedure =
-        detector.select(quality_stat, hoptions);
+        select_procedure(quality_stat, hoptions);
 
     const preprocess::ProcedurePlan& procedure =
         procedure_plan(pixel_procedure, plan);
@@ -456,6 +452,11 @@ FitResult detect_pixel(
     LassoSolver solver(
         loptions
     );
+
+    // The run's change detector fits the pixel's procedure. Standard is the
+    // only detector so far; a second one is picked per run, here, and makes
+    // the same call.
+    standard::Detector& detector = scratch.standard;
 
     return detector.fit(
         pixel_procedure,

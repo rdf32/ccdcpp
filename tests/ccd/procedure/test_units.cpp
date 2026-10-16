@@ -65,7 +65,8 @@
 // read. Even
 // setting it to 0.0 -- which would drop every observation at or above the
 // median green -- changes nothing through detect(). Its guard therefore has to
-// drive ccd::InsufficientClear directly, the way test_clear.cpp does. That is
+// fit the InsufficientClear procedure directly (ccd::fit_whole_series), the way
+// test_clear.cpp does. That is
 // GreenMedianFilterIsAUnitConstant, and without it this file would have looked
 // like it covered five constants while covering four.
 //
@@ -86,7 +87,7 @@
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/insufficient_clear.hpp"
+#include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/harmonic/filter.hpp"
 
 namespace {
@@ -231,7 +232,8 @@ ccd::FitResult run(
 }
 
 //------------------------------------------------------------------------------
-// Drive ccd::InsufficientClear directly, as test_clear.cpp does.
+// Fit the InsufficientClear procedure directly (ccd::fit_whole_series), as
+// test_clear.cpp does.
 //
 // Needed because MEDIAN_GREEN_FILTER is unreachable through detect() on this
 // pixel: the default plan runs the green median filter only in the
@@ -278,9 +280,13 @@ ccd::FitResult run_insufficient_clear(
     ccd::LassoSolver solver(lo);
     ccd::LassoWorkspace lworkspace(obs.T);
 
-    ccd::InsufficientClear procedure;
-
-    return procedure.run(hworkspace, lworkspace, solver);
+    return ccd::fit_whole_series(
+        ccd::PixelProcedure::InsufficientClear,
+        hworkspace,
+        ccd::filter::insufficientclear(hworkspace),
+        lworkspace,
+        solver
+    );
 }
 
 std::size_t count_nonzero(const ccd::FitResult& fit)

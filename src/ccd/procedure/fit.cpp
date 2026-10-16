@@ -1,5 +1,4 @@
 #include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/kernels.hpp"
 
 #include <iostream>
 #include <algorithm>
@@ -12,74 +11,6 @@
 
 namespace ccd
 {
-
-FitResult FitProcedure::run(
-    const HarmonicWorkspace& hworkspace,
-    ProcessingMask mask,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver
-) { 
-    const auto& options = hworkspace.options();
-
-    //----------------------------------------------------------
-    // Not enough observations
-    //----------------------------------------------------------
-    if (mask.count() < options.MEOW_SIZE)
-    {
-        return {};
-    }
-
-    //----------------------------------------------------------
-    // Mask dates, spectral given ProcessingMask
-    //----------------------------------------------------------
-    MaskedData masked_data = 
-        apply_mask(hworkspace, mask);
-
-    const auto masked_dates = 
-        masked_data.dates_view();
-
-    const auto masked_spectral = 
-        masked_data.spectral_view();
-
-    //----------------------------------------------------------
-    // Determine harmonic complexity
-    //----------------------------------------------------------
-    const index_t num_coef =
-        coefficient_count(masked_dates, options);
-
-    //----------------------------------------------------------
-    // Build result
-    //----------------------------------------------------------
-    FitResult results;
-    ChangeModel result;
-    result.start_day = hworkspace.dates()(0);
-    result.end_day   = hworkspace.dates()(hworkspace.dates().size() - 1);
-    result.break_day = result.end_day;
-
-    result.observation_count = mask.count();
-    result.change_probability = 0.0;
-    result.curve_qa = curve_qa();
-
-    //----------------------------------------------------------
-    // Fit every spectral band over every kept observation. The
-    // magnitude of these segments is 0 and nothing reads a
-    // returned segment's residuals.
-    //----------------------------------------------------------
-    fit_bands(
-        masked_dates,
-        masked_spectral,
-        num_coef,
-        KeepResiduals::No,
-        lworkspace,
-        solver,
-        result.bands
-    );
-
-    results.models.push_back(std::move(result));
-    results.mask = std::move(mask);
-
-    return results;
-}
 
 index_t adjust_peek(
     ArrayView<const std::int64_t, 1> dates,

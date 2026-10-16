@@ -1,6 +1,4 @@
 #include "ccd/procedure/standard.hpp"
-#include "ccd/procedure/insufficient_clear.hpp"
-#include "ccd/procedure/permanent_snow.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -875,21 +873,6 @@ FitResult StandardProcedure::run(
 namespace standard
 {
 
-PixelProcedure Detector::select(
-    const Quality::Statistics& statistics,
-    const HarmonicOptions& options
-) const
-{
-    if (!statistics.enough_clear(options.CLEAR_PCT_THRESHOLD)) {
-        if (statistics.enough_snow(options.SNOW_PCT_THRESHOLD)) {
-            return PixelProcedure::PermanentSnow;
-        } else {
-            return PixelProcedure::InsufficientClear;
-        }
-    }
-    return PixelProcedure::Standard;
-}
-
 FitResult Detector::fit(
     PixelProcedure procedure,
     const HarmonicWorkspace& hworkspace,
@@ -898,30 +881,13 @@ FitResult Detector::fit(
     LassoSolver& solver
 )
 {
-    switch (procedure)
+    if (procedure == PixelProcedure::Standard)
     {
-        case PixelProcedure::Standard:
-        {
-            LOG_DEBUG("Standard");
-            return standard_.run(hworkspace, std::move(mask), lworkspace, solver);
-        }
-
-        case PixelProcedure::InsufficientClear:
-        {
-            LOG_DEBUG("Clear");
-            InsufficientClear fit_procedure;
-            return fit_procedure.run(hworkspace, std::move(mask), lworkspace, solver);
-        }
-
-        case PixelProcedure::PermanentSnow:
-        {
-            LOG_DEBUG("Snow");
-            PermanentSnow fit_procedure;
-            return fit_procedure.run(hworkspace, std::move(mask), lworkspace, solver);
-        }
+        LOG_DEBUG("Standard");
+        return standard_.run(hworkspace, std::move(mask), lworkspace, solver);
     }
 
-    return {};
+    return fit_whole_series(procedure, hworkspace, std::move(mask), lworkspace, solver);
 }
 
 } // namespace standard

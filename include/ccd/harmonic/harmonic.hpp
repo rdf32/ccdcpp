@@ -271,8 +271,9 @@ struct HarmonicOptions
     //                        green median filter in the InsufficientClear
     //                        chain only and that pixel takes the Standard
     //                        procedure. Even 0.0
-    //                        changes nothing. Its guard drives
-    //                        ccd::InsufficientClear directly.
+    //                        changes nothing. Its guard fits the
+    //                        InsufficientClear procedure directly
+    //                        (ccd::fit_whole_series).
     //
     // If you add a constant to this block, add its guard in that file and work
     // out which of the three shapes it is. Two of the five are invisible to

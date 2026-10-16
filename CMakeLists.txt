@@ -125,6 +125,7 @@ add_library(
     src/ccd/procedure/fit.cpp
     src/ccd/procedure/kernels.cpp
     src/ccd/procedure/masked_series.cpp
+    src/ccd/procedure/pixel_procedure.cpp
     src/ccd/procedure/standard.cpp
 
     src/ccd/ccd.cpp

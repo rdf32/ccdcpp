@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+#include <cstdint>
 #include <vector>
 
 #include "ccd/types.hpp"
@@ -31,15 +33,6 @@ enum class CurveQA : std::uint8_t {
     Disturbance       = 84
 };
 
-// A pixel's procedure, chosen per pixel from its QA statistics by the run's
-// change detector (standard::Detector::select()).
-enum class PixelProcedure
-{
-    Standard,
-    InsufficientClear,
-    PermanentSnow
-};
-
 struct ChangeModel {
 
     std::int64_t start_day;
@@ -60,47 +53,6 @@ struct FitResult
 {
     std::vector<ChangeModel> models;
     ProcessingMask mask;
-};
-
-class FitProcedure
-{
-public:
-
-    virtual ~FitProcedure() = default;
-
-    //----------------------------------------------------------------------
-    // Execute complete fitting procedure
-    //
-    // Fits the observations `mask` keeps. `mask` is the procedure's
-    // processing mask over hworkspace's time series, built by the caller
-    // (ccd::detect builds it with the procedure's filter chain); the
-    // result carries it.
-    //----------------------------------------------------------------------
-
-    FitResult run(
-        const HarmonicWorkspace& hworkspace,
-        ProcessingMask mask,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver
-    );
-
-protected:
-
-    //----------------------------------------------------------------------
-    // Number of coefficients
-    //----------------------------------------------------------------------
-
-    virtual index_t coefficient_count(
-        ArrayView<const std::int64_t, 1> dates,
-        const HarmonicOptions& options
-    ) const = 0;
-
-    //----------------------------------------------------------------------
-    // Curve QA assigned to result
-    //----------------------------------------------------------------------
-
-    virtual CurveQA curve_qa() const = 0;
-
 };
 
 struct Window
@@ -129,6 +81,20 @@ struct Window
         ++stop;
     }
 };
+
+// The days `window` spans in `dates`: its last date minus its first.
+inline scalar_t span(
+    ArrayView<const std::int64_t, 1> dates,
+    const Window& window
+)
+{
+    assert(window.stop > window.start);
+
+    return static_cast<scalar_t>(
+        dates(window.stop - 1) -
+        dates(window.start)
+    );
+}
 
 // full timeseries
 
