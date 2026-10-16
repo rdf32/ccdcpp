@@ -100,16 +100,18 @@ ChangeModel catch_segment(
 
 // What the start-window search tests a window against, besides the series
 // and its variogram. A procedure fills it from its options and its own
-// derived values; nothing here is read from the options directly.
+// derived values; nothing here is read from the options directly. Values
+// throughout (a BandList is a small fixed-capacity array), so a criteria
+// object never refers to the options it was filled from.
 struct InitializeCriteria
 {
-    index_t meow_size;                 // fewest observations in a window
-    std::int64_t day_delta;            // shortest span, days
-    const BandList& tmask_bands;       // Tmask's bands
-    scalar_t t_const;                  // Tmask's residual threshold, in variograms
-    const BandList& detection_bands;   // the bands fitted and tested for stability
-    index_t num_coefficients;          // of the stability fits
-    scalar_t change_threshold;         // stable() below this
+    index_t meow_size;          // fewest observations in a window
+    std::int64_t day_delta;     // shortest span, days
+    BandList tmask_bands;       // Tmask's bands
+    scalar_t t_const;           // Tmask's residual threshold, in variograms
+    BandList detection_bands;   // the bands fitted and tested for stability
+    index_t num_coefficients;   // of the stability fits
+    scalar_t change_threshold;  // stable() below this
 };
 
 // Searches for a stable start window from `window`, which holds at least
