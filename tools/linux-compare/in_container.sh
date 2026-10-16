@@ -4,7 +4,8 @@
 # Installs conda-forge GCC, builds each tree /src/<label> the same way (CMake Release, no
 # -march, GCC's default -ffp-contract=fast), and writes to /out/<label>/ its golden-driver
 # dumps on /corpus and the CSV pixels, and the Golden, Bands and Transitions fixtures its own
-# tests write. Then compares every label's files with the last label's, byte for byte.
+# tests write (each checked to carry this container's platform header). Then compares every
+# label's files with the last label's, byte for byte.
 #
 # Mounts: /src/<label> (read only), /corpus (read only), /tool (this directory, read only),
 # /out (written), and optionally /certs (*.crt added to the trust store, for a proxy).
@@ -33,6 +34,23 @@ CXX=$(ls /opt/env/bin/x86_64-conda-linux-gnu-g++)
 "$CXX" --version | head -1 | tee /out/compiler.txt
 N=$(nproc)
 
+# The platform header a fixture written in this container carries (tests/ccd/golden/golden.hpp
+# platform()): this GCC, x86-64, Linux. The trees' committed fixtures are the Mac's, so a
+# write that did not happen leaves a header that fails this.
+platform_re="^# platform: gcc $(sed -n 's/.*) \([0-9][0-9.]*\).*/\1/p' /out/compiler.txt) / x86_64 / linux / "
+
+# write_fixture <test> <ENV> <Suite> <fixture>: test_<test> of tree $t writes <fixture> in its
+# tree copy ($G) in write mode, which must exit 0 and leave this platform's header; then the
+# fixture is kept as $O/<fixture>.
+write_fixture() {
+  local test=$1 env=$2 suite=$3 fixture=$4 header
+  (cd "/b-$t" && env "CCD_${env}_WRITE=1" "./test_$test" --gtest_filter="$suite.BitIdenticalToFixture") \
+    > "$O/write-$test.log" 2>&1 || { echo "$t: test_$test in write mode failed"; tail -20 "$O/write-$test.log"; exit 1; }
+  header=$(head -1 "$G/$fixture")
+  [[ $header =~ $platform_re ]] || { echo "$t: $fixture not written here: $header"; exit 1; }
+  cp "$G/$fixture" "$O/$fixture"
+}
+
 for t in "${labels[@]}"; do
   echo "== build and dump $t"
   O=/out/$t; mkdir -p "$O/golden"
@@ -50,16 +68,10 @@ for t in "${labels[@]}"; do
     -o "/b-$t/golden_driver"
   "/b-$t/golden_driver" run /corpus "/work-$t/tests/ccd/procedure" "$O/golden" 2> "$O/driver.log"
   # Each fixture test in write mode rewrites its fixture in the tree copy, then skips.
-  (cd "/b-$t" && CCD_GOLDEN_WRITE=1 ./test_golden --gtest_filter='Golden.BitIdenticalToFixture') \
-    > "$O/write-golden.log" 2>&1 || true
-  cp "$G/golden_fixture.txt" "$O/golden_fixture.txt"
-  (cd "/b-$t" && CCD_BANDS_WRITE=1 ./test_bands --gtest_filter='Bands.BitIdenticalToFixture') \
-    > "$O/write-bands.log" 2>&1 || true
-  cp "$G/bands_fixture.txt" "$O/bands_fixture.txt"
+  write_fixture golden GOLDEN Golden golden_fixture.txt
+  write_fixture bands BANDS Bands bands_fixture.txt
   if [ -x "/b-$t/test_transitions" ]; then
-    (cd "/b-$t" && CCD_TRANSITIONS_WRITE=1 ./test_transitions --gtest_filter='Transitions.BitIdenticalToFixture') \
-      > "$O/write-transitions.log" 2>&1 || true
-    cp "$G/transitions_fixture.txt" "$O/transitions_fixture.txt"
+    write_fixture transitions TRANSITIONS Transitions transitions_fixture.txt
   fi
 done
 

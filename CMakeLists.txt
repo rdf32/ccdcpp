@@ -66,6 +66,12 @@ option(
     ON
 )
 
+option(
+    CCD_BUILD_GOLDEN_DRIVER
+    "Build golden_driver, the golden check's dump driver (tools/linux-compare)"
+    OFF
+)
+
 
 # --------------------------------------------------
 # C++ configuration
@@ -803,6 +809,41 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)
     gtest_discover_tests(test_cadence)
+
+endif()
+
+# The golden check's driver: dumps every output of detect() and detect_cube()
+# on the synthetic corpus and the CSV pixels (tools/linux-compare/README.md).
+# Its one source is tools/linux-compare/golden_driver.cpp, which
+# linux-compare also compiles against older trees by hand.
+if(CCD_BUILD_GOLDEN_DRIVER)
+
+    add_executable(
+        golden_driver
+
+        tools/linux-compare/golden_driver.cpp
+    )
+
+    target_include_directories(
+        golden_driver
+
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/tests/ccd/golden
+    )
+
+    target_link_libraries(
+        golden_driver
+
+        PRIVATE
+            ccd_core
+    )
+
+    target_compile_features(
+        golden_driver
+
+        PRIVATE
+            cxx_std_17
+    )
 
 endif()
 

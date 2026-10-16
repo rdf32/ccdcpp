@@ -9,8 +9,8 @@ can change which multiply-adds fuse.
 | File | What it does |
 |---|---|
 | `compare.sh` | Host side: archives each git ref, runs `in_container.sh` in one throwaway container, keeps everything under the output directory. |
-| `in_container.sh` | Container side: installs conda-forge GCC with micromamba, builds each tree (CMake Release, no `-march`, so the conda-forge x86-64 baseline without FMA), writes each tree's golden-driver dumps and its Golden, Bands and Transitions fixtures, and compares each tree's files with the last tree's. |
-| `golden_driver.cpp` | The driver that dumps every output of `detect()` and `detect_cube()` (threads 1 and 8) on the synthetic corpus and the CSV pixels as hexfloat text. |
+| `in_container.sh` | Container side: installs conda-forge GCC with micromamba, builds each tree (CMake Release, no `-march`, so the conda-forge x86-64 baseline without FMA), writes each tree's golden-driver dumps and its Golden, Bands and Transitions fixtures, and compares each tree's files with the last tree's. Each fixture write must exit 0 and leave the container's platform header (`# platform: gcc <version> / x86_64 / linux / ...`); a tree's committed fixture is the Mac's, so a write that did not happen stops the run. |
+| `golden_driver.cpp` | The driver that dumps every output of `detect()` and `detect_cube()` (threads 1 and 8) on the synthetic corpus and the CSV pixels as hexfloat text. The one source of the golden check's driver: `-DCCD_BUILD_GOLDEN_DRIVER=ON` builds it as the CMake target `golden_driver`, and `in_container.sh` compiles this copy against every tree, older ones included. |
 
 ## Image
 
@@ -38,7 +38,8 @@ docker pull --platform linux/amd64 \
 ```
 
 The synthetic corpus (`c16`, `c8`, `dup`, `medium`, `short` `.bin`) is the golden check's.
-To make one, build the driver against any tree and run `golden_driver gen <corpus_dir>`.
+To make one, build the driver (`cmake -DCCD_BUILD_GOLDEN_DRIVER=ON`, target `golden_driver`) and
+run `golden_driver gen <corpus_dir>`.
 
 Then, with the last label the tree under test:
 
