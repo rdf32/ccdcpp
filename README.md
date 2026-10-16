@@ -42,7 +42,47 @@ Key advantages include:
 
 # The Algorithm as a State Machine
 
-Per pixel, CCDC is a small state machine, and ccdcpp's Standard procedure is written as one: a per-pixel record (`ccd::standard::State`), one transition per phase (Prepare, Initialize, Lookback, StartCatch, Extend, Restart, EndCatch), each making one decision and returning the next phase, and one generic loop (`ccd::drive`) with a DEBUG trace line per transition. The per-pixel procedure choice and the whole-series fit of snow and insufficient-clear pixels are shared functions (`include/ccd/procedure/pixel_procedure.hpp`) that a second change-detection procedure can reuse. [CCDC as a state machine](docs/ccdc-state-machine.md) describes the states, transitions and guards, the record and the shared parts, and why the code is shaped this way.
+Per pixel, CCDC is a small state machine, and ccdcpp's Standard procedure is written as one: a per-pixel record (`ccd::standard::State`), one transition per phase (Prepare, Initialize, Lookback, StartCatch, Extend, Restart, EndCatch), each making one decision and returning the next phase, and one generic loop (`ccd::drive`) with a DEBUG trace line per transition. The per-pixel procedure choice and the whole-series fit of snow and insufficient-clear pixels are shared functions (`include/ccd/procedure/pixel_procedure.hpp`) that a second change-detection procedure can reuse.
+
+The Standard machine; bracketed names are the exit reason the record keeps:
+
+```
+                              ┌─ size <= MEOW_SIZE ───────────────────────► Done  [TooFewObservations]
+                              ├─ a NaN in the variogram ──────────────────► Done  [VariogramNaN]
+   Prepare ───────────────────┼─ no room for a start window ──────────────► EndCatch [NoRoomToInitialize]
+                              ▼
+       ┌───────────────► Initialize ◄──┐  ShortSpan, AllOutliers, RejectedOutliers: grow
+       │                  │    │   └───┘  Unstable, DroppedThenUnstable: shift
+       │                  │    └── Exhausted ─────────────────────────────► EndCatch [InitializeExhausted]
+       │                  │ Stable, DroppedThenStable
+       │                  ▼
+       │   window.start > prev_break ?──── no ─────────────┐
+       │                  │ yes                            │
+       │                  ▼                                │
+       │      ┌──► Lookback  Change / Dropped / Included   │
+       │      └───────┘  (while window.start > prev_break) │
+       │                  │                                │
+       │                  ▼                                ▼
+       │   no segment yet and window.start - prev_break > peek ?
+       │                  │ yes                            │ no
+       │                  ▼                                │
+       │              StartCatch (the Start segment)       │
+       │                  ▼                                ▼
+       │   a full peek after the window ? ── no ──────────────────────────► EndCatch [PeekBeyondEnd]
+       │                  │ yes
+       │                  ▼
+       │      ┌──► Extend  Change / Dropped / Grown
+       │      └───────┘  (while a full peek fits)
+       │                  │ Change: segment, change probability 1
+       │                  │ no peek fits: segment, change probability 0 (series end)
+       │                  ▼
+       └─── room ──── Restart: prev_break = window.stop, window = (stop, stop + MEOW_SIZE)
+                          │ no room
+                          ▼
+                      EndCatch [NoRoomToInitialize] ── the End segment, if prev_break + peek < size ──► Done
+```
+
+[CCDC as a state machine](docs/ccdc-state-machine.md) describes the states, transitions and guards, the record and the shared parts, and why the code is shaped this way.
 
 # Performance Optimizations
 
