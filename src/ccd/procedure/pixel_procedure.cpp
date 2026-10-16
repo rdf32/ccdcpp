@@ -34,7 +34,7 @@ FitResult fit_whole_series(
 {
     assert(procedure != PixelProcedure::Standard);
 
-    LOG_DEBUG(procedure == PixelProcedure::PermanentSnow ? "Snow" : "Clear");
+    LOG_DEBUG((procedure == PixelProcedure::PermanentSnow ? "Snow" : "Clear"));
 
     const auto& options = hworkspace.options();
 
