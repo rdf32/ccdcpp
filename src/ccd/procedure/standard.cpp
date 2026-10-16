@@ -44,6 +44,22 @@ Cadence measure_cadence(
     return cadence;
 }
 
+InitializeCriteria initialize_criteria(
+    const HarmonicOptions& options,
+    const Cadence& cadence
+)
+{
+    return InitializeCriteria{
+        options.MEOW_SIZE,
+        options.DAY_DELTA,
+        options.TMASK_BANDS,
+        options.T_CONST,
+        options.DETECTION_BANDS,
+        4,   // pyccd's literal, not COEFFICIENT_MIN (quirk 4)
+        cadence.change_threshold
+    };
+}
+
 index_t coefficient_count(
     index_t observations,
     const HarmonicOptions& options
@@ -358,6 +374,7 @@ Phase prepare(const Context& context, State& state)
     // below; the caller's options are never written
     //----------------------------------------------------------
     state.cadence = measure_cadence(stat_dates, options);
+    state.initialize_criteria = initialize_criteria(options, state.cadence);
 
     assert(state.cadence.peek >= options.PEEK_SIZE);
     LOG_DEBUG("Peek size: " << state.cadence.peek);
@@ -388,28 +405,14 @@ Phase prepare(const Context& context, State& state)
 
 Phase initialize(const Context& context, State& state)
 {
-    const auto& options = context.options;
-
     LOG_DEBUG("Initialize for change model #: " << state.segments.size());
-
-    // Initialise's criteria: the options' and this pixel's change threshold,
-    // with the 4-coefficient stability fits pyccd hard-codes (quirk 4).
-    const InitializeCriteria criteria{
-        options.MEOW_SIZE,
-        options.DAY_DELTA,
-        options.TMASK_BANDS,
-        options.T_CONST,
-        options.DETECTION_BANDS,
-        4,
-        state.cadence.change_threshold
-    };
 
     state.init_models.resize(state.series.spectral().extent(0));
 
     const InitializeOutcome outcome = initialize_step(
         state.series,
         state.cursor.window,
-        criteria,
+        state.initialize_criteria,
         state.variogram,
         context.lasso,
         context.solver,

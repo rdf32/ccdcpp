@@ -51,6 +51,16 @@ Cadence measure_cadence(
     const HarmonicOptions& options
 );
 
+// What Initialize tests a candidate window against on a pixel of `cadence`:
+// the options' MEOW_SIZE, DAY_DELTA, TMASK_BANDS, T_CONST and
+// DETECTION_BANDS, the 4-coefficient stability fits pyccd hard-codes
+// (quirk 4) and the cadence's change threshold. Built once per pixel, in
+// Prepare.
+InitializeCriteria initialize_criteria(
+    const HarmonicOptions& options,
+    const Cadence& cadence
+);
+
 //------------------------------------------------------------------------------
 // The Standard procedure's kernels
 //
@@ -250,6 +260,7 @@ struct State
     // Standard's own: set in Prepare, read by every later phase.
     Cadence cadence{};
     Variogram variogram;
+    InitializeCriteria initialize_criteria{};   // from the cadence
 
     // Initialize's stable fits of the detection bands (indexed by band),
     // which Lookback tests against.
@@ -296,15 +307,15 @@ struct Context
 //------------------------------------------------------------------------------
 
 // Done (TooFewObservations) when the series holds at most MEOW_SIZE
-// observations. Otherwise sets the cadence and the variogram from the
-// statistics window (the observations dated <= STAT_ORD); Done
+// observations. Otherwise sets the cadence, Initialize's criteria and the
+// variogram from the statistics window (the observations dated <= STAT_ORD); Done
 // (VariogramNaN) on a NaN in it. Puts the window at (0, MEOW_SIZE) and
 // prev_break at 0. Next: Initialize, or EndCatch (NoRoomToInitialize).
 Phase prepare(const Context& context, State& state);
 
-// One ccd::initialize_step() on the window, with the 4-coefficient stability
-// fits pyccd hard-codes (quirk 4) and the cadence's change threshold, into
-// init_models. Next: Initialize after a grow or a shift; after_stable_start()
+// One ccd::initialize_step() on the window against the pixel's
+// initialize_criteria (4-coefficient stability fits, quirk 4; the cadence's
+// change threshold), into init_models. Next: Initialize after a grow or a shift; after_stable_start()
 // when stable; EndCatch (InitializeExhausted) when no candidate is left.
 Phase initialize(const Context& context, State& state);
 

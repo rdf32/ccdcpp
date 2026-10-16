@@ -97,6 +97,7 @@ struct Record
     {
         state.cursor = ccd::Cursor{ccd::Window(start, stop), prev_break};
         state.cadence = ccd::standard::Cadence{peek, options.CHANGE_THRESHOLD};
+        state.initialize_criteria = ccd::standard::initialize_criteria(options, state.cadence);
     }
 
     // A segment already written, as Extend or StartCatch leaves one.
@@ -348,6 +349,17 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     // 16-day cadence: the caller's peek and threshold.
     EXPECT_EQ(r.state.cadence.peek, r.options.PEEK_SIZE);
     EXPECT_EQ(r.state.cadence.change_threshold, r.options.CHANGE_THRESHOLD);
+
+    // Initialize's criteria, once for the pixel: the options', the literal 4
+    // (quirk 4) and the cadence's threshold.
+    const ccd::InitializeCriteria& c = r.state.initialize_criteria;
+    EXPECT_EQ(c.meow_size, r.options.MEOW_SIZE);
+    EXPECT_EQ(c.day_delta, r.options.DAY_DELTA);
+    EXPECT_EQ(c.t_const, r.options.T_CONST);
+    EXPECT_EQ(c.tmask_bands.size(), r.options.TMASK_BANDS.size());
+    EXPECT_EQ(c.detection_bands.size(), r.options.DETECTION_BANDS.size());
+    EXPECT_EQ(c.num_coefficients, 4u);
+    EXPECT_EQ(c.change_threshold, r.state.cadence.change_threshold);
     EXPECT_EQ(r.state.variogram.bands.size(), 7u);
 }
 
@@ -379,11 +391,8 @@ ccd::InitializeOutcome outcome_of(index_t n, Setup setup)
 {
     Record r(n);
     setup(r);
-    const ccd::InitializeCriteria criteria{
-        r.options.MEOW_SIZE, r.options.DAY_DELTA, r.options.TMASK_BANDS, r.options.T_CONST,
-        r.options.DETECTION_BANDS, 4, r.state.cadence.change_threshold};
     r.state.init_models.resize(7);
-    return ccd::initialize_step(r.state.series, r.state.cursor.window, criteria,
+    return ccd::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
                                 r.state.variogram, r.lasso, r.solver, r.state.init_models);
 }
 
