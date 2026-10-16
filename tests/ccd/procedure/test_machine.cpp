@@ -1141,8 +1141,13 @@ TEST(SelectProcedure, TheClearThenTheSnowPercentage)
         return s;
     };
 
+    // At, just above and just below each threshold; enough clear wins
+    // whatever the snow percentage.
     EXPECT_EQ(ccd::select_procedure(stats(0.25, 0.9), options), ccd::PixelProcedure::Standard);
+    EXPECT_EQ(ccd::select_procedure(stats(0.2501, 0.0), options), ccd::PixelProcedure::Standard);
     EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.75), options),
+              ccd::PixelProcedure::PermanentSnow);
+    EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.7501), options),
               ccd::PixelProcedure::PermanentSnow);
     EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.7499), options),
               ccd::PixelProcedure::InsufficientClear);
