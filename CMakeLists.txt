@@ -617,6 +617,39 @@ if(CCD_BUILD_TESTS)
             CCD_TRANSITIONS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/transitions_fixture.txt"
     )
 
+    # Prefix stability: a run on the observations up to a date keeps every
+    # final segment of the run on the whole series. See
+    # tests/ccd/golden/test_prefix.cpp.
+    add_executable(
+        test_prefix
+
+        tests/ccd/golden/test_prefix.cpp
+    )
+
+
+    target_link_libraries(
+        test_prefix
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_prefix
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    target_compile_definitions(
+        test_prefix
+
+        PRIVATE
+            CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/procedure"
+    )
+
     # Band layouts other than Landsat's: a second fixture of synthetic
     # profiles, and the layout equivalences. See tests/ccd/golden/test_bands.cpp.
     add_executable(
@@ -806,6 +839,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_transitions)
+    gtest_discover_tests(test_prefix)
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)
     gtest_discover_tests(test_cadence)

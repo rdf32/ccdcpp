@@ -242,7 +242,9 @@ lists above (`StandardInitialize.*`, `StandardLookback.*`, `StandardExtend.*`), 
 `StandardMachine.EachStepIsOneDecision` steps whole pixels by hand and checks that every
 self-transition changes the window by one decision. The outputs themselves are pinned byte for
 byte by the golden fixtures (`tests/ccd/golden/`), including the transitions fixture, built from
-pixels that take the transitions the random corpus misses.
+pixels that take the transitions the random corpus misses. `PrefixStability.*`
+(`tests/ccd/golden/test_prefix.cpp`) holds the machine to its causality: a run on the
+observations up to a date keeps every final segment of the run on the whole series.
 
 ### Variants touch one transition
 
