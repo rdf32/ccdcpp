@@ -358,7 +358,8 @@ TEST(Validation, CoefficientRules)
     expect_error([](auto& h) { h.COEFFICIENT_MAX = 9; },
         "COEFFICIENT_MAX is 9; the harmonic basis has at most 8");
 
-    // The extremes accepted: one coefficient throughout, and all eight.
+    // The extremes accepted: a count of 1 throughout (the trend and annual
+    // basis, as 4, with 1 degree of freedom), and 8.
     ccd::HarmonicOptions h;
     h.COEFFICIENT_MIN = h.COEFFICIENT_MID = h.COEFFICIENT_MAX = 1;
     EXPECT_NO_THROW(ccd::validate(h, 7));

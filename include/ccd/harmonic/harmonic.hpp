@@ -334,10 +334,14 @@ struct HarmonicOptions
     //--------------------------------------------------------------------------
     // Harmonic Coefficients
     //--------------------------------------------------------------------------
-    // Minimum coefficient count.
+    // Coefficient counts, the intercept included. ccd::validate() refuses a
+    // COEFFICIENT_MIN below 1, counts that decrease from MIN to MAX, and a
+    // COEFFICIENT_MAX above 8, the harmonic basis's width. The fit takes
+    // whole harmonics: a count below 6 fits the trend and the annual pair
+    // (as 4 does), 6 or 7 adds the semi-annual pair, 8 the third; the count
+    // is also the RMSE's degrees of freedom.
 
-    // Example:
-    // constant + trend + annual harmonic
+    // Minimum coefficient count: constant + trend + annual harmonic.
     index_t COEFFICIENT_MIN = 4;
     // Add second harmonic.
     index_t COEFFICIENT_MID = 6;

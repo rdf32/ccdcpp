@@ -30,8 +30,9 @@
   in the transitions fixture, `lookback_far_peek_decides` (renamed from
   `lookback_peek_minus_one_decides`): its second segment's Lookback reaches
   back to 127 observations (was 109), its mask keeps 294 (was 299); no golden
-  dump. `PEEK_SIZE` below 2 is still refused, now because a change needs
-  consecutive observations.
+  dump. Default output changes on real data (the Atlanta cell, fix 1
+  alone on 0.7.0: 455,363 segments against 456,157). `PEEK_SIZE` below 2 is
+  still refused, now because a change needs consecutive observations.
 - Initialize fits `COEFFICIENT_MIN` coefficients and both peek bases (Lookback's
   and Extend's) are `COEFFICIENT_MAX` wide, as in Zhu's TrendSeasonalFit
   (`min_num_c`, `max_num_c`), in place of pyccd's literals 4 and 8. The

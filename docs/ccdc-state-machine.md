@@ -7,8 +7,9 @@ each state is a function that makes one decision and returns the next state, one
 machine, and the per-pixel record holds everything that survives from one step to the next.
 
 This page describes the code as it is, with the files to read. Paths are relative to the
-repository root. The outputs are pyccd's, quirks included; see the README's
-[Differences from pyccd](../README.md#differences-from-pyccd) for where they are not.
+repository root. The algorithm is pyccd's, with pyccd's intent kept where its code says
+otherwise (the rules in section 6); see the README's
+[Differences from pyccd](../README.md#differences-from-pyccd) for every difference.
 
 ## 1. One pixel, end to end
 
@@ -257,11 +258,18 @@ observations up to a date keeps every final segment of the run on the whole seri
 
 ### Variants touch one transition
 
-Each pyccd quirk ccdcpp keeps sits in one function, so changing one is that function and its
-test:
+Each rule where ccdcpp keeps pyccd's intent over its code sits in one function, so changing one
+is that function and its test (the numbers are those of the tests and the CHANGELOG):
 
-| Quirk | Where it is |
+| Rule | Where it is |
 |---|---|
+| 1. Far from the previous break, Lookback peeks the adjusted peek of observations | `lookback_peek`, first case |
+| 2. Near it, Lookback peeks down to the previous break, never below | `lookback_peek`, second case |
+| 3. Lookback compares against the stable start window's RMSE | `lookback_step` |
+| 4. Initialize fits `COEFFICIENT_MIN` coefficients; both peek bases are `COEFFICIENT_MAX` wide | `initialize_criteria`; the `peek_basis.build` calls in `lookback_step` and `extend_step` |
+| 5. Every exit, the early ones too, returns the processing mask | `State::take_result`; `fit_whole_series` |
+| 6. A curve ends once its peek reaches the last observation, and is the last curve | `extend_step`'s `SeriesEnd`; `extend` |
+| 7. Extend refits while the window holds at most `RETRAIN_MIN_OBS` observations | `extend_step`'s refit schedule |
 
 A sensor variant works the same way: a time-based start window or refit rule would change
 Initialize's and Extend's guards and nothing else.

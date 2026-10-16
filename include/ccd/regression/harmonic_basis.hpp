@@ -32,16 +32,17 @@ namespace ccd
 //     column   0   1         2         3          4          5          6
 //     term     t   cos(wt)   sin(wt)   cos(2wt)   sin(2wt)   cos(3wt)   sin(3wt)
 //
-// build() with num_coefficients q fills the first q - 1 columns and sets the
-// rest to 0. Prepending a column of ones gives the order [1, t, cos1, sin1,
+// build() with num_coefficients q fills whole harmonics and sets the rest to
+// 0: columns 0-2 always, 3-4 when q >= 6, 5-6 when q >= 8, so the first
+// q - 1 columns for q = 4, 6, 8. Prepending a column of ones gives the order [1, t, cos1, sin1,
 // cos2, sin2, cos3, sin3], whose leading q x q Gram block is the
 // q-coefficient model's.
 //
 // There are always CCD_MAX_COEFS (7) columns, and a model predicts over all
 // of them, so a model is evaluated correctly on a basis built with at least
 // its own q. The basis knows nothing of which q a procedure uses: those
-// counts are the callers' (the Standard procedure's peek bases are built
-// with 8, its initialization fits with 4).
+// counts are the callers' (the Standard procedure's peek bases are
+// COEFFICIENT_MAX wide, its initialization fits COEFFICIENT_MIN).
 //
 // X(j, i) is column j at observation i; each column is contiguous. The
 // storage keeps its capacity across build().
