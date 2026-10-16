@@ -38,6 +38,12 @@ Key advantages include:
 - Easy integration into existing Python workflows
 - Algorithm behavior designed to closely match PyCCD
 
+---
+
+# The Algorithm as a State Machine
+
+Per pixel, CCDC is a small state machine, and ccdcpp's Standard procedure is written as one: a per-pixel record (`ccd::standard::State`), one transition per phase (Prepare, Initialize, Lookback, StartCatch, Extend, Restart, EndCatch), each making one decision and returning the next phase, and one generic loop (`ccd::drive`) with a DEBUG trace line per transition. The per-pixel procedure choice and the whole-series fit of snow and insufficient-clear pixels are shared functions (`include/ccd/procedure/pixel_procedure.hpp`) that a second change-detection procedure can reuse. [CCDC as a state machine](docs/ccdc-state-machine.md) describes the states, transitions and guards, the record and the shared parts, and why the code is shaped this way.
+
 # Performance Optimizations
 
 The mathematical algorithm remains equivalent to PyCCD, but the implementation was redesigned from the ground up to improve computational efficiency while maintaining output compatibility.
