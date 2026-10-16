@@ -6,7 +6,7 @@
 //   * HarmonicBasis::build() and LassoWorkspace::build_basis(): the basis
 //     columns, and the centred columns, means and norms the solver reads.
 //   * fit_bands(): build the window's basis, then per band fit, predict,
-//     rmse(), residuals kept or not; on Initialise's band subset and on every
+//     rmse(), residuals kept or not; on Initialize's band subset and on every
 //     band, and with the whole-series fit's reset before each band.
 //   * standard::peek_residuals(): an 8-coefficient basis over the peek,
 //     predict, |y - prediction|; on a forward peek (Extend) and a reversed
@@ -212,9 +212,9 @@ std::vector<scalar_t> basis_loop(ccd::ArrayView<const std::int64_t, 1> dates, in
     return X;
 }
 
-// Initialise's and Extend's loop (residuals kept), the catch's (not kept),
+// Initialize's and Extend's loop (residuals kept), the catch's (not kept),
 // and the whole-series fit's (not kept, the workspace reset per band).
-enum class Site { Initialise, Extend, Catch, WholeSeries };
+enum class Site { Initialize, Extend, Catch, WholeSeries };
 
 void fit_loop(
     Site site,
@@ -233,7 +233,7 @@ void fit_loop(
     lworkspace.build_basis(dates, num_coef);
 
     std::vector<index_t> bands;
-    if (site == Site::Initialise)
+    if (site == Site::Initialize)
         bands.assign(detection_bands.begin(), detection_bands.end());
     else
         for (index_t b = 0; b < spectral.extent(0); ++b)
@@ -248,7 +248,7 @@ void fit_loop(
         LassoModel model = solver.fit(lworkspace, y);
         model.predict(lworkspace.X(), lworkspace.predictions);
 
-        if (site == Site::Initialise || site == Site::Extend)
+        if (site == Site::Initialize || site == Site::Extend)
         {
             models[band].model = std::move(model);
             models[band].score.rmse =
@@ -450,7 +450,7 @@ TEST(FitBands, MatchesEverySiteLoop)
                 if (w.size() <= q)
                     continue;   // rmse() needs more observations than coefficients
 
-                for (const Site site : {Site::Initialise, Site::Extend, Site::Catch, Site::WholeSeries})
+                for (const Site site : {Site::Initialize, Site::Extend, Site::Catch, Site::WholeSeries})
                 {
                     SCOPED_TRACE(path + " window (" + std::to_string(w.start) + ", " +
                                  std::to_string(w.stop) + ") q " + std::to_string(q) +
@@ -461,7 +461,7 @@ TEST(FitBands, MatchesEverySiteLoop)
 
                     switch (site)
                     {
-                        case Site::Initialise:
+                        case Site::Initialize:
                             ccd::fit_bands(wd, ws, q, p.options.DETECTION_BANDS,
                                            ccd::KeepResiduals::Yes, got_ws, solver, got);
                             break;

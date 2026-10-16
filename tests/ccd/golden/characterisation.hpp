@@ -138,7 +138,7 @@ inline CharPixel make_char_pixel(
 // 13 observations 34 days apart, then 500 `gap` days apart, all before
 // STAT_ORD: the median gap is `gap`, so the peek is adjusted to 13-25 for
 // gaps of 4-6 days. A break at observation 13 with a decaying transient after
-// it, so the second Initialise shifts and its Lookback starts at or below
+// it, so the second Initialize shifts and its Lookback starts at or below
 // PEEK_SIZE with prev_break = 13.
 inline CharPixel lookback_below_break(std::uint64_t seed, std::int64_t gap)
 {
@@ -182,7 +182,7 @@ inline CharPixel reentry_after_series_end(std::uint64_t seed)
 }
 
 // 400 observations 5 days apart (peek 19), a break 80-99 observations before
-// the end: the Initialise after it ends within PEEK_SIZE of the series end.
+// the end: the Initialize after it ends within PEEK_SIZE of the series end.
 inline CharPixel peek_guard_tail(std::uint64_t seed)
 {
     Rng r(seed * 15485863 + 3);
@@ -382,7 +382,7 @@ inline std::vector<CharPixel> characterisation_pixels()
     out.push_back(start_catch(2));
     {
         // COEFFICIENT_MIN raised to 6: Extend's coefficient schedule and the
-        // Start/End fits read it; Initialise's 4 coefficients and the 8-term
+        // Start/End fits read it; Initialize's 4 coefficients and the 8-term
         // peek basis are literals and do not (quirk 4).
         CharPixel p = sparse_random("coefficient_min_6", 3);
         p.h.COEFFICIENT_MIN = 6;

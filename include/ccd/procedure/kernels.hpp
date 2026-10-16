@@ -20,7 +20,7 @@ namespace ccd
 //
 // Plain functions that a procedure composes: the per-band Lasso fit of a
 // window, the catch segment written from it, and one step of the
-// start-window search (Initialise). Each takes what it reads as arguments,
+// start-window search (Initialize). Each takes what it reads as arguments,
 // never a procedure's state, and none fixes a coefficient count or a
 // threshold of its own: the caller passes them.
 //
@@ -30,7 +30,7 @@ namespace ccd
 //==============================================================================
 
 // Whether fit_bands() keeps each fit's residuals in LassoScore::residuals.
-// Initialise's stability check and Extend's seasonal RMSE read them; a
+// Initialize's stability check and Extend's seasonal RMSE read them; a
 // returned segment's are never read.
 enum class KeepResiduals : bool
 {
@@ -95,7 +95,7 @@ ChangeModel catch_segment(
 );
 
 //------------------------------------------------------------------------------
-// Initialise
+// Initialize
 //------------------------------------------------------------------------------
 
 // What the start-window search tests a window against, besides the series
