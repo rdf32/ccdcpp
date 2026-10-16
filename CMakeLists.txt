@@ -510,6 +510,31 @@ if(CCD_BUILD_TESTS)
             CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv"
     )
 
+    # The Standard machine's routing from hand-built records, and its exit
+    # reasons on whole pixels. See tests/ccd/procedure/test_machine.cpp.
+    add_executable(
+        test_machine
+
+        tests/ccd/procedure/test_machine.cpp
+    )
+
+
+    target_link_libraries(
+        test_machine
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_machine
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
     add_executable(
@@ -760,6 +785,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_series)
     gtest_discover_tests(test_kernels)
+    gtest_discover_tests(test_machine)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_transitions)
