@@ -434,14 +434,28 @@ Phase initialize(const Context& context, State& state)
     return Phase::Initialize;
 }
 
+ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek)
+{
+    assert(window_start > prev_break);
+
+    // Python:
+    // slice(window.start - 1,
+    //       window.start - peek_size,
+    //       -1)
+    const auto start = static_cast<std::ptrdiff_t>(window_start) - 1;
+
+    if ((window_start - prev_break) > peek)
+        return ReversePeek{start, static_cast<std::ptrdiff_t>(window_start) -
+                                  static_cast<std::ptrdiff_t>(peek)};
+
+    if (window_start <= peek)
+        return ReversePeek{start, -1};
+
+    return ReversePeek{start, static_cast<std::ptrdiff_t>(prev_break) - 1};
+}
+
 Phase lookback(const Context& context, State& state)
 {
-    struct ReverseWindow
-    {
-        std::ptrdiff_t start;
-        std::ptrdiff_t stop;
-    };
-
     const auto& options = context.options;
     MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
@@ -465,117 +479,104 @@ Phase lookback(const Context& context, State& state)
 
     assert(window.start > prev_break);
 
-    while(window.start > prev_break) {
+    const auto masked_dates = series.dates();
+    const auto masked_spectral = series.spectral();
 
-        const auto masked_dates = series.dates();
-        const auto masked_spectral = series.spectral();
+    const ReversePeek peek_window =
+        lookback_peek(window.start, prev_break, cadence.peek);
 
-        // Python:
-        // slice(window.start - 1,
-        //       window.start - peek_size,
-        //       -1)
-        ReverseWindow peek_window;
-        if ((window.start - prev_break) > cadence.peek)
-        {
-            peek_window.start = static_cast<std::ptrdiff_t>(window.start) - 1;
-            peek_window.stop  = static_cast<std::ptrdiff_t>(window.start) - cadence.peek;
-        }
-        else if (window.start <= cadence.peek)
-        {
-            peek_window.start = static_cast<std::ptrdiff_t>(window.start) - 1;
-            peek_window.stop  = -1;
-        }
-        else
-        {
-            peek_window.start = static_cast<std::ptrdiff_t>(window.start) - 1;
-            peek_window.stop  = static_cast<std::ptrdiff_t>(prev_break) - 1;
-        }
+    peek_dates.clear();
+    peek_dates.reserve(cadence.peek);
+    for (std::ptrdiff_t i = peek_window.start; i > peek_window.stop; --i)
+    {
+        peek_dates.push_back(masked_dates[i]);
+    }
 
-        peek_dates.clear();
-        peek_dates.reserve(cadence.peek);
-        for (std::ptrdiff_t i = peek_window.start; i > peek_window.stop; --i)
-        {
-            peek_dates.push_back(masked_dates[i]);
-        }
-        
-        auto masked_dates_window =
-            ArrayView<const std::int64_t, 1>::contiguous(
-                peek_dates.data(),
-                {peek_dates.size()}
-            );
-        
-        const index_t bands   = masked_spectral.extent(0);
-        const index_t samples = peek_dates.size();
-
-        peek_spectral.resize(bands * samples);
-        for (index_t band = 0; band < bands; ++band)
-        {
-            for (index_t j = 0; j < samples; ++j)
-            {
-                std::ptrdiff_t source =
-                    peek_window.start - static_cast<std::ptrdiff_t>(j);
-
-                assert(source >= 0);
-                assert(source < static_cast<std::ptrdiff_t>(masked_spectral.extent(1)));
-
-                peek_spectral[band * samples + j] =
-                    masked_spectral(band, static_cast<index_t>(source));
-            }
-        }
-        auto masked_spectral_window =
-            ArrayView<const scalar_t, 2>::contiguous(
-                peek_spectral.data(),
-                {bands, samples}
-            );
-
-        // The 8-coefficient basis, whatever the models' count (quirk 4).
-        peek_basis.build(masked_dates_window, 8);
-
-        peek_residuals(
-            peek_basis,
-            masked_spectral_window,
-            models,
-            detection_bands,
-            residuals
+    auto masked_dates_window =
+        ArrayView<const std::int64_t, 1>::contiguous(
+            peek_dates.data(),
+            {peek_dates.size()}
         );
 
-        // use original model rmse like python code 
-        // not sure if this is intended or python bug
-        for (index_t i = 0; i < detection_bands.size(); ++i)
-        {
-            comp_rmses[i] = models[detection_bands[i]].score.rmse;
-        }
+    const index_t bands   = masked_spectral.extent(0);
+    const index_t samples = peek_dates.size();
 
-        change_magnitude(
-            residuals,
-            detection_bands,
-            state.variogram,
-            comp_rmses,
-            magnitude
+    peek_spectral.resize(bands * samples);
+    for (index_t band = 0; band < bands; ++band)
+    {
+        for (index_t j = 0; j < samples; ++j)
+        {
+            std::ptrdiff_t source =
+                peek_window.start - static_cast<std::ptrdiff_t>(j);
+
+            assert(source >= 0);
+            assert(source < static_cast<std::ptrdiff_t>(masked_spectral.extent(1)));
+
+            peek_spectral[band * samples + j] =
+                masked_spectral(band, static_cast<index_t>(source));
+        }
+    }
+    auto masked_spectral_window =
+        ArrayView<const scalar_t, 2>::contiguous(
+            peek_spectral.data(),
+            {bands, samples}
         );
 
-        //----------------------------------------------------------------------
-        // Change detected
-        //----------------------------------------------------------------------
-        if (detect_change(magnitude, cadence.change_threshold))
-        {   
-            return after_lookback(context, state);
-        }
-        //----------------------------------------------------------------------
-        // Outlier detected
-        //----------------------------------------------------------------------
-        else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
-        {
-            //----------------------------------------------------------
-            // Drop the observation immediately before the window; the
-            // window moves down one position with the observations
-            // after it
-            //----------------------------------------------------------
-            series.drop(static_cast<index_t>(peek_window.start), window);
-            continue;
-        }
+    // The 8-coefficient basis, whatever the models' count (quirk 4).
+    peek_basis.build(masked_dates_window, 8);
+
+    peek_residuals(
+        peek_basis,
+        masked_spectral_window,
+        models,
+        detection_bands,
+        residuals
+    );
+
+    // use original model rmse like python code
+    // not sure if this is intended or python bug
+    for (index_t i = 0; i < detection_bands.size(); ++i)
+    {
+        comp_rmses[i] = models[detection_bands[i]].score.rmse;
+    }
+
+    change_magnitude(
+        residuals,
+        detection_bands,
+        state.variogram,
+        comp_rmses,
+        magnitude
+    );
+
+    //--------------------------------------------------------------------------
+    // Change detected: the window stays where it is
+    //--------------------------------------------------------------------------
+    if (detect_change(magnitude, cadence.change_threshold))
+    {
+        LOG_DEBUG("Lookback: change before " << window.start);
+        return after_lookback(context, state);
+    }
+    //--------------------------------------------------------------------------
+    // Outlier detected: drop the observation immediately before the window;
+    // the window moves down one position with the observations after it
+    //--------------------------------------------------------------------------
+    else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
+    {
+        LOG_DEBUG("Lookback: outlier dropped at " << peek_window.start);
+        series.drop(static_cast<index_t>(peek_window.start), window);
+    }
+    //--------------------------------------------------------------------------
+    // Otherwise include it
+    //--------------------------------------------------------------------------
+    else
+    {
+        LOG_DEBUG("Lookback: included " << peek_window.start);
         window.start = static_cast<index_t>(peek_window.start);
     }
+
+    if (window.start > prev_break)
+        return Phase::Lookback;
+
     return after_lookback(context, state);
 }
 

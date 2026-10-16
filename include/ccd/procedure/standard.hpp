@@ -109,8 +109,8 @@ void change_magnitude(
 // pyccd's standard procedure as a per-pixel state machine. drive()
 // (machine.hpp) steps it from Prepare to Done; each phase's transition does
 // its work on the State and returns the next phase. Initialize tests one
-// candidate window per call; Lookback and Extend still run their whole loop
-// in one call.
+// candidate window per call and Lookback one observation; Extend still runs
+// its whole loop in one call.
 //
 //     Prepare ──┬─────────────────────────────────────────────► Done
 //               │  (too few observations, or a NaN variogram)
@@ -143,7 +143,7 @@ enum class Phase : std::uint8_t
 {
     Prepare,       // the early exits, the statistics window, cadence, variogram
     Initialize,    // one candidate start window (ccd::initialize_step)
-    Lookback,      // the backward extension towards prev_break
+    Lookback,      // one observation before the window, towards prev_break
     StartCatch,    // the leading observations of the first segment
     Extend,        // the forward extension and its change test
     Restart,       // the cursor after a segment
@@ -167,6 +167,24 @@ enum class Exit : std::uint8_t
 };
 
 const char* to_string(Exit exit);
+
+// Lookback's peek, read backward from the observation before the window:
+// positions start, start - 1, ..., stop + 1 (stop is exclusive and may be -1).
+struct ReversePeek
+{
+    std::ptrdiff_t start;
+    std::ptrdiff_t stop;
+};
+
+// pyccd's three cases, in its order, for a window starting at
+// `window_start` > prev_break:
+//
+//   * window_start - prev_break > peek: start - 1 down to start - peek + 1,
+//     PEEK_SIZE - 1 observations (quirk 1);
+//   * else window_start <= peek: start - 1 down to position 0, below
+//     prev_break when prev_break > 0 (quirk 2);
+//   * else: start - 1 down to prev_break.
+ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek);
 
 // Lookback's buffers, kept for their capacity; every one is rewritten
 // before it is read.
@@ -253,12 +271,17 @@ Phase prepare(const Context& context, State& state);
 // when stable; EndCatch (InitializeExhausted) when no candidate is left.
 Phase initialize(const Context& context, State& state);
 
-// Extends the window backward towards prev_break one observation at a time,
-// testing the observations before it against init_models, whose RMSE is the
-// comparison RMSE (quirk 3). Stops at prev_break or on a change; drops an
-// outlier from the series and tests again. The peek reads PEEK_SIZE - 1
-// observations far from prev_break (quirk 1) and, near the series start,
-// down to position 0 even below prev_break (quirk 2). Next: after_lookback().
+// Tests the observations of lookback_peek() against init_models, whose RMSE
+// is the comparison RMSE (quirk 3). Pre: window.start > prev_break. In order:
+//
+//   * every peek magnitude above the change threshold: a change, the window
+//     stays; next after_lookback();
+//   * the first above OUTLIER_THRESHOLD: the observation before the window is
+//     dropped from the series, and the window moves down with it;
+//   * otherwise it is included: window.start - 1.
+//
+// After a drop or an include, next Lookback while window.start > prev_break,
+// else after_lookback().
 Phase lookback(const Context& context, State& state);
 
 // Writes the Start segment over (prev_break, window.start) with
