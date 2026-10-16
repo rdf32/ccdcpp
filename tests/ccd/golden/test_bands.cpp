@@ -31,11 +31,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <boost/math/distributions/chi_squared.hpp>
@@ -640,6 +643,27 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 // adjust_change_threshold() and its df
 //==============================================================================
 
+namespace
+{
+
+// The number of doubles between a and b: 0 when they are equal, 1 for
+// neighbours. Both finite and of one sign.
+std::uint64_t ulp_distance(double a, double b)
+{
+    std::uint64_t ia, ib;
+    std::memcpy(&ia, &a, sizeof a);
+    std::memcpy(&ib, &b, sizeof b);
+    return ia > ib ? ia - ib : ib - ia;
+}
+
+// adjust_change_threshold() takes a chi-squared quantile through
+// std::pow and Boost, and libm's last bit differs between platforms (glibc
+// and Apple's libm give neighbouring doubles at peek 7 and 40). The pinned
+// values hold to 4 ulp on any platform; a df mix-up moves them by far more.
+constexpr std::uint64_t LIBM_ULP = 4;
+
+} // namespace
+
 TEST(Bands, ChangeThresholdTakesItsDegreesOfFreedom)
 {
     constexpr double DEFAULT = 15.086272469388987;
@@ -647,11 +671,19 @@ TEST(Bands, ChangeThresholdTakesItsDegreesOfFreedom)
     // df = 5: the values it gives with the detection count of the default
     // layout.
     EXPECT_EQ(ccd::adjust_change_threshold(6, 6, DEFAULT, 5, 0.99), DEFAULT);
-    EXPECT_EQ(ccd::adjust_change_threshold(7, 6, DEFAULT, 5, 0.99), 0x1.af382cc5ddf21p+3);
-    EXPECT_EQ(ccd::adjust_change_threshold(9, 6, DEFAULT, 5, 0.99), 0x1.6866ca4a577a6p+3);
-    EXPECT_EQ(ccd::adjust_change_threshold(12, 6, DEFAULT, 5, 0.99), 0x1.27903c5857cd8p+3);
-    EXPECT_EQ(ccd::adjust_change_threshold(20, 6, DEFAULT, 5, 0.99), 0x1.a71fc718bf22bp+2);
-    EXPECT_EQ(ccd::adjust_change_threshold(40, 6, DEFAULT, 5, 0.99), 0x1.15f079295b2c3p+2);
+    const std::pair<ccd::index_t, double> pinned[] = {
+        {7, 0x1.af382cc5ddf21p+3},
+        {9, 0x1.6866ca4a577a6p+3},
+        {12, 0x1.27903c5857cd8p+3},
+        {20, 0x1.a71fc718bf22bp+2},
+        {40, 0x1.15f079295b2c3p+2},
+    };
+    for (const auto& [peek, expected] : pinned)
+    {
+        const double actual = ccd::adjust_change_threshold(peek, 6, DEFAULT, 5, 0.99);
+        EXPECT_LE(ulp_distance(actual, expected), LIBM_ULP)
+            << "peek " << peek << ": " << actual << " vs " << expected;
+    }
 
     // df = 8: the chi2(8) quantile of the same probability.
     const double pt = 1.0 - std::pow(1.0 - 0.99, 6.0 / 12.0);
