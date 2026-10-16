@@ -526,8 +526,8 @@ TEST(StandardLookback, ThePeekWindowFollowsPyccdsThreeCases)
 {
     using ccd::standard::lookback_peek;
 
-    // Far from the break: start - 1 down to start - peek + 1, PEEK_SIZE - 1
-    // observations (quirk 1).
+    // Far from the break: start - 1 down to start - peek + 1, peek - 1
+    // observations, the adjusted peek minus one (quirk 1).
     auto far = lookback_peek(20, 0, 6);
     EXPECT_EQ(far.start, 19);
     EXPECT_EQ(far.stop, 14);

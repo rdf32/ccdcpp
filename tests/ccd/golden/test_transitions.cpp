@@ -31,29 +31,30 @@
 // The pyccd quirks the refactor keeps exactly, numbered as in the design
 // notes (each is decided for 0.8.0):
 //
-//   1  far from the previous break, Lookback peeks PEEK_SIZE - 1 observations
+//   1  far from the previous break, Lookback peeks peek - 1 observations (the
+//      adjusted peek, Cadence::peek, minus one)
 //   2  near the series start, Lookback's peek reads below the previous break
 //   3  Lookback compares against the initialisation models' RMSE
-//   4  Initialise fits 4 coefficients and the peek basis has 8, whatever
+//   4  Initialize fits 4 coefficients and the peek basis has 8, whatever
 //      COEFFICIENT_MIN / COEFFICIENT_MAX say
 //   5  the early exits return an empty processing mask
 //   6  the series-end check in Extend is dead (a), so a series-end segment's
 //      end day is its break day (b), and after it the outer guard passes
-//      again at peek >= 25: at 25 Initialise exits at once, at peek >= 26 it
+//      again at peek >= 25: at 25 Initialize exits at once, at peek >= 26 it
 //      runs on the last observations and can mark exclusions no segment
 //      uses (c)
 //   7  Extend refits while the window has < RETRAIN_MIN_OBS observations but
 //      compares against the model RMSE while it has <= RETRAIN_MIN_OBS
 //
-// Which pixel takes which transition. The states are those of the planned
-// machine (Select, the whole-series fit, Prepare, Initialise, Lookback,
-// StartCatch, the peek guard, Extend, Restart, Tail); "corpus" names a pixel
+// Which pixel takes which transition. The states are the machine's
+// (Select, the whole-series fit, Prepare, Initialize, Lookback, StartCatch,
+// the peek guard, Extend, Restart, EndCatch); "corpus" names a pixel
 // of the golden corpus that also takes it, as test_golden.cpp labels it.
 // Every reachable transition is taken by at least one pixel of the two
 // fixtures; this table was measured with a trace-instrumented build of
 // v0.6.1.
 //
-//   Select (procedure choice, ccd.cpp detect_pixel)
+//   Select (ccd::select_procedure, called by detect_pixel)
 //     Standard                  select_clear_at_threshold (clear 25/100 =
 //                               CLEAR_PCT_THRESHOLD, the >= side), every
 //                               Standard pixel below; corpus pyccd:dn
@@ -76,8 +77,8 @@
 //                                        (not select_clear_at_threshold: its
 //                                        gaps exceed VARIOGRAM_MIN_LAG_DAYS)
 //     variogram NaN -> Done, empty mask  variogram_nan
-//     no room for Initialise -> Tail     standard_no_room
-//   Initialise
+//     no room for Initialize -> EndCatch  standard_no_room
+//   Initialize
 //     grow: span < DAY_DELTA             start_catch, peek_guard_tail, ...
 //     grow: Tmask flags all              corpus c8:dn:2,3
 //     grow: candidate too short in time  lookback_below_break, reentry_*
@@ -88,12 +89,12 @@
 //                                        never stable)
 //     stable                             every pixel with a segment from
 //                                        Extend
-//     exhausted, no segment -> Tail      constant_detection_band
-//     exhausted after a segment -> Tail  lookback_below_break_decides (after
+//     exhausted, no segment -> EndCatch  constant_detection_band
+//     exhausted after a segment -> EndCatch  lookback_below_break_decides (after
 //                                        a re-entry); corpus c2:c2
 //   Lookback
 //     skipped (start == prev_break)      series_end_after_outlier, ...
-//     peek far: PEEK_SIZE-1 obs (quirk 1)  start_catch,
+//     peek far: peek - 1 obs (quirk 1)   start_catch,
 //                                        lookback_peek_minus_one_decides
 //     peek to index 0, prev_break == 0   peek_guard_tail
 //     peek to index 0 BELOW prev_break (quirk 2)  lookback_below_break,
@@ -115,7 +116,7 @@
 //     off: later segment                 peek_guard_tail, lookback_below_break
 //   Peek guard
 //     pass                               every pixel with an Extend segment
-//     fail -> Tail                       peek_guard_tail
+//     fail -> EndCatch                   peek_guard_tail
 //   Extend
 //     refit: untrained / < RETRAIN_MIN_OBS / span factor
 //                                        lookback_below_break (all three)
@@ -126,7 +127,7 @@
 //     compare: seasonal RMSE             series_end_after_outlier
 //     coefficients 4 / 6 / 8             select_clear_at_threshold (4, 6),
 //                                        lookback_below_break (4, 8)
-//     4-coefficient Initialise, 8-term
+//     4-coefficient Initialize, 8-term
 //       peek basis (quirk 4)             every Extend step above; with
 //                                        COEFFICIENT_MIN = 6,
 //                                        coefficient_min_6
@@ -140,17 +141,18 @@
 //       break day after the dropped one  series_end_after_outlier
 //     curve_qa is the last step's count,
 //       not the fit's                    corpus c2:c2
-//     the dead series-end check (quirk 6a)   unreachable
+//     the dead series-end check (quirk 6a)   never taken (an assert in
+//                                        standard::extend's grow)
 //   Restart
-//     room -> Initialise                 lookback_below_break, peek_guard_tail
-//     no room -> Tail                    start_catch, ...
+//     room -> Initialize                 lookback_below_break, peek_guard_tail
+//     no room -> EndCatch                start_catch, ...
 //     room after a series-end segment
 //       (quirk 6c: the guard passes at
-//       peek >= 25, Initialise runs at
+//       peek >= 25, Initialize runs at
 //       peek >= 26), and in it a Tmask
 //       commit and a Lookback drop that
 //       no segment uses                  reentry_after_series_end
-//   Tail
+//   EndCatch
 //     End segment                        standard_no_room,
 //                                        constant_detection_band,
 //                                        peek_guard_tail
@@ -164,17 +166,17 @@
 // dump changes, so the 0.8.0 work knows which pins it is expected to move and
 // a refactor that moves one of them has changed behaviour.
 //
-//   1  Lookback reads PEEK_SIZE        lookback_peek_minus_one_decides
+//   1  Lookback reads the full peek   lookback_peek_minus_one_decides
 //                                      (golden corpus: none)
 //   2  Lookback stops at prev_break    lookback_below_break_decides
 //                                      (golden corpus: none)
-//   4  Initialise reads COEFFICIENT_MIN  coefficient_min_6 (at the defaults
+//   4  Initialize reads COEFFICIENT_MIN  coefficient_min_6 (at the defaults
 //                                      the fix changes nothing)
 //   5  early exits keep the mask       variogram_nan; standard_too_few and
 //                                      128 corpus pixels; snow_too_few and 18
 //                                      corpus pixels
 //   6a series-end check `>=`           7 of these pixels; 328 corpus pixels
-//   6c series end goes to Tail         reentry_after_series_end
+//   6c series end goes to EndCatch     reentry_after_series_end
 //                                      (golden corpus: none)
 //   7  refit while <= RETRAIN_MIN_OBS  lookback_peek_minus_one_decides;
 //                                      177 corpus pixels
@@ -370,10 +372,10 @@ TEST(Transitions, PathsAsDocumented)
         EXPECT_EQ(r.mask.size(), 0u) << name;
     }
 
-    // No room for Initialise: straight to Tail, one End segment over all 20.
+    // No room for Initialize: straight to EndCatch, one End segment over all 20.
     expect_shapes("standard_no_room", run_detect(pixel(all, "standard_no_room")), {{END, 0.0, 20}});
 
-    // Never stable: Initialise exhausted with no segment, Tail over everything.
+    // Never stable: Initialize exhausted with no segment, EndCatch over everything.
     expect_shapes("constant_detection_band",
         run_detect(pixel(all, "constant_detection_band")), {{END, 0.0, 228}});
 
@@ -428,7 +430,7 @@ TEST(Transitions, PathsAsDocumented)
              78.32135257, 167.267371});
     }
 
-    // The peek guard sends the second Initialise to Tail.
+    // The peek guard sends the second Initialize to EndCatch.
     expect_shapes("peek_guard_tail",
         run_detect(pixel(all, "peek_guard_tail")), {{8, 1.0, 310}, {END, 0.0, 90}});
 

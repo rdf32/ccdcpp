@@ -181,7 +181,8 @@ struct ReversePeek
 // `window_start` > prev_break:
 //
 //   * window_start - prev_break > peek: start - 1 down to start - peek + 1,
-//     PEEK_SIZE - 1 observations (quirk 1);
+//     peek - 1 observations, the adjusted peek (Cadence::peek) minus one
+//     (quirk 1);
 //   * else window_start <= peek: start - 1 down to position 0, below
 //     prev_break when prev_break > 0 (quirk 2);
 //   * else: start - 1 down to prev_break.

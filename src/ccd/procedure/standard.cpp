@@ -322,8 +322,9 @@ Phase prepare(const Context& context, State& state)
     const auto& options = context.options;
     MaskedSeries& series = state.series;
 
-    // validate() refuses less: Lookback's far peek reads PEEK_SIZE - 1
-    // observations and both peeks read their first magnitude.
+    // validate() refuses less: Lookback's far peek reads the adjusted peek
+    // minus one observations, at least PEEK_SIZE - 1, and both peeks read
+    // their first magnitude.
     assert(options.PEEK_SIZE >= 2);
 
     LOG_DEBUG("num obs: " << context.pixel.dates().size());

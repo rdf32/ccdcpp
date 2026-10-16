@@ -455,14 +455,14 @@ if(CCD_BUILD_TESTS)
 
     # The per-pixel records below detect_pixel: MaskedSeries, Variogram, Cadence.
     add_executable(
-        test_series
+        test_masked_series
 
-        tests/ccd/procedure/test_series.cpp
+        tests/ccd/procedure/test_masked_series.cpp
     )
 
 
     target_link_libraries(
-        test_series
+        test_masked_series
 
         PRIVATE
             ccd_core
@@ -471,7 +471,7 @@ if(CCD_BUILD_TESTS)
 
 
     target_compile_features(
-        test_series
+        test_masked_series
 
         PRIVATE
             cxx_std_17
@@ -783,7 +783,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_units)
     gtest_discover_tests(test_filters)
     gtest_discover_tests(test_validation)
-    gtest_discover_tests(test_series)
+    gtest_discover_tests(test_masked_series)
     gtest_discover_tests(test_kernels)
     gtest_discover_tests(test_machine)
     gtest_discover_tests(test_preprocess)
