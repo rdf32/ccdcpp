@@ -34,6 +34,16 @@
 
 ### Fixed
 
+- The early exits return the processing mask, as pyccd does: a Standard pixel
+  with at most `MEOW_SIZE` kept observations or a NaN variogram, and a
+  PermanentSnow or InsufficientClear pixel with fewer than `MEOW_SIZE`, give
+  no segments and their mask, where they gave an empty mask. Nothing else
+  changes, and `detect_cube_columns` returns no mask. Pins moved, every one
+  such a pixel's mask line only: the golden fixture 146 of 621 pixels (128
+  Standard, 18 PermanentSnow), the bands fixture 37 of 400, the transitions
+  fixture `snow_too_few`, `standard_too_few` and `variogram_nan`; of the
+  check.sh dumps, 94 of 144 (the detect and detect_cube dumps; no column
+  dump).
 - `ccd::validate()` and every entry point refuse a `COEFFICIENT_MIN` below 1,
   coefficient counts that decrease from `COEFFICIENT_MIN` to `COEFFICIENT_MAX`,
   and a `COEFFICIENT_MAX` above 8, the harmonic basis's width: a model wider

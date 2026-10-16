@@ -33,7 +33,7 @@ The procedure choice:
 | else | InsufficientClear | `ccd::fit_whole_series`, curve_qa 44 |
 
 The whole-series fit has no loop, so it is a function, not a machine. With fewer than
-`MEOW_SIZE` kept observations it returns nothing. Otherwise it returns one segment over the
+`MEOW_SIZE` kept observations it returns no segment, with the processing mask. Otherwise it returns one segment over the
 whole series, every band fitted with `COEFFICIENT_MIN` coefficients.
 
 ## 2. The Standard machine
@@ -259,7 +259,6 @@ test:
 
 | Quirk | Where it is |
 |---|---|
-| The early exits return an empty processing mask | `State::take_result`; `fit_whole_series` |
 | The series-end check before Extend's grow is dead; a series-end segment's end day is its break day; Restart re-enters Initialize after it | the assert in `extend_step`; `write_extended_segment` |
 | Extend refits while the window holds fewer than `RETRAIN_MIN_OBS` observations but compares against the model RMSE while it holds at most that many | `extend_step` |
 

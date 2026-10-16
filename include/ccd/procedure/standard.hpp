@@ -299,9 +299,8 @@ struct State
     // Initialize's criteria cleared, no extension trained.
     void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);
 
-    // The pixel's result once Done: the segments and the processing mask,
-    // or no segments and an empty mask after an early exit (quirk 5, kept
-    // until 0.8.0). Moves them out.
+    // The pixel's result once Done: the segments (none after an early exit)
+    // and the processing mask. Moves them out.
     FitResult take_result();
 };
 
@@ -453,8 +452,8 @@ public:
     // Fits the observations of hworkspace that `mask` keeps (the Standard
     // procedure's processing mask over its series, built by the caller:
     // ccd::detect builds it with the procedure's filter chain), through
-    // standard::run(). The result carries the mask, or no segments and an
-    // empty mask after an early exit (quirk 5).
+    // standard::run(). The result carries the mask, after an early exit
+    // too.
     //----------------------------------------------------------------------
     FitResult run(
         const HarmonicWorkspace& hworkspace,

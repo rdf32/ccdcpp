@@ -55,8 +55,8 @@ PixelProcedure select_procedure(
 //     curve_qa            PersistentSnow (54) or InsufficientClear (44)
 //     bands[b].score      rmse, magnitude 0, no residuals
 //
-// The result carries `mask`. With fewer than MEOW_SIZE kept observations:
-// no segments and an empty mask (quirk 5, kept until 0.8.0).
+// The result carries `mask`, also when there are fewer than MEOW_SIZE kept
+// observations and so no segment.
 //
 // `procedure` is PermanentSnow or InsufficientClear; `mask` is that
 // procedure's processing mask over hworkspace's series, built by the

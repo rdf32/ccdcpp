@@ -268,10 +268,7 @@ FitResult State::take_result()
 {
     assert(phase == Phase::Done);
 
-    // The early exits drop the processing mask (quirk 5).
-    if (exit == Exit::TooFewObservations || exit == Exit::VariogramNaN)
-        return {};
-
+    // Every exit, the early ones too, returns the processing mask.
     FitResult result;
     result.models = std::move(segments);
     result.mask = series.take_mask();

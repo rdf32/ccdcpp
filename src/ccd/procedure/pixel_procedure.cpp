@@ -39,11 +39,13 @@ FitResult fit_whole_series(
     const auto& options = hworkspace.options();
 
     //----------------------------------------------------------
-    // Not enough observations
+    // Not enough observations: no segment, and the mask
     //----------------------------------------------------------
     if (mask.count() < options.MEOW_SIZE)
     {
-        return {};
+        FitResult none;
+        none.mask = std::move(mask);
+        return none;
     }
 
     //----------------------------------------------------------

@@ -38,7 +38,6 @@
 // The pyccd quirks the code still keeps, numbered as in the design notes
 // (each is fixed in 0.8.0):
 //
-//   5  the early exits return an empty processing mask
 //   6  the series-end check in Extend is dead (a), so a series-end segment's
 //      end day is its break day (b), and after it the outer guard passes
 //      again at peek >= 25: at 25 Initialize exits at once, at peek >= 26 it
@@ -54,7 +53,7 @@
 // Lookback compares against the stable
 // start window's RMSE, refitting nothing (3); Initialize fits
 // COEFFICIENT_MIN coefficients and both peek bases are COEFFICIENT_MAX wide
-// (4).
+// (4); the early exits return the processing mask, as every exit does (5).
 //
 // Which pixel takes which transition. The states are the machine's
 // (Select, the whole-series fit, Prepare, Initialize, Lookback, StartCatch,
@@ -74,10 +73,10 @@
 //                               select_snow_below_threshold (60/80.01 =
 //                               0.7499); corpus c16:dn:1,0
 //   Whole-series fit (PermanentSnow, InsufficientClear)
-//     too few -> Done, empty mask        snow_too_few (11 < MEOW_SIZE)
+//     too few -> Done, the mask          snow_too_few (11 < MEOW_SIZE)
 //     fit                                the three whole-series select_* pixels
 //   Prepare
-//     too few -> Done, empty mask        standard_too_few (12 <= MEOW_SIZE)
+//     too few -> Done, the mask          standard_too_few (12 <= MEOW_SIZE)
 //     peek not adjusted                  start_catch, series_end_after_outlier
 //     peek adjusted 7-12                 corpus c8:dn:0,0
 //     peek adjusted 13-25                lookback_near_break (19),
@@ -86,7 +85,7 @@
 //     variogram lag raised               start_catch and most Standard pixels
 //                                        (not select_clear_at_threshold: its
 //                                        gaps exceed VARIOGRAM_MIN_LAG_DAYS)
-//     variogram NaN -> Done, empty mask  variogram_nan
+//     variogram NaN -> Done, the mask    variogram_nan
 //     no room for Initialize -> EndCatch  standard_no_room
 //   Initialize
 //     grow: span < DAY_DELTA             start_catch, peek_guard_tail, ...
@@ -169,27 +168,23 @@
 //                                        constant_detection_band,
 //                                        peek_guard_tail
 //     none (prev_break + peek >= n)      every series-end pixel
-//   Early exits return an empty mask (quirk 5)
+//   Early exits return the mask (rule 5)
 //                                        snow_too_few, standard_too_few,
 //                                        variogram_nan
 //
-// What each decided 0.8.0 fix changes in these fixtures. Measured
+// What each remaining 0.8.0 fix changes in these fixtures. Measured
 // on v0.6.1 by applying each fix alone to a scratch copy: the pixels whose
 // dump changes, so the 0.8.0 work knows which pins it is expected to move and
 // a refactor that moves one of them has changed behaviour.
 //
-//   5  early exits keep the mask       variogram_nan; standard_too_few and
-//                                      128 corpus pixels; snow_too_few and 18
-//                                      corpus pixels
 //   6a series-end check `>=`           7 of these pixels; 328 corpus pixels
 //   6c series end goes to EndCatch     reentry_after_series_end
 //                                      (golden corpus: none)
 //   7  refit while <= RETRAIN_MIN_OBS  lookback_far_peek_decides;
 //                                      177 corpus pixels
 //
-// Off the fixture platform PathsAsDocumented still fails on each fix alone:
-// 1, 5 and 6 through the shapes and masks, 2 through
-// lookback_near_break_decides's mask count, 7 through the RMSE values of
+// PathsAsDocumented fails on each of them alone, off the fixture platform
+// too: 6 through the shapes and masks, 7 through the RMSE values of
 // lookback_far_peek_decides (checked by applying each to v0.6.1).
 //
 //==============================================================================
@@ -420,12 +415,17 @@ TEST(Transitions, PathsAsDocumented)
     expect_shapes("select_snow_below_threshold",
         run_detect(pixel(all, "select_snow_below_threshold")), {{CLEAR, 0.0, 20}});
 
-    // Early exits: no segments and an empty (size 0) processing mask (quirk 5).
-    for (const char* name : {"snow_too_few", "standard_too_few", "variogram_nan"})
+    // Early exits: no segments, and the processing mask (rule 5): the clear
+    // and snow observations of snow_too_few, the clear ones of the others.
+    const std::pair<const char*, std::size_t> early[] = {
+        {"snow_too_few", 11}, {"standard_too_few", 12}, {"variogram_nan", 61}};
+    for (const auto& [name, kept] : early)
     {
-        const auto r = run_detect(pixel(all, name));
+        const auto& p = pixel(all, name);
+        const auto r = run_detect(p);
         EXPECT_TRUE(r.models.empty()) << name;
-        EXPECT_EQ(r.mask.size(), 0u) << name;
+        EXPECT_EQ(r.mask.size(), p.dates.size()) << name;
+        EXPECT_EQ(r.mask.count(), kept) << name;
     }
 
     // No room for Initialize: straight to EndCatch, one End segment over all 20.

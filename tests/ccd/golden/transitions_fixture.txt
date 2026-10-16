@@ -40,9 +40,9 @@ M 731000 732584 732584 20 0x0p+0 44
  4 0x1.7ecdacc256118p+13 0x1.861422ab7a283p+3 0x0p+0 -0x1.a0882e5e5a183p-7 0x1.6684d4a8f052bp+6 -0x1.008fb2bc511fcp+6 0x0p+0 0x0p+0 0x0p+0 0x0p+0
 K 100 0124801248012480124801248
 P transitions:snow_too_few 0
-K 0 
+K 20 ff308
 P transitions:standard_too_few 0
-K 0 
+K 30 4925a492
 P transitions:standard_no_room 1
 M 731000 731304 731304 20 0x0p+0 24
  33 0x1.0ba16b5a63c41p+16 0x1.8cedd9830ce6fp+4 0x0p+0 -0x1.7d583a2a0d1d7p-4 -0x1.a272a7cf2c568p+6 -0x1.4627820afc6dfp+3 0x0p+0 0x0p+0 0x0p+0 0x0p+0
@@ -54,7 +54,7 @@ M 731000 731304 731304 20 0x0p+0 24
  37 -0x1.5f5308b262b1dp+16 0x1.660731c02b4fcp+7 0x0p+0 0x1.01f039f702afcp-3 0x1.da7bf46b52333p+9 -0x1.64c2a43b6ef0dp+9 0x0p+0 0x0p+0 0x0p+0 0x0p+0
 K 20 fffff
 P transitions:variogram_nan 0
-K 0 
+K 61 fffffffffffffff1
 P transitions:constant_detection_band 1
 M 730120 733752 733752 228 0x0p+0 24
  3 0x1.06a38ea3ccc72p+10 0x1.82ebc9454355p+4 0x0p+0 -0x1.afd43def52e04p-11 -0x1.8c436442ad5afp+3 0x1.d766d1eca6f5dp+6 0x0p+0 0x0p+0 0x0p+0 0x0p+0

@@ -315,7 +315,7 @@ TEST(StandardRouting, EndCatchWritesTheTrailingSegmentPastAPeek)
 // Prepare
 //------------------------------------------------------------------------------
 
-TEST(StandardPrepare, AtMostMeowObservationsIsDoneWithNothing)
+TEST(StandardPrepare, AtMostMeowObservationsIsDoneWithTheMaskOnly)
 {
     Record r(12);
     EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Done);
@@ -324,10 +324,11 @@ TEST(StandardPrepare, AtMostMeowObservationsIsDoneWithNothing)
     r.state.phase = Phase::Done;
     const ccd::FitResult result = r.state.take_result();
     EXPECT_TRUE(result.models.empty());
-    EXPECT_EQ(result.mask.size(), 0u);   // quirk 5
+    EXPECT_EQ(result.mask.size(), 12u);
+    EXPECT_EQ(result.mask.count(), 12u);
 }
 
-TEST(StandardPrepare, ANaNVariogramIsDoneWithNothing)
+TEST(StandardPrepare, ANaNVariogramIsDoneWithTheMaskOnly)
 {
     // One observation dated <= STAT_ORD: the statistics window's variogram
     // has no pair to difference, and is NaN.
@@ -338,7 +339,8 @@ TEST(StandardPrepare, ANaNVariogramIsDoneWithNothing)
     r.state.phase = Phase::Done;
     const ccd::FitResult result = r.state.take_result();
     EXPECT_TRUE(result.models.empty());
-    EXPECT_EQ(result.mask.size(), 0u);   // quirk 5
+    EXPECT_EQ(result.mask.size(), 40u);
+    EXPECT_EQ(result.mask.count(), 40u);
 }
 
 TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
@@ -984,14 +986,16 @@ TEST(StandardExit, EachWayTheMachineStops)
     }
 }
 
-TEST(StandardExit, TheEarlyExitsReturnNoMask)
+TEST(StandardExit, TheEarlyExitsReturnTheMask)
 {
     const auto all = golden::characterisation_pixels();
     for (const char* name : {"standard_too_few", "variogram_nan"})
     {
-        const MachineRun run = run_machine(pixel(all, name));
+        const auto& p = pixel(all, name);
+        const MachineRun run = run_machine(p);
         EXPECT_TRUE(run.result.models.empty()) << name;
-        EXPECT_EQ(run.result.mask.size(), 0u) << name;   // quirk 5
+        EXPECT_EQ(run.result.mask.size(), p.dates.size()) << name;
+        EXPECT_GT(run.result.mask.count(), 0u) << name;
     }
 }
 
