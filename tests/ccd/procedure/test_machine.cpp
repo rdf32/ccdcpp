@@ -489,8 +489,8 @@ TEST(StandardDetector, SelectsByTheClearThenTheSnowPercentage)
         return s;
     };
 
-    EXPECT_EQ(detector.select(stats(0.25, 0.9), options), ccd::FitProcedureType::Standard);
-    EXPECT_EQ(detector.select(stats(0.2499, 0.75), options), ccd::FitProcedureType::PermanentSnow);
+    EXPECT_EQ(detector.select(stats(0.25, 0.9), options), ccd::PixelProcedure::Standard);
+    EXPECT_EQ(detector.select(stats(0.2499, 0.75), options), ccd::PixelProcedure::PermanentSnow);
     EXPECT_EQ(detector.select(stats(0.2499, 0.7499), options),
-              ccd::FitProcedureType::InsufficientClear);
+              ccd::PixelProcedure::InsufficientClear);
 }

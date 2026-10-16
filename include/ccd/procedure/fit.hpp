@@ -33,7 +33,7 @@ enum class CurveQA : std::uint8_t {
 
 // A pixel's procedure, chosen per pixel from its QA statistics by the run's
 // change detector (standard::Detector::select()).
-enum class FitProcedureType
+enum class PixelProcedure
 {
     Standard,
     InsufficientClear,

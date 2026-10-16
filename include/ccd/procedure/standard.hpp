@@ -416,7 +416,7 @@ public:
     // pyccd's choice: Standard when the clear percentage reaches
     // CLEAR_PCT_THRESHOLD; otherwise PermanentSnow when the snow percentage
     // reaches SNOW_PCT_THRESHOLD; otherwise InsufficientClear.
-    FitProcedureType select(
+    PixelProcedure select(
         const Quality::Statistics& statistics,
         const HarmonicOptions& options
     ) const;
@@ -424,7 +424,7 @@ public:
     // Fits the observations of `hworkspace` that `mask` keeps with
     // `procedure`, as that procedure's run() does.
     FitResult fit(
-        FitProcedureType procedure,
+        PixelProcedure procedure,
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
         LassoWorkspace& lworkspace,

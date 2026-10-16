@@ -294,19 +294,19 @@ ArrayView<const std::uint8_t, 1> qa_codes(
 // The plan of procedure `type`.
 //------------------------------------------------------------------------------
 const preprocess::ProcedurePlan& procedure_plan(
-    FitProcedureType type,
+    PixelProcedure type,
     const preprocess::PreprocessPlan& plan
 )
 {
     switch (type)
     {
-        case FitProcedureType::InsufficientClear:
+        case PixelProcedure::InsufficientClear:
             return plan.insufficient_clear;
 
-        case FitProcedureType::PermanentSnow:
+        case PixelProcedure::PermanentSnow:
             return plan.snow;
 
-        case FitProcedureType::Standard:
+        case PixelProcedure::Standard:
             break;
     }
 
@@ -374,11 +374,11 @@ FitResult detect_pixel(
         hoptions
     );
 
-    const FitProcedureType fit_type =
+    const PixelProcedure pixel_procedure =
         detector.select(quality_stat, hoptions);
 
     const preprocess::ProcedurePlan& procedure =
-        procedure_plan(fit_type, plan);
+        procedure_plan(pixel_procedure, plan);
 
     const bool transform = procedure.transform.has_value();
 
@@ -457,7 +457,7 @@ FitResult detect_pixel(
     );
 
     return detector.fit(
-        fit_type,
+        pixel_procedure,
         hworkspace,
         std::move(mask),
         lworkspace,

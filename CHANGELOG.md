@@ -58,8 +58,8 @@
   signatures are unchanged.
 - `ccd::standard::Detector` chooses each pixel's procedure from its QA
   statistics (`select`) and fits it (`fit`); `DetectScratch::standard` is a
-  `Detector`. `FitProcedureType` is declared in `procedure/fit.hpp`.
-  `InitializeCriteria` holds its band lists by value.
+  `Detector`. `FitProcedureType` is renamed `PixelProcedure` and declared in
+  `procedure/fit.hpp`. `InitializeCriteria` holds its band lists by value.
 - Removed, unused: `update_processing_mask` (both overloads), and
   `remove_outliers` / `remove_observation` (now inside `MaskedSeries`), the
   vector-returning `StandardProcedure::calc_residuals`, `Window::rewind`

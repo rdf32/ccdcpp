@@ -828,23 +828,23 @@ FitResult StandardProcedure::run(
 namespace standard
 {
 
-FitProcedureType Detector::select(
+PixelProcedure Detector::select(
     const Quality::Statistics& statistics,
     const HarmonicOptions& options
 ) const
 {
     if (!statistics.enough_clear(options.CLEAR_PCT_THRESHOLD)) {
         if (statistics.enough_snow(options.SNOW_PCT_THRESHOLD)) {
-            return FitProcedureType::PermanentSnow;
+            return PixelProcedure::PermanentSnow;
         } else {
-            return FitProcedureType::InsufficientClear;
+            return PixelProcedure::InsufficientClear;
         }
     }
-    return FitProcedureType::Standard;
+    return PixelProcedure::Standard;
 }
 
 FitResult Detector::fit(
-    FitProcedureType procedure,
+    PixelProcedure procedure,
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
@@ -853,20 +853,20 @@ FitResult Detector::fit(
 {
     switch (procedure)
     {
-        case FitProcedureType::Standard:
+        case PixelProcedure::Standard:
         {
             LOG_DEBUG("Standard");
             return standard_.run(hworkspace, std::move(mask), lworkspace, solver);
         }
 
-        case FitProcedureType::InsufficientClear:
+        case PixelProcedure::InsufficientClear:
         {
             LOG_DEBUG("Clear");
             InsufficientClear fit_procedure;
             return fit_procedure.run(hworkspace, std::move(mask), lworkspace, solver);
         }
 
-        case FitProcedureType::PermanentSnow:
+        case PixelProcedure::PermanentSnow:
         {
             LOG_DEBUG("Snow");
             PermanentSnow fit_procedure;
