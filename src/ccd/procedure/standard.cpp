@@ -4,6 +4,8 @@
 #include <vector>
 #include <cassert>
 #include <cmath>
+#include <string>
+#include <utility>
 
 #include "ccd/maths.hpp"
 #include "ccd/logger.hpp"
@@ -175,32 +177,288 @@ void change_magnitude(
     LOG_DEBUG("Magnitudes of change: " << magnitude);
 }
 
-bool lookback(
-    Series& series,
-    Window& window,
-    index_t prev_break,
-    const std::vector<LassoResult>& models,
-    const Cadence& cadence,
-    const Variogram& variogram,
-    const HarmonicOptions& options,
-    HarmonicBasis& peek_basis
-) {
+//==============================================================================
+// The Standard machine
+//==============================================================================
+
+const char* to_string(Phase phase)
+{
+    switch (phase)
+    {
+        case Phase::Prepare:     return "Prepare";
+        case Phase::Initialize:  return "Initialize";
+        case Phase::Lookback:    return "Lookback";
+        case Phase::StartCatch:  return "StartCatch";
+        case Phase::Lookforward: return "Lookforward";
+        case Phase::Restart:     return "Restart";
+        case Phase::EndCatch:    return "EndCatch";
+        case Phase::Done:        return "Done";
+    }
+    return "?";
+}
+
+const char* to_string(Exit exit)
+{
+    switch (exit)
+    {
+        case Exit::None:                return "None";
+        case Exit::TooFewObservations:  return "TooFewObservations";
+        case Exit::VariogramNaN:        return "VariogramNaN";
+        case Exit::InitializeExhausted: return "InitializeExhausted";
+        case Exit::PeekBeyondEnd:       return "PeekBeyondEnd";
+        case Exit::NoRoomToInitialize:  return "NoRoomToInitialize";
+    }
+    return "?";
+}
+
+void State::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
+{
+    phase = Phase::Prepare;
+    exit = Exit::None;
+
+    series.reset(workspace, std::move(mask));
+    cursor = Cursor{};
+    segments.clear();
+
+    cadence = Cadence{};
+    start = true;
+}
+
+FitResult State::take_result()
+{
+    assert(phase == Phase::Done);
+
+    // The early exits drop the processing mask (quirk 5).
+    if (exit == Exit::TooFewObservations || exit == Exit::VariogramNaN)
+        return {};
+
+    FitResult result;
+    result.models = std::move(segments);
+    result.mask = series.take_mask();
+    return result;
+}
+
+std::string summary(const State& state)
+{
+    return
+        "window (" + std::to_string(state.cursor.window.start) +
+        ", " + std::to_string(state.cursor.window.stop) +
+        "), prev_break " + std::to_string(state.cursor.prev_break) +
+        ", " + std::to_string(state.series.size()) + " observations, " +
+        std::to_string(state.segments.size()) + " segments, exit " +
+        to_string(state.exit);
+}
+
+namespace
+{
+
+// The route into EndCatch, recording why the segment loop ended.
+Phase end_catch_because(State& state, Exit why)
+{
+    state.exit = why;
+    return Phase::EndCatch;
+}
+
+} // namespace
+
+//------------------------------------------------------------------------------
+// Routing
+//------------------------------------------------------------------------------
+
+bool room_to_initialize(const Context& context, const State& state)
+{
+    // window.stop <= observations - MEOW_SIZE, written without the
+    // subtraction: index_t is unsigned, and observations < MEOW_SIZE would
+    // wrap it to a huge bound.
+    return state.cursor.window.stop + context.options.MEOW_SIZE <= state.series.size();
+}
+
+bool peek_fits(const State& state)
+{
+    return state.cursor.window.stop + state.cadence.peek <= state.series.size();
+}
+
+bool start_catch_due(const State& state)
+{
+    const Cursor& cursor = state.cursor;
+    assert(cursor.window.start >= cursor.prev_break);
+
+    // pyccd's flag and the record agree: the flag is cleared when a segment
+    // exists and when the start catch writes one, and nothing else clears it.
+    assert(state.start == state.segments.empty());
+
+    return (cursor.window.start - cursor.prev_break > state.cadence.peek) && state.start;
+}
+
+Phase after_stable_start(const Context& context, State& state)
+{
+    if (state.cursor.window.start > state.cursor.prev_break)
+        return Phase::Lookback;
+
+    return after_lookback(context, state);
+}
+
+Phase after_lookback(const Context& context, State& state)
+{
+    if (start_catch_due(state))
+        return Phase::StartCatch;
+
+    return before_lookforward(context, state);
+}
+
+Phase before_lookforward(const Context&, State& state)
+{
+    if (peek_fits(state))
+        return Phase::Lookforward;
+
+    return end_catch_because(state, Exit::PeekBeyondEnd);
+}
+
+//------------------------------------------------------------------------------
+// Transitions
+//------------------------------------------------------------------------------
+
+Phase prepare(const Context& context, State& state)
+{
+    const auto& options = context.options;
+    Series& series = state.series;
+
+    // validate() refuses less: Lookback's far peek reads PEEK_SIZE - 1
+    // observations and both peeks read their first magnitude.
+    assert(options.PEEK_SIZE >= 2);
+
+    LOG_DEBUG("num obs: " << context.pixel.dates().size());
+    LOG_DEBUG("Processing mask initial count: " << series.size());
+    //----------------------------------------------------------
+    // Not enough observations
+    //----------------------------------------------------------
+    if (series.size() <= options.MEOW_SIZE)
+    {
+        LOG_DEBUG("Processing Mask: " << series.mask().data());
+        LOG_DEBUG("mask count < meow size" << series.size());
+        state.exit = Exit::TooFewObservations;
+        return Phase::Done;
+    }
+
+    //----------------------------------------------------------
+    // Statistics window: the observations dated <= STAT_ORD
+    // (views, no copy)
+    //----------------------------------------------------------
+    const index_t stat_count = series.count_until(options.STAT_ORD);
+    LOG_DEBUG("Stat mask count: " << stat_count);
+
+    const auto stat_dates =
+        series.dates().slice(range(index_t{0}, stat_count));
+
+    const auto stat_spectral =
+        series.spectral().slice(all(), range(index_t{0}, stat_count));
+
+    LOG_DEBUG("stat dates: " << stat_dates);
+
+    //----------------------------------------------------------
+    // The pixel's cadence and variogram, read by every step
+    // below; the caller's options are never written
+    //----------------------------------------------------------
+    state.cadence = measure_cadence(stat_dates, options);
+
+    assert(state.cadence.peek >= options.PEEK_SIZE);
+    LOG_DEBUG("Peek size: " << state.cadence.peek);
+    LOG_DEBUG("Chng thresh: " << state.cadence.change_threshold);
+
+    state.variogram.bands =
+        adjusted_variogram(
+            stat_dates,
+            stat_spectral,
+            options.VARIOGRAM_MIN_LAG_DAYS
+        );
+
+    if (!state.variogram.usable())
+    {
+        LOG_DEBUG("variogram has nans");
+        state.exit = Exit::VariogramNaN;
+        return Phase::Done;
+    }
+    LOG_DEBUG("Variogram values: " << state.variogram.bands);
+
+    state.cursor = Cursor{Window(0, options.MEOW_SIZE), 0};
+
+    if (room_to_initialize(context, state))
+        return Phase::Initialize;
+
+    return end_catch_because(state, Exit::NoRoomToInitialize);
+}
+
+Phase initialize(const Context& context, State& state)
+{
+    const auto& options = context.options;
+
+    LOG_DEBUG("Initialize for change model #: " << state.segments.size());
+    if (!state.segments.empty()) {
+        state.start = false;
+    }
+
+    // Initialise's criteria: the options' and this pixel's change threshold,
+    // with the 4-coefficient stability fits pyccd hard-codes (quirk 4).
+    const InitializeCriteria criteria{
+        options.MEOW_SIZE,
+        options.DAY_DELTA,
+        options.TMASK_BANDS,
+        options.T_CONST,
+        options.DETECTION_BANDS,
+        4,
+        state.cadence.change_threshold
+    };
+
+    state.init_models.resize(state.series.spectral().extent(0));
+
+    const bool initialized = ccd::initialize(
+        state.series,
+        state.cursor.window,
+        criteria,
+        state.variogram,
+        context.lasso,
+        context.solver,
+        state.init_models
+    );
+
+    if (!initialized) {
+        LOG_DEBUG("Model initialization failed");
+        return end_catch_because(state, Exit::InitializeExhausted);
+    }
+
+    return after_stable_start(context, state);
+}
+
+Phase lookback(const Context& context, State& state)
+{
     struct ReverseWindow
     {
         std::ptrdiff_t start;
         std::ptrdiff_t stop;
     };
 
+    const auto& options = context.options;
+    Series& series = state.series;
+    Window& window = state.cursor.window;
+    const index_t prev_break = state.cursor.prev_break;
+    const std::vector<LassoResult>& models = state.init_models;
+    const Cadence& cadence = state.cadence;
+    HarmonicBasis& peek_basis = state.peek_basis;
+
     const BandList& detection_bands = options.DETECTION_BANDS;
 
-    std::vector<std::int64_t> peek_dates;
-    std::vector<scalar_t> peek_spectral;
+    std::vector<std::int64_t>& peek_dates = state.lookback.peek_dates;
+    std::vector<scalar_t>& peek_spectral = state.lookback.peek_spectral;
 
     // Indexed by band; only the detection bands' are written.
-    std::vector<std::vector<scalar_t>> residuals(series.spectral().extent(0));
+    std::vector<std::vector<scalar_t>>& residuals = state.lookback.residuals;
+    residuals.resize(series.spectral().extent(0));
     // Indexed by position in DETECTION_BANDS.
-    std::vector<scalar_t> comp_rmses(detection_bands.size());
-    std::vector<scalar_t> magnitude;
+    std::vector<scalar_t>& comp_rmses = state.lookback.comp_rmse;
+    comp_rmses.resize(detection_bands.size());
+    std::vector<scalar_t>& magnitude = state.lookback.magnitude;
+
+    assert(window.start > prev_break);
 
     while(window.start > prev_break) {
 
@@ -286,7 +544,7 @@ bool lookback(
         change_magnitude(
             residuals,
             detection_bands,
-            variogram,
+            state.variogram,
             comp_rmses,
             magnitude
         );
@@ -296,7 +554,7 @@ bool lookback(
         //----------------------------------------------------------------------
         if (detect_change(magnitude, cadence.change_threshold))
         {   
-            return true;
+            return after_lookback(context, state);
         }
         //----------------------------------------------------------------------
         // Outlier detected
@@ -313,19 +571,44 @@ bool lookback(
         }
         window.start = static_cast<index_t>(peek_window.start);
     }
-    return false;
+    return after_lookback(context, state);
 }
 
-ChangeModel lookforward(
-    Series& series,
-    Window& window,
-    const Cadence& cadence,
-    const Variogram& variogram,
-    const HarmonicOptions& options,
-    HarmonicBasis& peek_basis,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver
-) {
+Phase start_catch(const Context& context, State& state)
+{
+    const Cursor& cursor = state.cursor;
+    assert(state.segments.empty() && cursor.prev_break == 0);
+
+    auto window_0 = Window(cursor.prev_break, cursor.window.start);
+    ChangeModel result = catch_segment(
+        state.series.dates(),
+        state.series.spectral(),
+        window_0,
+        context.options.COEFFICIENT_MIN,
+        CurveQA::Start,
+        context.lasso,
+        context.solver
+    );
+    // append result
+    state.start = false;
+    state.segments.push_back(std::move(result));
+
+    return before_lookforward(context, state);
+}
+
+Phase lookforward(const Context& context, State& state)
+{
+    const auto& options = context.options;
+    Series& series = state.series;
+    Window& window = state.cursor.window;
+    const Cadence& cadence = state.cadence;
+    const Variogram& variogram = state.variogram;
+    HarmonicBasis& peek_basis = state.peek_basis;
+    LassoWorkspace& lworkspace = context.lasso;
+    LassoSolver& solver = context.solver;
+
+    assert(peek_fits(state));
+
     LOG_DEBUG("initial model window lookforward: " << window.start << ", " << window.stop);
     ChangeModel result;
     const BandList& detection_bands = options.DETECTION_BANDS;
@@ -465,7 +748,70 @@ ChangeModel lookforward(
         result.bands[band].score.residuals = std::vector<scalar_t>();
     }
 
-    return result;
+    state.segments.push_back(std::move(result));
+    return Phase::Restart;
+}
+
+Phase restart(const Context& context, State& state)
+{
+    Cursor& cursor = state.cursor;
+
+    cursor.prev_break = cursor.window.stop;
+    cursor.window = Window(cursor.window.stop, cursor.window.stop + context.options.MEOW_SIZE);
+
+    if (room_to_initialize(context, state))
+        return Phase::Initialize;
+
+    return end_catch_because(state, Exit::NoRoomToInitialize);
+}
+
+Phase end_catch(const Context& context, State& state)
+{
+    const Series& series = state.series;
+    const index_t prev_break = state.cursor.prev_break;
+
+    if (prev_break + state.cadence.peek < series.size()) {
+        auto window_1 = Window(prev_break, series.size());
+        ChangeModel result = catch_segment(
+            series.dates(),
+            series.spectral(),
+            window_1,
+            context.options.COEFFICIENT_MIN,
+            CurveQA::End,
+            context.lasso,
+            context.solver
+        );
+        state.segments.push_back(std::move(result));
+    }
+    return Phase::Done;
+}
+
+//------------------------------------------------------------------------------
+// The machine
+//------------------------------------------------------------------------------
+
+Phase Machine::step(const Context& context, State& state)
+{
+    switch (state.phase)
+    {
+        case Phase::Prepare:     return prepare(context, state);
+        case Phase::Initialize:  return initialize(context, state);
+        case Phase::Lookback:    return lookback(context, state);
+        case Phase::StartCatch:  return start_catch(context, state);
+        case Phase::Lookforward: return lookforward(context, state);
+        case Phase::Restart:     return restart(context, state);
+        case Phase::EndCatch:    return end_catch(context, state);
+        case Phase::Done:        break;
+    }
+    assert(false && "step() on a Done machine");
+    return Phase::Done;
+}
+
+FitResult run(const Context& context, State& state, ProcessingMask mask)
+{
+    state.reset(context.pixel, std::move(mask));
+    drive<Machine>(context, state);
+    return state.take_result();
 }
 
 } // namespace standard
@@ -476,183 +822,14 @@ FitResult StandardProcedure::run(
     LassoWorkspace& lworkspace,
     LassoSolver& solver
 ) {
-    FitResult results;
-
-    const auto& options = hworkspace.options();
-
-    // validate() refuses less: Lookback's far peek reads PEEK_SIZE - 1
-    // observations and both peeks read their first magnitude.
-    assert(options.PEEK_SIZE >= 2);
-
-    LOG_DEBUG("num obs: " << hworkspace.dates().size());
-    LOG_DEBUG("Processing mask initial count: " << mask.count());
-    //----------------------------------------------------------
-    // Not enough observations
-    //----------------------------------------------------------
-    if (mask.count() <= options.MEOW_SIZE)
-    {     
-        LOG_DEBUG("Processing Mask: " << mask.data());        
-        LOG_DEBUG("mask count < meow size" << mask.count());
-        return {};
-    }
-
-    series_.reset(hworkspace, std::move(mask));
-
-    //----------------------------------------------------------
-    // Statistics window: the observations dated <= STAT_ORD
-    // (views, no copy)
-    //----------------------------------------------------------
-    const index_t stat_count = series_.count_until(options.STAT_ORD);
-    LOG_DEBUG("Stat mask count: " << stat_count);
-
-    const auto stat_dates =
-        series_.dates().slice(range(index_t{0}, stat_count));
-
-    const auto stat_spectral =
-        series_.spectral().slice(all(), range(index_t{0}, stat_count));
-
-    LOG_DEBUG("stat dates: " << stat_dates);
-
-    //----------------------------------------------------------
-    // The pixel's cadence and variogram, read by every step
-    // below; the caller's options are never written
-    //----------------------------------------------------------
-    const standard::Cadence cadence =
-        standard::measure_cadence(stat_dates, options);
-
-    assert(cadence.peek >= options.PEEK_SIZE);
-    LOG_DEBUG("Peek size: " << cadence.peek);
-    LOG_DEBUG("Chng thresh: " << cadence.change_threshold);
-
-    const Variogram variogram{
-        adjusted_variogram(
-            stat_dates,
-            stat_spectral,
-            options.VARIOGRAM_MIN_LAG_DAYS
-        )
+    const standard::Context context{
+        hworkspace.options(),
+        hworkspace,
+        lworkspace,
+        solver
     };
 
-    if (!variogram.usable())
-    {   
-        LOG_DEBUG("variogram has nans");
-        return {};
-    }
-    LOG_DEBUG("Variogram values: " << variogram.bands);
-
-    // Initialise's criteria: the options' and this pixel's change threshold,
-    // with the 4-coefficient stability fits pyccd hard-codes (quirk 4).
-    const InitializeCriteria init_criteria{
-        options.MEOW_SIZE,
-        options.DAY_DELTA,
-        options.TMASK_BANDS,
-        options.T_CONST,
-        options.DETECTION_BANDS,
-        4,
-        cadence.change_threshold
-    };
-
-    // initialize processing context
-    bool start = true;
-    index_t prev_break = 0;
-    index_t num_bands = series_.spectral().extent(0);
-    auto window = Window(0, options.MEOW_SIZE);
-
-    // window.stop <= observations - MEOW_SIZE, written without the
-    // subtraction: index_t is unsigned, and observations < MEOW_SIZE would
-    // wrap it to a huge bound.
-    while(window.stop + options.MEOW_SIZE <= series_.size())
-    {   
-        LOG_DEBUG("Initialize for change model #: " << results.models.size());
-        if (!results.models.empty()) {
-            start = false;
-        }
-
-        std::vector<LassoResult> init_models(num_bands);
-        auto initialized = initialize(
-            series_,
-            window,
-            init_criteria,
-            variogram,
-            lworkspace,
-            solver,
-            init_models
-        );
-
-        if (!initialized) {
-            LOG_DEBUG("Model initialization failed");
-            break;
-        }
-
-        if (window.start > prev_break)
-        {
-            standard::lookback(
-                series_,
-                window,
-                prev_break,
-                init_models,
-                cadence,
-                variogram,
-                options,
-                peek_basis_
-            );
-        }
-
-        if ((window.start - prev_break > cadence.peek)  && start)
-        {   
-            auto window_0 = Window(prev_break, window.start);
-            ChangeModel result = catch_segment(
-                series_.dates(),
-                series_.spectral(),
-                window_0,
-                options.COEFFICIENT_MIN,
-                CurveQA::Start,
-                lworkspace,
-                solver
-            );
-            // append result
-            start = false;
-            results.models.push_back(std::move(result));
-        }
-
-        if (window.stop + cadence.peek > series_.size()) {
-            break;
-        }
-
-        ChangeModel result = standard::lookforward(
-            series_,
-            window,
-            cadence,
-            variogram,
-            options,
-            peek_basis_,
-            lworkspace,
-            solver
-        );
-        results.models.push_back(std::move(result));
-        //--------------------------------------------------
-        // iterate
-        //--------------------------------------------------
-        prev_break = window.stop;
-        window = Window(window.stop, window.stop + options.MEOW_SIZE);
-    }
-    // --------------------------------
-    // End catch
-    // --------------------------------
-    if (prev_break + cadence.peek < series_.size()) {
-        auto window_1 = Window(prev_break, series_.size());
-        ChangeModel result = catch_segment(
-            series_.dates(),
-            series_.spectral(),
-            window_1,
-            options.COEFFICIENT_MIN,
-            CurveQA::End,
-            lworkspace,
-            solver
-        );
-        results.models.push_back(std::move(result));
-    }
-    results.mask = series_.take_mask();
-    return results;
+    return standard::run(context, state_, std::move(mask));
 }
 
 } // namespace ccd

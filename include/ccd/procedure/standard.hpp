@@ -1,8 +1,13 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include "ccd/harmonic/filter.hpp"
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/kernels.hpp"
+#include "ccd/procedure/machine.hpp"
 #include "ccd/procedure/series.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 
@@ -95,37 +100,224 @@ void change_magnitude(
     std::vector<scalar_t>& magnitude
 );
 
-// Lookback: extends `window` backward towards prev_break one observation at
-// a time, testing the observations before it against `models`, the
-// initialisation fits (their RMSE is the comparison RMSE). Stops at
-// prev_break or on a change (returns true); drops an outlier from `series`
-// and tests again. `peek_basis` is scratch.
-bool lookback(
-    Series& series,
-    Window& window,
-    index_t prev_break,
-    const std::vector<LassoResult>& models,
-    const Cadence& cadence,
-    const Variogram& variogram,
-    const HarmonicOptions& options,
-    HarmonicBasis& peek_basis
-);
+//==============================================================================
+//
+// The Standard machine
+//
+// pyccd's standard procedure as a per-pixel state machine. drive()
+// (machine.hpp) steps it from Prepare to Done; each phase's transition does
+// its work on the State and returns the next phase. Lookback, Lookforward
+// and Initialize still run their whole loop in one call.
+//
+//     Prepare ──┬─────────────────────────────────────────────► Done
+//               │  (too few observations, or a NaN variogram)
+//               ▼
+//     ┌──► Initialize ── exhausted ───────────────────┐
+//     │         │ stable                              │
+//     │         ▼                                     │
+//     │     Lookback (when window.start > prev_break) │
+//     │         ▼                                     │
+//     │     StartCatch (first segment only)           │
+//     │         │ no full peek after the window ──────┤
+//     │         ▼                                     │
+//     │     Lookforward                               │
+//     │         ▼                                     ▼
+//     └── Restart ── no room to initialize ──────► EndCatch ──► Done
+//
+// Prepare enters Initialize, or EndCatch when there is no room; StartCatch
+// and the peek guard follow Lookback, or the stable start directly.
+//
+//==============================================================================
 
-// Extend: grows `window` one observation at a time while a full peek fits
-// in the series, refitting every band on the refit schedule and testing the
-// peek after the window; drops an outlier at the first peek observation and
-// tests again. Returns the segment, change probability 1 on a change and 0
-// at the series end. `peek_basis` is scratch.
-ChangeModel lookforward(
-    Series& series,
-    Window& window,
-    const Cadence& cadence,
-    const Variogram& variogram,
-    const HarmonicOptions& options,
-    HarmonicBasis& peek_basis,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver
-);
+enum class Phase : std::uint8_t
+{
+    Prepare,       // the early exits, the statistics window, cadence, variogram
+    Initialize,    // the start-window search (ccd::initialize)
+    Lookback,      // the backward extension towards prev_break
+    StartCatch,    // the leading observations of the first segment
+    Lookforward,   // the forward extension and its change test
+    Restart,       // the cursor after a segment
+    EndCatch,      // the trailing observations
+    Done
+};
+
+const char* to_string(Phase phase);
+
+// Why the machine stopped where it did: the early exits, and what ended the
+// segment loop (the routes into EndCatch). Internal: tests and the trace read
+// it, the result does not carry it.
+enum class Exit : std::uint8_t
+{
+    None,                 // still running
+    TooFewObservations,   // Prepare: at most MEOW_SIZE observations
+    VariogramNaN,         // Prepare: a NaN in the variogram
+    InitializeExhausted,  // Initialize: no stable window before the end
+    PeekBeyondEnd,        // no full peek after the stable window
+    NoRoomToInitialize    // no MEOW_SIZE window after the cursor
+};
+
+const char* to_string(Exit exit);
+
+// Lookback's buffers, kept for their capacity; every one is rewritten
+// before it is read.
+struct LookbackScratch
+{
+    std::vector<std::int64_t> peek_dates;
+    std::vector<scalar_t> peek_spectral;
+    std::vector<std::vector<scalar_t>> residuals;   // by band; detection bands written
+    std::vector<scalar_t> comp_rmse;                // by position in DETECTION_BANDS
+    std::vector<scalar_t> magnitude;
+};
+
+//------------------------------------------------------------------------------
+// State
+//
+// One pixel's record: everything that survives from one step to the next.
+// Its buffers keep their capacity across pixels; reset() starts a pixel.
+//------------------------------------------------------------------------------
+struct State
+{
+    Phase phase = Phase::Prepare;
+    Exit exit = Exit::None;
+
+    // The shared parts (machine.hpp).
+    Series series;
+    Cursor cursor;
+    std::vector<ChangeModel> segments;
+
+    // Standard's own: set in Prepare, read by every later phase.
+    Cadence cadence{};
+    Variogram variogram;
+
+    // Initialize's stable fits of the detection bands (indexed by band),
+    // which Lookback tests against.
+    std::vector<LassoResult> init_models;
+
+    // Whether no segment has been written yet: pyccd's `start` flag, equal
+    // to segments.empty() wherever it is read (asserted).
+    bool start = true;
+
+    // Scratch.
+    HarmonicBasis peek_basis;
+    LookbackScratch lookback;
+
+    // Starts a pixel: Prepare, no exit, the series of `workspace` that
+    // `mask` keeps, the cursor at 0, no segments.
+    void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);
+
+    // The pixel's result once Done: the segments and the processing mask,
+    // or no segments and an empty mask after an early exit (quirk 5, kept
+    // until 0.8.0). Moves them out.
+    FitResult take_result();
+};
+
+// One trace line's view of the record: cursor, observations, segments, exit.
+std::string summary(const State& state);
+
+//------------------------------------------------------------------------------
+// Context
+//
+// What the transitions read and use but never change the meaning of: the
+// caller's options (never written), the pixel, and the Lasso solver with its
+// workspace.
+//------------------------------------------------------------------------------
+struct Context
+{
+    const HarmonicOptions& options;
+    const HarmonicWorkspace& pixel;
+    LassoWorkspace& lasso;
+    LassoSolver& solver;
+};
+
+//------------------------------------------------------------------------------
+// Transitions: one per phase but Done. Each returns the next phase; a route
+// into EndCatch sets state.exit to why.
+//------------------------------------------------------------------------------
+
+// Done (TooFewObservations) when the series holds at most MEOW_SIZE
+// observations. Otherwise sets the cadence and the variogram from the
+// statistics window (the observations dated <= STAT_ORD); Done
+// (VariogramNaN) on a NaN in it. Puts the window at (0, MEOW_SIZE) and
+// prev_break at 0. Next: Initialize, or EndCatch (NoRoomToInitialize).
+Phase prepare(const Context& context, State& state);
+
+// ccd::initialize() from the window, with the 4-coefficient stability fits
+// pyccd hard-codes (quirk 4) and the cadence's change threshold, into
+// init_models. Next: after_stable_start(), or EndCatch
+// (InitializeExhausted).
+Phase initialize(const Context& context, State& state);
+
+// Extends the window backward towards prev_break one observation at a time,
+// testing the observations before it against init_models, whose RMSE is the
+// comparison RMSE (quirk 3). Stops at prev_break or on a change; drops an
+// outlier from the series and tests again. The peek reads PEEK_SIZE - 1
+// observations far from prev_break (quirk 1) and, near the series start,
+// down to position 0 even below prev_break (quirk 2). Next: after_lookback().
+Phase lookback(const Context& context, State& state);
+
+// Writes the Start segment over (prev_break, window.start) with
+// COEFFICIENT_MIN coefficients. Next: Lookforward, or EndCatch
+// (PeekBeyondEnd).
+Phase start_catch(const Context& context, State& state);
+
+// Grows the window one observation at a time while a full peek fits in the
+// series, refitting every band on the refit schedule and testing the peek
+// after the window; drops an outlier at the first peek observation and tests
+// again. Writes the segment: change probability 1 on a change, 0 at the
+// series end. Next: Restart.
+Phase lookforward(const Context& context, State& state);
+
+// prev_break moves to window.stop and the window to (stop, stop +
+// MEOW_SIZE). Next: Initialize, or EndCatch (NoRoomToInitialize).
+Phase restart(const Context& context, State& state);
+
+// Writes the End segment over (prev_break, size) with COEFFICIENT_MIN
+// coefficients when prev_break + peek < size. Next: Done.
+Phase end_catch(const Context& context, State& state);
+
+//------------------------------------------------------------------------------
+// Routing: the guards between phases, in the order the procedure tests them.
+//------------------------------------------------------------------------------
+
+// Room for a start window after the cursor: window.stop + MEOW_SIZE <= size.
+bool room_to_initialize(const Context& context, const State& state);
+
+// A full peek after the window: window.stop + peek <= size.
+bool peek_fits(const State& state);
+
+// The first segment's leading observations need a Start segment: no
+// segment yet and window.start - prev_break > peek.
+bool start_catch_due(const State& state);
+
+// After a stable start: Lookback when window.start > prev_break, else
+// after_lookback().
+Phase after_stable_start(const Context& context, State& state);
+
+// After Lookback: StartCatch when start_catch_due(), else
+// before_lookforward().
+Phase after_lookback(const Context& context, State& state);
+
+// The peek guard: Lookforward when peek_fits(), else EndCatch
+// (PeekBeyondEnd).
+Phase before_lookforward(const Context& context, State& state);
+
+//------------------------------------------------------------------------------
+// The machine, for drive(), and one pixel's run of it.
+//------------------------------------------------------------------------------
+struct Machine
+{
+    using Context = standard::Context;
+    using State = standard::State;
+    using Phase = standard::Phase;
+
+    static constexpr const char* name = "standard";
+
+    // The transition of state.phase, which is not Done.
+    static Phase step(const Context& context, State& state);
+};
+
+// Resets `state` for `mask`, drives it to Done and returns its result.
+FitResult run(const Context& context, State& state, ProcessingMask mask);
 
 } // namespace standard
 
@@ -133,10 +325,8 @@ ChangeModel lookforward(
 //
 // StandardProcedure
 //
-// pyccd's standard procedure: the start-window search (ccd::initialize),
-// the backward extension (standard::lookback), the start and end catches
-// (ccd::catch_segment) and the forward extension with its change test
-// (standard::lookforward), over the pixel's Series.
+// pyccd's standard procedure: the facade of the Standard machine
+// (standard::run()), with the FitProcedure signatures.
 //
 //==============================================================================
 
@@ -196,13 +386,10 @@ protected:
 private:
 
     //----------------------------------------------------------------------
-    // The pixel's processing mask and kept observations, which the steps
-    // share and change only through it, and the peek bases' storage.
-    // Members so that their buffers keep their capacity across the pixels
-    // one procedure object runs.
+    // The machine's record, a member so that its buffers keep their
+    // capacity across the pixels one procedure object runs.
     //----------------------------------------------------------------------
-    Series series_;
-    HarmonicBasis peek_basis_;
+    standard::State state_;
 };
 
 inline scalar_t span(
