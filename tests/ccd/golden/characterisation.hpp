@@ -145,7 +145,7 @@ inline CharPixel make_char_pixel(
 // gaps of 4-6 days. A break at observation 13 with a decaying transient after
 // it, so the second Initialize shifts and its Lookback starts at or below
 // PEEK_SIZE with prev_break = 13.
-inline CharPixel lookback_below_break(std::uint64_t seed, std::int64_t gap)
+inline CharPixel lookback_near_break(std::uint64_t seed, std::int64_t gap)
 {
     Rng r(seed * 7919 + 17);
     std::vector<std::int64_t> d;
@@ -161,7 +161,7 @@ inline CharPixel lookback_below_break(std::uint64_t seed, std::int64_t gap)
     for (int i = 0; i < k; ++i)
         s.spikes.push_back({13 + static_cast<std::size_t>(i), r.uniform(100, 1500) * (k - i) / k});
 
-    return make_char_pixel("lookback_below_break", d, s);
+    return make_char_pixel("lookback_near_break", d, s);
 }
 
 // 243 observations 3 days apart (2010-2012), then 45 30 days apart: the
@@ -394,8 +394,8 @@ inline std::vector<CharPixel> characterisation_pixels()
         p.h.COEFFICIENT_MIN = 6;
         out.push_back(std::move(p));
     }
-    out.push_back(lookback_below_break(2, 5));
-    out.push_back(dense_random("lookback_below_break_decides", 732));
+    out.push_back(lookback_near_break(2, 5));
+    out.push_back(dense_random("lookback_near_break_decides", 732));
     out.push_back(sparse_random("lookback_far_peek_decides", 172));
     out.push_back(peek_guard_tail(46));
     out.push_back(series_end_after_outlier(53, 0));

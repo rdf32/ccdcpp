@@ -109,7 +109,7 @@ M 729287 734247 734247 308 0x0p+0 8
  3 0x1.91c698f8a1151p+11 0x1.1543e32a63843p+6 0x1.20c92af0e6ap+5 -0x1.b5d2dfa8b00f9p-9 -0x1.69096bf640d9cp+6 0x1.78bf687618a33p+6 0x0p+0 0x1.0dcb720083d71p+2 0x1.a91bae33f21adp+3 0x0p+0
  3 -0x1.1d2147f93c8cp+13 0x1.b5062ff048e5cp+7 0x1.4f938d8ac362p+7 0x1.c07c6e701d015p-9 0x1.8c9f943793b84p+8 -0x1.abf49c2574d4p+8 0x0p+0 0x1.37b31c297df7ep+4 -0x1.9af48690ae9f4p+4 0x0p+0
 K 458 fffffffffefffffffffffffffffffffff7ffffffffffffbffffffffffffffffffffffffff7fffffffffffffffffffffffffffffffffffffeff3
-P transitions:lookback_below_break 2
+P transitions:lookback_near_break 2
 M 730000 730408 730413 13 0x1p+0 4
  10 0x1.511bd3afb5096p+14 0x1.3171c6d2c294dp+4 0x1.a39072275079ep+7 -0x1.da21cd10204cbp-6 -0x1.c02b7eefbd0d4p+6 0x1.ffec92eace23ap+5 0x0p+0 0x0p+0 0x0p+0 0x0p+0
  6 -0x1.9ff002defdadap+16 0x1.4bb64242c6ae7p+5 0x1.d281b32239ac4p+7 0x1.2cc701402fa33p-3 0x1.ce007dd7d2267p+4 0x1.c2999e580fd14p+7 0x0p+0 0x0p+0 0x0p+0 0x0p+0
@@ -127,7 +127,7 @@ M 730438 732818 732818 477 0x0p+0 8
  4 0x1.9e26e66b370a5p+12 0x1.c98591d9e36e8p+5 0x1.263fcb66b94ep+5 -0x1.c4a6eb401bb9ep-8 -0x1.6ce7181402d56p+7 -0x1.03de9bcfeb32ap+8 0x0p+0 0x1.f52c232060295p+1 -0x1.8907ca4f11de4p+1 0x0p+0
  4 -0x1.4feba550b7901p+12 0x1.7efcb1d1241c5p+7 0x1.1ff90ac5c416p+7 0x1.b9710dfaf329dp-10 -0x1.731b8680b9ebbp+7 0x1.47d98b49d9bf8p+10 0x0p+0 -0x1.fae45a5a3f2c4p+2 0x0p+0 -0x1.cbb320d3511c7p+2
 K 513 fff7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff1
-P transitions:lookback_below_break_decides 3
+P transitions:lookback_near_break_decides 3
 M 732000 732528 732531 22 0x1p+0 6
  8 0x1.af83a658a7771p+6 0x1.fb453668dc18ap+3 0x1.1b225d182de08p+10 0x1.eb8cb0b986426p-12 -0x1.0b627efb708bfp+5 -0x1.796bd246da815p+5 0x0p+0 0x0p+0 0x0p+0 0x0p+0
  9 -0x1.4540fcd11f5bp+14 0x1.418e4f15b2484p+4 0x1.18c295af2e8fcp+10 0x1.e252d3f5b2a94p-6 -0x1.0174a0bd5303bp+1 0x1.69de9da60b2c5p+6 0x0p+0 -0x1.99ee44e74c40ep-1 0x0p+0 0x0p+0
@@ -152,7 +152,7 @@ M 733236 733965 733965 242 0x0p+0 8
  6 -0x1.5db4368a9c386p+14 0x1.13f1957bf5d23p+5 0x1.5c9102d882a4p+4 0x1.0c58b60148f13p-5 0x1.d985ff7dff6cbp+7 0x1.ccf95fcaef979p+2 0x0p+0 0x1.1a5bde7a76bcfp+1 0x0p+0 0x0p+0
  6 0x1.9b030990d7e06p+12 0x1.edc9cfc910375p+4 0x1.caecfe41f61p+4 -0x1.f6c5124fcad5dp-8 -0x1.b363b4daf033bp+5 -0x1.1ff3cde24ae4p+7 0x1.3372db5d27649p+0 0x1.cabf932bdc2a6p-1 0x0p+0 -0x1.e729aee5089c3p+0
  5 -0x1.154287a5c4df4p+15 0x1.651fb8203e5bep+6 0x1.1393955a9c2f8p+6 0x1.7915f68408ba3p-5 -0x1.e670ecdc3beadp+8 0x1.9305742c36598p+8 0x0p+0 0x1.8b9df674ef9adp+2 -0x1.1b5984ef916e4p-2 -0x1.5e18714127eb7p+2
-K 565 fffbf700000000000ffffffffffffffbffffffffffffffffffffffdfffffffffffffffffffffffffdfffffffffffffffffffffffffffffeffffffffffffffffffffff100000000
+K 565 fffbffbf300000000ffffffffffffffbffffffffffffffffffffffdfffffffffffffffffffffffffdfffffffffffffffffffffffffffffeffffffffffffffffffffff100000000
 P transitions:lookback_far_peek_decides 3
 M 727003 728587 728603 99 0x1p+0 8
  6 -0x1.fd70a04079b7dp+12 0x1.21ee9da5a6fbp+5 0x1.4aacac9bc6b1cp+10 0x1.834e86dfc8f81p-7 -0x1.0bbb757f94efdp+6 -0x1.bb170f44767aap+6 -0x1.8fc70518cbeb4p+0 -0x1.bb9ddbda6e59ep+0 -0x1.5b1c3246ea15ap+1 0x1.3b8040ff69e49p-1

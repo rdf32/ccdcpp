@@ -474,9 +474,7 @@ ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek
         return ReversePeek{start, static_cast<std::ptrdiff_t>(window_start) -
                                   static_cast<std::ptrdiff_t>(peek) - 1};
 
-    if (window_start <= peek)
-        return ReversePeek{start, -1};
-
+    // Near the break: start - 1 down to prev_break, never below it.
     return ReversePeek{start, static_cast<std::ptrdiff_t>(prev_break) - 1};
 }
 

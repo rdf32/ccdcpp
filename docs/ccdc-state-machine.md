@@ -106,7 +106,7 @@ The guards inside one call, in the order they are tested:
   window stays); the first magnitude above `OUTLIER_THRESHOLD` (`Dropped`, the observation
   before the window leaves the series); otherwise `Included` (`window.start - 1`). The peek
   window is `lookback_peek`'s: far from the previous break, the adjusted peek of observations
-  before the window. The comparison RMSE is the stable start window's: nothing is
+  before the window; near it, down to the previous break and never below. The comparison RMSE is the stable start window's: nothing is
   refitted while the window grows backward, as in Zhu's TrendSeasonalFit.
 - **Extend** (`extend_step`): first the refit schedule (refit when untrained, below
   `RETRAIN_MIN_OBS` observations, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
@@ -259,7 +259,6 @@ test:
 
 | Quirk | Where it is |
 |---|---|
-| Lookback's peek near the series start reads below the previous break | `lookback_peek`, second case |
 | The early exits return an empty processing mask | `State::take_result`; `fit_whole_series` |
 | The series-end check before Extend's grow is dead; a series-end segment's end day is its break day; Restart re-enters Initialize after it | the assert in `extend_step`; `write_extended_segment` |
 | Extend refits while the window holds fewer than `RETRAIN_MIN_OBS` observations but compares against the model RMSE while it holds at most that many | `extend_step` |

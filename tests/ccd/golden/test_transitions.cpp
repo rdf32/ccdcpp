@@ -38,7 +38,6 @@
 // The pyccd quirks the code still keeps, numbered as in the design notes
 // (each is fixed in 0.8.0):
 //
-//   2  near the series start, Lookback's peek reads below the previous break
 //   5  the early exits return an empty processing mask
 //   6  the series-end check in Extend is dead (a), so a series-end segment's
 //      end day is its break day (b), and after it the outer guard passes
@@ -50,7 +49,9 @@
 //
 // Rules where pyccd's intent is kept over its literals, under the same
 // numbers: far from the previous break Lookback peeks the adjusted peek of
-// observations, as Extend does (1); Lookback compares against the stable
+// observations, as Extend does (1); near it, Lookback peeks down to the
+// previous break and never below it, into the previous segment (2);
+// Lookback compares against the stable
 // start window's RMSE, refitting nothing (3); Initialize fits
 // COEFFICIENT_MIN coefficients and both peek bases are COEFFICIENT_MAX wide
 // (4).
@@ -79,7 +80,7 @@
 //     too few -> Done, empty mask        standard_too_few (12 <= MEOW_SIZE)
 //     peek not adjusted                  start_catch, series_end_after_outlier
 //     peek adjusted 7-12                 corpus c8:dn:0,0
-//     peek adjusted 13-25                lookback_below_break (19),
+//     peek adjusted 13-25                lookback_near_break (19),
 //                                        peek_guard_tail (19)
 //     peek adjusted >= 26                reentry_after_series_end (32)
 //     variogram lag raised               start_catch and most Standard pixels
@@ -90,62 +91,63 @@
 //   Initialize
 //     grow: span < DAY_DELTA             start_catch, peek_guard_tail, ...
 //     grow: Tmask flags all              corpus c8:dn:2,3
-//     grow: candidate too short in time  lookback_below_break, reentry_*
+//     grow: candidate too short in time  lookback_near_break, reentry_*
 //     grow: candidate too few samples    corpus pyccd:dn
-//     Tmask commit                       lookback_below_break, reentry_*
+//     Tmask commit                       lookback_near_break, reentry_*
 //     shift: unstable                    start_catch, constant_detection_band
 //                                        (red constant: 0/0 in stable(), so
 //                                        never stable)
 //     stable                             every pixel with a segment from
 //                                        Extend
 //     exhausted, no segment -> EndCatch  constant_detection_band
-//     exhausted after a segment -> EndCatch  lookback_below_break_decides (after
+//     exhausted after a segment -> EndCatch  lookback_near_break_decides (after
 //                                        a re-entry); corpus c2:c2
 //   Lookback
 //     skipped (start == prev_break)      series_end_after_outlier, ...
 //     peek far: the adjusted peek (rule 1)  start_catch,
 //                                        lookback_far_peek_decides
-//     peek to index 0, prev_break == 0   peek_guard_tail
-//     peek to index 0 BELOW prev_break (quirk 2)  lookback_below_break,
-//                                        lookback_below_break_decides
+//     peek to prev_break == 0            peek_guard_tail
+//     peek to prev_break > 0, window
+//       start <= peek (rule 2)           lookback_near_break,
+//                                        lookback_near_break_decides
 //     peek to prev_break                 reentry_after_series_end
 //     change, first segment              start_catch
 //     change, later segment: the
 //       observations between the break
-//       and the window are in no segment lookback_below_break
+//       and the window are in no segment lookback_near_break
 //     outlier drop                       reentry_after_series_end; corpus
 //                                        bounds:dn
-//     include one                        lookback_below_break, peek_guard_tail
+//     include one                        lookback_near_break, peek_guard_tail
 //     reached prev_break                 peek_guard_tail, reentry_*
 //     compares against the start
 //       window's RMSE (rule 3)           every Lookback step above
 //   StartCatch
 //     emits a Start segment              start_catch; corpus bounds:dn
 //     off: gap <= peek                   every first segment but start_catch
-//     off: later segment                 peek_guard_tail, lookback_below_break
+//     off: later segment                 peek_guard_tail, lookback_near_break
 //   Peek guard
 //     pass                               every pixel with an Extend segment
 //     fail -> EndCatch                   peek_guard_tail
 //   Extend
 //     refit: untrained / < RETRAIN_MIN_OBS / span factor
-//                                        lookback_below_break (all three)
+//                                        lookback_near_break (all three)
 //     no refit; no refit at exactly
 //       RETRAIN_MIN_OBS (quirk 7)        lookback_far_peek_decides;
 //                                        corpus pyccd:dn
 //     compare: model RMSE (<= 24 obs)    series_end_after_outlier
 //     compare: seasonal RMSE             series_end_after_outlier
 //     coefficients 4 / 6 / 8             select_clear_at_threshold (4, 6),
-//                                        lookback_below_break (4, 8)
+//                                        lookback_near_break (4, 8)
 //     COEFFICIENT_MIN Initialize,
 //       COEFFICIENT_MAX peek basis
 //       (rule 4)                         every Extend step above; with
 //                                        COEFFICIENT_MIN = 6,
 //                                        coefficient_min_6
-//     change                             lookback_below_break, peek_guard_tail
+//     change                             lookback_near_break, peek_guard_tail
 //     outlier drop                       series_end_after_outlier
 //     grow                               every Extend
 //     series end after a grow: end day
-//       == break day (quirk 6b)          lookback_below_break,
+//       == break day (quirk 6b)          lookback_near_break,
 //                                        reentry_after_series_end
 //     series end after an outlier drop:
 //       break day after the dropped one  series_end_after_outlier
@@ -154,7 +156,7 @@
 //     the dead series-end check (quirk 6a)   never taken (an assert in
 //                                        standard::extend's grow)
 //   Restart
-//     room -> Initialize                 lookback_below_break, peek_guard_tail
+//     room -> Initialize                 lookback_near_break, peek_guard_tail
 //     no room -> EndCatch                start_catch, ...
 //     room after a series-end segment
 //       (quirk 6c: the guard passes at
@@ -176,8 +178,6 @@
 // dump changes, so the 0.8.0 work knows which pins it is expected to move and
 // a refactor that moves one of them has changed behaviour.
 //
-//   2  Lookback stops at prev_break    lookback_below_break_decides
-//                                      (golden corpus: none)
 //   5  early exits keep the mask       variogram_nan; standard_too_few and
 //                                      128 corpus pixels; snow_too_few and 18
 //                                      corpus pixels
@@ -189,7 +189,7 @@
 //
 // Off the fixture platform PathsAsDocumented still fails on each fix alone:
 // 1, 5 and 6 through the shapes and masks, 2 through
-// lookback_below_break_decides's mask count, 7 through the RMSE values of
+// lookback_near_break_decides's mask count, 7 through the RMSE values of
 // lookback_far_peek_decides (checked by applying each to v0.6.1).
 //
 //==============================================================================
@@ -321,8 +321,8 @@ TEST(Transitions, InputsAreTheSameOnEveryPlatform)
         {"constant_detection_band", 0x7fc72ef9b305ecfbull},
         {"start_catch", 0xf7ca2b6b44163a39ull},
         {"coefficient_min_6", 0xc6fe65d8c948ae77ull},
-        {"lookback_below_break", 0xaa29a7010494c9b1ull},
-        {"lookback_below_break_decides", 0x2de711abc976bdfdull},
+        {"lookback_near_break", 0xaa29a7010494c9b1ull},
+        {"lookback_near_break_decides", 0x2de711abc976bdfdull},
         {"lookback_far_peek_decides", 0xcbd41435e2ee30deull},
         {"peek_guard_tail", 0xd019800e2ee6f191ull},
         {"series_end_after_outlier", 0x73e2bfe02ecda114ull},
@@ -443,12 +443,13 @@ TEST(Transitions, PathsAsDocumented)
         EXPECT_EQ(r.models[0].break_day, r.models[1].start_day);
     }
 
-    // Lookback below prev_break (quirk 2), after a change: the observations
-    // between the first break and the second segment belong to no segment.
+    // Lookback near prev_break at a dense cadence (rule 2), after a change:
+    // the observations between the first break and the second segment
+    // belong to no segment.
     {
-        const auto& p = pixel(all, "lookback_below_break");
+        const auto& p = pixel(all, "lookback_near_break");
         const auto r = run_detect(p);
-        expect_shapes("lookback_below_break", r, {{4, 1.0, 13}, {8, 0.0, 477}});
+        expect_shapes("lookback_near_break", r, {{4, 1.0, 13}, {8, 0.0, 477}});
         EXPECT_LT(r.models[0].break_day, r.models[1].start_day);
         EXPECT_EQ(r.models[1].end_day, r.models[1].break_day);   // series end after a grow (quirk 6b)
     }
@@ -457,12 +458,14 @@ TEST(Transitions, PathsAsDocumented)
     // shapes, so a path change reads as one even off the fixture platform,
     // and where a fix keeps the shapes, what it does move.
     {
-        // Fix 2 keeps every segment and moves only the mask: it keeps 10
-        // more observations (493).
-        const auto r = run_detect(pixel(all, "lookback_below_break_decides"));
-        expect_shapes("lookback_below_break_decides", r,
+        // Rule 2 decides only the mask: Lookback near the break reads no
+        // observation of the previous segment, so it drops none that
+        // reading below the break would (493 kept; 483 when it reads
+        // below).
+        const auto r = run_detect(pixel(all, "lookback_near_break_decides"));
+        expect_shapes("lookback_near_break_decides", r,
             {{6, 1.0, 22}, {8, 1.0, 188}, {8, 0.0, 242}});
-        EXPECT_EQ(r.mask.count(), 483u);
+        EXPECT_EQ(r.mask.count(), 493u);
     }
     {
         // Rule 1 decides the shapes: the second segment's Lookback, peeking

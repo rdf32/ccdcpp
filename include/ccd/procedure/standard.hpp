@@ -187,14 +187,12 @@ struct ReversePeek
     std::ptrdiff_t stop;
 };
 
-// pyccd's three cases, in its order, for a window starting at
-// `window_start` > prev_break:
+// Two cases, for a window starting at `window_start` > prev_break; neither
+// reads below prev_break, into the previous segment:
 //
 //   * window_start - prev_break > peek: start - 1 down to start - peek, the
 //     adjusted peek (Cadence::peek) of observations, as Extend's;
-//   * else window_start <= peek: start - 1 down to position 0, below
-//     prev_break when prev_break > 0 (quirk 2);
-//   * else: start - 1 down to prev_break.
+//   * else: start - 1 down to prev_break (stop is -1 when prev_break is 0).
 ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek);
 
 // What one Lookback step did, in the order it tests them.

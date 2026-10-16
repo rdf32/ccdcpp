@@ -4,6 +4,14 @@
 
 ### Changed (pyccd's intent, not its literals)
 
+- Near the previous break Lookback peeks down to the break and never below
+  it, into the previous segment, as Zhu's TrendSeasonalFit does. pyccd's
+  guard against reading past the series start (`start <= peek`) also fired
+  after a break, which needs an adjusted peek of 13 or more (a median gap
+  under about 7.4 days: HLS, not Landsat). Pins moved: in the transitions
+  fixture, `lookback_near_break_decides` keeps 493 observations in its mask
+  (was 483), every segment unchanged; it and `lookback_near_break` are
+  renamed from `lookback_below_break*`; no golden dump.
 - Far from the previous break, Lookback peeks the adjusted peek of
   observations before the window, as Extend peeks after it. pyccd's
   `slice(start - 1, start - peek, -1)` reads one fewer, a porting slip

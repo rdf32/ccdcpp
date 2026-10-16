@@ -563,7 +563,7 @@ TEST(StandardInitialize, AnUnstableWindowShifts)
 // Lookback: one observation per call, one test per guard
 //------------------------------------------------------------------------------
 
-TEST(StandardLookback, ThePeekWindowFollowsPyccdsThreeCases)
+TEST(StandardLookback, ThePeekWindowNeverReadsBelowTheBreak)
 {
     using ccd::standard::lookback_peek;
 
@@ -573,16 +573,14 @@ TEST(StandardLookback, ThePeekWindowFollowsPyccdsThreeCases)
     EXPECT_EQ(far.start, 19);
     EXPECT_EQ(far.stop, 13);
 
-    // Near the series start: down to position 0, below prev_break when it is
-    // above 0 (quirk 2).
+    // Near the break: down to prev_break, at the series start (prev_break 0)
+    // as after a segment, however small the window's start.
     auto start = lookback_peek(5, 0, 6);
     EXPECT_EQ(start.start, 4);
     EXPECT_EQ(start.stop, -1);
-    auto below = lookback_peek(17, 13, 19);
-    EXPECT_EQ(below.start, 16);
-    EXPECT_EQ(below.stop, -1);
-
-    // Near the break, away from the start: down to prev_break.
+    auto small_start = lookback_peek(17, 13, 19);
+    EXPECT_EQ(small_start.start, 16);
+    EXPECT_EQ(small_start.stop, 12);
     auto near = lookback_peek(30, 26, 6);
     EXPECT_EQ(near.start, 29);
     EXPECT_EQ(near.stop, 25);
@@ -973,7 +971,7 @@ TEST(StandardExit, EachWayTheMachineStops)
         {"standard_no_room", Exit::NoRoomToInitialize},         // from Prepare
         {"start_catch", Exit::NoRoomToInitialize},              // from Restart
         {"constant_detection_band", Exit::InitializeExhausted}, // no segment
-        {"lookback_below_break_decides", Exit::InitializeExhausted},  // after one
+        {"lookback_near_break_decides", Exit::InitializeExhausted},  // after one
         {"peek_guard_tail", Exit::PeekBeyondEnd},
     };
 
