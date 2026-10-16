@@ -554,14 +554,14 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
             // nearest first, gathered into contiguous copies.
             {
                 std::vector<std::int64_t> rd;
-                std::vector<scalar_t> rs(B * (peek - 1));
-                for (index_t j = 0; j + 1 < peek; ++j)
+                std::vector<scalar_t> rs(B * peek);
+                for (index_t j = 0; j < peek; ++j)
                     rd.push_back(dates(fit.start - 1 - j));
                 for (index_t b = 0; b < B; ++b)
-                    for (index_t j = 0; j + 1 < peek; ++j)
-                        rs[b * (peek - 1) + j] = spectral(b, fit.start - 1 - j);
-                const auto pd = ccd::ArrayView<const std::int64_t, 1>::contiguous(rd.data(), {peek - 1});
-                const auto ps = ccd::ArrayView<const scalar_t, 2>::contiguous(rs.data(), {B, peek - 1});
+                    for (index_t j = 0; j < peek; ++j)
+                        rs[b * peek + j] = spectral(b, fit.start - 1 - j);
+                const auto pd = ccd::ArrayView<const std::int64_t, 1>::contiguous(rd.data(), {peek});
+                const auto ps = ccd::ArrayView<const scalar_t, 2>::contiguous(rs.data(), {B, peek});
 
                 std::vector<std::vector<scalar_t>> expected(B), got(B);
                 peek_loop(pd, ps, models, detection_bands, lworkspace, expected);

@@ -190,9 +190,8 @@ struct ReversePeek
 // pyccd's three cases, in its order, for a window starting at
 // `window_start` > prev_break:
 //
-//   * window_start - prev_break > peek: start - 1 down to start - peek + 1,
-//     peek - 1 observations, the adjusted peek (Cadence::peek) minus one
-//     (quirk 1);
+//   * window_start - prev_break > peek: start - 1 down to start - peek, the
+//     adjusted peek (Cadence::peek) of observations, as Extend's;
 //   * else window_start <= peek: start - 1 down to position 0, below
 //     prev_break when prev_break > 0 (quirk 2);
 //   * else: start - 1 down to prev_break.

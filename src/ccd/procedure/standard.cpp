@@ -360,9 +360,8 @@ Phase prepare(const Context& context, State& state)
     const auto& options = context.options;
     MaskedSeries& series = state.series;
 
-    // validate() refuses less: Lookback's far peek reads the adjusted peek
-    // minus one observations, at least PEEK_SIZE - 1, and both peeks read
-    // their first magnitude.
+    // validate() refuses less: the change test needs consecutive
+    // observations, and both peeks read their first magnitude.
     assert(options.PEEK_SIZE >= 2);
 
     LOG_DEBUG("num obs: " << context.pixel.dates().size());
@@ -467,15 +466,13 @@ ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek
 {
     assert(window_start > prev_break);
 
-    // Python:
-    // slice(window.start - 1,
-    //       window.start - peek_size,
-    //       -1)
     const auto start = static_cast<std::ptrdiff_t>(window_start) - 1;
 
+    // `peek` observations, start - 1 down to start - peek, all above
+    // prev_break.
     if ((window_start - prev_break) > peek)
         return ReversePeek{start, static_cast<std::ptrdiff_t>(window_start) -
-                                  static_cast<std::ptrdiff_t>(peek)};
+                                  static_cast<std::ptrdiff_t>(peek) - 1};
 
     if (window_start <= peek)
         return ReversePeek{start, -1};

@@ -4,6 +4,15 @@
 
 ### Changed (pyccd's intent, not its literals)
 
+- Far from the previous break, Lookback peeks the adjusted peek of
+  observations before the window, as Extend peeks after it. pyccd's
+  `slice(start - 1, start - peek, -1)` reads one fewer, a porting slip
+  (Zhu's TrendSeasonalFit tests `conse` observations both ways). Pins moved:
+  in the transitions fixture, `lookback_far_peek_decides` (renamed from
+  `lookback_peek_minus_one_decides`): its second segment's Lookback reaches
+  back to 127 observations (was 109), its mask keeps 294 (was 299); no golden
+  dump. `PEEK_SIZE` below 2 is still refused, now because a change needs
+  consecutive observations.
 - Initialize fits `COEFFICIENT_MIN` coefficients and both peek bases (Lookback's
   and Extend's) are `COEFFICIENT_MAX` wide, as in Zhu's TrendSeasonalFit
   (`min_num_c`, `max_num_c`), in place of pyccd's literals 4 and 8. The

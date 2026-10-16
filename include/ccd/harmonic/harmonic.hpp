@@ -57,9 +57,9 @@ struct HarmonicOptions
     //----------------------------------------------------------------------
     index_t MEOW_SIZE = 12;
 
-    // At least 2 (ccd::validate()): far from the previous break Lookback
-    // peeks the adjusted peek (never below PEEK_SIZE) minus one
-    // observations.
+    // At least 2 (ccd::validate()): a change is this many consecutive
+    // observations over the threshold, so 1 would make every outlier a
+    // change.
     index_t PEEK_SIZE = 6;
 
     std::int64_t DAY_DELTA = 365;

@@ -396,7 +396,7 @@ inline std::vector<CharPixel> characterisation_pixels()
     }
     out.push_back(lookback_below_break(2, 5));
     out.push_back(dense_random("lookback_below_break_decides", 732));
-    out.push_back(sparse_random("lookback_peek_minus_one_decides", 172));
+    out.push_back(sparse_random("lookback_far_peek_decides", 172));
     out.push_back(peek_guard_tail(46));
     out.push_back(series_end_after_outlier(53, 0));
     out.push_back(reentry_after_series_end(1995));

@@ -38,8 +38,6 @@
 // The pyccd quirks the code still keeps, numbered as in the design notes
 // (each is fixed in 0.8.0):
 //
-//   1  far from the previous break, Lookback peeks peek - 1 observations (the
-//      adjusted peek, Cadence::peek, minus one)
 //   2  near the series start, Lookback's peek reads below the previous break
 //   5  the early exits return an empty processing mask
 //   6  the series-end check in Extend is dead (a), so a series-end segment's
@@ -50,10 +48,12 @@
 //   7  Extend refits while the window has < RETRAIN_MIN_OBS observations but
 //      compares against the model RMSE while it has <= RETRAIN_MIN_OBS
 //
-// Two rules pyccd and Zhu's TrendSeasonalFit share, which the same numbers
-// name in the design notes: Lookback compares against the stable start
-// window's RMSE, refitting nothing (3); Initialize fits COEFFICIENT_MIN
-// coefficients and both peek bases are COEFFICIENT_MAX wide (4).
+// Rules where pyccd's intent is kept over its literals, under the same
+// numbers: far from the previous break Lookback peeks the adjusted peek of
+// observations, as Extend does (1); Lookback compares against the stable
+// start window's RMSE, refitting nothing (3); Initialize fits
+// COEFFICIENT_MIN coefficients and both peek bases are COEFFICIENT_MAX wide
+// (4).
 //
 // Which pixel takes which transition. The states are the machine's
 // (Select, the whole-series fit, Prepare, Initialize, Lookback, StartCatch,
@@ -103,8 +103,8 @@
 //                                        a re-entry); corpus c2:c2
 //   Lookback
 //     skipped (start == prev_break)      series_end_after_outlier, ...
-//     peek far: peek - 1 obs (quirk 1)   start_catch,
-//                                        lookback_peek_minus_one_decides
+//     peek far: the adjusted peek (rule 1)  start_catch,
+//                                        lookback_far_peek_decides
 //     peek to index 0, prev_break == 0   peek_guard_tail
 //     peek to index 0 BELOW prev_break (quirk 2)  lookback_below_break,
 //                                        lookback_below_break_decides
@@ -130,7 +130,7 @@
 //     refit: untrained / < RETRAIN_MIN_OBS / span factor
 //                                        lookback_below_break (all three)
 //     no refit; no refit at exactly
-//       RETRAIN_MIN_OBS (quirk 7)        lookback_peek_minus_one_decides;
+//       RETRAIN_MIN_OBS (quirk 7)        lookback_far_peek_decides;
 //                                        corpus pyccd:dn
 //     compare: model RMSE (<= 24 obs)    series_end_after_outlier
 //     compare: seasonal RMSE             series_end_after_outlier
@@ -176,8 +176,6 @@
 // dump changes, so the 0.8.0 work knows which pins it is expected to move and
 // a refactor that moves one of them has changed behaviour.
 //
-//   1  Lookback reads the full peek   lookback_peek_minus_one_decides
-//                                      (golden corpus: none)
 //   2  Lookback stops at prev_break    lookback_below_break_decides
 //                                      (golden corpus: none)
 //   5  early exits keep the mask       variogram_nan; standard_too_few and
@@ -186,13 +184,13 @@
 //   6a series-end check `>=`           7 of these pixels; 328 corpus pixels
 //   6c series end goes to EndCatch     reentry_after_series_end
 //                                      (golden corpus: none)
-//   7  refit while <= RETRAIN_MIN_OBS  lookback_peek_minus_one_decides;
+//   7  refit while <= RETRAIN_MIN_OBS  lookback_far_peek_decides;
 //                                      177 corpus pixels
 //
 // Off the fixture platform PathsAsDocumented still fails on each fix alone:
 // 1, 5 and 6 through the shapes and masks, 2 through
 // lookback_below_break_decides's mask count, 7 through the RMSE values of
-// lookback_peek_minus_one_decides (checked by applying each to v0.6.1).
+// lookback_far_peek_decides (checked by applying each to v0.6.1).
 //
 //==============================================================================
 
@@ -325,7 +323,7 @@ TEST(Transitions, InputsAreTheSameOnEveryPlatform)
         {"coefficient_min_6", 0xc6fe65d8c948ae77ull},
         {"lookback_below_break", 0xaa29a7010494c9b1ull},
         {"lookback_below_break_decides", 0x2de711abc976bdfdull},
-        {"lookback_peek_minus_one_decides", 0xcbd41435e2ee30deull},
+        {"lookback_far_peek_decides", 0xcbd41435e2ee30deull},
         {"peek_guard_tail", 0xd019800e2ee6f191ull},
         {"series_end_after_outlier", 0x73e2bfe02ecda114ull},
         {"reentry_after_series_end", 0x2b119249d8626b0full},
@@ -467,11 +465,13 @@ TEST(Transitions, PathsAsDocumented)
         EXPECT_EQ(r.mask.count(), 483u);
     }
     {
-        // Fix 1 moves the shapes; fix 7 only the first segment's fit.
-        const auto r = run_detect(pixel(all, "lookback_peek_minus_one_decides"));
-        expect_shapes("lookback_peek_minus_one_decides", r,
-            {{8, 1.0, 99}, {8, 1.0, 109}, {8, 0.0, 61}});
-        expect_rmse("lookback_peek_minus_one_decides", r, 0,
+        // Rule 1 decides the shapes: the second segment's Lookback, peeking
+        // the full adjusted peek, reaches back to 127 observations; fix 7
+        // moves only the first segment's fit.
+        const auto r = run_detect(pixel(all, "lookback_far_peek_decides"));
+        expect_shapes("lookback_far_peek_decides", r,
+            {{8, 1.0, 99}, {8, 1.0, 127}, {8, 0.0, 61}});
+        expect_rmse("lookback_far_peek_decides", r, 0,
             {36.24151163, 49.6614777, 47.72221929, 123.7609953, 68.2605607,
              66.3021312, 236.0055942});
     }

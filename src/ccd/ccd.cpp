@@ -215,10 +215,10 @@ void validate(const HarmonicOptions& options, index_t bands)
             );
         }
     }
-    // Both peeks read the magnitude of their first observation, and far
-    // from the previous break Lookback peeks the adjusted peek minus one
-    // observations, at least PEEK_SIZE - 1, so a PEEK_SIZE below 2 can leave
-    // a peek empty.
+    // A change is PEEK_SIZE consecutive observations that all exceed the
+    // threshold, and both peeks read the magnitude of their first: with a
+    // PEEK_SIZE of 1 a single outlier would be a change, and with 0 a peek
+    // would be empty.
     if (options.PEEK_SIZE < 2)
     {
         throw std::invalid_argument(
