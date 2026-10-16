@@ -946,6 +946,7 @@ void expect_same(const ccd::FitResult& a, const ccd::FitResult& b, const std::st
             EXPECT_EQ(x.bands[b].magnitude, y.bands[b].magnitude) << name << " " << m;
             EXPECT_EQ(x.bands[b].intercept, y.bands[b].intercept) << name;
             EXPECT_EQ(x.bands[b].coefficients, y.bands[b].coefficients) << name;
+            EXPECT_EQ(x.bands[b].iterations, y.bands[b].iterations) << name;
         }
     }
     ASSERT_EQ(a.mask.size(), b.mask.size()) << name;

@@ -59,7 +59,8 @@ struct BandFit
     index_t iterations = 0;
 };
 
-// The BandFit of a Lasso fit: its model, its RMSE and its magnitude.
+// The BandFit of a Lasso fit: its model's intercept, coefficients and
+// iteration count, its RMSE and its magnitude.
 BandFit band_fit(const LassoResult& fit);
 
 struct ChangeModel {
