@@ -551,8 +551,8 @@ CubeResult detect_cube_impl(
             auto qa_view =
                 qas.slice(fixed(row), fixed(col), all()); // T
 
-            LOG_DEBUG( 
-                << "thread " 
+            LOG_DEBUG(
+                "thread "
                 << omp_get_thread_num()
                 << " pixel "
                 << row << "," << col
