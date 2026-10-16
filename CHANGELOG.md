@@ -44,6 +44,22 @@
   `detection_magnitude` (the same sum in the same order) and reads the
   `Variogram` directly. The 8-coefficient peek bases stay at Standard's
   call sites.
+- The Standard procedure is a per-pixel state machine,
+  `ccd::standard::Machine` (`include/ccd/procedure/standard.hpp`): a
+  `State` record (phase, exit reason, `Series`, `Cursor`, segments,
+  `Cadence`, `Variogram`, the stable fits), a read-only `Context`, one
+  transition per phase (`prepare`, `initialize`, `lookback`, `start_catch`,
+  `lookforward`, `restart`, `end_catch`) and named routing between them.
+  `ccd::drive` (`include/ccd/procedure/machine.hpp`) is the one loop, for
+  this machine and any later one, and logs one DEBUG line per transition.
+  `Initialize`, `Lookback` and `Lookforward` still run their whole loop per
+  call. pyccd's `start` flag is `segments.empty()`. `standard::lookback` and
+  `standard::lookforward` are now these transitions. `StandardProcedure`'s
+  signatures are unchanged.
+- `ccd::standard::Detector` chooses each pixel's procedure from its QA
+  statistics (`select`) and fits it (`fit`); `DetectScratch::standard` is a
+  `Detector`. `FitProcedureType` is declared in `procedure/fit.hpp`.
+  `InitializeCriteria` holds its band lists by value.
 - Removed, unused: `update_processing_mask` (both overloads), and
   `remove_outliers` / `remove_observation` (now inside `Series`), the
   vector-returning `StandardProcedure::calc_residuals`, `Window::rewind`
@@ -73,6 +89,12 @@
   each shared kernel against the per-site loop it stands for, bit for bit,
   on the masked series of the pyccd reference pixel and the Collection 2
   pixel.
+- `tests/ccd/procedure/test_machine.cpp` (ctest `StandardRouting.*`,
+  `StandardPrepare.*`, `StandardExit.*`, `StandardMachine.*`,
+  `StandardDetector.*`): the machine's guards and routing from hand-built
+  records, its exit reason on the characterisation pixels that stop it each
+  way (each run also equal to `detect()`'s result), a record reused across
+  pixels, and the detector's procedure choice.
 - `tests/ccd/procedure/test_series.cpp` (ctest `Series.*`, `Variogram.*`,
   `StandardCadence.*`, `HarmonicWorkspace.*`): the records' contracts.
 - `tools/bench/`: the refactor's timing harness under version control: the
@@ -80,7 +102,9 @@
   real-cell bench (`bench_cell.py`), data paths as arguments, and the method
   in its README. Both benches refuse a `module_dir` that does not supply the
   `ccdcpp` they import (a wrong one timed the interpreter's installed
-  package), and `bench.sh` writes no temporary file.
+  package), and `bench.sh` writes no temporary file. `bench.sh` passes the bench's own
+  messages (its import check, a traceback) through its filter, and the
+  synthetic bench prints the `ccdcpp` file it timed.
 - The tests that read CSVs open them under the build directory by absolute
   path (`CCD_TEST_DATA_DIR`), so every test binary passes from any working
   directory, not only under ctest.
