@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Tests
+
+- `PrefixStability.*` (`tests/ccd/golden/test_prefix.cpp`): a run on the
+  observations up to a date T keeps every final segment of the run on the
+  whole series, bit for bit, with the same processing mask below its break
+  (both runs with `STAT_ORD` at min(`STAT_ORD`, T)). Final segments are the
+  Start segment and every segment up to the last that ended in a change.
+  Swept over the characterization and CSV pixels at every split date and
+  over the golden synthetic cubes at twelve.
+- `Transitions.InputsAreTheSameOnEveryPlatform` pins a fingerprint of each
+  characterization pixel's input. `sparse_random` drew two values in one
+  call's arguments, whose evaluation order is the compiler's (clang left to
+  right, GCC right to left), so its pixels differed on Linux and
+  `Transitions.PathsAsDocumented` failed there. The draws are sequenced in
+  clang's order: the Mac's pixels, and every fixture, are unchanged.
+- `Bands.ChangeThresholdTakesItsDegreesOfFreedom` compares the chi-squared
+  thresholds within 4 ulp: glibc and Apple's libm differ in the last bit.
+  Both tests now pass on Linux.
+- `test_golden.cpp` states which tests are platform-bound (the three
+  fixtures, as same-machine before-and-after checks) and that every other
+  test is machine-agnostic.
+
 ## 0.7.0 - 2026-10-16
 
 The Standard procedure as an explicit per-pixel state machine, with the

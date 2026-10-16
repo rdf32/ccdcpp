@@ -27,8 +27,14 @@
 // Eigen's kernels all reach the low bits, so exact equality is only a
 // meaningful claim on the platform that wrote the fixture; its first line
 // names it. On a different platform a mismatch is reported as a skip that says
-// so, not as a failure. To regenerate (from a build of the code whose output
-// is the reference, never from the change under test):
+// so, not as a failure. A fixture is a same-machine before-and-after check
+// (this build against the reference code built on the same platform), never
+// a machine's expected values: the fixtures here, in test_bands.cpp and in
+// test_transitions.cpp are the only platform-bound tests. Every other test is
+// machine-agnostic, with no per-platform expected values; where a platform
+// difference needs a tolerance, the test says what differs (libm's last bit,
+// a compiler's contraction). To regenerate (from a build of the code whose
+// output is the reference, never from the change under test):
 //
 //     CCD_GOLDEN_WRITE=1 ./test_golden
 //
