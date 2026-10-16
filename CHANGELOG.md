@@ -2,15 +2,21 @@
 
 ## Unreleased
 
+The Standard procedure as an explicit per-pixel state machine, with the
+parts a second change-detection procedure needs shared, and a document of
+the design (`docs/ccdc-state-machine.md`, linked from the README). C++ API
+changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
+2 is refused. Outputs of valid inputs are those of 0.6.1, bit for bit.
+
 ### Fixed
 
 - `PEEK_SIZE` below 2 is refused by `ccd::validate()` and every entry point
   (`ValueError` in Python: "PEEK_SIZE is 1; it must be at least 2"). It
-  crashed `detect()` before: Lookback peeks `PEEK_SIZE - 1` observations far
-  from the previous break, and both peeks read their first magnitude. Valid
-  inputs are unchanged.
+  crashed `detect()` before: far from the previous break Lookback peeks the
+  adjusted peek minus one observations, at least `PEEK_SIZE - 1`, and both
+  peeks read their first magnitude. Valid inputs are unchanged.
 
-### Changed (C++ internals; outputs bit for bit)
+### Changed (C++ API and internals; outputs bit for bit)
 
 - The Standard procedure keeps its per-pixel state in records instead of
   hand-kept pairs and the options. `ccd::MaskedSeries`
@@ -23,9 +29,8 @@
   `CHANGE_THRESHOLD` are no longer overwritten in a per-pixel copy.
 - `HarmonicWorkspace` refers to the caller's `HarmonicOptions` instead of
   copying them, and `options()` is const only; it cannot be built from a
-  temporary. `FitProcedure::run`, `StandardProcedure::run` and the
-  `PermanentSnow` / `InsufficientClear` convenience `run` overloads take a
-  const workspace. `tmask()` and `stable()` take a `const Variogram&`.
+  temporary. `StandardProcedure::run` takes a const workspace. `tmask()`
+  and `stable()` take a `const Variogram&`.
 - The procedures share kernels instead of near-copies of each loop.
   `ccd::HarmonicBasis` (`include/ccd/regression/harmonic_basis.hpp`) builds
   the harmonic design with its column order documented; `LassoWorkspace`
@@ -66,11 +71,40 @@
   flag is `segments.empty()`. `standard::lookback` and `standard::extend`
   are now these transitions. `StandardProcedure`'s signatures are
   unchanged.
+- Each repeating step says what it did. `ccd::initialize_step` returns an
+  `InitializeOutcome`, which names the step that drops Tmask's outliers and
+  then fits the shortened window (`DroppedThenUnstable`,
+  `DroppedThenStable`, beside `Unstable` and `Stable` for a step with
+  nothing flagged). `standard::lookback_step` and `standard::extend_step`
+  make Lookback's and Extend's decision and return a `LookbackOutcome`
+  (`Change`, `Dropped`, `Included`) or an `ExtendOutcome` (`Change`,
+  `Dropped`, `Grown`); the transitions `lookback` and `extend` route on it,
+  `extend` writing the segment. The trace names every outcome.
+- Initialize's criteria are built once per pixel, in Prepare
+  (`standard::initialize_criteria`, `State::initialize_criteria`), not on
+  every candidate window. `InitializeCriteria` holds its band lists by
+  value.
+- The per-pixel procedure is shared, for any change detector:
+  `include/ccd/procedure/pixel_procedure.hpp` declares `PixelProcedure`
+  (moved from `procedure/fit.hpp`), `ccd::select_procedure` (pyccd's
+  clear-then-snow choice; `detect_pixel` calls it) and
+  `ccd::fit_whole_series` (the PermanentSnow / InsufficientClear fit, one
+  segment of `COEFFICIENT_MIN` coefficients, curve_qa 54 / 44).
+  `ccd::standard::Detector` has one call, `fit`: the Standard machine for
+  Standard pixels and `fit_whole_series` for the others;
+  `DetectScratch::standard` is a `Detector`. `StandardProcedure` is a plain
+  class owning the machine's record. `span()` is in `procedure/fit.hpp`.
 - Renamed (C++): `FitProcedureType` is `PixelProcedure`.
-- `ccd::standard::Detector` chooses each pixel's procedure from its QA
-  statistics (`select`) and fits it (`fit`); `DetectScratch::standard` is a
-  `Detector`. `PixelProcedure` is declared in `procedure/fit.hpp`.
-  `InitializeCriteria` holds its band lists by value.
+- CMake sets policies CMP0167 (`find_package(Boost)` reads Boost's
+  `BoostConfig.cmake`) and CMP0135 where the CMake knows them, which
+  silences the FindBoost warning on CMake 3.30 and later.
+- Removed (C++): the `FitProcedure` base class with its virtual
+  `coefficient_count()` and `curve_qa()` hooks, the `PermanentSnow` and
+  `InsufficientClear` classes and their headers
+  (`procedure/permanent_snow.hpp`, `procedure/insufficient_clear.hpp`; call
+  `fit_whole_series` with the procedure and its filter's mask),
+  `StandardProcedure`'s hook overrides, and `standard::Detector::select`
+  (now `ccd::select_procedure`).
 - Removed, unused: `update_processing_mask` (both overloads), and
   `remove_outliers` / `remove_observation` (now inside `MaskedSeries`), the
   vector-returning `StandardProcedure::calc_residuals`, `Window::rewind`
@@ -109,8 +143,11 @@
   edited in; its exit reason on the characterisation pixels that stop it
   each way (each run also equal to `detect()`'s result); every pixel
   stepped by hand, each self-transition one decision; a record reused
-  across pixels; and the detector's procedure choice.
-- `tests/ccd/procedure/test_series.cpp` (ctest `MaskedSeries.*`,
+  across pixels. The guard-row tests of Initialize, Lookback and Extend also
+  call the step function and check the outcome it reports.
+  `SelectProcedure.*`: the procedure choice at both thresholds;
+  `StandardDetector.*`: the detector's fit of each procedure.
+- `tests/ccd/procedure/test_masked_series.cpp` (ctest `MaskedSeries.*`,
   `Variogram.*`, `StandardCadence.*`, `HarmonicWorkspace.*`): the records'
   contracts.
 - `tools/bench/`: the refactor's timing harness under version control: the
@@ -121,6 +158,13 @@
   package), and `bench.sh` writes no temporary file. `bench.sh` passes the bench's own
   messages (its import check, a traceback) through its filter, and the
   synthetic bench prints the `ccdcpp` file it timed.
+- `tools/linux-compare/`: the Linux dump comparison under version control.
+  `compare.sh` builds several git refs with conda-forge GCC in one
+  throwaway linux/amd64 container (`in_container.sh`) and compares every
+  golden-driver dump and the Golden, Bands and Transitions fixtures byte for
+  byte; each fixture write must leave the container's platform header.
+  `golden_driver.cpp` is the golden check's one driver;
+  `-DCCD_BUILD_GOLDEN_DRIVER=ON` builds it as the target `golden_driver`.
 - The tests that read CSVs open them under the build directory by absolute
   path (`CCD_TEST_DATA_DIR`), so every test binary passes from any working
   directory, not only under ctest.
