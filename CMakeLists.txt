@@ -4,11 +4,21 @@ cmake_minimum_required(VERSION 3.20)
 # CMake policies
 # --------------------------------------------------
 
-# Use modern BoostConfig package behavior
-#cmake_policy(SET CMP0167 NEW)
+# Each set only where this CMake knows the policy (both are newer than the
+# minimum above), so older CMakes configure as before.
 
-# Use extracted archive timestamps for FetchContent
-#cmake_policy(SET CMP0135 NEW)
+# find_package(Boost) reads Boost's own BoostConfig.cmake (Boost 1.70 and
+# later ship it) instead of CMake's FindBoost module, removed in 3.30.
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
+# A FetchContent URL download without DOWNLOAD_EXTRACT_TIMESTAMP is stamped
+# with the time of extraction. googletest below sets that option itself
+# (the archive's timestamps), so this only governs a later download.
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
 
 
 # -----------------------------
