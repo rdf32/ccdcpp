@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.20)
 # CMake policies
 # --------------------------------------------------
 
-# Each set only where this CMake knows the policy (both are newer than the
-# minimum above), so older CMakes configure as before.
+# Each is set only where this CMake knows the policy: both are newer than
+# the minimum above, and a CMake without them has their old behavior only.
 
 # find_package(Boost) reads Boost's own BoostConfig.cmake (Boost 1.70 and
 # later ship it) instead of CMake's FindBoost module, removed in 3.30.
