@@ -157,7 +157,7 @@ ChangeModel catch_segment(
 }
 
 bool initialize(
-    Series& series,
+    MaskedSeries& series,
     Window& window,
     const InitializeCriteria& criteria,
     const Variogram& variogram,

@@ -1,11 +1,11 @@
 //==============================================================================
 //
-// The per-pixel records below detect_pixel: Series (the processing mask and
-// the observations it keeps), Variogram, and the Standard procedure's
-// Cadence. The procedures' outputs are held by the golden and transitions
+// The per-pixel records below detect_pixel: MaskedSeries (the processing
+// mask and the observations it keeps), Variogram, and the Standard
+// procedure's Cadence. The procedures' outputs are held by the golden and transitions
 // fixtures; these tests hold the records' own contracts.
 //
-//   * Series: after reset() and after any sequence of drops, dates() and
+//   * MaskedSeries: after reset() and after any sequence of drops, dates() and
 //     spectral() equal apply_mask(workspace, mask()) and size() equals
 //     mask().count(); each drop moves the caller's window by the one rule
 //     (a bound above the dropped position moves down by one); a rejected
@@ -29,7 +29,7 @@
 
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/series.hpp"
+#include "ccd/procedure/masked_series.hpp"
 #include "ccd/procedure/standard.hpp"
 
 namespace
@@ -77,9 +77,9 @@ ccd::ProcessingMask thinned(index_t T)
     return mask;
 }
 
-// The Series invariant: the same observations apply_mask() gives for its
+// The MaskedSeries invariant: the same observations apply_mask() gives for its
 // mask, in the same order, and size() == mask().count().
-void expect_in_step(const ccd::HarmonicWorkspace& ws, const ccd::Series& s)
+void expect_in_step(const ccd::HarmonicWorkspace& ws, const ccd::MaskedSeries& s)
 {
     const ccd::MaskedData expected = ccd::apply_mask(ws, s.mask());
 
@@ -106,16 +106,16 @@ std::vector<std::int64_t> to_vector(ccd::ArrayView<const std::int64_t, 1> v)
 
 } // namespace
 
-TEST(Series, ResetIsApplyMask)
+TEST(MaskedSeries, ResetIsApplyMask)
 {
     const Pixel px(40);
     const auto ws = px.workspace();
 
-    ccd::Series s;
+    ccd::MaskedSeries s;
     s.reset(ws, thinned(px.T));
     expect_in_step(ws, s);
 
-    // A reused Series holds only the new pixel's observations.
+    // A reused MaskedSeries holds only the new pixel's observations.
     ccd::ProcessingMask all(px.T);
     for (index_t t = 0; t < px.T; ++t)
         all.set(t, true);
@@ -124,12 +124,12 @@ TEST(Series, ResetIsApplyMask)
     EXPECT_EQ(s.size(), px.T);
 }
 
-TEST(Series, DropsKeepMaskAndObservationsInStep)
+TEST(MaskedSeries, DropsKeepMaskAndObservationsInStep)
 {
     const Pixel px(60);
     const auto ws = px.workspace();
 
-    ccd::Series s;
+    ccd::MaskedSeries s;
     s.reset(ws, thinned(px.T));
 
     // First, last, middle, and the same position repeatedly.
@@ -152,11 +152,11 @@ TEST(Series, DropsKeepMaskAndObservationsInStep)
 
 // The coordinate rule: a window bound above the dropped position moves down
 // by one, one at or below it stays.
-TEST(Series, DropMovesTheWindowWithTheObservations)
+TEST(MaskedSeries, DropMovesTheWindowWithTheObservations)
 {
     const Pixel px(30);
     const auto ws = px.workspace();
-    ccd::Series s;
+    ccd::MaskedSeries s;
 
     const auto dropped = [&](index_t position, ccd::Window w)
     {
@@ -176,12 +176,12 @@ TEST(Series, DropMovesTheWindowWithTheObservations)
     EXPECT_EQ(dropped(15, {5, 12}), std::make_pair(index_t{5}, index_t{12}));
 }
 
-TEST(Series, RejectedOutlierDropChangesNothing)
+TEST(MaskedSeries, RejectedOutlierDropChangesNothing)
 {
     const Pixel px(40);
     const auto ws = px.workspace();
 
-    ccd::Series s;
+    ccd::MaskedSeries s;
     s.reset(ws, thinned(px.T));
 
     const ccd::ProcessingMask mask_before = s.mask();
@@ -217,12 +217,12 @@ TEST(Series, RejectedOutlierDropChangesNothing)
     EXPECT_EQ(asked, expected);
 }
 
-TEST(Series, AcceptedOutlierDropCommitsMaskObservationsAndWindow)
+TEST(MaskedSeries, AcceptedOutlierDropCommitsMaskObservationsAndWindow)
 {
     const Pixel px(40);
     const auto ws = px.workspace();
 
-    ccd::Series s;
+    ccd::MaskedSeries s;
     s.reset(ws, thinned(px.T));
     const auto dates_before = to_vector(s.dates());
     const index_t size_before = s.size();
@@ -250,7 +250,7 @@ TEST(Series, AcceptedOutlierDropCommitsMaskObservationsAndWindow)
     EXPECT_EQ(to_vector(s.dates()), expected);
 }
 
-TEST(Series, CountUntilAndTakeMask)
+TEST(MaskedSeries, CountUntilAndTakeMask)
 {
     const Pixel px(20);
     const auto ws = px.workspace();
@@ -259,7 +259,7 @@ TEST(Series, CountUntilAndTakeMask)
     for (index_t t = 0; t < px.T; ++t)
         all.set(t, true);
 
-    ccd::Series s;
+    ccd::MaskedSeries s;
     s.reset(ws, all);
 
     // dates[5] == dates[6]: both are on or before that day.

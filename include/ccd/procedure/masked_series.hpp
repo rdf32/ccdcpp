@@ -16,7 +16,7 @@ namespace ccd
 
 //==============================================================================
 //
-// Series
+// MaskedSeries
 //
 // One pixel's processing mask and the observations it keeps, owned together.
 // Shared by the change-detection procedures.
@@ -34,12 +34,12 @@ namespace ccd
 //
 //     a window bound above the dropped position moves down by one.
 //
-// The buffers keep their capacity across reset(), so a Series reused across
-// pixels stops allocating.
+// The buffers keep their capacity across reset(), so a MaskedSeries reused
+// across pixels stops allocating.
 //
 //==============================================================================
 
-class Series
+class MaskedSeries
 {
 public:
 

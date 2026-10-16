@@ -9,7 +9,7 @@
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/kernels.hpp"
 #include "ccd/procedure/machine.hpp"
-#include "ccd/procedure/series.hpp"
+#include "ccd/procedure/masked_series.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 
 namespace ccd
@@ -52,8 +52,8 @@ Cadence measure_cadence(
 //------------------------------------------------------------------------------
 // The Standard procedure's kernels
 //
-// Plain functions of the procedure's steps, over the pixel's Series. Their
-// arithmetic, and the order of it, is pyccd's.
+// Plain functions of the procedure's steps, over the pixel's MaskedSeries.
+// Their arithmetic, and the order of it, is pyccd's.
 //------------------------------------------------------------------------------
 
 // Extend's coefficient count for a window of `observations` observations:
@@ -182,7 +182,7 @@ struct State
     Exit exit = Exit::None;
 
     // The shared parts (machine.hpp).
-    Series series;
+    MaskedSeries series;
     Cursor cursor;
     std::vector<ChangeModel> segments;   // pyccd's `start` is segments.empty()
 

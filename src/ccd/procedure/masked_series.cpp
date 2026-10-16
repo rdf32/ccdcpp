@@ -1,4 +1,4 @@
-#include "ccd/procedure/series.hpp"
+#include "ccd/procedure/masked_series.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -65,13 +65,13 @@ void clear_position(
 
 } // namespace
 
-void Series::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
+void MaskedSeries::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
 {
     mask_ = std::move(mask);
     apply_mask(workspace, mask_, kept_);
 }
 
-index_t Series::count_until(std::int64_t day) const
+index_t MaskedSeries::count_until(std::int64_t day) const
 {
     const std::int64_t* first = kept_.dates.data();
     const std::int64_t* last = first + kept_.observations;
@@ -79,7 +79,7 @@ index_t Series::count_until(std::int64_t day) const
     return static_cast<index_t>(std::upper_bound(first, last, day) - first);
 }
 
-void Series::drop(index_t position, Window& window)
+void MaskedSeries::drop(index_t position, Window& window)
 {
     assert(position < size());
 
@@ -94,7 +94,7 @@ void Series::drop(index_t position, Window& window)
     assert(size() == mask_.count());
 }
 
-void Series::build_without(const ProcessingMask& outliers, index_t offset)
+void MaskedSeries::build_without(const ProcessingMask& outliers, index_t offset)
 {
     const index_t n = kept_.observations;
 
@@ -127,7 +127,7 @@ void Series::build_without(const ProcessingMask& outliers, index_t offset)
     }
 }
 
-void Series::commit_without(const ProcessingMask& outliers, index_t offset)
+void MaskedSeries::commit_without(const ProcessingMask& outliers, index_t offset)
 {
     clear_outliers(mask_, outliers, offset);
     std::swap(kept_, candidate_);
@@ -135,7 +135,7 @@ void Series::commit_without(const ProcessingMask& outliers, index_t offset)
     assert(size() == mask_.count());
 }
 
-ProcessingMask Series::take_mask()
+ProcessingMask MaskedSeries::take_mask()
 {
     kept_.dates.clear();
     kept_.spectral.clear();

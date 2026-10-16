@@ -37,7 +37,7 @@
 #include "ccd/harmonic/filter.hpp"
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/procedure/kernels.hpp"
-#include "ccd/procedure/series.hpp"
+#include "ccd/procedure/masked_series.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/regression/lasso_solver.hpp"
@@ -103,7 +103,7 @@ struct MaskedPixel
 {
     Pixel pixel;
     ccd::HarmonicOptions options;
-    ccd::Series series;
+    ccd::MaskedSeries series;
 
     MaskedPixel(const std::string& path, ccd::HarmonicOptions options_)
         : pixel(read_csv(path)), options(options_)

@@ -13,8 +13,8 @@
 ### Changed (C++ internals; outputs bit for bit)
 
 - The Standard procedure keeps its per-pixel state in records instead of
-  hand-kept pairs and the options. `ccd::Series`
-  (`include/ccd/procedure/series.hpp`) owns the processing mask and the
+  hand-kept pairs and the options. `ccd::MaskedSeries`
+  (`include/ccd/procedure/masked_series.hpp`) owns the processing mask and the
   observations it keeps, and is the only way to drop one: `drop(position,
   window)` and Initialise's tentative Tmask removal `drop_outliers_if`,
   each moving the caller's window by one rule. `ccd::standard::Cadence`
@@ -35,7 +35,7 @@
   Initialise, Extend's refit, both catches and the whole-series fits, the
   latter without its redundant workspace reset; `ccd::catch_segment` writes
   the start and end catches; `ccd::initialize`, the start-window search,
-  takes its `Series` and an `InitializeCriteria` (Standard passes its 4
+  takes its `MaskedSeries` and an `InitializeCriteria` (Standard passes its 4
   stability coefficients there) instead of reading a procedure's members.
   The Standard procedure's own steps are free functions in
   `ccd::standard`: `lookback`, `extend`, `coefficient_count`,
@@ -46,7 +46,7 @@
   call sites.
 - The Standard procedure is a per-pixel state machine,
   `ccd::standard::Machine` (`include/ccd/procedure/standard.hpp`): a
-  `State` record (phase, exit reason, `Series`, `Cursor`, segments,
+  `State` record (phase, exit reason, `MaskedSeries`, `Cursor`, segments,
   `Cadence`, `Variogram`, the stable fits), a read-only `Context`, one
   transition per phase (`prepare`, `initialize`, `lookback`, `start_catch`,
   `extend`, `restart`, `end_catch`) and named routing between them.
@@ -61,7 +61,7 @@
   `Detector`. `FitProcedureType` is declared in `procedure/fit.hpp`.
   `InitializeCriteria` holds its band lists by value.
 - Removed, unused: `update_processing_mask` (both overloads), and
-  `remove_outliers` / `remove_observation` (now inside `Series`), the
+  `remove_outliers` / `remove_observation` (now inside `MaskedSeries`), the
   vector-returning `StandardProcedure::calc_residuals`, `Window::rewind`
   and `Window::extend`.
 
@@ -95,7 +95,7 @@
   records, its exit reason on the characterisation pixels that stop it each
   way (each run also equal to `detect()`'s result), a record reused across
   pixels, and the detector's procedure choice.
-- `tests/ccd/procedure/test_series.cpp` (ctest `Series.*`, `Variogram.*`,
+- `tests/ccd/procedure/test_series.cpp` (ctest `MaskedSeries.*`, `Variogram.*`,
   `StandardCadence.*`, `HarmonicWorkspace.*`): the records' contracts.
 - `tools/bench/`: the refactor's timing harness under version control: the
   synthetic corpus generator, the synthetic bench (`bench.sh`) and the

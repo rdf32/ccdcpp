@@ -114,7 +114,7 @@ add_library(
 
     src/ccd/procedure/fit.cpp
     src/ccd/procedure/kernels.cpp
-    src/ccd/procedure/series.cpp
+    src/ccd/procedure/masked_series.cpp
     src/ccd/procedure/standard.cpp
 
     src/ccd/ccd.cpp
@@ -453,7 +453,7 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
-    # The per-pixel records below detect_pixel: Series, Variogram, Cadence.
+    # The per-pixel records below detect_pixel: MaskedSeries, Variogram, Cadence.
     add_executable(
         test_series
 

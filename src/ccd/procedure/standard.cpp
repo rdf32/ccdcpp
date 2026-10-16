@@ -319,7 +319,7 @@ Phase peek_guard(const Context&, State& state)
 Phase prepare(const Context& context, State& state)
 {
     const auto& options = context.options;
-    Series& series = state.series;
+    MaskedSeries& series = state.series;
 
     // validate() refuses less: Lookback's far peek reads PEEK_SIZE - 1
     // observations and both peeks read their first magnitude.
@@ -433,7 +433,7 @@ Phase lookback(const Context& context, State& state)
     };
 
     const auto& options = context.options;
-    Series& series = state.series;
+    MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
     const index_t prev_break = state.cursor.prev_break;
     const std::vector<LassoResult>& models = state.init_models;
@@ -592,7 +592,7 @@ Phase start_catch(const Context& context, State& state)
 Phase extend(const Context& context, State& state)
 {
     const auto& options = context.options;
-    Series& series = state.series;
+    MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
     const Cadence& cadence = state.cadence;
     const Variogram& variogram = state.variogram;
@@ -760,7 +760,7 @@ Phase restart(const Context& context, State& state)
 
 Phase end_catch(const Context& context, State& state)
 {
-    const Series& series = state.series;
+    const MaskedSeries& series = state.series;
     const index_t prev_break = state.cursor.prev_break;
 
     if (prev_break + state.cadence.peek < series.size()) {

@@ -21,7 +21,8 @@ namespace ccd
 // reasons, its record and its transitions; what they share is composed in,
 // never inherited:
 //
-//   * Series (series.hpp): the pixel's processing mask and kept observations;
+//   * MaskedSeries (masked_series.hpp): the pixel's processing mask and
+//     kept observations;
 //   * Cursor (below): where the model window is;
 //   * the segments written so far (ChangeModel, fit.hpp);
 //   * the kernels of kernels.hpp, Initialise among them;
@@ -33,14 +34,14 @@ namespace ccd
 // Cursor
 //
 // Where a machine is in the pixel's series, in masked coordinates (positions
-// in Series::dates()):
+// in MaskedSeries::dates()):
 //
 //   window       the model window, the observations a model is fitted to
 //   prev_break   the position where the previous segment stopped, the
 //                break observation of the last change; 0 before the first
 //
-// A Series::drop() moves `window` with the observations; `prev_break` stays
-// where it is.
+// A MaskedSeries::drop() moves `window` with the observations; `prev_break`
+// stays where it is.
 //------------------------------------------------------------------------------
 struct Cursor
 {

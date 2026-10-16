@@ -8,7 +8,7 @@
 #include "ccd/band_list.hpp"
 
 #include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/series.hpp"
+#include "ccd/procedure/masked_series.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 namespace ccd
@@ -120,17 +120,17 @@ struct InitializeCriteria
 // One candidate per step, in this order: a window spanning fewer than
 // day_delta days grows by one; Tmask's outliers in it are dropped from
 // `series` if what is left still spans day_delta days and holds meow_size
-// observations (Series::drop_outliers_if()), and the window grows instead
-// when Tmask flags every observation or what is left fails; the detection
-// bands are fitted (fit_bands(), residuals kept) into models[band], and the
-// window shifts by one unless stable() holds.
+// observations (MaskedSeries::drop_outliers_if()), and the window grows
+// instead when Tmask flags every observation or what is left fails; the
+// detection bands are fitted (fit_bands(), residuals kept) into
+// models[band], and the window shifts by one unless stable() holds.
 //
 // Returns true with `window` the stable window and `models` its fits, or
 // false once window.stop + meow_size reaches series.size() (exhausted), with
 // `window` where the search stopped. Only the detection bands' entries of
 // `models` are written.
 bool initialize(
-    Series& series,
+    MaskedSeries& series,
     Window& window,
     const InitializeCriteria& criteria,
     const Variogram& variogram,
