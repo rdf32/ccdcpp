@@ -134,11 +134,11 @@ struct HarmonicOptions
     // it.
     std::int64_t VARIOGRAM_MIN_LAG_DAYS = 30;
 
-    // Observations. Extend refits the models while the window holds
-    // fewer than RETRAIN_MIN_OBS observations, or once the window spans at
-    // least RETRAIN_SPAN_FACTOR times the span of the last fit. A window of
-    // at most RETRAIN_MIN_OBS observations compares against the model RMSE;
-    // a longer one against the seasonal RMSE below.
+    // Observations. Extend refits the models while the window holds at
+    // most RETRAIN_MIN_OBS observations, or once the window spans at least
+    // RETRAIN_SPAN_FACTOR times the span of the last fit. A window of at
+    // most RETRAIN_MIN_OBS observations compares against the model RMSE; a
+    // longer one against the seasonal RMSE below.
     index_t RETRAIN_MIN_OBS = 24;
 
     // Unitless ratio of spans; see RETRAIN_MIN_OBS.

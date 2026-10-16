@@ -110,7 +110,7 @@ The guards inside one call, in the order they are tested:
   is the stable start window's: nothing is refitted while the window grows backward, as in
   Zhu's TrendSeasonalFit.
 - **Extend** (`extend_step`): first the refit schedule (refit when untrained, below
-  `RETRAIN_MIN_OBS` observations, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
+  `RETRAIN_MIN_OBS` observations or fewer, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
   fit); then every magnitude above the threshold (`Change`); the first above
   `OUTLIER_THRESHOLD` (`Dropped`, the observation at `window.stop` leaves the series); a peek that
   reached the last observation (`SeriesEnd`: the curve ends at the window, before the
@@ -262,7 +262,6 @@ test:
 
 | Quirk | Where it is |
 |---|---|
-| Extend refits while the window holds fewer than `RETRAIN_MIN_OBS` observations but compares against the model RMSE while it holds at most that many | `extend_step` |
 
 A sensor variant works the same way: a time-based start window or refit rule would change
 Initialize's and Extend's guards and nothing else.

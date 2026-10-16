@@ -328,7 +328,7 @@ TEST(Cadence, RetrainSpanFactor)
 }
 
 // The span rule disabled, so that only RETRAIN_MIN_OBS refits: the models
-// are refitted while the window holds fewer observations than it.
+// are refitted while the window holds at most that many observations.
 TEST(Cadence, RetrainMinObs)
 {
     const auto drifting = make_pixel(0.0, 0.5, {});

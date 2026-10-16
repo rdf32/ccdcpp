@@ -711,7 +711,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // The refit schedule
     //--------------------------------------------------------------------------
     if (!extension.trained ||
-        window.stop - window.start < options.RETRAIN_MIN_OBS ||
+        window.stop - window.start <= options.RETRAIN_MIN_OBS ||
         model_span >= options.RETRAIN_SPAN_FACTOR * extension.fit_span)
     {
         extension.trained = true;

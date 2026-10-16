@@ -4,12 +4,12 @@
 //
 // The golden corpus (test_golden.cpp) is broad but random: it takes most of
 // the Standard procedure's transitions many times and a few never. The pixels
-// of characterisation.hpp are built for the transitions, guards and pyccd
-// quirks that the corpus misses, and for the boundaries of the procedure
+// of characterisation.hpp are built for the transitions, guards and rules
+// that the corpus misses, and for the boundaries of the procedure
 // choice. Their detect() output is pinned, byte for byte, in
-// transitions_fixture.txt, which ccdcpp v0.6.1 wrote. The refactor of the
-// Standard procedure into an explicit state machine must reproduce it
-// exactly, quirks included (the quirks change only in 0.8.0).
+// transitions_fixture.txt. A change meant to keep the output reproduces it
+// exactly; a change meant to move it moves only the pixels it is meant to,
+// and says which.
 //
 // Everything here goes through ccd::detect(), the public entry point, and
 // reads only its result, so the tests hold whatever the procedure's insides
@@ -26,32 +26,33 @@
 //
 //   * Transitions.BitIdenticalToFixture: the dump against the fixture, as
 //     test_golden.cpp does it (a different platform is a skip, not a failure).
-//     To regenerate, from a build of the reference code only, never from the
-//     change under test:  CCD_TRANSITIONS_WRITE=1 ./test_transitions
+//     To regenerate, from the build whose output is the new reference, once
+//     its diff is known to move only the pins it should:
+//     CCD_TRANSITIONS_WRITE=1 ./test_transitions
 //
 //   * Transitions.PathsAsDocumented: the structure of each result (segment
 //     count, curve_qa, change probability, observation counts, the mask) and
-//     the observable signature of the quirk a pixel is for, and on the
-//     pixels whose output a quirk decides without moving that structure, the
+//     the observable signature of the rule a pixel is for, and on the
+//     pixels whose output a rule decides without moving that structure, the
 //     values it decides, to a tolerance. Platform free.
 //
-// The pyccd quirks the code still keeps, numbered as in the design notes
-// (each is fixed in 0.8.0):
+// The rules these pixels pin, where ccdcpp keeps pyccd's intent over its
+// literals, numbered as in the design notes:
 //
-//   7  Extend refits while the window has < RETRAIN_MIN_OBS observations but
-//      compares against the model RMSE while it has <= RETRAIN_MIN_OBS
-//
-// Rules where pyccd's intent is kept over its literals, under the same
-// numbers: far from the previous break Lookback peeks the adjusted peek of
-// observations, as Extend does (1); near it, Lookback peeks down to the
-// previous break and never below it, into the previous segment (2);
-// Lookback compares against the stable
-// start window's RMSE, refitting nothing (3); Initialize fits
-// COEFFICIENT_MIN coefficients and both peek bases are COEFFICIENT_MAX wide
-// (4); the early exits return the processing mask, as every exit does (5);
-// a curve ends at the series end once its peek reaches the last observation,
-// before the observation the peek starts at, and it is the last curve:
-// EndCatch follows, not Restart (6).
+//   1  far from the previous break, Lookback peeks the adjusted peek of
+//      observations, as Extend does;
+//   2  near it, Lookback peeks down to the previous break and never below,
+//      into the previous segment;
+//   3  Lookback compares against the stable start window's RMSE, refitting
+//      nothing;
+//   4  Initialize fits COEFFICIENT_MIN coefficients and both peek bases are
+//      COEFFICIENT_MAX wide;
+//   5  the early exits return the processing mask, as every exit does;
+//   6  a curve ends at the series end once its peek reaches the last
+//      observation, before the observation the peek starts at, and it is the
+//      last curve: EndCatch follows, not Restart;
+//   7  Extend refits while the window holds at most RETRAIN_MIN_OBS
+//      observations, the same windows that compare against the model RMSE.
 //
 // Which pixel takes which transition. The states are the machine's
 // (Select, the whole-series fit, Prepare, Initialize, Lookback, StartCatch,
@@ -127,10 +128,10 @@
 //     pass                               every pixel with an Extend segment
 //     fail -> EndCatch                   peek_guard_tail
 //   Extend
-//     refit: untrained / < RETRAIN_MIN_OBS / span factor
+//     refit: untrained / <= RETRAIN_MIN_OBS / span factor
 //                                        lookback_near_break (all three)
-//     no refit; no refit at exactly
-//       RETRAIN_MIN_OBS (quirk 7)        lookback_far_peek_decides;
+//     refit at exactly RETRAIN_MIN_OBS
+//       (rule 7)                         lookback_far_peek_decides;
 //                                        corpus pyccd:dn
 //     compare: model RMSE (<= 24 obs)    series_end_after_outlier
 //     compare: seasonal RMSE             series_end_after_outlier
@@ -167,18 +168,6 @@
 //   Early exits return the mask (rule 5)
 //                                        snow_too_few, standard_too_few,
 //                                        variogram_nan
-//
-// What each remaining 0.8.0 fix changes in these fixtures. Measured
-// on v0.6.1 by applying each fix alone to a scratch copy: the pixels whose
-// dump changes, so the 0.8.0 work knows which pins it is expected to move and
-// a refactor that moves one of them has changed behaviour.
-//
-//   7  refit while <= RETRAIN_MIN_OBS  lookback_far_peek_decides;
-//                                      177 corpus pixels
-//
-// PathsAsDocumented fails on it alone, off the fixture platform too,
-// through the RMSE values of lookback_far_peek_decides (checked by applying
-// it to v0.6.1).
 //
 //==============================================================================
 
@@ -230,10 +219,11 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
     throw std::runtime_error("no characterization pixel " + name);
 }
 
-// The values rule 4 and fix 7 decide on pixels whose shapes they leave
-// alone: each band's RMSE of one segment. Each moves every one of these by
-// at least 8.8e-4 relative (fix 7 applied alone to v0.6.1: 8.8e-4 to 4.8e-2;
-// rule 4 against pyccd's literal 4 and 8: 4.2e-3 to 1.0e-1); building with
+// The values rules 4 and 7 decide on pixels whose shapes they leave alone:
+// each band's RMSE of one segment. Each moves every one of these by at least
+// 8.8e-4 relative (rule 7 against pyccd's refit while fewer than
+// RETRAIN_MIN_OBS: 8.8e-4 to 4.8e-2; rule 4 against pyccd's literal 4 and 8:
+// 4.2e-3 to 1.0e-1); building with
 // -ffp-contract=off, which stands in for another compiler's contraction,
 // moves them by under 1e-13, and -ffp-contract=fast not at all. A relative
 // 1e-6 sits between the two.
@@ -449,7 +439,7 @@ TEST(Transitions, PathsAsDocumented)
         EXPECT_LT(r.models[1].end_day, r.models[1].break_day);
     }
 
-    // The pixels whose output a quirk decides (see the table above): their
+    // The pixels whose output a rule decides (see the rules above): their
     // shapes, so a path change reads as one even off the fixture platform,
     // and where a fix keeps the shapes, what it does move.
     {
@@ -464,14 +454,14 @@ TEST(Transitions, PathsAsDocumented)
     }
     {
         // Rule 1 decides the shapes: the second segment's Lookback, peeking
-        // the full adjusted peek, reaches back to 127 observations; fix 7
-        // moves only the first segment's fit.
+        // the full adjusted peek, reaches back to 127 observations. Rule 7
+        // decides only the first segment's fit, refitted at 24 observations.
         const auto r = run_detect(pixel(all, "lookback_far_peek_decides"));
         expect_shapes("lookback_far_peek_decides", r,
             {{8, 1.0, 99}, {8, 1.0, 127}, {8, 0.0, 60}});
         expect_rmse("lookback_far_peek_decides", r, 0,
-            {36.24151163, 49.6614777, 47.72221929, 123.7609953, 68.2605607,
-             66.3021312, 236.0055942});
+            {35.81290728, 48.70786646, 47.4006856, 124.7866627, 71.73959318,
+             66.24394152, 231.2815984});
     }
     {
         // Rule 4 decides the fits of the first two segments: Initialize

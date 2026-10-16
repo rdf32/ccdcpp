@@ -4,6 +4,17 @@
 
 ### Changed (pyccd's intent, not its literals)
 
+- Extend refits while the window holds at most `RETRAIN_MIN_OBS` (24)
+  observations, the same windows that compare against the model RMSE, as Zhu's
+  TrendSeasonalFit does with one `<=` for both; pyccd refits while fewer, so
+  at exactly 24 it compared a 23-observation fit's plain RMSE. Default output
+  changes on segments that grow through 24 observations. Pins moved: the
+  golden fixture 177 of 621 pixels (13 with a segment boundary or count
+  moved), the bands fixture 137 of 400, the transitions fixture
+  `lookback_far_peek_decides` (its first segment's fit), `expected_hls_l30.json`
+  3 of 5 pixels, all 144 check.sh dumps; `CCD.DetectStandard` compares
+  segments 0 and 1, which grow through 24 observations, with pyccd's shapes
+  only, and segments 2-4 still with pyccd's fits.
 - Near the previous break Lookback peeks down to the break and never below
   it, into the previous segment, as Zhu's TrendSeasonalFit does. pyccd's
   guard against reading past the series start (`start <= peek`) also fired

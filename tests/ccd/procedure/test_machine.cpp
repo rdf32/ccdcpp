@@ -729,7 +729,7 @@ TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
 
 TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
 {
-    // Below RETRAIN_MIN_OBS every test refits on the window (quirk 7: < 24).
+    // Up to RETRAIN_MIN_OBS every test refits on the window.
     Record r(80);
     in_extend(r, 0, 20);
     r.step();
@@ -737,8 +737,8 @@ TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
     r.step();
     EXPECT_EQ(r.state.extension.fit_window.stop, 21u);
 
-    // From 24 observations on, only once the window spans 1.33 times the
-    // last fit: (0, 25) spans 384 days < 1.33 * 368.
+    // At 24 observations it refits; from 25 on, only once the window spans
+    // 1.33 times the last fit: (0, 25) spans 384 days < 1.33 * 368.
     Record t(80);
     in_extend(t, 0, 24);
     t.step();
@@ -749,9 +749,9 @@ TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
 
 TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
 {
-    // A window of at most RETRAIN_MIN_OBS compares against the model RMSE
-    // (<=, against the refit's <: quirk 7); a longer one against the
-    // seasonal RMSE of the fit window.
+    // A window of at most RETRAIN_MIN_OBS compares against the model RMSE,
+    // the one it was just refitted on; a longer one against the seasonal
+    // RMSE of the fit window.
     Record r(80);
     in_extend(r, 0, 24);
     r.step();

@@ -365,8 +365,9 @@ Phase start_catch(const Context& context, State& state);
 
 // One Extend step, one peek test after the window. Pre: peek_fits().
 // Refits every band over the window when the extension is not trained, the
-// window holds fewer than RETRAIN_MIN_OBS observations, or it spans at least
-// RETRAIN_SPAN_FACTOR times the last fit's span (quirk 7); then, in order:
+// window holds at most RETRAIN_MIN_OBS observations (the windows that also
+// compare against the model RMSE), or it spans at least RETRAIN_SPAN_FACTOR
+// times the last fit's span; then, in order:
 //
 //   * every peek magnitude above the change threshold: Change, the window
 //     stays;

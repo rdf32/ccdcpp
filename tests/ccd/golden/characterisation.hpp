@@ -4,12 +4,12 @@
 //
 // Characterization pixels for the Standard procedure's state machine.
 //
-// Each pixel is built so that detect() takes one transition, guard or quirk
+// Each pixel is built so that detect() takes one transition, guard or rule
 // of the Standard procedure that the synthetic golden corpus does not reach
 // (or reaches only in Python): see test_transitions.cpp for which pixel takes
 // which path and why. The pixels are a deterministic function of their
 // parameters (a splitmix64 stream from synthetic.hpp), and their outputs are
-// pinned, byte for byte, in transitions_fixture.txt, written by ccdcpp v0.6.1.
+// pinned, byte for byte, in transitions_fixture.txt.
 //
 // Values are Collection-1 DN like synthetic.hpp: six optical bands as
 // reflectance x 10000, the thermal band as Kelvin x 10, every observation
@@ -132,7 +132,7 @@ inline CharPixel make_char_pixel(
 // Pixel families. The seeds characterisation_pixels() passes were found on
 // v0.6.1 by a scan with a trace-instrumented build: for a family built for a
 // path, an early seed that takes it; for the random families, a seed whose
-// output the quirk's 0.8.0 fix changes (see test_transitions.cpp).
+// output the rule decides (see test_transitions.cpp).
 //
 // Every draw from the stream is its own statement or an element of a braced
 // list, both evaluated in order. Two draws in the arguments of one call are
