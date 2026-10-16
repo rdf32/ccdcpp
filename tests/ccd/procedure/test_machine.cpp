@@ -480,7 +480,7 @@ TEST(StandardInitialize, AnAcceptedTmaskDropCommitsThenTests)
         r.edit([](index_t b, index_t i, double v) { return (i == 10 && (b == 1 || b == 4)) ? v + 5000 : v; });
         in_initialize(r, 0, 24);
     };
-    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::Stable);
+    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::DroppedThenStable);
 
     Record r(60);
     setup(r);
@@ -491,6 +491,32 @@ TEST(StandardInitialize, AnAcceptedTmaskDropCommitsThenTests)
     EXPECT_EQ(r.state.cursor.window.stop, 23u);
     EXPECT_EQ(r.state.init_models.size(), 7u);
     EXPECT_FALSE(r.state.init_models[1].score.residuals.empty());   // a detection band
+}
+
+TEST(StandardInitialize, AnAcceptedTmaskDropThenAnUnstableWindowShifts)
+{
+    // The same interior outlier, and a steep trend in detection bands Tmask
+    // does not read: one step drops the outlier, shortening the window to
+    // (0, 23), then fits it, finds it unstable and shifts it.
+    const auto setup = [](Record& r)
+    {
+        r.edit([](index_t b, index_t i, double v)
+        {
+            if (i == 10 && (b == 1 || b == 4))
+                return v + 5000;
+            return (b == 2 || b == 3 || b == 5) ? v + 40.0 * i : v;
+        });
+        in_initialize(r, 0, 24);
+    };
+    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::DroppedThenUnstable);
+
+    Record r(60);
+    setup(r);
+    EXPECT_EQ(r.step(), Phase::Initialize);
+    EXPECT_EQ(r.state.series.size(), 59u);
+    EXPECT_FALSE(r.state.series.mask()[10]);
+    EXPECT_EQ(r.state.cursor.window.start, 1u);
+    EXPECT_EQ(r.state.cursor.window.stop, 24u);
 }
 
 TEST(StandardInitialize, AStableWindowLeavesThroughTheRouting)

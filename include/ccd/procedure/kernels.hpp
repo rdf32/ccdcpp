@@ -116,16 +116,23 @@ struct InitializeCriteria
 
 // What one step of the start-window search did, in the order the step tests
 // them.
+//
+// The last two are one step that changes two things: Tmask's outliers are
+// dropped from the series (the window shortened by as many), and the
+// shortened window is fitted and tested in the same step, as pyccd does in
+// one pass of its loop. Their routing is Unstable's and Stable's.
 enum class InitializeOutcome : std::uint8_t
 {
-    Exhausted,         // window.stop + meow_size reached the series size: no
-                       // candidate left, nothing tested or changed
-    ShortSpan,         // the window spans fewer than day_delta days: grown
-    AllOutliers,       // Tmask flags every observation in it: grown
-    RejectedOutliers,  // what Tmask's outliers leave is too short or too
-                       // few: grown, nothing dropped
-    Unstable,          // fitted (after any Tmask drop), not stable: shifted
-    Stable             // fitted (after any Tmask drop) and stable
+    Exhausted,            // window.stop + meow_size reached the series size:
+                          // no candidate left, nothing tested or changed
+    ShortSpan,            // the window spans fewer than day_delta days: grown
+    AllOutliers,          // Tmask flags every observation in it: grown
+    RejectedOutliers,     // what Tmask's outliers leave is too short or too
+                          // few: grown, nothing dropped
+    Unstable,             // nothing flagged; fitted, not stable: shifted
+    Stable,               // nothing flagged; fitted and stable
+    DroppedThenUnstable,  // outliers dropped; fitted, not stable: shifted
+    DroppedThenStable     // outliers dropped; fitted and stable
 };
 
 const char* to_string(InitializeOutcome outcome);
@@ -141,14 +148,16 @@ const char* to_string(InitializeOutcome outcome);
 //   * Tmask flags some: they are dropped from `series` if what is left of
 //     the window still spans day_delta days and holds meow_size
 //     observations (MaskedSeries::drop_outliers_if(), which shortens the
-//     window); otherwise the window grows by one with nothing dropped;
+//     window), and the step goes on; otherwise the window grows by one with
+//     nothing dropped (RejectedOutliers);
 //   * the detection bands are fitted over the window (fit_bands(),
-//     residuals kept) into models[band]: Stable when stable() holds, with
-//     `window` the stable window and `models` its fits; otherwise the window
-//     shifts by one.
+//     residuals kept) into models[band]: Stable (DroppedThenStable after a
+//     drop) when stable() holds, with `window` the stable window and
+//     `models` its fits; otherwise the window shifts by one (Unstable,
+//     DroppedThenUnstable).
 //
 // Only the detection bands' entries of `models` are written, and only on
-// Unstable and Stable.
+// the four fitted outcomes.
 InitializeOutcome initialize_step(
     MaskedSeries& series,
     Window& window,

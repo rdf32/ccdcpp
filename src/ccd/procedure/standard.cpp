@@ -426,12 +426,14 @@ Phase initialize(const Context& context, State& state)
             return end_catch_because(state, Exit::InitializeExhausted);
 
         case InitializeOutcome::Stable:
+        case InitializeOutcome::DroppedThenStable:
             return after_stable_start(context, state);
 
         case InitializeOutcome::ShortSpan:
         case InitializeOutcome::AllOutliers:
         case InitializeOutcome::RejectedOutliers:
         case InitializeOutcome::Unstable:
+        case InitializeOutcome::DroppedThenUnstable:
             break;
     }
     return Phase::Initialize;

@@ -167,6 +167,10 @@ const char* to_string(InitializeOutcome outcome)
         case InitializeOutcome::RejectedOutliers: return "Tmask drop rejected, grown";
         case InitializeOutcome::Unstable:         return "unstable, shifted";
         case InitializeOutcome::Stable:           return "stable";
+        case InitializeOutcome::DroppedThenUnstable:
+            return "Tmask outliers dropped, unstable, shifted";
+        case InitializeOutcome::DroppedThenStable:
+            return "Tmask outliers dropped, stable";
     }
     return "?";
 }
@@ -238,13 +242,14 @@ InitializeOutcome initialize_step(
     //--------------------------------------------------------------------------
     // Update persistent mask
     //--------------------------------------------------------------------------
+    bool dropped = false;
     if (outliers.any())
     {
         //----------------------------------------------------------------------
         // Drop them only if the shortened window is still usable; otherwise
         // grow, with nothing dropped
         //----------------------------------------------------------------------
-        const bool dropped = series.drop_outliers_if(
+        dropped = series.drop_outliers_if(
             outliers,
             window,
             [&criteria](ArrayView<const std::int64_t, 1> shortened)
@@ -300,12 +305,12 @@ InitializeOutcome initialize_step(
             criteria.detection_bands))
     {
         LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
-        return InitializeOutcome::Stable;
+        return dropped ? InitializeOutcome::DroppedThenStable : InitializeOutcome::Stable;
     }
 
     window.shift();
     LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
-    return InitializeOutcome::Unstable;
+    return dropped ? InitializeOutcome::DroppedThenUnstable : InitializeOutcome::Unstable;
 }
 
 } // namespace ccd
