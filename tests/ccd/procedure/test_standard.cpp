@@ -458,7 +458,11 @@ TEST(CCD, DetectStandard)
 // The input is Collection 1 DN, fill rows dropped, the reflectance bound
 // applied in the QA (code 4). The reference is pyccd 2021.7.19 on it, with
 // the RLM convergence test as |x0 - x| > tol, a stable date sort and a stable
-// argsort in find_closest_doy.
+// argsort in find_closest_doy. The segment reaches the series end: ccdcpp
+// ends it before the observation its last full peek starts at, its break
+// day, so its end day and observation count are one observation short of
+// pyccd's (738751, 960; pyccd grows the window once more before its
+// series-end check). Its fits, and the mask, are pyccd's.
 //------------------------------------------------------------------------------
 TEST(CCD, DetectStandardHalfDayMedianGap)
 {
@@ -478,9 +482,9 @@ TEST(CCD, DetectStandardHalfDayMedianGap)
     ASSERT_EQ(result.models.size(), 1u);
     const auto& m = result.models[0];
     EXPECT_EQ(m.start_day, 724440);
-    EXPECT_EQ(m.end_day, 738751);
+    EXPECT_EQ(m.end_day, 738727);
     EXPECT_EQ(m.break_day, 738751);
-    EXPECT_EQ(m.observation_count, 960);
+    EXPECT_EQ(m.observation_count, 959);
     EXPECT_EQ(m.change_probability, 0.0);
     EXPECT_EQ(static_cast<int>(m.curve_qa), 8);
 

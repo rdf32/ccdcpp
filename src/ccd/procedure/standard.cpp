@@ -231,6 +231,7 @@ const char* to_string(ExtendOutcome outcome)
         case ExtendOutcome::Change:  return "change";
         case ExtendOutcome::Dropped: return "outlier dropped";
         case ExtendOutcome::Grown:   return "grown";
+        case ExtendOutcome::SeriesEnd: return "series end";
     }
     return "?";
 }
@@ -245,6 +246,7 @@ const char* to_string(Exit exit)
         case Exit::InitializeExhausted: return "InitializeExhausted";
         case Exit::PeekBeyondEnd:       return "PeekBeyondEnd";
         case Exit::NoRoomToInitialize:  return "NoRoomToInitialize";
+        case Exit::SeriesEnd:           return "SeriesEnd";
     }
     return "?";
 }
@@ -633,7 +635,7 @@ namespace
 
 // Writes the segment Extend has grown, from its last peek test, and ends the
 // extension. change_probability is 1 on a change, 0 at the series end.
-Phase write_extended_segment(State& state, scalar_t change_probability)
+void write_extended_segment(State& state, scalar_t change_probability)
 {
     const MaskedSeries& series = state.series;
     const Window& window = state.cursor.window;
@@ -661,7 +663,6 @@ Phase write_extended_segment(State& state, scalar_t change_probability)
 
     state.segments.push_back(std::move(result));
     extension.trained = false;
-    return Phase::Restart;
 }
 
 } // namespace
@@ -802,11 +803,16 @@ ExtendOutcome extend_step(const Context& context, State& state)
         return ExtendOutcome::Dropped;
     }
     //--------------------------------------------------------------------------
-    // Otherwise grow. pyccd checks for the series end first (procedures.py
-    // 691-692), which cannot hold: the peek fitted at the top of this step
-    // and nothing since changed the window or the series (quirk 6a).
+    // The peek reaches the last observation and holds no change: the curve
+    // ends at the window, its last test a full peek
     //--------------------------------------------------------------------------
     assert(peek_fits(state));
+    if (window.stop + cadence.peek >= series.size())
+        return ExtendOutcome::SeriesEnd;
+
+    //--------------------------------------------------------------------------
+    // Otherwise grow
+    //--------------------------------------------------------------------------
     window = Window(window.start, window.stop + 1);
     return ExtendOutcome::Grown;
 }
@@ -817,15 +823,23 @@ Phase extend(const Context& context, State& state)
     LOG_DEBUG("Extend: " << to_string(outcome));
 
     if (outcome == ExtendOutcome::Change)
-        return write_extended_segment(state, 1.0);
+    {
+        write_extended_segment(state, 1.0);
+        return Phase::Restart;
+    }
 
-    if (peek_fits(state))
+    if (outcome != ExtendOutcome::SeriesEnd && peek_fits(state))
         return Phase::Extend;
 
     //--------------------------------------------------------------------------
-    // Series end: no full peek after the window
+    // Series end: the curve reached the end of the series, after a test
+    // whose peek reached the last observation, or a drop that left no full
+    // peek. It is the last curve: no Restart, the End segment's guard reads
+    // the curve's stop.
     //--------------------------------------------------------------------------
-    return write_extended_segment(state, 0.0);
+    write_extended_segment(state, 0.0);
+    state.cursor.prev_break = state.cursor.window.stop;
+    return end_catch_because(state, Exit::SeriesEnd);
 }
 
 Phase restart(const Context& context, State& state)

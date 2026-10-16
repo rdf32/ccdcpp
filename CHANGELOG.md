@@ -34,6 +34,25 @@
 
 ### Fixed
 
+- A curve that reaches the series end ends at its last full peek, and is the
+  last curve. pyccd's check before Extend's grow had become dead (its `>=`
+  turned into `>` when the loop guard changed), so the window grew once more
+  and a series-end segment's end day was its break day; the check works
+  again, so the segment ends before the observation its last peek starts at
+  (end day < break day, as after an outlier drop), and EndCatch follows
+  instead of Restart, which at peeks of 25 and more re-entered Initialize on
+  the last observations and dropped observations no segment used (Zhu's
+  TrendSeasonalFit ends the same way). A new internal `Exit::SeriesEnd`.
+  Pins moved, each a series-end segment that ended after a grow, its end day
+  one observation earlier and its count one lower, its start, break day,
+  change probability, curve_qa, fits and magnitudes unchanged (checked pixel
+  by pixel): the golden fixture 328 of 621 pixels, the bands fixture 225 of
+  400, the transitions fixture 7 of 17 (and `dense_series_end`, renamed from
+  `reentry_after_series_end`, keeps the 4 observations the re-entry
+  dropped), the four real-data `expected_*.json` (11 of 19 pixels), all 144
+  check.sh dumps; `CCD.DetectStandardHalfDayMedianGap` now ends one
+  observation before pyccd's reference (738727, 959 against pyccd's 738751,
+  960), every fit still pyccd's.
 - The early exits return the processing mask, as pyccd does: a Standard pixel
   with at most `MEOW_SIZE` kept observations or a NaN variogram, and a
   PermanentSnow or InsufficientClear pixel with fewer than `MEOW_SIZE`, give

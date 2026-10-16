@@ -816,31 +816,37 @@ TEST(StandardExtend, AnOutlierIsDroppedAndTheWindowKeepsItsCoordinates)
     EXPECT_TRUE(r.state.segments.empty());
 }
 
-TEST(StandardExtend, TheSeriesEndAfterAGrowHasEndDayEqualToBreakDay)
+TEST(StandardExtend, TheLastFullPeekEndsTheCurve)
 {
-    // (0, 74) of 80 with peek 6: the last full peek. The grow leaves none,
-    // so the segment is written with change probability 0 (quirk 6b).
+    // (0, 74) of 80 with peek 6: the peek reaches the last observation and
+    // holds no change, so the curve ends at the window, with change
+    // probability 0, and the machine goes to EndCatch: no Restart.
     const auto setup = [](Record& r)
     {
         in_extend(r, 0, 74);
     };
     const auto [outcome, segments] = extend_outcome_of(80, setup);
-    EXPECT_EQ(outcome, ccd::standard::ExtendOutcome::Grown);
+    EXPECT_EQ(outcome, ccd::standard::ExtendOutcome::SeriesEnd);
     EXPECT_EQ(segments, 0u);
 
     Record r(80);
     setup(r);
-    EXPECT_EQ(r.step(), Phase::Restart);
+    EXPECT_EQ(r.step(), Phase::EndCatch);
+    EXPECT_EQ(r.state.exit, Exit::SeriesEnd);
     ASSERT_EQ(r.state.segments.size(), 1u);
 
     const ccd::ChangeModel& s = r.state.segments[0];
     EXPECT_EQ(s.change_probability, 0.0);
-    EXPECT_EQ(s.end_day, r.dates[74]);
-    EXPECT_EQ(s.break_day, r.dates[74]);
-    EXPECT_EQ(s.observation_count, 75u);
-    // The last test's count, for the 74-observation window.
+    EXPECT_EQ(s.end_day, r.dates[73]);
+    EXPECT_EQ(s.break_day, r.dates[74]);   // the first observation after it
+    EXPECT_EQ(s.observation_count, 74u);
     EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(ccd::standard::coefficient_count(74, r.options)));
-    EXPECT_EQ(r.state.cursor.window.stop, 75u);
+    EXPECT_EQ(r.state.cursor.window.stop, 74u);
+    EXPECT_EQ(r.state.cursor.prev_break, 74u);
+
+    // The End segment's guard, prev_break + peek < size, fails: 74 + 6.
+    EXPECT_EQ(r.step(), Phase::Done);
+    EXPECT_EQ(r.state.segments.size(), 1u);
 }
 
 TEST(StandardExtend, TheSeriesEndAfterADropBreaksAfterTheDroppedObservation)
@@ -854,7 +860,8 @@ TEST(StandardExtend, TheSeriesEndAfterADropBreaksAfterTheDroppedObservation)
 
     Record r(80);
     setup(r);
-    EXPECT_EQ(r.step(), Phase::Restart);
+    EXPECT_EQ(r.step(), Phase::EndCatch);
+    EXPECT_EQ(r.state.exit, Exit::SeriesEnd);
     ASSERT_EQ(r.state.segments.size(), 1u);
 
     const ccd::ChangeModel& s = r.state.segments[0];
@@ -967,19 +974,27 @@ TEST(StandardExit, EachWayTheMachineStops)
 {
     const auto all = golden::characterisation_pixels();
 
+    // Two random pixels for the routes after a change: Restart with no room
+    // left, and an Initialize that finds no stable window after a segment.
+    std::vector<golden::CharPixel> pixels = all;
+    pixels.push_back(golden::sparse_random("restart_no_room", 12));
+    pixels.push_back(golden::sparse_random("exhausted_after_a_change", 8));
+
     const std::vector<std::pair<std::string, Exit>> expected{
         {"standard_too_few", Exit::TooFewObservations},
         {"variogram_nan", Exit::VariogramNaN},
         {"standard_no_room", Exit::NoRoomToInitialize},         // from Prepare
-        {"start_catch", Exit::NoRoomToInitialize},              // from Restart
+        {"restart_no_room", Exit::NoRoomToInitialize},          // from Restart
         {"constant_detection_band", Exit::InitializeExhausted}, // no segment
-        {"lookback_near_break_decides", Exit::InitializeExhausted},  // after one
+        {"exhausted_after_a_change", Exit::InitializeExhausted},  // after one
         {"peek_guard_tail", Exit::PeekBeyondEnd},
+        {"start_catch", Exit::SeriesEnd},                       // after a grow
+        {"series_end_after_outlier", Exit::SeriesEnd},          // after a drop
     };
 
     for (const auto& [name, exit] : expected)
     {
-        const golden::CharPixel& p = pixel(all, name);
+        const golden::CharPixel& p = pixel(pixels, name);
         const MachineRun run = run_machine(p);
         EXPECT_EQ(run.exit, exit) << name << ": " << ccd::standard::to_string(run.exit);
         expect_same(run.result, run_detect(p), name);

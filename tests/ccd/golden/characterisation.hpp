@@ -167,7 +167,7 @@ inline CharPixel lookback_near_break(std::uint64_t seed, std::int64_t gap)
 // 243 observations 3 days apart (2010-2012), then 45 30 days apart: the
 // median gap is 3 days, so the peek is 32 (>= 26). No break; spikes among the
 // last 31 observations, which the forward search never reaches.
-inline CharPixel reentry_after_series_end(std::uint64_t seed)
+inline CharPixel dense_series_end(std::uint64_t seed)
 {
     Rng r(seed * 104729 + 5);
     std::vector<std::int64_t> d;
@@ -183,7 +183,7 @@ inline CharPixel reentry_after_series_end(std::uint64_t seed)
     for (int i = 0; i < k; ++i)
         s.spikes.push_back({n - 31 + static_cast<std::size_t>(r.below(31)), r.uniform(300, 3000)});
 
-    return make_char_pixel("reentry_after_series_end", d, s);
+    return make_char_pixel("dense_series_end", d, s);
 }
 
 // 400 observations 5 days apart (peek 19), a break 80-99 observations before
@@ -399,7 +399,7 @@ inline std::vector<CharPixel> characterisation_pixels()
     out.push_back(sparse_random("lookback_far_peek_decides", 172));
     out.push_back(peek_guard_tail(46));
     out.push_back(series_end_after_outlier(53, 0));
-    out.push_back(reentry_after_series_end(1995));
+    out.push_back(dense_series_end(1995));
     return out;
 }
 

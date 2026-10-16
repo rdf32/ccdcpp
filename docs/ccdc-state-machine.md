@@ -63,10 +63,10 @@ whole series, every band fitted with `COEFFICIENT_MIN` coefficients.
        │   a full peek after the window ? ── no ──────────────────────────► EndCatch [PeekBeyondEnd]
        │                  │ yes
        │                  ▼
-       │      ┌──► Extend  Change / Dropped / Grown
+       │      ┌──► Extend  Change / Dropped / SeriesEnd / Grown
        │      └───────┘  (while a full peek fits)
+       │                  │ series end: segment, change probability 0 ───────────────► EndCatch [SeriesEnd]
        │                  │ Change: segment, change probability 1
-       │                  │ no peek fits: segment, change probability 0 (series end)
        │                  ▼
        └─── room ──── Restart: prev_break = window.stop, window = (stop, stop + MEOW_SIZE)
                           │ no room
@@ -89,8 +89,8 @@ call and say what they did as an outcome value, so the trace and the tests see e
 | `Initialize` (`initialize`) | One candidate start window: `ccd::initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
 | `Lookback` (`lookback`) | One observation before the window: `lookback_step` returns a `LookbackOutcome` | itself while `window.start > prev_break`; then StartCatch, Extend or EndCatch |
 | `StartCatch` (`start_catch`) | The first segment's leading observations as a Start segment (curve_qa 14) | Extend or EndCatch |
-| `Extend` (`extend`) | One peek test after the window: `extend_step` returns an `ExtendOutcome`; `extend` writes the segment | itself while a peek fits; then Restart |
-| `Restart` (`restart`) | The cursor after a segment | Initialize or EndCatch |
+| `Extend` (`extend`) | One peek test after the window: `extend_step` returns an `ExtendOutcome`; `extend` writes the segment | itself while a peek fits; Restart after a change; EndCatch at the series end |
+| `Restart` (`restart`) | The cursor after a change | Initialize or EndCatch |
 | `EndCatch` (`end_catch`) | The End segment (curve_qa 24), when enough observations trail the last break | Done |
 
 The guards inside one call, in the order they are tested:
@@ -106,13 +106,17 @@ The guards inside one call, in the order they are tested:
   window stays); the first magnitude above `OUTLIER_THRESHOLD` (`Dropped`, the observation
   before the window leaves the series); otherwise `Included` (`window.start - 1`). The peek
   window is `lookback_peek`'s: far from the previous break, the adjusted peek of observations
-  before the window; near it, down to the previous break and never below. The comparison RMSE is the stable start window's: nothing is
-  refitted while the window grows backward, as in Zhu's TrendSeasonalFit.
+  before the window; near it, down to the previous break and never below. The comparison RMSE
+  is the stable start window's: nothing is refitted while the window grows backward, as in
+  Zhu's TrendSeasonalFit.
 - **Extend** (`extend_step`): first the refit schedule (refit when untrained, below
   `RETRAIN_MIN_OBS` observations, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
   fit); then every magnitude above the threshold (`Change`); the first above
-  `OUTLIER_THRESHOLD` (`Dropped`, the observation at `window.stop` leaves the series); otherwise
-  `Grown` (`window.stop + 1`).
+  `OUTLIER_THRESHOLD` (`Dropped`, the observation at `window.stop` leaves the series); a peek that
+  reached the last observation (`SeriesEnd`: the curve ends at the window, before the
+  observation the peek starts at, its break day); otherwise `Grown` (`window.stop + 1`). The
+  curve that reaches the series end, by `SeriesEnd` or by a drop that leaves no full peek, is
+  the last one: EndCatch follows, not Restart.
 
 Initialize fits `COEFFICIENT_MIN` coefficients, Extend's fits follow `coefficient_count`
 (`COEFFICIENT_MIN`, `_MID` or `_MAX` by window length), and both peek bases are `COEFFICIENT_MAX`
@@ -124,8 +128,7 @@ and `peek_guard`. Every route into EndCatch records its `Exit`.
 
 The transitions assert the invariants the algorithm relies on: Initialize's window holds at
 least `MEOW_SIZE` observations; Lookback runs only while `window.start > prev_break`; Extend runs
-only when a full peek fits. pyccd's series-end check before Extend's grow can never hold, and is
-an assert in `extend_step`.
+only when a full peek fits.
 
 ## 3. The per-pixel record and the context
 
@@ -259,7 +262,6 @@ test:
 
 | Quirk | Where it is |
 |---|---|
-| The series-end check before Extend's grow is dead; a series-end segment's end day is its break day; Restart re-enters Initialize after it | the assert in `extend_step`; `write_extended_segment` |
 | Extend refits while the window holds fewer than `RETRAIN_MIN_OBS` observations but compares against the model RMSE while it holds at most that many | `extend_step` |
 
 A sensor variant works the same way: a time-based start window or refit rule would change

@@ -38,11 +38,6 @@
 // The pyccd quirks the code still keeps, numbered as in the design notes
 // (each is fixed in 0.8.0):
 //
-//   6  the series-end check in Extend is dead (a), so a series-end segment's
-//      end day is its break day (b), and after it the outer guard passes
-//      again at peek >= 25: at 25 Initialize exits at once, at peek >= 26 it
-//      runs on the last observations and can mark exclusions no segment
-//      uses (c)
 //   7  Extend refits while the window has < RETRAIN_MIN_OBS observations but
 //      compares against the model RMSE while it has <= RETRAIN_MIN_OBS
 //
@@ -53,7 +48,10 @@
 // Lookback compares against the stable
 // start window's RMSE, refitting nothing (3); Initialize fits
 // COEFFICIENT_MIN coefficients and both peek bases are COEFFICIENT_MAX wide
-// (4); the early exits return the processing mask, as every exit does (5).
+// (4); the early exits return the processing mask, as every exit does (5);
+// a curve ends at the series end once its peek reaches the last observation,
+// before the observation the peek starts at, and it is the last curve:
+// EndCatch follows, not Restart (6).
 //
 // Which pixel takes which transition. The states are the machine's
 // (Select, the whole-series fit, Prepare, Initialize, Lookback, StartCatch,
@@ -81,7 +79,7 @@
 //     peek adjusted 7-12                 corpus c8:dn:0,0
 //     peek adjusted 13-25                lookback_near_break (19),
 //                                        peek_guard_tail (19)
-//     peek adjusted >= 26                reentry_after_series_end (32)
+//     peek adjusted >= 26                dense_series_end (32)
 //     variogram lag raised               start_catch and most Standard pixels
 //                                        (not select_clear_at_threshold: its
 //                                        gaps exceed VARIOGRAM_MIN_LAG_DAYS)
@@ -90,34 +88,35 @@
 //   Initialize
 //     grow: span < DAY_DELTA             start_catch, peek_guard_tail, ...
 //     grow: Tmask flags all              corpus c8:dn:2,3
-//     grow: candidate too short in time  lookback_near_break, reentry_*
+//     grow: candidate too short in time  lookback_near_break,
+//                                        lookback_far_peek_decides
 //     grow: candidate too few samples    corpus pyccd:dn
-//     Tmask commit                       lookback_near_break, reentry_*
+//     Tmask commit                       lookback_near_break,
+//                                        lookback_far_peek_decides
 //     shift: unstable                    start_catch, constant_detection_band
 //                                        (red constant: 0/0 in stable(), so
 //                                        never stable)
 //     stable                             every pixel with a segment from
 //                                        Extend
 //     exhausted, no segment -> EndCatch  constant_detection_band
-//     exhausted after a segment -> EndCatch  lookback_near_break_decides (after
-//                                        a re-entry); corpus c2:c2
+//     exhausted after a segment -> EndCatch  corpus c2:c2
 //   Lookback
 //     skipped (start == prev_break)      series_end_after_outlier, ...
 //     peek far: the adjusted peek (rule 1)  start_catch,
 //                                        lookback_far_peek_decides
-//     peek to prev_break == 0            peek_guard_tail
-//     peek to prev_break > 0, window
-//       start <= peek (rule 2)           lookback_near_break,
+//     peek near: down to prev_break
+//       (rule 2), prev_break 0           peek_guard_tail
+//     the same, prev_break > 0 and
+//       window start <= peek             lookback_near_break,
 //                                        lookback_near_break_decides
-//     peek to prev_break                 reentry_after_series_end
 //     change, first segment              start_catch
 //     change, later segment: the
 //       observations between the break
 //       and the window are in no segment lookback_near_break
-//     outlier drop                       reentry_after_series_end; corpus
+//     outlier drop                       lookback_far_peek_decides; corpus
 //                                        bounds:dn
 //     include one                        lookback_near_break, peek_guard_tail
-//     reached prev_break                 peek_guard_tail, reentry_*
+//     reached prev_break                 peek_guard_tail
 //     compares against the start
 //       window's RMSE (rule 3)           every Lookback step above
 //   StartCatch
@@ -145,24 +144,21 @@
 //     change                             lookback_near_break, peek_guard_tail
 //     outlier drop                       series_end_after_outlier
 //     grow                               every Extend
-//     series end after a grow: end day
-//       == break day (quirk 6b)          lookback_near_break,
-//                                        reentry_after_series_end
+//     series end, the peek at the last
+//       observation: end day < break
+//       day (rule 6)                     lookback_near_break,
+//                                        dense_series_end
 //     series end after an outlier drop:
 //       break day after the dropped one  series_end_after_outlier
 //     curve_qa is the last step's count,
 //       not the fit's                    corpus c2:c2
-//     the dead series-end check (quirk 6a)   never taken (an assert in
-//                                        standard::extend's grow)
 //   Restart
 //     room -> Initialize                 lookback_near_break, peek_guard_tail
-//     no room -> EndCatch                start_catch, ...
-//     room after a series-end segment
-//       (quirk 6c: the guard passes at
-//       peek >= 25, Initialize runs at
-//       peek >= 26), and in it a Tmask
-//       commit and a Lookback drop that
-//       no segment uses                  reentry_after_series_end
+//     no room -> EndCatch                none of these pixels after a
+//                                        change; test_machine's
+//                                        sparse_random seed 12
+//   Series end -> EndCatch, no Restart (rule 6)
+//                                        every series-end pixel
 //   EndCatch
 //     End segment                        standard_no_room,
 //                                        constant_detection_band,
@@ -177,15 +173,12 @@
 // dump changes, so the 0.8.0 work knows which pins it is expected to move and
 // a refactor that moves one of them has changed behaviour.
 //
-//   6a series-end check `>=`           7 of these pixels; 328 corpus pixels
-//   6c series end goes to EndCatch     reentry_after_series_end
-//                                      (golden corpus: none)
 //   7  refit while <= RETRAIN_MIN_OBS  lookback_far_peek_decides;
 //                                      177 corpus pixels
 //
-// PathsAsDocumented fails on each of them alone, off the fixture platform
-// too: 6 through the shapes and masks, 7 through the RMSE values of
-// lookback_far_peek_decides (checked by applying each to v0.6.1).
+// PathsAsDocumented fails on it alone, off the fixture platform too,
+// through the RMSE values of lookback_far_peek_decides (checked by applying
+// it to v0.6.1).
 //
 //==============================================================================
 
@@ -321,7 +314,7 @@ TEST(Transitions, InputsAreTheSameOnEveryPlatform)
         {"lookback_far_peek_decides", 0xcbd41435e2ee30deull},
         {"peek_guard_tail", 0xd019800e2ee6f191ull},
         {"series_end_after_outlier", 0x73e2bfe02ecda114ull},
-        {"reentry_after_series_end", 0x2b119249d8626b0full},
+        {"dense_series_end", 0x2b119249d8626b0full},
     };
 
     const auto all = golden::characterisation_pixels();
@@ -405,7 +398,7 @@ TEST(Transitions, PathsAsDocumented)
     // Select at and around the two thresholds.
     {
         const auto r = run_detect(pixel(all, "select_clear_at_threshold"));
-        expect_shapes("select_clear_at_threshold", r, {{6, 0.0, 20}});   // Standard: Extend's curve_qa
+        expect_shapes("select_clear_at_threshold", r, {{6, 0.0, 19}});   // Standard: Extend's curve_qa
         EXPECT_EQ(r.mask.count(), 25u);
     }
     expect_shapes("select_clear_below_threshold",
@@ -439,7 +432,7 @@ TEST(Transitions, PathsAsDocumented)
     // is where the next segment starts and the Start segment's break day.
     {
         const auto r = run_detect(pixel(all, "start_catch"));
-        expect_shapes("start_catch", r, {{START, 0.0, 10}, {8, 0.0, 213}});
+        expect_shapes("start_catch", r, {{START, 0.0, 10}, {8, 0.0, 212}});
         EXPECT_EQ(r.models[0].break_day, r.models[1].start_day);
     }
 
@@ -449,9 +442,11 @@ TEST(Transitions, PathsAsDocumented)
     {
         const auto& p = pixel(all, "lookback_near_break");
         const auto r = run_detect(p);
-        expect_shapes("lookback_near_break", r, {{4, 1.0, 13}, {8, 0.0, 477}});
+        expect_shapes("lookback_near_break", r, {{4, 1.0, 13}, {8, 0.0, 476}});
         EXPECT_LT(r.models[0].break_day, r.models[1].start_day);
-        EXPECT_EQ(r.models[1].end_day, r.models[1].break_day);   // series end after a grow (quirk 6b)
+        // Series end after the last full peek (rule 6): the curve ends
+        // before the observation the peek starts at, its break day.
+        EXPECT_LT(r.models[1].end_day, r.models[1].break_day);
     }
 
     // The pixels whose output a quirk decides (see the table above): their
@@ -464,7 +459,7 @@ TEST(Transitions, PathsAsDocumented)
         // below).
         const auto r = run_detect(pixel(all, "lookback_near_break_decides"));
         expect_shapes("lookback_near_break_decides", r,
-            {{6, 1.0, 22}, {8, 1.0, 188}, {8, 0.0, 242}});
+            {{6, 1.0, 22}, {8, 1.0, 188}, {8, 0.0, 241}});
         EXPECT_EQ(r.mask.count(), 493u);
     }
     {
@@ -473,7 +468,7 @@ TEST(Transitions, PathsAsDocumented)
         // moves only the first segment's fit.
         const auto r = run_detect(pixel(all, "lookback_far_peek_decides"));
         expect_shapes("lookback_far_peek_decides", r,
-            {{8, 1.0, 99}, {8, 1.0, 127}, {8, 0.0, 61}});
+            {{8, 1.0, 99}, {8, 1.0, 127}, {8, 0.0, 60}});
         expect_rmse("lookback_far_peek_decides", r, 0,
             {36.24151163, 49.6614777, 47.72221929, 123.7609953, 68.2605607,
              66.3021312, 236.0055942});
@@ -483,7 +478,7 @@ TEST(Transitions, PathsAsDocumented)
         // fits COEFFICIENT_MIN = 6 coefficients.
         const auto r = run_detect(pixel(all, "coefficient_min_6"));
         expect_shapes("coefficient_min_6", r,
-            {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 308}});
+            {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 307}});
         expect_rmse("coefficient_min_6", r, 0,
             {33.84482982, 41.67944514, 50.41066257, 122.4179905, 92.36000081,
              65.21865399, 223.7726019});
@@ -506,19 +501,20 @@ TEST(Transitions, PathsAsDocumented)
         EXPECT_EQ(r.mask.count(), p.dates.size() - 1);
     }
 
-    // Re-entry after a series-end segment at peek 32 (quirk 6c): no second
-    // segment, but the mask carries exclusions dated after the only segment's
-    // break day, which no segment used.
+    // A series end at peek 32 (rule 6): the curve that reaches the end is
+    // the last one, so nothing runs after it, and the spikes among the last
+    // observations, which no segment reads, stay in the mask.
     {
-        const auto& p = pixel(all, "reentry_after_series_end");
+        const auto& p = pixel(all, "dense_series_end");
         const auto r = run_detect(p);
-        expect_shapes("reentry_after_series_end", r, {{8, 0.0, 257}});
-        EXPECT_EQ(r.models[0].end_day, r.models[0].break_day);   // quirk 6b
+        expect_shapes("dense_series_end", r, {{8, 0.0, 256}});
+        EXPECT_LT(r.models[0].end_day, r.models[0].break_day);
 
-        std::size_t unused = 0;
+        std::size_t dropped_after = 0;
         for (std::size_t t = 0; t < p.dates.size(); ++t)
             if (!r.mask[t] && p.dates[t] > r.models[0].break_day)
-                ++unused;
-        EXPECT_EQ(unused, 4u);
+                ++dropped_after;
+        EXPECT_EQ(dropped_after, 0u);
+        EXPECT_EQ(r.mask.count(), p.dates.size());
     }
 }

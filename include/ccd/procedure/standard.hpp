@@ -137,8 +137,8 @@ void change_magnitude(
 //     │         │ no full peek after the window ────────┤
 //     │         ▼                                       │
 //     │     Extend ◄┐ grow, drop (while a peek fits)    │
-//     │         │ └─┘                                   │
-//     │         ▼ change, or series end                 ▼
+//     │         │ └─┘    series end ────────────────────┤
+//     │         ▼ change                                ▼
 //     └── Restart ── no room to initialize ────────► EndCatch ──► Done
 //
 // Prepare enters Initialize, or EndCatch when there is no room; StartCatch
@@ -174,7 +174,8 @@ enum class Exit : std::uint8_t
     VariogramNaN,         // Prepare: a NaN in the variogram
     InitializeExhausted,  // Initialize: no stable window before the end
     PeekBeyondEnd,        // no full peek after the stable window
-    NoRoomToInitialize    // no MEOW_SIZE window after the cursor
+    NoRoomToInitialize,   // no MEOW_SIZE window after the cursor
+    SeriesEnd             // Extend: a curve reached the series end
 };
 
 const char* to_string(Exit exit);
@@ -257,6 +258,8 @@ enum class ExtendOutcome : std::uint8_t
                // ends at the window
     Dropped,   // the first peek observation, at window.stop, is an outlier:
                // dropped, the window keeping its coordinates
+    SeriesEnd, // no change, and the peek reached the last observation: the
+               // curve ends at the window
     Grown      // window.stop + 1
 };
 
@@ -369,17 +372,20 @@ Phase start_catch(const Context& context, State& state);
 //     stays;
 //   * the first above OUTLIER_THRESHOLD: Dropped, that observation (at
 //     window.stop) dropped, the window keeping its coordinates;
-//   * otherwise Grown, the window one longer. pyccd's series-end check
-//     before the grow can never hold here (quirk 6a) and is an assert.
+//   * no change, and the peek reached the last observation (window.stop +
+//     peek == size): SeriesEnd, the window as it is;
+//   * otherwise Grown, the window one longer.
 //
 // It writes no segment: extend() does.
 ExtendOutcome extend_step(const Context& context, State& state);
 
 // extend_step(), then the route. After a change, writes the segment with
 // change probability 1; next Restart. After a drop or a grow, next Extend
-// while a peek fits; else writes the segment with change probability 0, the
-// series end, and next Restart (also after a no-change segment: quirk 6c).
-// The segment's curve_qa and break day are the last test's (quirk 6b).
+// while a peek fits. At the series end (SeriesEnd, or a drop that left no
+// full peek) writes the segment with change probability 0, moves prev_break
+// to the window's stop and goes to EndCatch (SeriesEnd): the curve that
+// reaches the end is the last one. The segment's curve_qa and break day are
+// the last test's: its break day is the first observation after its end.
 Phase extend(const Context& context, State& state);
 
 // prev_break moves to window.stop and the window to (stop, stop +
