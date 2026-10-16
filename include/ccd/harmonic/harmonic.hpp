@@ -133,7 +133,7 @@ struct HarmonicOptions
     // it.
     std::int64_t VARIOGRAM_MIN_LAG_DAYS = 30;
 
-    // Observations. Lookforward refits the models while the window holds
+    // Observations. Extend refits the models while the window holds
     // fewer than RETRAIN_MIN_OBS observations, or once the window spans at
     // least RETRAIN_SPAN_FACTOR times the span of the last fit. A window of
     // at most RETRAIN_MIN_OBS observations compares against the model RMSE;

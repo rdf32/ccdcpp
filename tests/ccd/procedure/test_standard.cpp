@@ -453,7 +453,7 @@ TEST(CCD, DetectStandard)
 // whose stat window has an even number of gaps with middle values 8 and 9.
 // pyccd's np.median gives 8.5 and a peek window of round(96 / 8.501) = 11;
 // a median that truncates to 8 gives round(96 / 8.001) = 12, the lower change
-// threshold that goes with it, and different outliers in the lookforward
+// threshold that goes with it, and different outliers in Extend
 // (727551 kept, 732104 dropped), so the segment ended one observation early.
 //
 // The input is Collection 1 DN, fill rows dropped, the reflectance bound

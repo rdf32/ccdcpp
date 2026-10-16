@@ -38,7 +38,7 @@
   takes its `Series` and an `InitializeCriteria` (Standard passes its 4
   stability coefficients there) instead of reading a procedure's members.
   The Standard procedure's own steps are free functions in
-  `ccd::standard`: `lookback`, `lookforward`, `coefficient_count`,
+  `ccd::standard`: `lookback`, `extend`, `coefficient_count`,
   `peek_residuals` (both peeks' residual loop) and `change_magnitude`,
   which replaces `ccd::change_magnitude` and the internal
   `detection_magnitude` (the same sum in the same order) and reads the
@@ -49,12 +49,12 @@
   `State` record (phase, exit reason, `Series`, `Cursor`, segments,
   `Cadence`, `Variogram`, the stable fits), a read-only `Context`, one
   transition per phase (`prepare`, `initialize`, `lookback`, `start_catch`,
-  `lookforward`, `restart`, `end_catch`) and named routing between them.
+  `extend`, `restart`, `end_catch`) and named routing between them.
   `ccd::drive` (`include/ccd/procedure/machine.hpp`) is the one loop, for
   this machine and any later one, and logs one DEBUG line per transition.
-  `Initialize`, `Lookback` and `Lookforward` still run their whole loop per
+  `Initialize`, `Lookback` and `Extend` still run their whole loop per
   call. pyccd's `start` flag is `segments.empty()`. `standard::lookback` and
-  `standard::lookforward` are now these transitions. `StandardProcedure`'s
+  `standard::extend` are now these transitions. `StandardProcedure`'s
   signatures are unchanged.
 - `ccd::standard::Detector` chooses each pixel's procedure from its QA
   statistics (`select`) and fits it (`fit`); `DetectScratch::standard` is a

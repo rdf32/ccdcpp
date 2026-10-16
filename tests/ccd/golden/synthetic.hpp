@@ -14,7 +14,7 @@
 //
 //   Standard   clear-dominated, 0-4 abrupt breaks, harmonic seasonality,
 //              noise, clouds/shadow/cirrus/water/fill QA, occasional winter
-//              snow, unflagged cloud-like spikes (tmask / lookforward
+//              snow, unflagged cloud-like spikes (tmask / Extend
 //              outliers), saturated and out-of-range thermal values, and
 //              sometimes long fill gaps that leave too few observations.
 //   Snow       snow-dominated QA, so detect() takes PermanentSnow.

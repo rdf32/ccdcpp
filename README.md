@@ -200,8 +200,8 @@ The Standard procedure has constants that assume something about the revisit int
 |-------|---------|------|---------|
 | `PEEK_REFERENCE_DAYS` | `16.0` | days | the peek size: `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / median gap)`, never below `PEEK_SIZE` |
 | `VARIOGRAM_MIN_LAG_DAYS` | `30` | days | the variogram: the smallest lag whose most common separation exceeds this, over the pairs further apart than this |
-| `RETRAIN_MIN_OBS` | `24` | observations | lookforward: refit while the window holds fewer than this; a window of at most this many compares against the model RMSE, a longer one against the seasonal RMSE |
-| `RETRAIN_SPAN_FACTOR` | `1.33` | ratio | lookforward: refit once the window spans at least this times the span of the last fit |
+| `RETRAIN_MIN_OBS` | `24` | observations | Extend: refit while the window holds fewer than this; a window of at most this many compares against the model RMSE, a longer one against the seasonal RMSE |
+| `RETRAIN_SPAN_FACTOR` | `1.33` | ratio | Extend: refit once the window spans at least this times the span of the last fit |
 | `SEASONAL_RMSE_COUNT` | `24` | observations | the seasonal RMSE: residuals of this many fit observations closest in day of year to the last peek observation |
 | `SEASONAL_RMSE_DIVISOR` | `4.0` | none | the seasonal RMSE: their norm divided by this. pyccd's 4 is `sqrt(24 - 8)`; it is not derived from `SEASONAL_RMSE_COUNT` |
 | `CHANGE_PROBABILITY` | `0.99` | probability | the change threshold of a peek window longer than the default: the chi-squared quantile at `1 - (1 - CHANGE_PROBABILITY) ** (PEEK_SIZE / peek)` |

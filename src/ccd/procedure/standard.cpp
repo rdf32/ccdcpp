@@ -191,7 +191,7 @@ const char* to_string(Phase phase)
         case Phase::Initialize:  return "Initialize";
         case Phase::Lookback:    return "Lookback";
         case Phase::StartCatch:  return "StartCatch";
-        case Phase::Lookforward: return "Lookforward";
+        case Phase::Extend:      return "Extend";
         case Phase::Restart:     return "Restart";
         case Phase::EndCatch:    return "EndCatch";
         case Phase::Done:        return "Done";
@@ -301,13 +301,13 @@ Phase after_lookback(const Context& context, State& state)
     if (start_catch_due(state))
         return Phase::StartCatch;
 
-    return before_lookforward(context, state);
+    return peek_guard(context, state);
 }
 
-Phase before_lookforward(const Context&, State& state)
+Phase peek_guard(const Context&, State& state)
 {
     if (peek_fits(state))
-        return Phase::Lookforward;
+        return Phase::Extend;
 
     return end_catch_because(state, Exit::PeekBeyondEnd);
 }
@@ -586,10 +586,10 @@ Phase start_catch(const Context& context, State& state)
     );
     state.segments.push_back(std::move(result));
 
-    return before_lookforward(context, state);
+    return peek_guard(context, state);
 }
 
-Phase lookforward(const Context& context, State& state)
+Phase extend(const Context& context, State& state)
 {
     const auto& options = context.options;
     Series& series = state.series;
@@ -602,7 +602,7 @@ Phase lookforward(const Context& context, State& state)
 
     assert(peek_fits(state));
 
-    LOG_DEBUG("initial model window lookforward: " << window.start << ", " << window.stop);
+    LOG_DEBUG("initial model window extend: " << window.start << ", " << window.stop);
     ChangeModel result;
     const BandList& detection_bands = options.DETECTION_BANDS;
 
@@ -707,7 +707,7 @@ Phase lookforward(const Context& context, State& state)
         {   
             LOG_DEBUG("Outlier detected at: " << peek_window.start);
             LOG_DEBUG("mag: " << magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD);
-            LOG_DEBUG("Updating processing mask lookforward");
+            LOG_DEBUG("Updating processing mask extend");
             //----------------------------------------------------------
             // Drop the first peek observation, at window.stop; the
             // window keeps its coordinates
@@ -791,7 +791,7 @@ Phase Machine::step(const Context& context, State& state)
         case Phase::Initialize:  return initialize(context, state);
         case Phase::Lookback:    return lookback(context, state);
         case Phase::StartCatch:  return start_catch(context, state);
-        case Phase::Lookforward: return lookforward(context, state);
+        case Phase::Extend:      return extend(context, state);
         case Phase::Restart:     return restart(context, state);
         case Phase::EndCatch:    return end_catch(context, state);
         case Phase::Done:        break;

@@ -351,7 +351,7 @@ void bind_options(py::module_& m)
         "RETRAIN_MIN_OBS",
         &ccd::HarmonicOptions::RETRAIN_MIN_OBS,
         "Observations (default 24). Read by the Standard procedure's "
-        "lookforward: it refits while the model window holds fewer than "
+        "Extend: it refits while the model window holds fewer than "
         "this, and a window of at most this many compares against the model "
         "RMSE instead of the seasonal RMSE. Not scaled with the cadence."
     )
@@ -359,7 +359,7 @@ void bind_options(py::module_& m)
         "RETRAIN_SPAN_FACTOR",
         &ccd::HarmonicOptions::RETRAIN_SPAN_FACTOR,
         "Unitless ratio of spans (default 1.33). Read by the Standard "
-        "procedure's lookforward: it refits once the model window spans at "
+        "procedure's Extend: it refits once the model window spans at "
         "least this times the span of the last fit. Not scaled with the "
         "cadence."
     )
@@ -367,14 +367,14 @@ void bind_options(py::module_& m)
         "SEASONAL_RMSE_COUNT",
         &ccd::HarmonicOptions::SEASONAL_RMSE_COUNT,
         "Observations (default 24). Read by the Standard procedure's "
-        "lookforward: the seasonal RMSE takes the fit residuals of this many "
+        "Extend: the seasonal RMSE takes the fit residuals of this many "
         "observations closest in day of year to the last peek observation."
     )
     .def_readwrite(
         "SEASONAL_RMSE_DIVISOR",
         &ccd::HarmonicOptions::SEASONAL_RMSE_DIVISOR,
         "Unitless (default 4.0). Read by the Standard procedure's "
-        "lookforward: the seasonal RMSE is the norm of those residuals "
+        "Extend: the seasonal RMSE is the norm of those residuals "
         "divided by this. pyccd's 4 is sqrt(24 - 8); this is not derived "
         "from SEASONAL_RMSE_COUNT."
     )

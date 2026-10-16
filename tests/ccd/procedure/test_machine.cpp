@@ -5,7 +5,7 @@
 //
 //   * Routing: each guard between phases (room_to_initialize, peek_fits,
 //     start_catch_due) and each routing step (after_stable_start,
-//     after_lookback, before_lookforward, restart, end_catch, start_catch,
+//     after_lookback, peek_guard, restart, end_catch, start_catch,
 //     prepare) on a State built by hand at a chosen cursor, against the
 //     phase, the exit and the record the procedure's description gives.
 //   * Exits: standard::run() on the characterisation pixels that end the
@@ -90,7 +90,7 @@ struct Record
         state.cadence = ccd::standard::Cadence{peek, options.CHANGE_THRESHOLD};
     }
 
-    // A segment already written, as Lookforward or StartCatch leaves one.
+    // A segment already written, as Extend or StartCatch leaves one.
     void with_segment()
     {
         state.segments.push_back(ccd::ChangeModel{});
@@ -167,7 +167,7 @@ TEST(StandardRouting, AfterAStableStartLookbackRunsOnlyAboveTheBreak)
 
     // At the break: straight on to the start catch and peek guards.
     r.at(0, 12, 0);
-    EXPECT_EQ(ccd::standard::after_stable_start(r.context, r.state), Phase::Lookforward);
+    EXPECT_EQ(ccd::standard::after_stable_start(r.context, r.state), Phase::Extend);
     EXPECT_EQ(r.state.exit, Exit::None);
 }
 
@@ -181,7 +181,7 @@ TEST(StandardRouting, AfterLookbackTheStartCatchComesBeforeThePeekGuard)
     EXPECT_EQ(r.state.exit, Exit::None);
 
     r.at(2, 14, 0, 6);
-    EXPECT_EQ(ccd::standard::after_lookback(r.context, r.state), Phase::Lookforward);
+    EXPECT_EQ(ccd::standard::after_lookback(r.context, r.state), Phase::Extend);
 
     r.at(2, 26, 0, 6);
     EXPECT_EQ(ccd::standard::after_lookback(r.context, r.state), Phase::EndCatch);
@@ -192,7 +192,7 @@ TEST(StandardRouting, StartCatchWritesTheLeadingSegmentThenThePeekGuard)
 {
     Record r(60);
     r.at(9, 21, 0, 6);
-    EXPECT_EQ(ccd::standard::start_catch(r.context, r.state), Phase::Lookforward);
+    EXPECT_EQ(ccd::standard::start_catch(r.context, r.state), Phase::Extend);
     ASSERT_EQ(r.state.segments.size(), 1u);
 
     const ccd::ChangeModel& s = r.state.segments[0];

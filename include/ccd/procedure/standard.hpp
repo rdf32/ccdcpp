@@ -107,7 +107,7 @@ void change_magnitude(
 //
 // pyccd's standard procedure as a per-pixel state machine. drive()
 // (machine.hpp) steps it from Prepare to Done; each phase's transition does
-// its work on the State and returns the next phase. Lookback, Lookforward
+// its work on the State and returns the next phase. Lookback, Extend
 // and Initialize still run their whole loop in one call.
 //
 //     Prepare ──┬─────────────────────────────────────────────► Done
@@ -121,7 +121,7 @@ void change_magnitude(
 //     │     StartCatch (first segment only)           │
 //     │         │ no full peek after the window ──────┤
 //     │         ▼                                     │
-//     │     Lookforward                               │
+//     │     Extend                                    │
 //     │         ▼                                     ▼
 //     └── Restart ── no room to initialize ──────► EndCatch ──► Done
 //
@@ -136,7 +136,7 @@ enum class Phase : std::uint8_t
     Initialize,    // the start-window search (ccd::initialize)
     Lookback,      // the backward extension towards prev_break
     StartCatch,    // the leading observations of the first segment
-    Lookforward,   // the forward extension and its change test
+    Extend,        // the forward extension and its change test
     Restart,       // the cursor after a segment
     EndCatch,      // the trailing observations
     Done
@@ -253,7 +253,7 @@ Phase initialize(const Context& context, State& state);
 Phase lookback(const Context& context, State& state);
 
 // Writes the Start segment over (prev_break, window.start) with
-// COEFFICIENT_MIN coefficients. Next: Lookforward, or EndCatch
+// COEFFICIENT_MIN coefficients. Next: Extend, or EndCatch
 // (PeekBeyondEnd).
 Phase start_catch(const Context& context, State& state);
 
@@ -262,7 +262,7 @@ Phase start_catch(const Context& context, State& state);
 // after the window; drops an outlier at the first peek observation and tests
 // again. Writes the segment: change probability 1 on a change, 0 at the
 // series end. Next: Restart.
-Phase lookforward(const Context& context, State& state);
+Phase extend(const Context& context, State& state);
 
 // prev_break moves to window.stop and the window to (stop, stop +
 // MEOW_SIZE). Next: Initialize, or EndCatch (NoRoomToInitialize).
@@ -291,12 +291,12 @@ bool start_catch_due(const State& state);
 Phase after_stable_start(const Context& context, State& state);
 
 // After Lookback: StartCatch when start_catch_due(), else
-// before_lookforward().
+// peek_guard().
 Phase after_lookback(const Context& context, State& state);
 
-// The peek guard: Lookforward when peek_fits(), else EndCatch
+// The peek guard: Extend when peek_fits(), else EndCatch
 // (PeekBeyondEnd).
-Phase before_lookforward(const Context& context, State& state);
+Phase peek_guard(const Context& context, State& state);
 
 //------------------------------------------------------------------------------
 // The machine, for drive(), and one pixel's run of it.
