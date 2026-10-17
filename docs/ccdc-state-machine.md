@@ -110,8 +110,8 @@ The guards inside one call, in the order they are tested:
   before the window; near it, down to the previous break and never below. The comparison RMSE
   is the stable start window's: nothing is refitted while the window grows backward, as in
   Zhu's TrendSeasonalFit.
-- **Extend** (`extend_step`): first the refit schedule (refit when untrained, below
-  `RETRAIN_MIN_OBS` observations or fewer, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
+- **Extend** (`extend_step`): first the refit schedule (refit when untrained, at most
+  `RETRAIN_MIN_OBS` observations, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
   fit); then every magnitude above the threshold (`Change`); the first above
   `OUTLIER_THRESHOLD` (`Dropped`, the observation at `window.stop` leaves the series); a peek that
   reached the last observation (`SeriesEnd`: the curve ends at the window, before the

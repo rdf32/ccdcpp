@@ -129,10 +129,10 @@ inline CharPixel make_char_pixel(
 }
 
 //------------------------------------------------------------------------------
-// Pixel families. The seeds characterisation_pixels() passes were found on
-// v0.6.1 by a scan with a trace-instrumented build: for a family built for a
-// path, an early seed that takes it; for the random families, a seed whose
-// output the rule decides (see test_transitions.cpp).
+// Pixel families. The seeds characterisation_pixels() passes were found by
+// a scan with a trace-instrumented build: for a family built for a path, an
+// early seed that takes it; for the random families, a seed whose output a
+// rule decides (see test_transitions.cpp).
 //
 // Every draw from the stream is its own statement or an element of a braced
 // list, both evaluated in order. Two draws in the arguments of one call are

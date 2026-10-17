@@ -59,8 +59,8 @@
 // the peek guard, Extend, Restart, EndCatch); "corpus" names a pixel
 // of the golden corpus that also takes it, as test_golden.cpp labels it.
 // Every reachable transition is taken by at least one pixel of the two
-// fixtures; this table was measured with a trace-instrumented build of
-// v0.6.1.
+// fixtures; this table is checked against a trace-instrumented build
+// (MAX_LOG_LEVEL=0) of the code it describes.
 //
 //   Select (ccd::select_procedure, called by detect_pixel)
 //     Standard                  select_clear_at_threshold (clear 25/100 =

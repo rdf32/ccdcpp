@@ -19,7 +19,7 @@
   it, into the previous segment, as Zhu's TrendSeasonalFit does. pyccd's
   guard against reading past the series start (`start <= peek`) also fired
   after a break, which needs an adjusted peek of 13 or more (a median gap
-  under about 7.4 days: HLS, not Landsat). Pins moved: in the transitions
+  of about 7.7 days or less: HLS, not Landsat). Pins moved: in the transitions
   fixture, `lookback_near_break_decides` keeps 493 observations in its mask
   (was 483), every segment unchanged; it and `lookback_near_break` are
   renamed from `lookback_below_break*`; no golden dump.
@@ -52,16 +52,17 @@
   and a series-end segment's end day was its break day; the check works
   again, so the segment ends before the observation its last peek starts at
   (end day < break day, as after an outlier drop), and EndCatch follows
-  instead of Restart, which at peeks of 25 and more re-entered Initialize on
-  the last observations and dropped observations no segment used (Zhu's
+  instead of Restart, which at a peek of 25 re-entered Initialize, and at
+  26 and more ran it on the last observations and dropped observations no
+  segment used (Zhu's
   TrendSeasonalFit ends the same way). A new internal `Exit::SeriesEnd`.
   Pins moved, each a series-end segment that ended after a grow, its end day
   one observation earlier and its count one lower, its start, break day,
   change probability, curve_qa, fits and magnitudes unchanged (checked pixel
   by pixel): the golden fixture 328 of 621 pixels, the bands fixture 225 of
-  400, the transitions fixture 7 of 17 (and `dense_series_end`, renamed from
-  `reentry_after_series_end`, keeps the 4 observations the re-entry
-  dropped), the four real-data `expected_*.json` (11 of 19 pixels), all 144
+  400, the transitions fixture 7 of 17 (one of them `dense_series_end`,
+  renamed from `reentry_after_series_end`, whose mask also keeps the 4
+  observations the re-entry dropped), the four real-data `expected_*.json` (11 of 19 pixels), all 144
   check.sh dumps; `CCD.DetectStandardHalfDayMedianGap` now ends one
   observation before pyccd's reference (738727, 959 against pyccd's 738751,
   960), every fit still pyccd's.
