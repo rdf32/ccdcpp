@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - 2026-10-16
+
+The Standard procedure keeps pyccd's intent where pyccd's code says
+otherwise: seven decided fixes, each checked against Zhu's MATLAB reference
+(TrendSeasonalFit), each moving only the pins listed with it, and each
+holding the new prefix-stability test (new observations never rewrite a
+final segment). **Outputs change**: on Landsat at the defaults through the
+full Lookback peek, the series end and the refit at 24 observations (the
+Atlanta h024v013 cell: 455,231 segments against 0.7.0's 456,157), at dense
+cadences also through Lookback near the break, and every early exit now
+returns its processing mask. The C++ segment record is a neutral
+`ccd::BandFit`; the Python API is unchanged. Timing: level with 0.7.0 on the
+real cell; the refit at 24 observations costs about 6% on the single-thread
+synthetic bench (an algorithm cost, accepted; the optimisation stage
+targets it). The tests that failed on Linux pass there.
 
 ### Changed (pyccd's intent, not its literals)
 
