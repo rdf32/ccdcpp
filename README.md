@@ -576,7 +576,7 @@ Three tiers, from the cheapest:
 | Full | `ctest --test-dir build -j8` | every test, every cut | before a change is merged, and after any change to the machine, the fits, the record or resume |
 | Release | the full tier on a sanitizer build, below, and on Linux (`tools/linux-compare`) | memory errors, undefined behaviour and asserts; another compiler's arithmetic | before a release, or a change that can behave differently by platform |
 
-The sanitizer build is Debug at `-O2` (asserts on; at `-O0` the sweeps run several hundred times slower than Release):
+The sanitizer build is Debug at `-O2` (asserts on; at `-O0` the sweeps run several hundred times slower than Release). On macOS with Apple clang, CMake finds Homebrew's libomp only when told where it is: add `-DOpenMP_CXX_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_LIB_NAMES=libomp -DOpenMP_CXX_INCLUDE_DIR=$(brew --prefix libomp)/include -DOpenMP_libomp_LIBRARY=$(brew --prefix libomp)/lib/libomp.dylib` to this and to the configure line of step 2.
 
 ```bash
 cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS_DEBUG="-O2 -g" \

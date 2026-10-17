@@ -13,7 +13,7 @@ bits. **Results version 2**: a resume record stored by 0.9.0 is refused, so
 the first run after upgrading is a full one. The annual update of that
 cell (2023 added to 1984-2022) takes 14 s, 0.36x the full run (the update
 is mostly the reading and the open segments' refit, which the faster
-machine leaves as they were). Tests run in a quick tier (`ctest -LE
+state machine leaves as they were). Tests run in a quick tier (`ctest -LE
 corpus`) and a full one.
 
 ### Changed (outputs in their last bits; results version 2)

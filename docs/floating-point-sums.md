@@ -107,13 +107,13 @@ times faster. Leftover terms, when n is not a multiple of 4, go into s0. The cod
 ### Is the answer still right?
 
 Yes, to the same accuracy. The textbook bound for the rounding error of a sum of n terms in any
-order is about (n - 1) * 1.1e-16 times the sum of the terms' absolute values. That holds for the
-old order and the new one alike. Partial sums are, if anything, slightly more accurate, because
-each chain is a quarter as long. Neither order is the true value; they are two equally valid
+order is about (n - 1) * 1.1e-16 times the sum of the terms' absolute values. That holds for one chain
+and for four. Partial sums are, if anything, slightly more accurate, because each chain is a
+quarter as long. Neither order is the true value; they are two equally valid
 roundings of it.
 
-What does change is the last few bits of every coefficient. Those then pass through the rest of
-the computation. Measured on the Atlanta cell (250,000 pixels, 455,231 segments) and the golden
+What differs between the two orders is the last few bits of every coefficient, and what follows
+from them. Measured, one chain against four, on the Atlanta cell (250,000 pixels, 455,231 segments) and the golden
 corpus (26,021 segments, 182,147 band fits):
 
 - every segment is identical: the same start, end and break days, counts and change
@@ -129,7 +129,7 @@ differ by up to the solver's tolerance, about 1e-4 relative. That never happened
 above (nearly 640,000 band fits).
 
 Because the order is part of the output, changing it is a results version (`RESULTS_VERSION`
-in `include/ccd/record.hpp`). A stored resume record from the old order is refused, and the
+in `include/ccd/record.hpp`): a stored resume record from another order is refused, and the
 first run after upgrading is a full one.
 
 ## 4. Why four
