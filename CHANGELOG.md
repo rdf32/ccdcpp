@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Changed (speed; outputs bit for bit)
+
+- Extend refits the detection bands only, the bands its tests read; the
+  others are fitted once, when the segment is written, on the last refit's
+  window with its coefficient count, with their residuals over the last
+  test's peek (before the drop when a drop ends the curve): the same models,
+  magnitudes and segments, without fitting the other bands at every refit.
+  At the defaults (5 detection bands of 7) that is two fits in seven.
+- `find_closest_doy()` (the seasonal RMSE's observations) computes the
+  seasonal distance in integer quarter days and selects by a counting sort:
+  the same observations in the same order, without a division per
+  observation and a partial sort.
+- Together: the synthetic bench at one thread 5.90 s -> 4.09 s (-31%).
+
 ### Tests
 
 - Test tiers. The sweeps over cuts (`PrefixStability.*` and

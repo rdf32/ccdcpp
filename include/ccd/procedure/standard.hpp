@@ -272,12 +272,15 @@ struct Extension
     index_t num_coef = 0;
     Window peek;
 
-    // Every band's fit; the segment takes band_fit() of each when it is
-    // written.
+    // Indexed by band. A refit fits the detection bands, all a test reads;
+    // the others are fitted on the same window when the segment is written
+    // (complete), which takes band_fit() of each.
     std::vector<LassoResult> models;
+    bool complete = false;
 
-    // Every band's residuals over the last peek, whose medians are the
-    // segment's magnitudes.
+    // Indexed by band: the residuals over the last peek, whose medians are
+    // the segment's magnitudes; the detection bands' at each test, the
+    // others' once they are fitted.
     std::vector<std::vector<scalar_t>> residuals;
 
     // Scratch, rewritten by every test.
