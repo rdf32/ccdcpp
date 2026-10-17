@@ -17,13 +17,15 @@
   against 0.10.0's headers is rebuilt.
 - The BFP test's kernels (`include/ccd/procedure/bfp.hpp`), for the BFP
   machine to come: the F upper tail (Boost.Math), Fisher's combination in
-  closed form, `bfp::Mixture` (the probability that nothing changed, over
-  every subset of a growing peek whose consecutive members keep the spacing,
-  each subset's Cholesky factor extended by one row, each subset computed
-  once per peek) and `bfp::decide()` (the test's decision at each peek size,
-  as JuliaCCD's breakTestBFP takes it). Tested against brute force (every
-  subset, dense inverses) and Boost's F and chi-squared distributions
-  (`tests/ccd/procedure/test_bfp.cpp`).
+  closed form, `bfp::Mixture` (the counts of the valid subsets of a growing
+  peek, those whose consecutive members keep the spacing, by size; each
+  size's sum of P scored when asked, each subset once per peek, its Cholesky
+  factor built one member at a time) and `bfp::decide()` (the test's
+  decision at each peek size, as JuliaCCD's breakTestBFP takes it, sizes
+  largest first between bounds on P0, so a peek scores the sizes its
+  decision needs). Tested against brute force (every subset, dense
+  inverses), Boost's F and chi-squared distributions, and the exact rule
+  over every size (`tests/ccd/procedure/test_bfp.cpp`).
 
 ### Fixed
 

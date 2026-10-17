@@ -7,9 +7,11 @@
 //   * fisher_tail(): against Boost's chi-squared distribution.
 //   * Mixture: every add() against brute force -- every subset of the first
 //     m observations tested for the spacing, each P(A) from a dense inverse
-//     of H[A,A], the sums by size, P0 and the counts -- on random peeks with
-//     gaps under and over min_days and repeated dates.
-//   * decide(): each rule in its order.
+//     of H[A,A], the counts and sums by size, P0, the top-order mean -- on
+//     random peeks with gaps under and over min_days and repeated dates.
+//   * decide(): its bounds against the exact rule over every size, at every
+//     m of random peeks, including dense peeks whose largest subset is
+//     smaller than m.
 //
 //==============================================================================
 
@@ -121,7 +123,7 @@ bfp::Mixture::Inputs random_peek(std::mt19937_64& r, index_t N, index_t bands)
     }
     in.degrees_of_freedom = 10 + static_cast<scalar_t>(r() % 400);
     in.good = (r() % 2) ? 0.95 : 0.97;
-    in.min_days = (r() % 4 == 0) ? 1 : 10;
+    in.min_days = (r() % 4 == 0) ? 2 : 10;
     return in;
 }
 
@@ -190,9 +192,11 @@ TEST(Mixture, EveryAddEqualsBruteForce)
             scalar_t weight = std::pow(1 - g, m), weighted = weight;
             std::int64_t combos = 0;
             index_t order = 0;
+            const std::string at = "trial " + std::to_string(trial) + " m " + std::to_string(m);
             for (index_t k = 1; k <= m; ++k)
             {
-                ASSERT_EQ(b.count[k] == 0, b.sum[k] == 0.0);
+                EXPECT_EQ(mixture.count(k), b.count[k]) << at << " k " << k;
+                EXPECT_TRUE(near(mixture.sum(k), b.sum[k], 1e-11)) << at << " k " << k;
                 if (b.count[k] == 0)
                     continue;
                 const scalar_t w = std::pow(g, k) * std::pow(1 - g, m - k);
@@ -201,13 +205,12 @@ TEST(Mixture, EveryAddEqualsBruteForce)
                 combos += b.count[k];
                 order = k;
             }
-            const std::string at = "trial " + std::to_string(trial) + " m " + std::to_string(m);
             EXPECT_EQ(s.m, m) << at;
             EXPECT_EQ(s.order, order) << at;
             EXPECT_EQ(s.combos, combos) << at;
             EXPECT_TRUE(near(s.total_weight, weight, 1e-13)) << at;
-            EXPECT_TRUE(near(s.p0, weighted / weight, 1e-11)) << at << " " << s.p0 << " " << weighted / weight;
-            EXPECT_TRUE(near(s.top_mean, b.sum[order] / b.count[order], 1e-11)) << at;
+            EXPECT_TRUE(near(mixture.p0(), weighted / weight, 1e-11)) << at;
+            EXPECT_TRUE(near(mixture.top_mean(), b.sum[order] / b.count[order], 1e-11)) << at;
             subsets += combos;
         }
 
@@ -228,55 +231,95 @@ TEST(Mixture, EveryAddEqualsBruteForce)
     EXPECT_GT(subsets, 5000);
 }
 
-TEST(Decide, EachRuleInOrder)
+namespace
 {
-    bfp::Rule rule;   // g 0.95, threshold 1e-10 scaled, cutoff 0.001
+
+// The decision at m from every size: the span and count guards; the empty
+// subset's share alone when the largest subset is smaller than m; the
+// no-change cutoff on the top-order mean; P0 against the threshold.
+bfp::Decision exact_rule(bfp::Mixture& mixture, const bfp::Mixture::Stats& s,
+                         std::int64_t span, const bfp::Rule& rule)
+{
+    if (span > rule.max_days_for_break)
+        return bfp::Decision::NoBreak;
+    if (span < rule.min_days_for_break || s.m < rule.min_observations)
+        return bfp::Decision::Continue;
+    const scalar_t threshold =
+        rule.scale_threshold ? rule.threshold * s.combos / std::ldexp(1.0, s.order) : rule.threshold;
+    if (s.order < s.m && std::pow(1 - mixture.good(), s.m) / s.total_weight > threshold)
+        return bfp::Decision::Continue;
+    if (mixture.top_mean() > rule.no_change_cutoff)
+        return bfp::Decision::NoBreak;
+    if (mixture.p0() < threshold)
+        return bfp::Decision::Break;
+    return bfp::Decision::Continue;
+}
+
+} // namespace
+
+TEST(Decide, TheBoundsDecideAsTheExactRule)
+{
+    std::mt19937_64 r(94);
+    std::size_t decided = 0, breaks = 0, cutoffs = 0, dense = 0, undecided = 0;
+    for (int trial = 0; trial < 400; ++trial)
+    {
+        const index_t N = 1 + r() % 16;
+        bfp::Mixture::Inputs in = random_peek(r, N, 5);
+        if (trial % 3 == 0)   // a clear change: every residual shifted
+            for (auto& v : in.u)
+                v += 6.0;
+        bfp::Rule rule;
+        rule.threshold = (trial % 5 == 0) ? 1e-6 : 1e-10;
+        rule.scale_threshold = trial % 7 != 0;
+
+        bfp::Mixture bounded, exact;
+        bounded.reset(in);
+        exact.reset(in);
+        bfp::Decision last = bfp::Decision::Continue;
+        for (index_t m = 1; m <= N; ++m)
+        {
+            const bfp::Mixture::Stats s = bounded.add();
+            const bfp::Mixture::Stats e = exact.add();
+            const std::int64_t span = in.dates[m - 1] - in.dates[0];
+            const bfp::Decision d = bfp::decide(bounded, s, span, rule);
+            ASSERT_EQ(d, exact_rule(exact, e, span, rule))
+                << "trial " << trial << " m " << m << " p0 " << exact.p0();
+            if (s.order < s.m)
+                ++dense;
+            last = d;
+            if (d != bfp::Decision::Continue)
+                break;
+        }
+        ++decided;
+        breaks += last == bfp::Decision::Break;
+        cutoffs += last == bfp::Decision::NoBreak;
+        undecided += last == bfp::Decision::Continue;
+    }
+    EXPECT_EQ(decided, 400u);
+    EXPECT_GT(breaks, 20u);
+    EXPECT_GT(cutoffs, 20u);
+    EXPECT_GT(undecided, 5u);
+    EXPECT_GT(dense, 50u);
+}
+
+TEST(Decide, TheGuardsComeFirst)
+{
+    std::mt19937_64 r(95);
+    bfp::Mixture::Inputs in = random_peek(r, 8, 5);
+    for (auto& v : in.u)
+        v += 8.0;   // a change no size could miss
+    bfp::Mixture mixture;
+    mixture.reset(in);
     bfp::Mixture::Stats s;
-    s.m = 8;
-    s.order = 8;
-    s.combos = 255;   // all 2^8 - 1 subsets valid: the threshold scale is 255 / 256
-    s.total_weight = 1.0;
+    for (index_t m = 1; m <= 8; ++m)
+        s = mixture.add();
 
-    s.top_mean = 1e-12;
-    s.p0 = 1e-11;
-    EXPECT_EQ(bfp::decide(s, 100, rule), bfp::Decision::Break);
-    s.p0 = 2e-10;
-    EXPECT_EQ(bfp::decide(s, 100, rule), bfp::Decision::Continue);
-    s.top_mean = 0.002;
-    EXPECT_EQ(bfp::decide(s, 100, rule), bfp::Decision::NoBreak);   // the cutoff before P0
-    s.p0 = 1e-12;
-    EXPECT_EQ(bfp::decide(s, 100, rule), bfp::Decision::NoBreak);
-
-    // The span and count guards come first.
-    s.top_mean = 1e-12;
-    EXPECT_EQ(bfp::decide(s, 10001, rule), bfp::Decision::NoBreak);
-    bfp::Rule needs_more = rule;
-    needs_more.min_observations = 9;
-    EXPECT_EQ(bfp::decide(s, 100, needs_more), bfp::Decision::Continue);
-    needs_more = rule;
-    needs_more.min_days_for_break = 101;
-    EXPECT_EQ(bfp::decide(s, 100, needs_more), bfp::Decision::Continue);
-
-    // Fewer sizes than observations (dense dates) and the empty subset's
-    // share above the threshold: Continue, even with top_mean above the
-    // cutoff, which is not read.
-    bfp::Mixture::Stats dense;
-    dense.m = 6;
-    dense.order = 3;
-    dense.combos = 20;
-    dense.total_weight = 0.2;   // 0.05^6 / 0.2 = 7.8e-8 > 1e-10 * 20 / 8
-    dense.top_mean = 0.5;
-    dense.p0 = 0.5;
-    EXPECT_EQ(bfp::decide(dense, 30, rule), bfp::Decision::Continue);
-    dense.total_weight = 1e6;   // the share falls under the threshold: the cutoff is read
-    EXPECT_EQ(bfp::decide(dense, 30, rule), bfp::Decision::NoBreak);
-
-    // The threshold is unscaled without scale_threshold: P0 between the two.
-    s.top_mean = 1e-12;
-    s.p0 = 0.99e-10;
-    s.combos = 100;   // scaled: 1e-10 * 100 / 256 = 3.9e-11 < P0
-    EXPECT_EQ(bfp::decide(s, 100, rule), bfp::Decision::Continue);
-    bfp::Rule unscaled = rule;
-    unscaled.scale_threshold = false;
-    EXPECT_EQ(bfp::decide(s, 100, unscaled), bfp::Decision::Break);
+    bfp::Rule rule;
+    EXPECT_EQ(bfp::decide(mixture, s, 10001, rule), bfp::Decision::NoBreak);
+    bfp::Rule more = rule;
+    more.min_observations = 9;
+    EXPECT_EQ(bfp::decide(mixture, s, 100, more), bfp::Decision::Continue);
+    more = rule;
+    more.min_days_for_break = 101;
+    EXPECT_EQ(bfp::decide(mixture, s, 100, more), bfp::Decision::Continue);
 }

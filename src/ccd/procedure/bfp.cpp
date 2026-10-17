@@ -50,13 +50,29 @@ void Mixture::reset(Inputs inputs)
 {
     in_ = std::move(inputs);
     const index_t N = size();
+    assert(N <= MAX_PEEK);
+    assert(in_.min_days >= 2);
     assert(in_.h.size() == N * N);
     assert(in_.u.size() == in_.bands * N);
 
     m_ = 0;
+    ending_.assign((N + 1) * N, 0);
     count_.assign(N + 1, 0);
-    sum_.assign(N + 1, 0.0);
-    single_.assign(N, 0.0);
+    reach_.assign(N, 0);
+
+    const std::size_t subsets = std::size_t{1} << N;
+    if (cache_.size() < subsets)
+    {
+        cache_.resize(subsets);
+        stamp_.assign(subsets, 0);
+        generation_ = 0;
+    }
+    if (++generation_ == 0)
+    {
+        std::fill(stamp_.begin(), stamp_.end(), 0);
+        generation_ = 1;
+    }
+
     members_.assign(N, 0);
     chol_.assign(N * N, 0.0);
     z_.assign(in_.bands * N, 0.0);
@@ -89,122 +105,216 @@ scalar_t border(const std::vector<scalar_t>& h, index_t N, const std::vector<ind
 
 } // namespace
 
-// The subset B (members_[0 .. depth), last member `last`, its factor and
-// whitened residuals in place): scores B and m, then descends into each
-// B and j that can still precede m.
-void Mixture::extend(index_t depth, index_t last)
+Mixture::Stats Mixture::add()
 {
+    assert(m_ < size());
     const index_t N = size();
-    const index_t B = in_.bands;
-    const index_t m = m_;
+    const index_t i = m_;
     const auto& dates = in_.dates;
 
-    //--------------------------------------------------------------------------
-    // A = B and m: one more row, the bands' F, Fisher's combination.
-    //--------------------------------------------------------------------------
-    const scalar_t d = border(in_.h, N, members_, chol_, depth, m, row_);
-    const index_t k = depth + 1;
+    // The subsets ending at i: {i}, and each size s - 1 one ending at a j at
+    // least min_days before it, with i appended.
+    ending_[1 * N + i] = 1;
+    for (index_t s = 2; s <= i + 1; ++s)
+    {
+        std::int64_t c = 0;
+        for (index_t j = 0; j < i; ++j)
+            if (dates[i] - dates[j] >= in_.min_days)
+                c += ending_[(s - 1) * N + j];
+        ending_[s * N + i] = c;
+    }
+    for (index_t s = 1; s <= i + 1; ++s)
+        count_[s] += ending_[s * N + i];
+    ++m_;
+
+    // The longest valid chain from each observation within the first m.
+    for (index_t j = m_; j-- > 0;)
+    {
+        index_t longest = 0;
+        for (index_t t = j + 1; t < m_; ++t)
+            if (dates[t] - dates[j] >= in_.min_days)
+                longest = std::max(longest, reach_[t]);
+        reach_[j] = 1 + longest;
+    }
+
+    const scalar_t g = in_.good;
+    Stats s;
+    s.m = m_;
+    s.total_weight = std::pow(1.0 - g, static_cast<scalar_t>(m_));
+    for (index_t k = 1; k <= m_; ++k)
+    {
+        if (count_[k] == 0)
+            continue;
+        s.total_weight += std::pow(g, static_cast<scalar_t>(k)) *
+                          std::pow(1.0 - g, static_cast<scalar_t>(m_ - k)) *
+                          static_cast<scalar_t>(count_[k]);
+        s.combos += count_[k];
+        s.order = k;
+    }
+    return s;
+}
+
+// P(A) of the subset members_[0 .. k), whose whitened residuals' squared
+// norms are at norm2_[k].
+scalar_t Mixture::score(index_t k)
+{
+    const index_t B = in_.bands;
     scalar_t log_p = 0.0;
     for (index_t b = 0; b < B; ++b)
     {
-        scalar_t v = in_.u[b * N + m];
-        for (index_t i = 0; i < depth; ++i)
-            v -= row_[i] * z_[b * N + i];
-        v /= d;
-        const scalar_t f = (norm2_[depth * B + b] + v * v) / static_cast<scalar_t>(k);
+        const scalar_t f = norm2_[k * B + b] / static_cast<scalar_t>(k);
         log_p += std::log(f_upper_tail(f, static_cast<scalar_t>(k), in_.degrees_of_freedom));
     }
-    const scalar_t p = fisher_tail(log_p, B);
-    count_[k] += 1;
-    sum_[k] += p;
-    if (depth == 0)
-        single_[m] = p;
+    return fisher_tail(log_p, B);
+}
 
-    //--------------------------------------------------------------------------
-    // B and j, for each j after `last` far enough from it and from m.
-    //--------------------------------------------------------------------------
-    const index_t first = depth == 0 ? 0 : last + 1;
-    for (index_t j = first; j < m; ++j)
+// The valid subsets of size k within the first m that extend members_[0 ..
+// depth): adds their P to `total`.
+void Mixture::enumerate(index_t depth, index_t k, scalar_t& total)
+{
+    const index_t N = size();
+    const index_t B = in_.bands;
+    const auto& dates = in_.dates;
+
+    std::uint32_t mask = 0;
+    for (index_t i = 0; i < depth; ++i)
+        mask |= std::uint32_t{1} << members_[i];
+
+    const index_t first = depth == 0 ? 0 : members_[depth - 1] + 1;
+    for (index_t j = first; j < m_; ++j)
     {
-        if (dates[m] - dates[j] < in_.min_days)
-            break;   // dates do not decrease: no later j is far enough from m
-        if (depth > 0 && dates[j] - dates[last] < in_.min_days)
+        if (depth > 0 && dates[j] - dates[members_[depth - 1]] < in_.min_days)
             continue;
+        if (reach_[j] < k - depth)
+            continue;   // no chain from j long enough to finish the subset
 
-        const scalar_t dj = border(in_.h, N, members_, chol_, depth, j, row_);
+        const std::uint32_t with_j = mask | (std::uint32_t{1} << j);
+        if (depth + 1 == k && stamp_[with_j] == generation_)
+        {
+            total += cache_[with_j];
+            continue;
+        }
+
+        const scalar_t d = border(in_.h, N, members_, chol_, depth, j, row_);
         for (index_t i = 0; i < depth; ++i)
             chol_[depth * N + i] = row_[i];
-        chol_[depth * N + depth] = dj;
+        chol_[depth * N + depth] = d;
         members_[depth] = j;
         for (index_t b = 0; b < B; ++b)
         {
             scalar_t v = in_.u[b * N + j];
             for (index_t i = 0; i < depth; ++i)
                 v -= chol_[depth * N + i] * z_[b * N + i];
-            v /= dj;
+            v /= d;
             z_[b * N + depth] = v;
             norm2_[(depth + 1) * B + b] = norm2_[depth * B + b] + v * v;
         }
-        extend(depth + 1, j);
+
+        if (depth + 1 == k)
+        {
+            const scalar_t p = score(k);
+            cache_[with_j] = p;
+            stamp_[with_j] = generation_;
+            total += p;
+        }
+        else
+        {
+            enumerate(depth + 1, k, total);
+        }
     }
 }
 
-Mixture::Stats Mixture::add()
+scalar_t Mixture::sum(index_t k)
 {
-    assert(m_ < size());
-    extend(0, 0);
-    ++m_;
+    assert(k >= 1 && k <= m_);
+    if (count_[k] == 0)
+        return 0.0;
+    scalar_t total = 0.0;
+    enumerate(0, k, total);
+    return total;
+}
 
+scalar_t Mixture::single(index_t j)
+{
+    assert(j < m_);
+    const std::uint32_t mask = std::uint32_t{1} << j;
+    if (stamp_[mask] != generation_)
+    {
+        const index_t N = size();
+        const index_t B = in_.bands;
+        const scalar_t var = in_.h[j * N + j];
+        for (index_t b = 0; b < B; ++b)
+            norm2_[1 * B + b] = in_.u[b * N + j] * in_.u[b * N + j] / var;
+        cache_[mask] = score(1);
+        stamp_[mask] = generation_;
+    }
+    return cache_[mask];
+}
+
+scalar_t Mixture::p0()
+{
     const scalar_t g = in_.good;
-    const index_t m = m_;
-    Stats s;
-    s.m = m;
-
-    const scalar_t empty = std::pow(1.0 - g, static_cast<scalar_t>(m));
-    scalar_t weight = empty;
-    scalar_t weighted = empty;   // the empty subset's P is 1
-    for (index_t k = 1; k <= m; ++k)
+    const scalar_t empty = std::pow(1.0 - g, static_cast<scalar_t>(m_));
+    scalar_t weight = empty, weighted = empty;
+    for (index_t k = 1; k <= m_; ++k)
     {
         if (count_[k] == 0)
             continue;
         const scalar_t w = std::pow(g, static_cast<scalar_t>(k)) *
-                           std::pow(1.0 - g, static_cast<scalar_t>(m - k));
+                           std::pow(1.0 - g, static_cast<scalar_t>(m_ - k));
         weight += w * static_cast<scalar_t>(count_[k]);
-        weighted += w * sum_[k];
-        s.combos += count_[k];
-        s.order = k;
+        weighted += w * sum(k);
     }
-    s.total_weight = weight;
-    s.p0 = weighted / weight;
-    s.top_mean = sum_[s.order] / static_cast<scalar_t>(count_[s.order]);
-    return s;
+    return weighted / weight;
 }
 
-Decision decide(const Mixture::Stats& stats, std::int64_t span_days, const Rule& rule)
+scalar_t Mixture::top_mean()
+{
+    index_t order = 0;
+    for (index_t k = 1; k <= m_; ++k)
+        if (count_[k] > 0)
+            order = k;
+    return sum(order) / static_cast<scalar_t>(count_[order]);
+}
+
+Decision decide(Mixture& mixture, const Mixture::Stats& stats, std::int64_t span_days,
+                const Rule& rule)
 {
     if (span_days > rule.max_days_for_break)
         return Decision::NoBreak;
     if (span_days < rule.min_days_for_break || stats.m < rule.min_observations)
         return Decision::Continue;
 
+    const index_t m = stats.m;
+    const scalar_t g = mixture.good();
     const scalar_t threshold =
         rule.scale_threshold
             ? rule.threshold * static_cast<scalar_t>(stats.combos) /
                   std::ldexp(1.0, static_cast<int>(stats.order))
             : rule.threshold;
 
-    // The sizes above `order` hold no subset: the test reads only the empty
-    // subset's share there, and moves on if that alone is above the
-    // threshold, before the no-change cutoff.
-    const scalar_t empty_share =
-        std::pow(1.0 - rule.good, static_cast<scalar_t>(stats.m)) / stats.total_weight;
-    if (stats.order < stats.m && empty_share > threshold)
-        return Decision::Continue;
+    const scalar_t empty = std::pow(1.0 - g, static_cast<scalar_t>(m));
+    scalar_t sum = empty;
+    scalar_t scored_weight = empty;
+    for (index_t k = m; k >= 1; --k)
+    {
+        const std::int64_t n = mixture.count(k);
+        const scalar_t t = n > 0 ? mixture.sum(k) : 0.0;
+        const scalar_t w = std::pow(g, static_cast<scalar_t>(k)) *
+                           std::pow(1.0 - g, static_cast<scalar_t>(m - k));
+        sum += w * t;
+        scored_weight += w * static_cast<scalar_t>(n);
 
-    if (stats.top_mean > rule.no_change_cutoff)
-        return Decision::NoBreak;
-    if (stats.p0 < threshold)
-        return Decision::Break;
+        const scalar_t upper = (sum + (stats.total_weight - scored_weight)) / stats.total_weight;
+        const scalar_t lower = sum / stats.total_weight;
+
+        if (k == stats.order && t / static_cast<scalar_t>(n) > rule.no_change_cutoff)
+            return Decision::NoBreak;
+        if (upper < threshold)
+            return Decision::Break;
+        if (lower > threshold)
+            return Decision::Continue;
+    }
     return Decision::Continue;
 }
 
