@@ -389,6 +389,18 @@ struct Context
 // prev_break at 0. Next: Initialize, or EndCatch (NoRoomToInitialize).
 Phase prepare(const Context& context, State& state);
 
+// The work of the phases, apart from their routes: what another machine
+// composing this one's phases calls (bfp_machine.hpp).
+//
+//   initialize_outcome()  initialize()'s step, without the route;
+//   write_start_segment() the Start segment over (prev_break, window.start);
+//   move_past_segment()   restart()'s cursor move;
+//   write_end_segment()   the End segment over (prev_break, size), unguarded.
+InitializeOutcome initialize_outcome(const Context& context, State& state);
+void write_start_segment(const Context& context, State& state);
+void move_past_segment(const Context& context, State& state);
+void write_end_segment(const Context& context, State& state);
+
 // One ccd::initialize_step() on the window against the pixel's
 // initialize_criteria (COEFFICIENT_MIN-coefficient stability fits; the cadence's
 // change threshold), into init_models. Next: Initialize after a grow or a shift; after_stable_start()
