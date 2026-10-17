@@ -17,7 +17,8 @@
   the fit window's observations ordered by phase in the year once per refit,
   each test walking out from its target's phase, so a selection costs its
   count rather than the window's size.
-- Together: the synthetic bench at one thread 5.90 s -> 4.09 s (-31%).
+- Together: the synthetic bench at one thread 5.90 s -> 3.92 s (-34%; the
+  seasonal order about 4% of it).
 
 ### Tests
 
