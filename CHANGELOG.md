@@ -13,7 +13,8 @@
   today's Standard machine; the BFP methods are refused (`ValueError`) until
   their machine is built. The method is in the options digest except for
   `ccdc`, whose digest is unchanged, so resume records written by 0.10.0
-  stay valid.
+  stay valid. C++: `HarmonicOptions` gains its first field, so code built
+  against 0.10.0's headers is rebuilt.
 
 ### Fixed
 
