@@ -8,7 +8,7 @@ machine, and the per-pixel record holds everything that survives from one step t
 
 This page describes the code as it is, with the files to read. Paths are relative to the
 repository root. The algorithm is pyccd's, with pyccd's intent kept where its code says
-otherwise (the rules in section 6); see the README's
+otherwise (the rules in section 7); see the README's
 [Differences from pyccd](../README.md#differences-from-pyccd) for every difference.
 
 ## 1. One pixel, end to end
@@ -147,7 +147,8 @@ solver with its workspace.
 | `phase`, `exit` | where the machine is, and why it stopped | each machine has its own enums |
 | `series` (`MaskedSeries`, `include/ccd/procedure/masked_series.hpp`) | the processing mask and the observations it keeps, always in step | shared |
 | `cursor` (`Cursor`, `include/ccd/procedure/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
-| `segments` | the segments written so far; "no segment yet" is `segments.empty()` | shared |
+| `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
+| `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
 | `cadence` (`Cadence`) | the peek size and change threshold, scaled to the pixel's revisit interval | Standard's |
 | `variogram` (`Variogram`, `include/ccd/procedure/fit.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
@@ -218,7 +219,41 @@ its only switch; below DEBUG (the default) it compiles to nothing. A build with
 The outcome line comes from the transition, the arrow line from `drive`, after the step: the
 summary shows the record as the decision left it.
 
-## 6. Why it is written this way
+## 6. Resuming a stopped machine
+
+The machine reads the length of the series only in its size guards, each a comparison of the
+size with a position plus a count, and observations added after the end of the series turn no
+guard that held into one that fails. So a run on the observations up to a date and a run on a
+longer series make the same decisions up to the first size guard that failed in the shorter
+one (`PrefixStability.*`, `tests/ccd/golden/test_prefix.cpp`). Every segment written before
+that guard is final.
+
+That guard is where the record stops: `standard::Suspended` (`standard.hpp`) is captured by
+every route into EndCatch and by the early exits, before anything after the guard writes. It
+holds the exit, the cursor, the fit window's end, a pending grow, the last peek test's
+coefficient count and magnitudes, and the final segment count. `ccd::detect_recorded()` returns
+it inside a `PixelRecord`, with the pixel's input fingerprint and the days the machine dropped
+(`include/ccd/record.hpp`).
+
+`standard::resume()` continues from it on the longer series:
+
+1. Prepare runs as for any run, on the series as the filters leave it, with the statistics
+   cutoffs capped at the first run's series end, so its cadence, variogram and criteria are the
+   stored run's.
+2. The stored drops leave the series, the latest first.
+3. The record is checked against the series, then the cursor is put back and the guard that
+   failed is tested again: Initialize for NoRoomToInitialize and InitializeExhausted, the peek
+   guard for PeekBeyondEnd, and for SeriesEnd the open segment's models refitted on its fit
+   window (the same fit, bit for bit), then its pending grow and Extend, or the same
+   provisional segment again when the series still ends there.
+
+`State::carried` counts the stored final segments, which come before the new ones, so
+StartCatch stays the first segment's. `ccd::resume()` keeps the stored final segments as given
+and returns the complete result, equal bit for bit to the run on the whole series
+(`ResumeEqualsTheFullRun.*`, `tests/ccd/golden/test_resume.cpp`). A pixel whose stored input
+changed, the pixels that take no machine and the early exits are rerun instead.
+
+## 7. Why it is written this way
 
 pyccd (`ccd/procedures.py`) writes the same algorithm as nested loops: `standard_procedure`
 holds an outer `while` over the series, and `initialize`, `lookback` and `lookforward` each hold

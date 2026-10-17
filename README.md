@@ -20,6 +20,7 @@ A high-performance C++17 implementation of the Continuous Change Detection and C
 - Raw QA input decoded through optional lookup tables (Landsat C1/C2; HLS and Sentinel-2 building blocks)
 - Sensor profiles: band roles, units and options in one object, with Landsat presets and HLS and Sentinel-2 presets validated on a real sample (`ccdcpp.presets`)
 - PyCCD's algorithm as it intends, every difference from its code listed ([Differences from pyccd](#differences-from-pyccd))
+- Resuming a stored run when new observations arrive, equal bit for bit to a full rerun ([Resuming a Run](#resuming-a-run))
 - Cross-platform CMake build system
 
 ---
@@ -650,6 +651,30 @@ print(f"CPP runtime: {elapsed:.4f} seconds")
 ```
 
 No additional multiprocessing code is required—the library automatically distributes pixels across CPU cores.
+
+## Resuming a Run
+
+When a year of new observations arrives, a stored run can be continued instead of rerun. The first run asks for a resume record; the update passes the whole series again (the stored observations and the new ones), the record and the stored segments, and gets the complete result for the whole series:
+
+```python
+first = ccdcpp.detect_cube_columns(dates_1985_2023, spectral, qas, profile=p, resume_record=True)
+# store first's segment columns, first["resume"] (one entry per pixel) and first["resume_header"]
+
+update = ccdcpp.resume_cube_columns(
+    dates_1985_2024, spectral, qas, profile=p,
+    resume=first["resume"], resume_header=first["resume_header"],
+    segments={k: first[k] for k in ("row", "col", "start_day", "end_day", "break_day",
+                                    "curve_qa", "observation_count", "change_probability",
+                                    "intercept", "coefficients", "rmse", "magnitude")})
+# update: detect_cube_columns()'s dict for 1985-2024, plus the next update's record
+```
+
+- **The result is the full run's, bit for bit**: `resume_cube_columns` gives what `detect_cube_columns` gives on the whole series with every statistics cutoff (`STAT_ORD`, and a `GreenMedian` step's date) capped at the first run's series end. With the Landsat presets' `STAT_ORD` (2017-12-31) and a first run past it, that is the plain full rerun. The HLS and Sentinel-2 presets have no cutoff, so their statistics (the procedure choice, the cadence, the variogram) stay those of the first run until a full rerun re-baselines them.
+- **What it saves is compute**: each pixel continues from where its stored run stopped, its segments before that point kept as stored and its open segment refitted once, so an update costs the new observations' steps. On a 500 x 500 Landsat cell, 1984-2022 stored and resumed to 2023, the update took about a fifth of a full run's time, all 250,000 pixels equal to the full run. The series is read whole, as for a full run.
+- **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene that covers it) is rerun in full, the same way, and its `status` says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed; `update["counts"]`). A scene the pixel's QA marks fill does not count as a change.
+- **A record that does not match the call is refused** (`ValueError`): another record format or results version (`ccdcpp.RESULTS_VERSION` changes whenever a release changes outputs), other options, preset, plan or QA table, a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
+- The record is plain columns (`ccdcpp.resume_schema()`); the caller stores them, beside its segments. Stored segments may carry placeholders in fields the caller does not keep (a break day or magnitude where there is no break, the observation count); they come back as given.
+- One pixel: `detect(..., resume_record=True)` and `resume(..., resume=, resume_header=, models=)`. C++: `ccd::detect_recorded`, `ccd::resume`, `ccd::detect_cube(..., record = true)`, `ccd::resume_cube` (`include/ccd/record.hpp`, `include/ccd/ccd.hpp`).
 
 ---
 

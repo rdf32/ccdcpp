@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 - 2026-10-17
+
+Resume from previous results: a run can keep a record of where each pixel's
+machine stopped, and a later run on the longer series (the annual update:
+1985-2023 stored, 1985-2024 given) continues each pixel from it and returns
+the complete result, equal bit for bit to a full run with the statistics
+cutoffs capped at the stored series end. A pixel whose earlier observations
+changed is rerun and says so. **Outputs unchanged** from 0.8.0 (the results
+version stays 1). Timing: detection level with 0.8.0 (synthetic 1.00, the
+Atlanta cell 1.00); the annual update of that cell (1984-2022 stored, 2023
+added) takes 0.21x the full run's detect time, all 250,000 pixels equal to
+the full run (`tools/bench/bench_resume.py`).
 
 ### Added (C++)
 
@@ -64,6 +75,11 @@
   refusals.
 - `PrefixStability.*` also checks that the record's final segment count is
   the segments a longer series cannot rewrite, at every split.
+
+### Added (tools)
+
+- `tools/bench/bench_resume.py`: the annual update of the bench cell, timed
+  against the full run and checked against it pixel by pixel.
 
 ## 0.8.0 - 2026-10-16
 

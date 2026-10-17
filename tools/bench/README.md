@@ -10,6 +10,7 @@ against v0.6.1 measured in the same session.
 | `bench_synthetic.py` | Times one entry point on that corpus tiled 2x2 (8000 pixels), best of N calls. |
 | `bench.sh` | Runs `bench_synthetic.py` for the three reported configs, each under `/usr/bin/time -l`. |
 | `bench_cell.py` | Times `detect_cube_columns` with `presets.landsat_c2()` on a 500 x 500 Landsat C2 ARD cell and prints a fingerprint of every output. |
+| `bench_resume.py` | An annual update of the same cell: a recorded run on the dates before a cut, `resume_cube_columns` on all of them, and the full run; checks the update equals the full run on every pixel and times the three. |
 
 ## Setup
 
