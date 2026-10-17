@@ -12,8 +12,8 @@ CCDC models each band of a pixel over a stretch of time with a harmonic curve
 
     y(t) = c0 + c1 t + c2 cos(wt) + c3 sin(wt) + c4 cos(2wt) + c5 sin(2wt) + c6 cos(3wt) + c7 sin(3wt)
 
-where `t` is the day and `w = 2 pi / 365.25`. A window holds n observations (dates t_1..t_n and
-values y_1..y_n). Column j of the design matrix X holds one term evaluated at every date, for
+where `t` is the day and `w = 2 pi / 365.2425` (`AVG_DAYS_YR`). A window holds n observations
+(dates t_1..t_n and values y_1..y_n). Column j of the design matrix X holds one term evaluated at every date, for
 example column 2 is cos(w t_i) for i = 1..n. Fitting the curve means choosing the coefficients
 c.
 
@@ -119,13 +119,14 @@ corpus (26,021 segments, 182,147 band fits):
 - every segment is identical: the same start, end and break days, counts and change
   probabilities;
 - no fit stops at a different iteration;
-- the numbers move by at most about 1e-10 relative (typically 1e-16).
+- the numbers move by about 1e-10 relative at most, typically 1e-16. On an independent set of
+  33,000 synthetic pixels with harsher options the largest was 5.6e-10, always on small
+  coefficients (1e-8 to 5e-3 in size).
 
 The one way a bigger difference could arise: a fit whose convergence test lands within
 rounding of its threshold could stop one sweep earlier or later. Its coefficients would then
 differ by up to the solver's tolerance, about 1e-4 relative. That never happened in the data
-above. The same sensitivity already exists between a Mac build and a Linux build, whose
-arithmetic differs in the same way.
+above (nearly 640,000 band fits).
 
 Because the order is part of the output, changing it is a results version (`RESULTS_VERSION`
 in `include/ccd/record.hpp`). A stored resume record from the old order is refused, and the
@@ -143,13 +144,19 @@ Two effects decide how many chains pay off.
    Extend refits at every step. With K chains, up to K - 1 leftover terms run one at a time,
    and the K sums have to be combined at the end. So large K costs more on small n.
 
-Measured on an Apple M5 Max. The dot product alone, in nanoseconds per call:
+Measured on an Apple M5 Max. The dot product alone, in nanoseconds per call, each call
+waiting for the one before it (as one coordinate's update waits for the last):
 
 | n | K=1 | K=2 | K=4 | K=8 |
 |---|---|---|---|---|
-| 24 | 3.3 | 4.7 | 4.7 | 2.2 |
-| 100 | 21.9 | 18.7 | 23.6 | 8.4 |
-| 1000 | 422.6 | 261.3 | 232.6 | 84.7 |
+| 12 | 11.3 | 7.0 | 5.5 | 11.1 |
+| 24 | 16.8 | 12.9 | 11.0 | 9.7 |
+| 100 | 56.8 | 34.6 | 24.1 | 21.0 |
+| 1000 | 521.7 | 299.4 | 236.4 | 117.0 |
+
+(Timed with calls that do not wait for each other, the CPU overlaps one call's chain with the
+next call's, and the table no longer shows the latency this is about: that is a measurement
+to avoid.)
 
 The whole pipeline (synthetic bench, one thread):
 
@@ -157,9 +164,10 @@ The whole pipeline (synthetic bench, one thread):
 |---|---|---|---|---|
 | time | 3.87 s | 3.53 s | 3.06 s | 3.08 s |
 
-Alone, 8 chains wins. In the solver, where n is often small and the dot product shares the time
-with the rest of the sweep, 4 and 8 tie. 4 is the smaller change and leaves less work in the
-tails, so it is the one ccdcpp uses.
+More chains help on long sums, and 8 is as slow as 1 at n = 12: its tail and the final combine
+eat the gain. In the solver, where most windows are small and the dot product shares the time
+with the rest of the sweep, 4 and 8 tie. 4 leaves less work in the tails, so it is the one
+ccdcpp uses.
 
 K is fixed, not a setting. It decides where the sums round, so two values give two slightly
 different outputs. A per-machine choice would make results depend on where they were computed,
@@ -190,15 +198,17 @@ What does **not** need it:
   and vectorises them.
 - **Element-wise loops with no running total** (`r[i] -= x[i] * w`). Every iteration is
   independent; the compiler already runs them in parallel.
-- **Max and min of numbers that are never NaN.** The result doesn't depend on order, so
-  splitting them into partial maxima changes no bits: safe whenever it is worth it.
+- **Max and min of numbers that are never NaN** (and where +0 and -0 cannot meet, or do not
+  matter, as for absolute values). The result doesn't depend on order, so splitting them into
+  partial maxima changes no bits: safe whenever it is worth it.
 
 Related rules worth knowing:
 
 - **Fused multiply-add (FMA)** computes a * b + c with one rounding instead of two. Whether
-  `s += a * b` becomes an FMA is up to the compiler (clang fuses within one expression by
-  default; GCC also across statements). That is another reason the same source can give
-  different last bits on different compilers.
+  `s += a * b` becomes an FMA is up to the compiler and the target (clang fuses within one
+  expression by default; GCC in its GNU mode also across statements, not in ccdcpp's
+  ISO mode; an x86 build without `-march` has no FMA at all). That is another reason the same
+  source can give different last bits on different compilers.
 - **What the compiler is allowed to change.** The compiler may rearrange code only when the
   result is provably the same. Speed-ups that change rounding must be written into the source
   on purpose, as here.

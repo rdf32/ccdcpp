@@ -12,7 +12,9 @@
   every segment is unchanged (the same days, counts and change
   probabilities; 455,231 and 26,021 segments), no fit stops at another
   iteration (182,147 band fits), and the coefficients, RMSEs and
-  magnitudes move by at most 1.4e-10 relative (typically 1e-16). A fit
+  magnitudes move by about 1e-10 relative at most (1.4e-10 there; 5.6e-10
+  on small coefficients of an independent synthetic set; typically
+  1e-16). A fit
   whose convergence test fell within rounding of its threshold could
   differ by up to the solver tolerance; none did. `RESULTS_VERSION` is 2:
   a record stored by 0.9.0 is refused, so the first run after the upgrade
