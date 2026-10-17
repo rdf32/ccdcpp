@@ -10,7 +10,7 @@
   them in parallel; together they test the same 14,695 cuts.
   `ctest -LE corpus`, the quick tier, runs every test but the `rest` shards:
   the sample shard takes every eighth cut, each series' last cut and the cuts
-  through the peek after each break (16-25% of the cuts). Plain `ctest` is
+  through the peek after each break (15-26% of a corpus's cuts). Plain `ctest` is
   the full tier. The README's "Run the Tests" lists the tiers, the sanitizer
   build among them (Debug at `-O2 -g`, asserts on). The labels need CMake
   3.22 (discovery filters); before it every test runs unlabelled.

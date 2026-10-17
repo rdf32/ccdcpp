@@ -587,7 +587,7 @@ cmake --build build-asan -j8
 ctest --test-dir build-asan -j8
 ```
 
-`Golden`, `Bands` and `Transitions.BitIdenticalToFixture` compare against fixtures written by a Release build on one platform (clang, arm64, macOS), so they fail on the sanitizer build and skip on Linux; every other test passes on both. The labels need CMake 3.22 or later; before it every test runs unlabelled.
+`Golden.BitIdenticalToFixture`, `Bands.BitIdenticalToFixture` and `Transitions.BitIdenticalToFixture` compare against fixtures written by a Release build on one platform (clang, arm64, macOS), so they fail on the sanitizer build and skip on Linux; every other test passes on both. The labels need CMake 3.22 or later; before it every test runs unlabelled.
 
 ---
 

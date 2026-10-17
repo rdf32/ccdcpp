@@ -214,7 +214,8 @@ inline bool splits_cleanly(const Series& s, std::size_t last)
 // a series' last clean cut, and every cut from two observations before a
 // break of the full run to NEAR_BREAK after it (where the machine finds the
 // break); shards 1 to SHARDS - 1 hold the rest, interleaved. Together they
-// take each cut once.
+// take each cut once. The sample follows the full run's breaks, so a change
+// to the procedure can move cuts between shards, never out of them.
 inline constexpr std::size_t SHARDS = 8;
 inline constexpr std::size_t NEAR_BREAK = 10;
 

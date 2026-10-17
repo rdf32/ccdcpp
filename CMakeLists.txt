@@ -912,20 +912,25 @@ if(CCD_BUILD_TESTS)
         gtest_discover_tests(test_prefix)
         gtest_discover_tests(test_resume PROPERTIES TIMEOUT 600)
     else()
-        foreach(sharded_test test_prefix test_resume)
-            gtest_discover_tests(
-                ${sharded_test}
-                TEST_FILTER "-*/rest*"
-                TEST_LIST ${sharded_test}_quick
-                PROPERTIES TIMEOUT 600
-            )
-            gtest_discover_tests(
-                ${sharded_test}
-                TEST_FILTER "*/rest*"
-                TEST_LIST ${sharded_test}_corpus
-                PROPERTIES TIMEOUT 600 LABELS corpus
-            )
-        endforeach()
+        gtest_discover_tests(test_prefix TEST_FILTER "-*/rest*" TEST_LIST test_prefix_quick)
+        gtest_discover_tests(
+            test_prefix
+            TEST_FILTER "*/rest*"
+            TEST_LIST test_prefix_corpus
+            PROPERTIES LABELS corpus
+        )
+        gtest_discover_tests(
+            test_resume
+            TEST_FILTER "-*/rest*"
+            TEST_LIST test_resume_quick
+            PROPERTIES TIMEOUT 600
+        )
+        gtest_discover_tests(
+            test_resume
+            TEST_FILTER "*/rest*"
+            TEST_LIST test_resume_corpus
+            PROPERTIES TIMEOUT 600 LABELS corpus
+        )
     endif()
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)
