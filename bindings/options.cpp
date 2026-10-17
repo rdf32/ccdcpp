@@ -1,6 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <string>
 #include <vector>
 
 #include "ccd/constants.hpp"
@@ -39,6 +40,17 @@ void bind_options(py::module_& m)
         "HarmonicOptions"
     )
     .def(py::init<>())
+
+    .def_property(
+        "METHOD",
+        [](const ccd::HarmonicOptions& o) { return std::string(ccd::method_name(o.METHOD)); },
+        [](ccd::HarmonicOptions& o, const std::string& name)
+        { o.METHOD = ccd::method_from_name(name); },
+        "The Standard procedure's change detection: \"ccdc\" (default), "
+        "\"bfp-paper\" or \"bfp\" (ValueError otherwise). Setting it changes "
+        "only the method; ccdcpp.with_method() also sets the parameters the "
+        "method fixes."
+    )
 
     .def_readwrite(
         "MEOW_SIZE",
@@ -439,4 +451,16 @@ void bind_options(py::module_& m)
         "unbiased_rmse",
         &ccd::LassoOptions::unbiased_rmse
     );
+
+    m.def(
+        "with_method",
+        [](const ccd::HarmonicOptions& options, const std::string& method)
+        { return ccd::with_method(options, ccd::method_from_name(method)); },
+        py::arg("options"),
+        py::arg("method"),
+        "A copy of options for a run of method (\"ccdc\", \"bfp-paper\", "
+        "\"bfp\"; ValueError otherwise): METHOD set and the parameters the "
+        "method fixes set to its values, every other field as given."
+    );
+    m.attr("METHODS") = py::make_tuple("ccdc", "bfp-paper", "bfp");
 }

@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A change detection method option: `HarmonicOptions::METHOD`
+  (`ccd::ChangeMethod`: `ccdc`, `bfp-paper`, `bfp`), `ccd::with_method()`,
+  `ccd::method_name()` / `method_from_name()`; in Python `method=` on
+  `detect`, `detect_cube`, `detect_cube_columns`, `resume` and
+  `resume_cube_columns`, `HarmonicOptions.METHOD` (a name),
+  `ccdcpp.with_method()` and `ccdcpp.METHODS`. `ccdc`, the default, is
+  today's Standard machine; the BFP methods are refused (`ValueError`) until
+  their machine is built. The method is in the options digest except for
+  `ccdc`, whose digest is unchanged, so resume records written by 0.10.0
+  stay valid.
+
+### Fixed
+
+- A build without OpenMP compiles: `ccd.cpp` includes `<omp.h>` only under
+  `_OPENMP` and runs the cube on one thread otherwise.
+
 ## 0.10.0 - 2026-10-17
 
 Speed, and outputs moved in their last bits only. The Atlanta h024v013 cell

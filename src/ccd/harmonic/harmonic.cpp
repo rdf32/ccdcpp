@@ -1,8 +1,36 @@
 #include "ccd/harmonic/harmonic.hpp"
 
+#include <stdexcept>
+
 
 namespace ccd
 {
+
+const char* method_name(ChangeMethod method)
+{
+    switch (method)
+    {
+        case ChangeMethod::Ccdc:     return "ccdc";
+        case ChangeMethod::BfpPaper: return "bfp-paper";
+        case ChangeMethod::Bfp:      return "bfp";
+    }
+    return "?";
+}
+
+ChangeMethod method_from_name(const std::string& name)
+{
+    for (const ChangeMethod m : {ChangeMethod::Ccdc, ChangeMethod::BfpPaper, ChangeMethod::Bfp})
+        if (name == method_name(m))
+            return m;
+    throw std::invalid_argument(
+        "unknown change detection method \"" + name + "\": ccdc, bfp-paper or bfp");
+}
+
+HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method)
+{
+    options.METHOD = method;
+    return options;
+}
 
 MaskedData apply_mask(
     const HarmonicWorkspace& workspace,

@@ -302,12 +302,25 @@ TEST(OptionsDigest, EqualOptionsEqualDigests)
               digest_of(golden::physical_harmonic(), golden::physical_lasso()));
 }
 
+// ccdc digests no method field, so a ccdc run's digest is the one records
+// written before the method option carry.
+TEST(OptionsDigest, CcdcAddsNothingAndTheBfpMethodsDiffer)
+{
+    ccd::HarmonicOptions bfp_paper, bfp;
+    bfp_paper.METHOD = ccd::ChangeMethod::BfpPaper;
+    bfp.METHOD = ccd::ChangeMethod::Bfp;
+    EXPECT_NE(digest_of(bfp_paper), digest_of(bfp));
+    EXPECT_NE(digest_of(bfp_paper), digest_of(ccd::HarmonicOptions{}));
+}
+
 TEST(OptionsDigest, EveryGroupOfFieldsMoves)
 {
     const std::uint64_t base = digest_of(ccd::HarmonicOptions{});
 
     using Set = std::function<void(ccd::HarmonicOptions&)>;
     const std::pair<const char*, Set> harmonic[] = {
+        {"METHOD bfp-paper", [](auto& h) { h.METHOD = ccd::ChangeMethod::BfpPaper; }},
+        {"METHOD bfp", [](auto& h) { h.METHOD = ccd::ChangeMethod::Bfp; }},
         {"MEOW_SIZE", [](auto& h) { h.MEOW_SIZE = 13; }},
         {"PEEK_SIZE", [](auto& h) { h.PEEK_SIZE = 7; }},
         {"DAY_DELTA", [](auto& h) { h.DAY_DELTA = 366; }},
@@ -386,7 +399,7 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 // for, and a test that fails here is a reminder, not a platform difference.
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 440u);
+    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 448u);
     EXPECT_EQ(sizeof(ccd::LassoOptions), 40u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);

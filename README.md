@@ -274,6 +274,18 @@ A value that makes no sense raises `ValueError` before any pixel runs: zero or n
 
 `MEOW_SIZE` and the `RETRAIN_*` constants are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at the 4–5 day cadence of `hls()` on the validation cell, 12 observations are about 50–60 days and 24 about 100–120, where at 16 days they are about half a year and a year. A caller who wants them in time rather than in observations sets them from the cadence.
 
+## Change Detection Methods
+
+A pixel that takes the Standard procedure runs the call's change detection method; the PermanentSnow and InsufficientClear procedures are the same for every method. `method=` on `detect`, `detect_cube`, `detect_cube_columns`, `resume` and `resume_cube_columns` picks it (`ccdcpp.METHODS`), applied to the call's options with `ccdcpp.with_method(hoptions, method)` before the QA table and the preprocessing plan are built: it sets `HarmonicOptions.METHOD` and the parameters the method fixes, and keeps the rest, so a sensor profile's unit constants carry through.
+
+| `method` | Change detection |
+|---|---|
+| `"ccdc"` (default) | The Standard machine: pyccd's procedure as pyccd intends it (see [Differences from pyccd](#differences-from-pyccd)) |
+| `"bfp-paper"` | Band-First Probability, Tollerud et al. 2023 (not available in this build: `ValueError`) |
+| `"bfp"` | BFP with COLD's initialization, as JuliaCCD recommends it (not available in this build: `ValueError`) |
+
+The method is part of the options a resume record is checked against.
+
 ## Sensor Profiles
 
 A `ccdcpp.SensorProfile` describes one sensor's input in one immutable object: the band names, the role each band plays, the detection, Tmask and saturation lists by role name, the unit-coupled thresholds, the Lasso constants, the cadence options, `STAT_ORD` and the QA table. `detect`, `detect_cube` and `detect_cube_columns` take one as `profile=`:

@@ -1,6 +1,17 @@
 #include "ccd/ccd.hpp"
 
+#ifdef _OPENMP
 #include <omp.h>
+#else
+// A build without OpenMP runs the cube on one thread: the pragmas are
+// ignored, and these are the runtime's answers for a single thread.
+namespace
+{
+int omp_get_max_threads() { return 1; }
+int omp_get_num_threads() { return 1; }
+int omp_get_thread_num() { return 0; }
+} // namespace
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -160,6 +171,14 @@ void validate_coefficients(const HarmonicOptions& options)
 
 void validate(const HarmonicOptions& options, index_t bands)
 {
+    if (options.METHOD != ChangeMethod::Ccdc)
+    {
+        throw std::invalid_argument(
+            std::string("the ") + method_name(options.METHOD) +
+            " method is not available in this build"
+        );
+    }
+
     if (bands != options.NUM_BANDS)
     {
         throw std::invalid_argument(
@@ -443,6 +462,9 @@ void digest(Fnv& h, const HarmonicOptions& o)
     for (const index_t v : {o.BLUE_IDX, o.GREEN_IDX, o.RED_IDX, o.NIR_IDX, o.SWIR1_IDX,
                             o.SWIR2_IDX, o.THERMAL_IDX, o.QA_IDX})
         h.integer(static_cast<std::int64_t>(v));
+    // ccdc adds nothing, so its digest is the one it has always had.
+    if (o.METHOD != ChangeMethod::Ccdc)
+        h.integer(static_cast<std::int64_t>(o.METHOD));
 }
 
 void digest(Fnv& h, const LassoOptions& o)

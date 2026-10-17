@@ -29,7 +29,7 @@ The procedure choice:
 
 | Guard, in order | Procedure | What fits it |
 |---|---|---|
-| clear percentage >= `CLEAR_PCT_THRESHOLD` | Standard | the Standard machine (section 2) |
+| clear percentage >= `CLEAR_PCT_THRESHOLD` | Standard | the run's method (`HarmonicOptions::METHOD`): `ccdc`, the Standard machine (section 2) |
 | else snow percentage >= `SNOW_PCT_THRESHOLD` | PermanentSnow | `ccd::fit_whole_series`, curve_qa 54 |
 | else | InsufficientClear | `ccd::fit_whole_series`, curve_qa 44 |
 
