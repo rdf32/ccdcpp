@@ -13,6 +13,7 @@
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/qa_table.hpp"
+#include "ccd/record.hpp"
 #include "ccd/preprocess/preprocess.hpp"
 
 namespace ccd
@@ -283,6 +284,69 @@ FitResult detect(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     DetectScratch& scratch,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+//------------------------------------------------------------------------------
+//
+// The resume record (record.hpp)
+//
+//------------------------------------------------------------------------------
+
+// A fingerprint of everything besides the input that decides a run's
+// outputs: every field of the options and of the plan, and the QA table's
+// codes (none when qa_table is null). Equal options give equal digests on
+// every platform; unequal ones, different digests but for a 64-bit
+// collision. STAT_ORD is in it: a resumed run is given the first run's
+// options, and caps the cutoffs itself (ResumeHeader::statistics_end).
+std::uint64_t options_digest(
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const preprocess::PreprocessPlan& plan,
+    const QaTable* qa_table
+);
+
+// A fingerprint of one pixel's input up to `through`: of each observation
+// dated on or before it whose QA code is not `qa_fill`, its date, its QA
+// code and every band's value (the bits of the value as scalar_t), in date
+// order. Fill observations are left out, so a scene that does not cover the
+// pixel changes nothing.
+std::uint64_t input_fingerprint(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qa_codes,
+    std::uint8_t qa_fill,
+    std::int64_t through
+);
+
+// detect()'s result and the record of the run that made it.
+struct Recorded
+{
+    FitResult result;
+    ResumeHeader header;
+    PixelRecord record;
+};
+
+// detect(), and the run's record: the header (the options digest, the series
+// end, statistics_end = the series end) and the pixel's record. The result is
+// detect()'s, bit for bit.
+Recorded detect_recorded(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+Recorded detect_recorded(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
     const QaTablePtr& qa_table = nullptr,
     const PreprocessPlanPtr& preprocess = nullptr
 );

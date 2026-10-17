@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added (C++)
+
+- The resume record (`include/ccd/record.hpp`): `ccd::detect_recorded()`
+  returns `detect()`'s result, bit for bit, with a `ResumeHeader` (the record
+  format, `RESULTS_VERSION`, `options_digest()` of the options, plan and QA
+  table, the series end and the statistics end) and a `PixelRecord`: the
+  pixel's `input_fingerprint()` (every non-fill observation up to the series
+  end: date, QA code, value bits), its procedure, where the Standard machine
+  stopped (`standard::Suspended`: the exit, the cursor, the fit window's
+  stop, a pending grow, the final segment count) and the days the machine
+  dropped. What a later resume reads to continue a run on a longer series.
+- `PrefixStability.*` also checks that the record's final segment count is
+  the segments a longer series cannot rewrite, at every split.
+
 ## 0.8.0 - 2026-10-16
 
 The Standard procedure keeps pyccd's intent where pyccd's code says

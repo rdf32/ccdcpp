@@ -3,6 +3,8 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -354,6 +356,136 @@ const preprocess::ProcedurePlan& procedure_plan(
 }
 
 //------------------------------------------------------------------------------
+// FNV-1a over a canonical encoding: integers as little-endian 64-bit,
+// floating point as the bits of its scalar_t, booleans as one byte, so the
+// digest of equal values is the same whatever the platform's layout.
+//------------------------------------------------------------------------------
+class Fnv
+{
+public:
+
+    void byte(std::uint8_t b)
+    {
+        hash_ = (hash_ ^ b) * 1099511628211ull;
+    }
+
+    void integer(std::int64_t v)
+    {
+        auto u = static_cast<std::uint64_t>(v);
+        for (int i = 0; i < 8; ++i, u >>= 8)
+            byte(static_cast<std::uint8_t>(u & 0xff));
+    }
+
+    void real(scalar_t v)
+    {
+        std::uint64_t bits;
+        static_assert(sizeof(bits) == sizeof(v));
+        std::memcpy(&bits, &v, sizeof(bits));
+        integer(static_cast<std::int64_t>(bits));
+    }
+
+    void flag(bool v)
+    {
+        byte(v ? 1 : 0);
+    }
+
+    void bands(const BandList& list)
+    {
+        integer(static_cast<std::int64_t>(list.size()));
+        for (const index_t b : list)
+            integer(static_cast<std::int64_t>(b));
+    }
+
+    std::uint64_t value() const
+    {
+        return hash_;
+    }
+
+private:
+
+    std::uint64_t hash_ = 1469598103934665603ull;
+};
+
+void digest(Fnv& h, const HarmonicOptions& o)
+{
+    for (const index_t v : {o.MEOW_SIZE, o.PEEK_SIZE})
+        h.integer(static_cast<std::int64_t>(v));
+    h.integer(o.DAY_DELTA);
+    for (const std::uint8_t v : {o.QA_FILL, o.QA_CLEAR, o.QA_WATER, o.QA_SHADOW, o.QA_SNOW,
+                                 o.QA_CLOUD, o.QA_CIRRUS1, o.QA_CIRRUS2, o.QA_OCCLUSION})
+        h.integer(v);
+    h.integer(static_cast<std::int64_t>(o.CLEAR_OBSERVATION_THRESHOLD));
+    for (const scalar_t v : {o.CLEAR_PCT_THRESHOLD, o.SNOW_PCT_THRESHOLD, o.OUTLIER_THRESHOLD,
+                             o.CHANGE_THRESHOLD, o.T_CONST, o.PEEK_REFERENCE_DAYS})
+        h.real(v);
+    h.integer(o.VARIOGRAM_MIN_LAG_DAYS);
+    h.integer(static_cast<std::int64_t>(o.RETRAIN_MIN_OBS));
+    h.real(o.RETRAIN_SPAN_FACTOR);
+    h.integer(static_cast<std::int64_t>(o.SEASONAL_RMSE_COUNT));
+    for (const scalar_t v : {o.SEASONAL_RMSE_DIVISOR, o.CHANGE_PROBABILITY, o.THERMAL_SCALE,
+                             o.THERMAL_OFFSET, o.REFL_MIN, o.REFL_MAX})
+        h.real(v);
+    h.flag(o.REFL_MIN_INCLUSIVE);
+    h.flag(o.REFL_MAX_INCLUSIVE);
+    h.real(o.THERM_MIN);
+    h.real(o.THERM_MAX);
+    h.flag(o.THERM_MIN_INCLUSIVE);
+    h.flag(o.THERM_MAX_INCLUSIVE);
+    h.real(o.MEDIAN_GREEN_FILTER);
+    h.integer(static_cast<std::int64_t>(o.GREEN_FILTER_SCOPE));
+    h.integer(o.STAT_ORD);
+    for (const index_t v : {o.COEFFICIENT_MIN, o.COEFFICIENT_MID, o.COEFFICIENT_MAX,
+                            o.NUM_OBS_FACTOR, o.NUM_BANDS})
+        h.integer(static_cast<std::int64_t>(v));
+    h.bands(o.DETECTION_BANDS);
+    h.bands(o.TMASK_BANDS);
+    h.bands(o.SATURATION_BANDS);
+    for (const index_t v : {o.BLUE_IDX, o.GREEN_IDX, o.RED_IDX, o.NIR_IDX, o.SWIR1_IDX,
+                            o.SWIR2_IDX, o.THERMAL_IDX, o.QA_IDX})
+        h.integer(static_cast<std::int64_t>(v));
+}
+
+void digest(Fnv& h, const LassoOptions& o)
+{
+    h.integer(static_cast<std::int64_t>(o.max_iter));
+    h.real(o.alpha);
+    h.real(o.tolerance);
+    h.real(o.coef_floor);
+    h.flag(o.fit_intercept);
+    h.flag(o.warm_start);
+    h.flag(o.unbiased_rmse);
+}
+
+void digest(Fnv& h, const preprocess::ProcedurePlan& plan)
+{
+    h.flag(plan.transform.has_value());
+    if (plan.transform)
+    {
+        h.integer(static_cast<std::int64_t>(plan.transform->band));
+        h.real(plan.transform->scale);
+        h.real(plan.transform->offset);
+    }
+
+    h.integer(static_cast<std::int64_t>(plan.chain.size()));
+    for (index_t i = 0; i < plan.chain.size(); ++i)
+    {
+        const preprocess::Step& step = plan.chain.steps[i];
+        h.integer(static_cast<std::int64_t>(step.kind));
+        for (std::size_t c = 0; c < step.codes.size(); ++c)
+            h.flag(step.codes.test(c));
+        h.bands(step.bands);
+        h.integer(static_cast<std::int64_t>(step.band));
+        h.real(step.range.lo.value);
+        h.flag(step.range.lo.inclusive);
+        h.real(step.range.hi.value);
+        h.flag(step.range.hi.inclusive);
+        h.real(step.green_offset);
+        h.integer(step.max_date);
+        h.integer(static_cast<std::int64_t>(step.scope));
+    }
+}
+
+//------------------------------------------------------------------------------
 // The plan a call runs: `given`, or else default_plan(options) built into
 // `local`. Either is validated against `bands` here, once per call.
 //------------------------------------------------------------------------------
@@ -387,7 +519,33 @@ const preprocess::PreprocessPlan& resolve_plan(
 // already that and the plan has no transform, it is read in place; otherwise
 // it is converted into scratch.spectral, and the transform is applied there.
 // The caller's buffer is never written.
+//
+// With `record`, also fills the pixel's resume record (record.hpp): the
+// fingerprint of its input up to `through`, its procedure, where the
+// Standard machine stopped, and the days the machine dropped.
 //------------------------------------------------------------------------------
+template<typename Value>
+std::uint64_t fingerprint_of(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const Value, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qa_codes,
+    std::uint8_t qa_fill,
+    std::int64_t through
+)
+{
+    Fnv h;
+    for (index_t t = 0; t < dates.size() && dates(t) <= through; ++t)
+    {
+        if (qa_codes(t) == qa_fill)
+            continue;
+        h.integer(dates(t));
+        h.integer(qa_codes(t));
+        for (index_t b = 0; b < spectral.extent(0); ++b)
+            h.real(static_cast<scalar_t>(spectral(b, t)));
+    }
+    return h.value();
+}
+
 template<typename Value, typename Qa>
 FitResult detect_pixel(
     ArrayView<const std::int64_t, 1> dates,
@@ -397,7 +555,9 @@ FitResult detect_pixel(
     const preprocess::PreprocessPlan& plan,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
-    DetectScratch& scratch
+    DetectScratch& scratch,
+    PixelRecord* record = nullptr,
+    std::int64_t through = 0
 ) {
     const ArrayView<const std::uint8_t, 1> qas =
         qa_codes<Qa>(raw_qas, qa_table, scratch.qas);
@@ -411,6 +571,13 @@ FitResult detect_pixel(
 
     const PixelProcedure pixel_procedure =
         select_procedure(quality_stat, hoptions);
+
+    if (record)
+    {
+        record->input_fingerprint =
+            fingerprint_of<Value>(dates, spectral, qas, hoptions.QA_FILL, through);
+        record->procedure = pixel_procedure;
+    }
 
     const preprocess::ProcedurePlan& procedure =
         procedure_plan(pixel_procedure, plan);
@@ -496,13 +663,23 @@ FitResult detect_pixel(
     // the same call.
     standard::Detector& detector = scratch.standard;
 
-    return detector.fit(
-        pixel_procedure,
-        hworkspace,
-        std::move(mask),
-        lworkspace,
-        solver
-    );
+    if (!record)
+        return detector.fit(pixel_procedure, hworkspace, std::move(mask), lworkspace, solver);
+
+    const ProcessingMask filtered = mask;
+    FitResult result =
+        detector.fit(pixel_procedure, hworkspace, std::move(mask), lworkspace, solver);
+
+    record->standard = standard::Suspended{};
+    record->excluded_days.clear();
+    if (pixel_procedure == PixelProcedure::Standard)
+    {
+        record->standard = detector.suspended();
+        for (index_t t = 0; t < filtered.size(); ++t)
+            if (filtered[t] && !result.mask[t])
+                record->excluded_days.push_back(dates(t));
+    }
+    return result;
 }
 
 template<typename Value, typename Qa>
@@ -709,6 +886,104 @@ CubeResult detect_cube_impl(
 }
 
 } // namespace
+
+std::uint64_t options_digest(
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const preprocess::PreprocessPlan& plan,
+    const QaTable* qa_table
+)
+{
+    Fnv h;
+    digest(h, hoptions);
+    digest(h, loptions);
+    for (const preprocess::ProcedurePlan* procedure :
+         {&plan.standard, &plan.snow, &plan.insufficient_clear})
+        digest(h, *procedure);
+    h.flag(qa_table != nullptr);
+    if (qa_table)
+        for (const std::uint8_t code : qa_table->code)
+            h.byte(code);
+    return h.value();
+}
+
+std::uint64_t input_fingerprint(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qa_codes,
+    std::uint8_t qa_fill,
+    std::int64_t through
+)
+{
+    return fingerprint_of<scalar_t>(dates, spectral, qa_codes, qa_fill, through);
+}
+
+namespace
+{
+
+// detect_recorded() for either QA type.
+template<typename Qa>
+Recorded detect_recorded_impl(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const Qa, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
+)
+{
+    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates, qas.size());
+    if constexpr (std::is_same_v<Qa, std::uint16_t>)
+        validate_qa<std::uint16_t>(qa_table.get());
+
+    preprocess::PreprocessPlan local_plan;
+    const preprocess::PreprocessPlan& plan =
+        resolve_plan(given_plan, hoptions, spectral.extent(0), local_plan);
+
+    Recorded out;
+    out.header.options_digest = options_digest(hoptions, loptions, plan, qa_table.get());
+    out.header.series_end = dates.size() > 0
+        ? dates(dates.size() - 1)
+        : std::numeric_limits<std::int64_t>::min();
+    out.header.statistics_end = out.header.series_end;
+
+    DetectScratch scratch;
+    out.result = detect_pixel<scalar_t, Qa>(
+        dates, spectral, qas, qa_table.get(), plan, hoptions, loptions, scratch,
+        &out.record, out.header.series_end);
+    return out;
+}
+
+} // namespace
+
+Recorded detect_recorded(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
+)
+{
+    return detect_recorded_impl<std::uint8_t>(
+        dates, spectral, qas, hoptions, loptions, qa_table, given_plan);
+}
+
+Recorded detect_recorded(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
+)
+{
+    return detect_recorded_impl<std::uint16_t>(
+        dates, spectral, qas, hoptions, loptions, qa_table, given_plan);
+}
 
 FitResult detect(
     ArrayView<const std::int64_t, 1> dates,

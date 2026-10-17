@@ -264,6 +264,7 @@ void State::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
     cadence = Cadence{};
     initialize_criteria = InitializeCriteria{};
     extension.trained = false;
+    suspended = Suspended{};
 }
 
 FitResult State::take_result()
@@ -291,10 +292,24 @@ std::string summary(const State& state)
 namespace
 {
 
+// Records where the segment loop stopped, from the record as the failed
+// guard found it.
+void suspend(State& state, Exit why)
+{
+    Suspended& s = state.suspended;
+    s.exit = why;
+    s.window = state.cursor.window;
+    s.prev_break = state.cursor.prev_break;
+    s.fit_stop = 0;
+    s.grow = false;
+    s.final_segments = state.segments.size();
+}
+
 // The route into EndCatch, recording why the segment loop ended.
 Phase end_catch_because(State& state, Exit why)
 {
     state.exit = why;
+    suspend(state, why);
     return Phase::EndCatch;
 }
 
@@ -373,6 +388,7 @@ Phase prepare(const Context& context, State& state)
         LOG_DEBUG("Processing Mask: " << series.mask().data());
         LOG_DEBUG("mask count < meow size" << series.size());
         state.exit = Exit::TooFewObservations;
+        suspend(state, Exit::TooFewObservations);
         return Phase::Done;
     }
 
@@ -413,6 +429,7 @@ Phase prepare(const Context& context, State& state)
     {
         LOG_DEBUG("variogram has nans");
         state.exit = Exit::VariogramNaN;
+        suspend(state, Exit::VariogramNaN);
         return Phase::Done;
     }
     LOG_DEBUG("Variogram values: " << state.variogram.bands);
@@ -837,9 +854,14 @@ Phase extend(const Context& context, State& state)
     // peek. It is the last curve: no Restart, the End segment's guard reads
     // the curve's stop.
     //--------------------------------------------------------------------------
+    suspend(state, Exit::SeriesEnd);
+    state.suspended.fit_stop = state.extension.fit_window.stop;
+    state.suspended.grow = outcome == ExtendOutcome::SeriesEnd;
+
     write_extended_segment(state, 0.0);
     state.cursor.prev_break = state.cursor.window.stop;
-    return end_catch_because(state, Exit::SeriesEnd);
+    state.exit = Exit::SeriesEnd;
+    return Phase::EndCatch;
 }
 
 Phase restart(const Context& context, State& state)

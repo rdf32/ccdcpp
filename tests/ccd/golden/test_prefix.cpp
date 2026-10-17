@@ -29,7 +29,9 @@
 //   * the shorter run's final segments equal the full run's leading
 //     segments, every field bit for bit (the hexfloat dump of golden.hpp);
 //   * its processing mask equals the full run's below the last final
-//     segment's break day.
+//     segment's break day;
+//   * its resume record (record.hpp) names the same number of final
+//     segments.
 //
 // Every change to the procedure must keep this. A change that breaks it lets
 // new data rewrite the past, and makes resuming from stored results unsound.
@@ -70,7 +72,7 @@ struct Series
 };
 
 // The first `count` observations of `s`, with STAT_ORD at `stat_ord`.
-ccd::FitResult run_prefix(const Series& s, std::size_t count, std::int64_t stat_ord)
+ccd::Recorded run_prefix_recorded(const Series& s, std::size_t count, std::int64_t stat_ord)
 {
     const std::size_t T = s.dates.size();
 
@@ -81,13 +83,18 @@ ccd::FitResult run_prefix(const Series& s, std::size_t count, std::int64_t stat_
     ccd::HarmonicOptions h = s.h;
     h.STAT_ORD = stat_ord;
 
-    return ccd::detect(
+    return ccd::detect_recorded(
         ccd::ArrayView<const std::int64_t, 1>::contiguous(s.dates.data(), {count}),
-        ccd::ArrayView<double, 2>::contiguous(block.data(), {7, count}),
+        ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, count}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(s.qas.data(), {count}),
         h,
         s.l
     );
+}
+
+ccd::FitResult run_prefix(const Series& s, std::size_t count, std::int64_t stat_ord)
+{
+    return run_prefix_recorded(s, count, stat_ord).result;
 }
 
 // The number of leading final segments of `r` (see the header).
@@ -146,11 +153,19 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
 
         const std::int64_t split_day = s.dates[last];
         const std::int64_t stat_ord = std::min(s.h.STAT_ORD, split_day);
-        const ccd::FitResult shorter = run_prefix(s, last + 1, stat_ord);
+        const ccd::Recorded recorded = run_prefix_recorded(s, last + 1, stat_ord);
+        const ccd::FitResult& shorter = recorded.result;
         const ccd::FitResult& longer = full_at(stat_ord);
         ++out.splits;
 
         const std::size_t n = final_count(shorter);
+
+        // The resume record names the same final segments.
+        const std::size_t recorded_final =
+            recorded.record.procedure == ccd::PixelProcedure::Standard
+                ? recorded.record.standard.final_segments
+                : 0;
+        EXPECT_EQ(recorded_final, n) << s.name << " split after " << s.dates[last];
         if (n == 0)
             continue;
         ++out.with_final;

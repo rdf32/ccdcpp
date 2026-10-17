@@ -180,6 +180,31 @@ enum class Exit : std::uint8_t
 
 const char* to_string(Exit exit);
 
+// Where the machine stopped, for a later resume (record.hpp): the record at
+// the first size guard that failed, before anything after it wrote. Every
+// segment written by then is final; a longer series makes the same
+// decisions up to here, then passes the guard this one failed.
+//
+//   exit            the guard (Exit::None while running); the early exits
+//                   and the whole-series fit have nothing to resume
+//   window,         the cursor at the guard, masked coordinates
+//   prev_break
+//   fit_stop        Extend's fit window's stop (SeriesEnd only; the fit
+//                   window starts at window.start)
+//   grow            SeriesEnd after a test whose peek reached the last
+//                   observation: that step's grow is pending (false after a
+//                   drop that left no full peek)
+//   final_segments  the segments written before the guard
+struct Suspended
+{
+    Exit exit = Exit::None;
+    Window window;
+    index_t prev_break = 0;
+    index_t fit_stop = 0;
+    bool grow = false;
+    index_t final_segments = 0;
+};
+
 // Lookback's peek, read backward from the observation before the window:
 // positions start, start - 1, ..., stop + 1 (stop is exclusive and may be -1).
 struct ReversePeek
@@ -296,6 +321,9 @@ struct State
     // Scratch.
     HarmonicBasis peek_basis;
     LookbackScratch lookback;
+
+    // Where the segment loop stopped (set with every Exit).
+    Suspended suspended;
 
     // Starts a pixel: Prepare, no exit, the series of `workspace` that
     // `mask` keeps, the cursor at 0, no segments, the cadence and
@@ -469,6 +497,12 @@ public:
         LassoSolver& solver
     );
 
+    // Where the last run() stopped.
+    const Suspended& suspended() const
+    {
+        return state_.suspended;
+    }
+
 private:
 
     State state_;
@@ -504,6 +538,13 @@ public:
         LassoWorkspace& lworkspace,
         LassoSolver& solver
     );
+
+    // Where the last Standard fit() stopped; stale after a whole-series fit,
+    // which does not run the machine.
+    const Suspended& suspended() const
+    {
+        return procedure_.suspended();
+    }
 
 private:
 

@@ -617,6 +617,39 @@ if(CCD_BUILD_TESTS)
             CCD_TRANSITIONS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/transitions_fixture.txt"
     )
 
+    # The resume record: what detect_recorded() writes. See
+    # tests/ccd/procedure/test_record.cpp.
+    add_executable(
+        test_record
+
+        tests/ccd/procedure/test_record.cpp
+    )
+
+
+    target_include_directories(
+        test_record
+
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/tests/ccd/golden
+    )
+
+
+    target_link_libraries(
+        test_record
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+
+    target_compile_features(
+        test_record
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # Prefix stability: a run on the observations up to a date keeps every
     # final segment of the run on the whole series. See
     # tests/ccd/golden/test_prefix.cpp.
@@ -840,6 +873,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_transitions)
     gtest_discover_tests(test_prefix)
+    gtest_discover_tests(test_record)
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)
     gtest_discover_tests(test_cadence)
