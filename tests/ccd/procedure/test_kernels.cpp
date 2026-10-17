@@ -14,6 +14,8 @@
 //   * standard::change_magnitude(): the per-detection-band sum over copies
 //     of the residuals and the variogram (the positional form).
 //   * catch_segment(): the catch's fit and day rules.
+//   * find_closest_doy(): the integer counting sort against the sort by the
+//     double seasonal distance, on random windows.
 //
 // The procedures' outputs are held by the golden and transitions fixtures;
 // these tests say which kernel moved if one ever does.
@@ -26,6 +28,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -36,6 +39,7 @@
 #include "ccd/constants.hpp"
 #include "ccd/harmonic/filter.hpp"
 #include "ccd/harmonic/harmonic.hpp"
+#include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/kernels.hpp"
 #include "ccd/procedure/masked_series.hpp"
 #include "ccd/procedure/standard.hpp"
@@ -650,4 +654,69 @@ TEST(CatchSegment, MatchesTheCatchLoop)
                 expect_same_fit(got.bands[b], expected[b]);
         }
     }
+}
+
+namespace
+{
+
+// The `count` window positions nearest `dates(date_index)` in day of year,
+// by the double distance |round(delta / 365.25) * 365.25 - delta|, nearest
+// first, ties in window order: the selection find_closest_doy() makes.
+std::vector<index_t> closest_doy_by_double(
+    ccd::ArrayView<const std::int64_t, 1> dates, index_t date_index, const ccd::Window& window,
+    index_t count)
+{
+    std::vector<std::pair<scalar_t, index_t>> candidates;
+    const scalar_t target = static_cast<scalar_t>(dates(date_index));
+    for (index_t i = window.start; i < window.stop; ++i)
+    {
+        const scalar_t delta = static_cast<scalar_t>(dates(i)) - target;
+        candidates.emplace_back(std::abs(std::round(delta / 365.25) * 365.25 - delta),
+                                i - window.start);
+    }
+    count = std::min(count, static_cast<index_t>(candidates.size()));
+    std::partial_sort(candidates.begin(), candidates.begin() + count, candidates.end());
+    std::vector<index_t> out;
+    for (index_t i = 0; i < count; ++i)
+        out.push_back(candidates[i].second);
+    return out;
+}
+
+} // namespace
+
+TEST(FindClosestDoy, EqualsTheSortByTheDoubleDistance)
+{
+    // Ascending dates with repeats and gaps from a day to years, a target
+    // inside, before or after the window, every count from 0 past the
+    // window's size.
+    std::mt19937_64 random(20261017);
+    std::size_t windows = 0;
+    for (int trial = 0; trial < 4000; ++trial)
+    {
+        const std::size_t T = 1 + random() % 300;
+        const std::uint64_t gap = random() % 4 == 0 ? 900 : 40;
+        std::vector<std::int64_t> dates(T);
+        std::int64_t day = 700000 + static_cast<std::int64_t>(random() % 20000);
+        for (auto& d : dates)
+        {
+            d = day;
+            day += static_cast<std::int64_t>(random() % gap);
+        }
+        const auto view = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T});
+
+        const index_t start = random() % T;
+        const index_t stop = start + random() % (T - start + 1);
+        const index_t target = random() % T;
+        const ccd::Window window(start, stop);
+        for (const index_t count : {index_t{0}, index_t{1}, index_t{24}, stop - start,
+                                    stop - start + 5, index_t(random() % 40)})
+        {
+            ASSERT_EQ(ccd::find_closest_doy(view, target, window, count),
+                      closest_doy_by_double(view, target, window, count))
+                << "trial " << trial << " window (" << start << ", " << stop << ") target "
+                << target << " count " << count;
+        }
+        ++windows;
+    }
+    EXPECT_EQ(windows, 4000u);
 }

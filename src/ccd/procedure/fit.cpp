@@ -2,6 +2,9 @@
 
 #include <iostream>
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdlib>
 #include <boost/math/distributions/chi_squared.hpp>
 
 #include "ccd/maths.hpp"
@@ -411,84 +414,52 @@ std::vector<index_t> find_closest_doy(
     index_t count
 )
 {
-    struct Candidate
+    //----------------------------------------------------------
+    // The seasonal distance of a day from the target is
+    // |round(delta / 365.25) * 365.25 - delta|, delta the days
+    // between them: a multiple of a quarter day. In quarter
+    // days it is the integer |1461 k - 4 |delta||, k the
+    // integer nearest 4 |delta| / 1461. That quotient is never
+    // a half (8 |delta| is even, 1461 (2k + 1) odd) and is at
+    // least 1 / 2922 from one, far beyond the double
+    // quotient's rounding, so k is the double formula's and
+    // the integer distance orders as the double one does. It
+    // is at most 730.
+    //----------------------------------------------------------
+    constexpr std::int64_t QUARTERS_PER_YEAR = 1461;
+    constexpr std::size_t MAX_DISTANCE = QUARTERS_PER_YEAR / 2;
+
+    const std::int64_t target = dates(date_index);
+    const index_t n = window.size();
+    count = std::min(count, n);
+
+    std::vector<std::uint16_t> distance(n);
+    std::array<index_t, MAX_DISTANCE + 2> at{};   // a count, then an offset
+    for (index_t i = 0; i < n; ++i)
     {
-        scalar_t distance;
-        index_t index;
-    };
-
-    std::vector<Candidate> candidates;
-
-    candidates.reserve(window.size());
-
-    const scalar_t target =
-        static_cast<scalar_t>(
-            dates(date_index)
-        );
-
-    constexpr scalar_t DAYS_PER_YEAR = 365.25;
-
-    for(index_t i = window.start;
-        i < window.stop;
-        ++i)
-    {
-        const scalar_t delta =
-            static_cast<scalar_t>(
-                dates(i)
-            ) - target;
-
-        const scalar_t seasonal =
-            std::abs(
-                std::round(delta / DAYS_PER_YEAR) *
-                DAYS_PER_YEAR -
-                delta
-            );
-
-        candidates.push_back(
-            {
-                seasonal,
-                i - window.start
-            }
-        );
+        const std::int64_t quarters = 4 * std::abs(dates(window.start + i) - target);
+        const std::int64_t k = (2 * quarters + QUARTERS_PER_YEAR) / (2 * QUARTERS_PER_YEAR);
+        const auto d = static_cast<std::uint16_t>(std::abs(QUARTERS_PER_YEAR * k - quarters));
+        distance[i] = d;
+        ++at[d + 1];
     }
 
-    count =
-        std::min(
-            count,
-            static_cast<index_t>(
-                candidates.size()
-            )
-        );
-
     //----------------------------------------------------------
-    // The `count` nearest, nearest first, ties in window order.
-    //
-    // Candidates are built in increasing index, so ordering by
-    // (distance, index) is the stable sort by distance; only
-    // the first `count` of that order are needed.
+    // The `count` nearest, nearest first, ties in window order:
+    // a counting sort by distance, which keeps window order
+    // within a distance, up to the distance the count reaches.
     //----------------------------------------------------------
-    std::partial_sort(
-        candidates.begin(),
-        candidates.begin() + count,
-        candidates.end(),
-        [](const auto& a,
-           const auto& b)
-        {
-            if (a.distance != b.distance)
-                return a.distance < b.distance;
-            return a.index < b.index;
-        });
+    std::size_t last = 0;
+    for (index_t seen = 0; last <= MAX_DISTANCE && seen < count; ++last)
+        seen += at[last + 1];
+    for (std::size_t d = 1; d <= last; ++d)
+        at[d] += at[d - 1];
 
-    std::vector<index_t> indices;
-
-    indices.reserve(count);
-
-    for(index_t i = 0; i < count; ++i)
-    {
-        indices.push_back(
-            candidates[i].index
-        );
-    }
+    std::vector<index_t> indices(at[last]);
+    for (index_t i = 0; i < n; ++i)
+        if (distance[i] < last)
+            indices[at[distance[i]]++] = i;
+    indices.resize(count);
 
     return indices;
 }
