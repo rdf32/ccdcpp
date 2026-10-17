@@ -943,6 +943,59 @@ FitResult run(const Context& context, State& state, ProcessingMask mask)
 namespace
 {
 
+// That a stored suspension can be where a run on this series stopped: its
+// cursor inside the series, the window as long as the exit's guard leaves
+// it, and at a series end a fit window inside the window and the last
+// test's values. A record that does not is refused, before anything reads
+// at its positions.
+void check_fits(const Context& context, const State& state, const Suspended& from)
+{
+    const index_t size = state.series.size();
+    const index_t meow = context.options.MEOW_SIZE;
+    const Window& w = from.window;
+    const auto refuse = [&](const std::string& what)
+    {
+        throw std::invalid_argument(
+            "the resume record does not fit the series (" + std::to_string(size) +
+            " kept observations): " + what);
+    };
+
+    if (!(from.prev_break <= w.start && w.start <= w.stop))
+        refuse("its cursor is not prev_break <= window start <= window stop");
+    if (w.start > size)
+        refuse("its window starts after the series");
+
+    switch (from.exit)
+    {
+        case Exit::NoRoomToInitialize:
+            if (w.size() != meow)
+                refuse("NoRoomToInitialize with a window other than MEOW_SIZE long");
+            break;
+        case Exit::InitializeExhausted:
+            if (w.size() < meow || w.stop > size)
+                refuse("InitializeExhausted with a window shorter than MEOW_SIZE or past the series");
+            break;
+        case Exit::PeekBeyondEnd:
+            if (w.size() < meow || w.stop > size)
+                refuse("PeekBeyondEnd with a window shorter than MEOW_SIZE or past the series");
+            break;
+        case Exit::SeriesEnd:
+            if (w.size() < meow || w.stop >= size)
+                refuse("SeriesEnd with a window shorter than MEOW_SIZE or reaching the series end");
+            if (!(w.start < from.fit_stop && from.fit_stop <= w.stop))
+                refuse("SeriesEnd with a fit window outside the window");
+            if (from.num_coef < 1 || from.num_coef > context.options.COEFFICIENT_MAX)
+                refuse("SeriesEnd with a coefficient count outside 1..COEFFICIENT_MAX");
+            if (from.magnitude.size() != state.series.spectral().extent(0))
+                refuse("SeriesEnd with " + std::to_string(from.magnitude.size()) +
+                       " magnitudes for " + std::to_string(state.series.spectral().extent(0)) +
+                       " bands");
+            break;
+        default:
+            refuse("an exit with nothing to resume");
+    }
+}
+
 // resume()'s SeriesEnd: the open segment as the stored run left it, its
 // models refitted on its fit window (as the run fitted them, bit for bit),
 // then the guard that failed tested again on the longer series.
@@ -1024,6 +1077,7 @@ FitResult resume(
         state.series.drop(static_cast<index_t>(at - begin), unused);
     }
 
+    check_fits(context, state, from);
     state.carried = from.final_segments;
     state.cursor = Cursor{from.window, from.prev_break};
 

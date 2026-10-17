@@ -1,5 +1,7 @@
 #include "resume.hpp"
 
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 #include <pybind11/numpy.h>
@@ -18,11 +20,61 @@ py::object field(const py::dict& d, const char* name, const char* what)
     return d[name];
 }
 
+// A column as a C-contiguous array of T, refused unless it is an array of
+// `ndim` dimensions whose first is `length` (and second `width`, for 2-D and
+// 3-D).
 template<typename T>
-py::array_t<T> column(const py::dict& d, const char* name, const char* what)
+py::array_t<T> column(
+    const py::dict& d,
+    const char* name,
+    const char* what,
+    py::ssize_t length,
+    py::ssize_t ndim = 1,
+    py::ssize_t width = -1
+)
 {
-    return py::array_t<T, py::array::c_style | py::array::forcecast>::ensure(
+    auto a = py::array_t<T, py::array::c_style | py::array::forcecast>::ensure(
         field(d, name, what));
+    if (!a)
+        throw std::invalid_argument(
+            std::string(what) + ": \"" + name + "\" is not an array of numbers");
+    if (a.ndim() != ndim || a.shape(0) != length || (ndim > 1 && width >= 0 && a.shape(1) != width))
+        throw std::invalid_argument(
+            std::string(what) + ": \"" + name + "\" has the wrong shape (" +
+            std::to_string(length) + " entries expected" +
+            (ndim > 1 ? " of " + std::to_string(width) : std::string()) + ")");
+    return a;
+}
+
+// The length of a column whose length is the data's.
+py::ssize_t length_of(const py::dict& d, const char* name, const char* what)
+{
+    auto a = py::array::ensure(field(d, name, what));
+    if (!a || a.ndim() < 1)
+        throw std::invalid_argument(std::string(what) + ": \"" + name + "\" is not an array");
+    return a.shape(0);
+}
+
+// A non-negative integer field that fits T.
+template<typename T>
+T count_of(const py::dict& d, const char* name, const char* what)
+{
+    const auto v = field(d, name, what).cast<long long>();
+    if (v < 0 || static_cast<unsigned long long>(v) > std::numeric_limits<T>::max())
+        throw std::invalid_argument(
+            std::string(what) + ": \"" + name + "\" is " + std::to_string(v) + ", outside 0.." +
+            std::to_string(static_cast<unsigned long long>(std::numeric_limits<T>::max())));
+    return static_cast<T>(v);
+}
+
+// A uint64 field: Python's int, or a stored int64's bits (a uint64 written to
+// a signed column comes back negative).
+std::uint64_t bits_of(const py::dict& d, const char* name, const char* what)
+{
+    const py::int_ v = field(d, name, what).cast<py::int_>();
+    if (v.cast<py::object>() < py::int_(0))
+        return static_cast<std::uint64_t>(v.cast<long long>());
+    return v.cast<std::uint64_t>();
 }
 
 ccd::BandFit band_from_python(const py::dict& b)
@@ -41,6 +93,9 @@ ccd::BandFit band_from_python(const py::dict& b)
     return fit;
 }
 
+// record_columns()' status of a pixel that failed (CubeResult::failures).
+constexpr std::uint8_t STATUS_FAILED = 2;
+
 } // namespace
 
 py::dict header_to_python(const ccd::ResumeHeader& header)
@@ -58,9 +113,9 @@ ccd::ResumeHeader header_from_python(const py::dict& d)
 {
     const char* what = "the resume header";
     ccd::ResumeHeader header;
-    header.format = field(d, "format", what).cast<std::uint16_t>();
-    header.results_version = field(d, "results_version", what).cast<std::uint32_t>();
-    header.options_digest = field(d, "options_digest", what).cast<std::uint64_t>();
+    header.format = count_of<std::uint16_t>(d, "format", what);
+    header.results_version = count_of<std::uint32_t>(d, "results_version", what);
+    header.options_digest = bits_of(d, "options_digest", what);
     header.series_end = field(d, "series_end", what).cast<std::int64_t>();
     header.statistics_end = field(d, "statistics_end", what).cast<std::int64_t>();
     return header;
@@ -90,18 +145,18 @@ ccd::PixelRecord record_from_python(const py::dict& d)
 {
     const char* what = "the resume record";
     ccd::PixelRecord r;
-    r.input_fingerprint = field(d, "input_fingerprint", what).cast<std::uint64_t>();
-    r.procedure = static_cast<ccd::PixelProcedure>(field(d, "procedure", what).cast<int>());
-    r.standard.exit = static_cast<ccd::standard::Exit>(field(d, "exit", what).cast<int>());
+    r.input_fingerprint = bits_of(d, "input_fingerprint", what);
+    r.procedure = static_cast<ccd::PixelProcedure>(count_of<std::uint8_t>(d, "procedure", what));
+    r.standard.exit = static_cast<ccd::standard::Exit>(count_of<std::uint8_t>(d, "exit", what));
     r.standard.window = ccd::Window(
-        field(d, "window_start", what).cast<index_t>(),
-        field(d, "window_stop", what).cast<index_t>());
-    r.standard.prev_break = field(d, "prev_break", what).cast<index_t>();
-    r.standard.fit_stop = field(d, "fit_stop", what).cast<index_t>();
+        count_of<std::uint32_t>(d, "window_start", what),
+        count_of<std::uint32_t>(d, "window_stop", what));
+    r.standard.prev_break = count_of<std::uint32_t>(d, "prev_break", what);
+    r.standard.fit_stop = count_of<std::uint32_t>(d, "fit_stop", what);
     r.standard.grow = field(d, "grow", what).cast<bool>();
-    r.standard.num_coef = field(d, "num_coef", what).cast<index_t>();
+    r.standard.num_coef = count_of<std::uint8_t>(d, "num_coef", what);
     r.standard.magnitude = field(d, "magnitude", what).cast<std::vector<ccd::scalar_t>>();
-    r.standard.final_segments = field(d, "final_segments", what).cast<index_t>();
+    r.standard.final_segments = count_of<std::uint32_t>(d, "final_segments", what);
     r.excluded_days = field(d, "excluded_days", what).cast<std::vector<std::int64_t>>();
     return r;
 }
@@ -175,7 +230,7 @@ py::dict record_columns(
         pv(s) = static_cast<std::uint8_t>(r.procedure);
         ev(s) = static_cast<std::uint8_t>(r.standard.exit);
         nv(s) = static_cast<std::uint8_t>(r.standard.num_coef);
-        sv(s) = static_cast<std::uint8_t>(at[i] ? at[i]->status : ccd::ResumeStatus::Resumed);
+        sv(s) = at[i] ? static_cast<std::uint8_t>(at[i]->status) : STATUS_FAILED;
         wsv(s) = static_cast<std::int64_t>(r.standard.window.start);
         wev(s) = static_cast<std::int64_t>(r.standard.window.stop);
         bv(s) = static_cast<std::int64_t>(r.standard.prev_break);
@@ -222,27 +277,43 @@ ccd::CubeResumeFrom cube_from_python(
     from.pixels.resize(N);
     from.segments.resize(N);
 
-    const auto fingerprint = column<std::uint64_t>(records, "input_fingerprint", what);
-    const auto procedure = column<std::uint8_t>(records, "procedure", what);
-    const auto exit = column<std::uint8_t>(records, "exit", what);
-    const auto window_start = column<std::int64_t>(records, "window_start", what);
-    const auto window_stop = column<std::int64_t>(records, "window_stop", what);
-    const auto prev_break = column<std::int64_t>(records, "prev_break", what);
-    const auto fit_stop = column<std::int64_t>(records, "fit_stop", what);
-    const auto grow = column<bool>(records, "grow", what);
-    const auto num_coef = column<std::uint8_t>(records, "num_coef", what);
-    const auto magnitude = column<ccd::scalar_t>(records, "magnitude", what);
-    const auto final_segments = column<std::int64_t>(records, "final_segments", what);
-    const auto offsets = column<std::int64_t>(records, "excluded_offsets", what);
-    const auto excluded = column<std::int64_t>(records, "excluded_days", what);
+    const auto n = static_cast<py::ssize_t>(N);
+    const auto b = static_cast<py::ssize_t>(B);
+    const auto row = column<std::int64_t>(records, "row", what, n);
+    const auto col = column<std::int64_t>(records, "col", what, n);
+    const auto fingerprint = column<std::uint64_t>(records, "input_fingerprint", what, n);
+    const auto procedure = column<std::uint8_t>(records, "procedure", what, n);
+    const auto exit = column<std::uint8_t>(records, "exit", what, n);
+    const auto window_start = column<std::int64_t>(records, "window_start", what, n);
+    const auto window_stop = column<std::int64_t>(records, "window_stop", what, n);
+    const auto prev_break = column<std::int64_t>(records, "prev_break", what, n);
+    const auto fit_stop = column<std::int64_t>(records, "fit_stop", what, n);
+    const auto grow = column<bool>(records, "grow", what, n);
+    const auto num_coef = column<std::uint8_t>(records, "num_coef", what, n);
+    const auto magnitude = column<ccd::scalar_t>(records, "magnitude", what, n, 2, b);
+    const auto final_segments = column<std::int64_t>(records, "final_segments", what, n);
+    const auto offsets = column<std::int64_t>(records, "excluded_offsets", what, n + 1);
+    const auto excluded = column<std::int64_t>(
+        records, "excluded_days", what, length_of(records, "excluded_days", what));
 
-    if (static_cast<std::size_t>(fingerprint.size()) != N ||
-        static_cast<std::size_t>(offsets.size()) != N + 1 ||
-        magnitude.ndim() != 2 || static_cast<std::size_t>(magnitude.shape(0)) != N ||
-        static_cast<index_t>(magnitude.shape(1)) != B)
-        throw std::invalid_argument(
-            "the resume records do not cover the cube's " + std::to_string(N) +
-            " pixels and " + std::to_string(B) + " bands");
+    {
+        // Raster order, and offsets that slice excluded_days whole.
+        const auto r = row.unchecked<1>(); const auto c = col.unchecked<1>();
+        const auto o = offsets.unchecked<1>();
+        const auto w = static_cast<py::ssize_t>(W);
+        for (py::ssize_t k = 0; k < n; ++k)
+            if (r(k) != k / w || c(k) != k % w)
+                throw std::invalid_argument(
+                    "the resume records are not in raster order: entry " + std::to_string(k) +
+                    " is (" + std::to_string(r(k)) + ", " + std::to_string(c(k)) + ")");
+        if (o(0) != 0 || o(n) != excluded.size())
+            throw std::invalid_argument(
+                "the resume records' excluded_offsets do not span excluded_days");
+        for (py::ssize_t k = 0; k < n; ++k)
+            if (o(k + 1) < o(k))
+                throw std::invalid_argument(
+                    "the resume records' excluded_offsets decrease at entry " + std::to_string(k));
+    }
 
     const auto f = fingerprint.unchecked<1>(); const auto p = procedure.unchecked<1>();
     const auto e = exit.unchecked<1>(); const auto ws = window_start.unchecked<1>();
@@ -259,6 +330,10 @@ ccd::CubeResumeFrom cube_from_python(
         r.input_fingerprint = f(s);
         r.procedure = static_cast<ccd::PixelProcedure>(p(s));
         r.standard.exit = static_cast<ccd::standard::Exit>(e(s));
+        if (ws(s) < 0 || we(s) < 0 || pb(s) < 0 || fs(s) < 0 || fin(s) < 0)
+            throw std::invalid_argument(
+                "the resume record of pixel " + std::to_string(i) +
+                " has a negative position or count");
         r.standard.window = ccd::Window(static_cast<index_t>(ws(s)), static_cast<index_t>(we(s)));
         r.standard.prev_break = static_cast<index_t>(pb(s));
         r.standard.fit_stop = static_cast<index_t>(fs(s));
@@ -274,29 +349,25 @@ ccd::CubeResumeFrom cube_from_python(
 
     // The stored segments, by pixel, in the order the columns hold them.
     const char* seg = "the stored segments";
-    const auto row = column<std::int32_t>(segments, "row", seg);
-    const auto col = column<std::int32_t>(segments, "col", seg);
-    const auto start_day = column<std::int64_t>(segments, "start_day", seg);
-    const auto end_day = column<std::int64_t>(segments, "end_day", seg);
-    const auto break_day = column<std::int64_t>(segments, "break_day", seg);
-    const auto observation_count = column<std::int64_t>(segments, "observation_count", seg);
-    const auto change_probability = column<ccd::scalar_t>(segments, "change_probability", seg);
-    const auto curve_qa = column<std::int64_t>(segments, "curve_qa", seg);
-    const auto intercept = column<ccd::scalar_t>(segments, "intercept", seg);
-    const auto rmse = column<ccd::scalar_t>(segments, "rmse", seg);
-    const auto mag = column<ccd::scalar_t>(segments, "magnitude", seg);
-    const auto coefficients = column<ccd::scalar_t>(segments, "coefficients", seg);
-
-    const auto rows = row.size();
-    if (coefficients.ndim() != 3 || coefficients.shape(0) != rows ||
-        static_cast<index_t>(coefficients.shape(1)) != B ||
-        coefficients.shape(2) != static_cast<py::ssize_t>(ccd::CCD_MAX_COEFS) ||
-        intercept.ndim() != 2 || intercept.shape(0) != rows ||
-        static_cast<index_t>(intercept.shape(1)) != B)
+    const py::ssize_t rows = length_of(segments, "row", seg);
+    const auto srow = column<std::int64_t>(segments, "row", seg, rows);
+    const auto scol = column<std::int64_t>(segments, "col", seg, rows);
+    const auto start_day = column<std::int64_t>(segments, "start_day", seg, rows);
+    const auto end_day = column<std::int64_t>(segments, "end_day", seg, rows);
+    const auto break_day = column<std::int64_t>(segments, "break_day", seg, rows);
+    const auto observation_count = column<std::int64_t>(segments, "observation_count", seg, rows);
+    const auto change_probability = column<ccd::scalar_t>(segments, "change_probability", seg, rows);
+    const auto curve_qa = column<std::int64_t>(segments, "curve_qa", seg, rows);
+    const auto intercept = column<ccd::scalar_t>(segments, "intercept", seg, rows, 2, b);
+    const auto rmse = column<ccd::scalar_t>(segments, "rmse", seg, rows, 2, b);
+    const auto mag = column<ccd::scalar_t>(segments, "magnitude", seg, rows, 2, b);
+    const auto coefficients = column<ccd::scalar_t>(segments, "coefficients", seg, rows, 3, b);
+    if (coefficients.shape(2) != static_cast<py::ssize_t>(ccd::CCD_MAX_COEFS))
         throw std::invalid_argument(
-            "the stored segments' band arrays are not (segments, " + std::to_string(B) + ", ...)");
+            "the stored segments: \"coefficients\" are not (segments, bands, " +
+            std::to_string(ccd::CCD_MAX_COEFS) + ")");
 
-    const auto rv = row.unchecked<1>(); const auto cv = col.unchecked<1>();
+    const auto rv = srow.unchecked<1>(); const auto cv = scol.unchecked<1>();
     const auto sd = start_day.unchecked<1>(); const auto ed = end_day.unchecked<1>();
     const auto bd = break_day.unchecked<1>(); const auto oc = observation_count.unchecked<1>();
     const auto cp = change_probability.unchecked<1>(); const auto cq = curve_qa.unchecked<1>();

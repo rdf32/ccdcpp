@@ -47,7 +47,11 @@
   return them) and the whole series, and return the complete result with
   the next record, `status` and, for cubes, `counts`. `resume_schema()`
   names the record columns and their dtypes; `RESUME_FORMAT` and
-  `RESULTS_VERSION` are exported. Stored segments with placeholders where
+  `RESULTS_VERSION` are exported. Every record and segment column is checked
+  for its length and shape, the records for raster order and their offsets
+  against the excluded days (`ValueError` otherwise); a record that does not
+  fit its pixel's series is that pixel's failure (status 2), refused before
+  anything reads at its positions. Stored segments with placeholders where
   the caller blanks a field (nlcd's break day and magnitude on no-break
   rows, no observation count) come back as given.
 - `ResumeEqualsTheFullRun.*` (`tests/ccd/golden/test_resume.cpp`): at every

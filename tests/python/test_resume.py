@@ -140,6 +140,18 @@ class OnePixel(unittest.TestCase):
         with self.assertRaises(ValueError):
             call(until=n - 1)
 
+        # A record that does not fit the series.
+        for key, value in (("window_stop", 10 ** 6), ("magnitude", np.zeros(1)),
+                           ("final_segments", -1)):
+            with self.subTest(key=key):
+                bad = dict(stored["resume"], **{key: value})
+                if key == "magnitude":
+                    bad["exit"] = 6   # SeriesEnd
+                with self.assertRaises(ValueError):
+                    ccdcpp.resume(dates, spectral, qas, ccdcpp.HarmonicOptions(), lo,
+                                  resume=bad, resume_header=stored["resume_header"],
+                                  models=stored["models"])
+
 
 def cube(seeds, rows, cols):
     pixels = [pixel(s) for s in seeds]
@@ -225,6 +237,50 @@ class Cube(unittest.TestCase):
             segments={k: stored[k] for k in SEGMENT_COLUMNS})
         self.assertEqual(again["counts"], {"resumed": 5, "rerun_input_changed": 1, "failed": 0})
         self.assertEqual(int(again["resume"]["status"][1 * 3 + 2]), 1)
+
+    def test_columns_that_do_not_fit_are_refused(self):
+        lo = ccdcpp.LassoOptions()
+        dates, spectral, qas = cube(range(50, 56), 2, 3)
+        n = upto(dates, CUT_2019)
+        stored = ccdcpp.detect_cube_columns(
+            dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.HarmonicOptions(), lo,
+            1, resume_record=True)
+        segments = {k: stored[k] for k in SEGMENT_COLUMNS}
+
+        def call(resume=None, segs=None):
+            return ccdcpp.resume_cube_columns(
+                dates, spectral, qas, ccdcpp.HarmonicOptions(), lo, 1,
+                resume=resume or stored["resume"], resume_header=stored["resume_header"],
+                segments=segs or segments)
+
+        short = dict(segments, start_day=segments["start_day"][:1])
+        with self.assertRaises(ValueError):
+            call(segs=short)
+        for key in ("window_stop", "magnitude", "excluded_offsets"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    call(resume=dict(stored["resume"], **{key: stored["resume"][key][:-1]}))
+        reordered = {k: v[[0, 3, 1, 4, 2, 5]] if v.shape[0] == 6 else v
+                     for k, v in stored["resume"].items()}
+        with self.assertRaises(ValueError):
+            call(resume=reordered)
+        offsets = stored["resume"]["excluded_offsets"].copy()
+        offsets[1] = offsets[-1] + 1        # past excluded_days, then decreasing
+        bad_offsets = dict(stored["resume"], excluded_offsets=offsets)
+        with self.assertRaises(ValueError):
+            call(resume=bad_offsets)
+
+        # A window past the series is that pixel's failure, not the call's.
+        far = dict(stored["resume"])
+        far["window_stop"] = far["window_stop"].copy()
+        far["window_start"] = far["window_start"].copy()
+        standard = np.flatnonzero(far["procedure"] == 0)
+        far["window_start"][standard[0]] = 100000
+        far["window_stop"][standard[0]] = 100012
+        out = call(resume=far)
+        self.assertEqual(len(out["failures"]), 1)
+        self.assertEqual(out["counts"]["failed"], 1)
+        self.assertEqual(int(out["resume"]["status"][standard[0]]), 2)
 
     def test_the_schema_names_the_columns(self):
         lo = ccdcpp.LassoOptions()

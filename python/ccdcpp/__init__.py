@@ -307,10 +307,16 @@ def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
 
     Returns detect_cube_columns()'s dict for the whole series, each pixel
     equal bit for bit to resume() on it, plus "resume" (with a "status"
-    column: 0 resumed, 1 rerun because its input changed), "resume_header"
-    and "counts" (resumed, rerun_input_changed, failed). A pixel that fails
-    is in "failures"; its record is a default one, so the next resume
-    reruns it.
+    column: 0 resumed, 1 rerun because its input changed, 2 failed),
+    "resume_header" and "counts" (resumed, rerun_input_changed, failed). A
+    pixel that fails is in "failures"; its record is a default one, so the
+    next resume reruns it.
+
+    The record columns must cover the cube in raster order, each of its
+    length and shape, or the call raises ValueError; a record that does not
+    fit its pixel's series (a cursor past it) is that pixel's failure.
+    resume_header["options_digest"] and resume["input_fingerprint"] are
+    uint64 (store them unsigned, or as int64 bits: both are read back).
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "resume_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
