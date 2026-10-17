@@ -15,6 +15,15 @@
   `ccdc`, whose digest is unchanged, so resume records written by 0.10.0
   stay valid. C++: `HarmonicOptions` gains its first field, so code built
   against 0.10.0's headers is rebuilt.
+- The BFP test's kernels (`include/ccd/procedure/bfp.hpp`), for the BFP
+  machine to come: the F upper tail (Boost.Math), Fisher's combination in
+  closed form, `bfp::Mixture` (the probability that nothing changed, over
+  every subset of a growing peek whose consecutive members keep the spacing,
+  each subset's Cholesky factor extended by one row, each subset computed
+  once per peek) and `bfp::decide()` (the test's decision at each peek size,
+  as JuliaCCD's breakTestBFP takes it). Tested against brute force (every
+  subset, dense inverses) and Boost's F and chi-squared distributions
+  (`tests/ccd/procedure/test_bfp.cpp`).
 
 ### Fixed
 

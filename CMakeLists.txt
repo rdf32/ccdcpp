@@ -128,6 +128,7 @@ add_library(
 
     src/ccd/preprocess/preprocess.cpp
 
+    src/ccd/procedure/bfp.cpp
     src/ccd/procedure/fit.cpp
     src/ccd/procedure/kernels.cpp
     src/ccd/procedure/masked_series.cpp
@@ -527,6 +528,29 @@ if(CCD_BUILD_TESTS)
             CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv"
     )
 
+    # The BFP test's kernels against brute force and closed forms. See
+    # tests/ccd/procedure/test_bfp.cpp.
+    add_executable(
+        test_bfp
+
+        tests/ccd/procedure/test_bfp.cpp
+    )
+
+    target_link_libraries(
+        test_bfp
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+    target_compile_features(
+        test_bfp
+
+        PRIVATE
+            cxx_std_17
+    )
+
     # The Standard machine's routing from hand-built records, and its exit
     # reasons on whole pixels. See tests/ccd/procedure/test_machine.cpp.
     add_executable(
@@ -899,6 +923,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_masked_series)
     gtest_discover_tests(test_kernels)
+    gtest_discover_tests(test_bfp)
     gtest_discover_tests(test_machine)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
