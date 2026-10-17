@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 - 2026-10-17
+
+Speed, and outputs moved in their last bits only. The Atlanta h024v013 cell
+(500 x 500, 1984-2023, 8 threads) runs in 39.7 s against 0.9.0's 79.3 s;
+the synthetic bench at one thread in 3.06 s against 5.76 s. Every segment
+is unchanged on that cell and on the golden corpus (the same days, counts,
+change probabilities and curve QA); coefficients, RMSEs and magnitudes
+move by about 1e-10 relative at most, from the Lasso solver's sums in a
+new order (`docs/floating-point-sums.md`). The other changes give the same
+bits. **Results version 2**: a resume record stored by 0.9.0 is refused, so
+the first run after upgrading is a full one. The annual update of that
+cell (2023 added to 1984-2022) takes 14 s, 0.36x the full run (the update
+is mostly the reading and the open segments' refit, which the faster
+machine leaves as they were). Tests run in a quick tier (`ctest -LE
+corpus`) and a full one.
 
 ### Changed (outputs in their last bits; results version 2)
 

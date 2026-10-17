@@ -160,7 +160,7 @@ to avoid.)
 
 The whole pipeline (synthetic bench, one thread):
 
-| K | 1 (0.9.0) | 2 | 4 | 8 |
+| K | 1 | 2 | 4 | 8 |
 |---|---|---|---|---|
 | time | 3.87 s | 3.53 s | 3.06 s | 3.08 s |
 
