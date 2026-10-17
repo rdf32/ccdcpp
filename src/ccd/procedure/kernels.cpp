@@ -194,7 +194,10 @@ InitializeOutcome initialize_step(
     //--------------------------------------------------------------------------
     // No candidate left before the end of the series
     //--------------------------------------------------------------------------
-    if (!(window.stop + criteria.meow_size < series.size()))
+    const bool exhausted = criteria.to_series_end
+        ? window.stop > series.size()
+        : !(window.stop + criteria.meow_size < series.size());
+    if (exhausted)
     {
         LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
         return InitializeOutcome::Exhausted;

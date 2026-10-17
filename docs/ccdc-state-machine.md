@@ -8,7 +8,7 @@ machine, and the per-pixel record holds everything that survives from one step t
 
 This page describes the code as it is, with the files to read. Paths are relative to the
 repository root. The algorithm is pyccd's, with pyccd's intent kept where its code says
-otherwise (the rules in section 7); see the README's
+otherwise (the rules in section 8); see the README's
 [Differences from pyccd](../README.md#differences-from-pyccd) for every difference.
 
 ## 1. One pixel, end to end
@@ -256,7 +256,47 @@ and returns the complete result, equal bit for bit to the run on the whole serie
 (`ResumeEqualsTheFullRun.*`, `tests/ccd/golden/test_resume.cpp`). A pixel whose stored input
 changed, the pixels that take no machine and the early exits are rerun instead.
 
-## 7. Why it is written this way
+## 7. The BFP machine
+
+The `bfp-paper` method (`HarmonicOptions::METHOD`) runs the BFP machine for the Standard
+procedure (`include/ccd/procedure/bfp_machine.hpp`): Band-First Probability, Tollerud et al.
+2023, as JuliaCCD's `paperbfp` runs it. It composes the Standard machine rather than copying it.
+Its record holds a `standard::State` (the series, the cursor, the segments, Prepare's variogram,
+Initialize's models), and its step calls the Standard machine's work for the phases they share:
+`prepare`, `initialize_outcome`, `lookback_step`, `write_start_segment`, `move_past_segment`,
+`write_end_segment`. Only the routes and one phase are its own.
+
+```
+Prepare ── Initialize ⟲ ── Lookback ⟲ ── [StartCatch] ── Lookforward ⟲ ── change ── Restart ── Initialize …
+                │                                              │
+                └── no start found ── EndCatch ── Done          └── series end ── Done
+```
+
+| | The Standard machine | The BFP machine |
+|---|---|---|
+| Initialize, Lookback | the cadence's peek and change threshold | `PEEK_SIZE` and `CHANGE_THRESHOLD`, fixed |
+| statistics window | `STAT_ORD` | the whole series (`with_method` sets no cutoff) |
+| start windows | while `window.stop + MEOW_SIZE < size` | to the last observation (`InitializeCriteria::to_series_end`) |
+| a search that finds no start | its Tmask drops stay | the series as it was before the search |
+| the change test | Extend: chi-squared on the peek's magnitudes, a full peek required | Lookforward: the BFP test (`bfp.hpp`) on the next `BFP.MAX_PEEK` observations, fewer at the end |
+| the fit a test reads | Lasso, refitted on a schedule | least squares by running sums (`LeastSquares`), refitted at every new observation |
+| a change's first observation | the first of the peek | `BreakStart::Select`: the run of individually anomalous observations ending the deciding peek (at least 3); the ones it skips belong to no segment |
+| outliers | the first peek magnitude above `OUTLIER_THRESHOLD`, RMSE floored | the same test, no floor |
+| the series end | the last full peek | the first undecided shortened peek: Done |
+| Start segment | `window.start - prev_break > peek` | `>= BFP.START_CATCH_MIN` (6) |
+| End segment | `prev_break + peek < size` | after a change, `>= BFP.END_CATCH_MIN` (6) observations |
+| Start and End fits | `COEFFICIENT_MIN` coefficients, Lasso | the same from 12 observations; below, the intercept alone |
+| a segment reports | the Lasso fits | the least-squares fits; magnitudes the median residual from the change to its deciding observation |
+
+`BfpOptions` (`HarmonicOptions::BFP`) holds the test's parameters, defaulting to `paperbfp`'s,
+and `with_method()` sets them with its 366-day initialization span. A BFP run writes no resume
+state: a resume of it reruns the pixel.
+
+`BfpReference.EqualsJuliaCcdPaperbfp` (`tests/ccd/procedure/test_bfp_reference.cpp`) pins twelve
+Atlanta pixels against JuliaCCD's output, chosen from a 1500-pixel comparison in which every pixel
+had JuliaCCD's segments, days and processing mask.
+
+## 8. Why it is written this way
 
 pyccd (`ccd/procedures.py`) writes the same algorithm as nested loops: `standard_procedure`
 holds an outer `while` over the series, and `initialize`, `lookback` and `lookforward` each hold

@@ -452,6 +452,56 @@ Phase end_catch_because(State& state, standard::Exit why)
     return Phase::EndCatch;
 }
 
+// Into Initialize: remembers the mask the search starts from.
+Phase begin_search(State& state)
+{
+    state.search_mask = state.core.series.mask();
+    return Phase::Initialize;
+}
+
+// A Start or End segment over `window`: catch_segment()'s, or below
+// COEFFICIENT_MIN * NUM_OBS_FACTOR observations the intercept alone (the
+// mean; RMSE over n - 1 degrees of freedom), as JuliaCCD fits them.
+void write_catch(const Context& context, State& state, const Window& window, CurveQA curve_qa)
+{
+    const HarmonicOptions& options = context.options;
+    standard::State& core = state.core;
+    const index_t n = window.size();
+    if (n >= options.COEFFICIENT_MIN * options.NUM_OBS_FACTOR)
+    {
+        if (curve_qa == CurveQA::Start)
+            standard::write_start_segment(context, core);
+        else
+            standard::write_end_segment(context, core);
+        return;
+    }
+
+    const auto dates = core.series.dates();
+    const auto spectral = core.series.spectral();
+    ChangeModel result;
+    result.start_day = dates(window.start);
+    result.end_day = dates(window.stop - 1);
+    result.break_day = window.stop >= dates.size() ? dates(dates.size() - 1) : dates(window.stop);
+    result.observation_count = n;
+    result.change_probability = 0.0;
+    result.curve_qa = curve_qa;
+    for (index_t b = 0; b < spectral.extent(0); ++b)
+    {
+        scalar_t mean = 0.0;
+        for (index_t t = window.start; t < window.stop; ++t)
+            mean += spectral(b, t);
+        mean /= static_cast<scalar_t>(n);
+        scalar_t ssr = 0.0;
+        for (index_t t = window.start; t < window.stop; ++t)
+            ssr += (spectral(b, t) - mean) * (spectral(b, t) - mean);
+        BandFit f;
+        f.intercept = mean;
+        f.rmse = n > 1 ? std::sqrt(ssr / static_cast<scalar_t>(n - 1)) : 0.0;
+        result.bands.push_back(f);
+    }
+    core.segments.push_back(std::move(result));
+}
+
 } // namespace
 
 Phase lookforward(const Context& context, State& state)
@@ -496,17 +546,27 @@ Phase Machine::step(const Context& context, State& state)
     switch (state.phase)
     {
         case Phase::Prepare:
-            switch (standard::prepare(context, core))
-            {
-                case standard::Phase::Initialize: return Phase::Initialize;
-                case standard::Phase::EndCatch:   return Phase::EndCatch;
-                default:                          return Phase::Done;
-            }
+        {
+            // Standard's Prepare (the early exits, the variogram), then
+            // paperbfp's fixed peek and threshold for Initialize and
+            // Lookback, and its start windows that may reach the end.
+            if (standard::prepare(context, core) == standard::Phase::Done)
+                return Phase::Done;
+            const HarmonicOptions& options = context.options;
+            core.cadence = standard::Cadence{options.PEEK_SIZE, options.CHANGE_THRESHOLD};
+            core.initialize_criteria = standard::initialize_criteria(options, core.cadence);
+            core.initialize_criteria.to_series_end = true;
+            core.exit = standard::Exit::None;
+            return begin_search(state);   // more than MEOW_SIZE observations
+        }
 
         case Phase::Initialize:
             switch (standard::initialize_outcome(context, core))
             {
                 case InitializeOutcome::Exhausted:
+                    // JuliaCCD writes nothing of a search that found no
+                    // start: its Tmask drops come back.
+                    core.series.reset(context.pixel, state.search_mask);
                     return end_catch_because(state, standard::Exit::InitializeExhausted);
                 case InitializeOutcome::Stable:
                 case InitializeOutcome::DroppedThenStable:
@@ -527,7 +587,8 @@ Phase Machine::step(const Context& context, State& state)
         }
 
         case Phase::StartCatch:
-            standard::write_start_segment(context, core);
+            write_catch(context, state, Window(core.cursor.prev_break, core.cursor.window.start),
+                        CurveQA::Start);
             return Phase::Lookforward;
 
         case Phase::Lookforward:
@@ -535,8 +596,8 @@ Phase Machine::step(const Context& context, State& state)
 
         case Phase::Restart:
             standard::move_past_segment(context, core);
-            if (standard::room_to_initialize(context, core))
-                return Phase::Initialize;
+            if (core.cursor.window.stop <= core.series.size())
+                return begin_search(state);
             return end_catch_because(state, standard::Exit::NoRoomToInitialize);
 
         case Phase::EndCatch:
@@ -544,7 +605,8 @@ Phase Machine::step(const Context& context, State& state)
             // when enough observations follow it.
             if (!core.segments.empty() && core.segments.back().change_probability == 1.0 &&
                 core.series.size() - core.cursor.prev_break >= context.options.BFP.END_CATCH_MIN)
-                standard::write_end_segment(context, core);
+                write_catch(context, state, Window(core.cursor.prev_break, core.series.size()),
+                            CurveQA::End);
             return Phase::Done;
 
         case Phase::Done:

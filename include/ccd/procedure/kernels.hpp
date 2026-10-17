@@ -112,6 +112,11 @@ struct InitializeCriteria
     BandList detection_bands;   // the bands fitted and tested for stability
     index_t num_coefficients;   // of the stability fits
     scalar_t change_threshold;  // stable() below this
+
+    // Where the candidates end: pyccd's while window.stop + meow_size <
+    // size (false), or JuliaCCD's while the window ends at or before the last
+    // observation (true, the BFP machine's).
+    bool to_series_end = false;
 };
 
 // What one step of the start-window search did, in the order the step tests
@@ -123,8 +128,8 @@ struct InitializeCriteria
 // one pass of its loop. Their routing is Unstable's and Stable's.
 enum class InitializeOutcome : std::uint8_t
 {
-    Exhausted,            // window.stop + meow_size reached the series size:
-                          // no candidate left, nothing tested or changed
+    Exhausted,            // no candidate left (InitializeCriteria::
+                          // to_series_end): nothing tested or changed
     ShortSpan,            // the window spans fewer than day_delta days: grown
     AllOutliers,          // Tmask flags every observation in it: grown
     RejectedOutliers,     // what Tmask's outliers leave is too short or too

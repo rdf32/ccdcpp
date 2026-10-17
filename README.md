@@ -281,7 +281,7 @@ A pixel that takes the Standard procedure runs the call's change detection metho
 | `method` | Change detection |
 |---|---|
 | `"ccdc"` (default) | The Standard machine: pyccd's procedure as pyccd intends it (see [Differences from pyccd](#differences-from-pyccd)) |
-| `"bfp-paper"` | Band-First Probability, Tollerud et al. 2023 (not available in this build: `ValueError`) |
+| `"bfp-paper"` | Band-First Probability, Tollerud et al. 2023, as JuliaCCD's `paperbfp` runs it: the BFP machine ([CCDC as a state machine](docs/ccdc-state-machine.md#7-the-bfp-machine)). On 1500 Atlanta pixels, every one had JuliaCCD's segments, days and processing mask; the least-squares coefficients agree within 1e-8 of each band's RMSE, the Lasso End segments' within 2e-6 |
 | `"bfp"` | BFP with COLD's initialization, as JuliaCCD recommends it (not available in this build: `ValueError`) |
 
 The method is part of the options a resume record is checked against.

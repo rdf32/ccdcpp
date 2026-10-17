@@ -575,6 +575,37 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The bfp-paper method against JuliaCCD's paperbfp. See
+    # tests/ccd/procedure/test_bfp_reference.cpp.
+    add_executable(
+        test_bfp_reference
+
+        tests/ccd/procedure/test_bfp_reference.cpp
+    )
+
+    target_link_libraries(
+        test_bfp_reference
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+    target_compile_features(
+        test_bfp_reference
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    target_compile_definitions(
+        test_bfp_reference
+
+        PRIVATE
+            CCD_BFP_REFERENCE_PIXELS="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/bfp_reference_pixels.csv"
+            CCD_BFP_REFERENCE_SEGMENTS="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/bfp_reference_segments.csv"
+    )
+
     # The Standard machine's routing from hand-built records, and its exit
     # reasons on whole pixels. See tests/ccd/procedure/test_machine.cpp.
     add_executable(
@@ -949,6 +980,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_kernels)
     gtest_discover_tests(test_bfp)
     gtest_discover_tests(test_bfp_machine)
+    gtest_discover_tests(test_bfp_reference)
     gtest_discover_tests(test_machine)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)

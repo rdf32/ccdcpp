@@ -517,7 +517,8 @@ ChangeMethod method_from_name(const std::string& name);
 // `options` for a run of `method`: METHOD set, and the parameters the method
 // fixes set to its values; every other field as given, so a sensor profile's
 // unit constants carry through. ccdc fixes none; bfp-paper sets BFP to
-// paperbfp's (the defaults) and DAY_DELTA to 366, its initialization span.
+// paperbfp's (the defaults), DAY_DELTA to 366, its initialization span, and
+// STAT_ORD to no cutoff: its statistics read the whole series.
 HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method);
 
 

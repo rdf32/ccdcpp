@@ -27,6 +27,26 @@
   inverses), Boost's F and chi-squared distributions, and the exact rule
   over every size (`tests/ccd/procedure/test_bfp.cpp`).
 
+- The `bfp-paper` method: Band-First Probability (Tollerud et al. 2023) as
+  JuliaCCD's `paperbfp` runs it, the BFP machine
+  (`include/ccd/procedure/bfp_machine.hpp`). It composes the Standard
+  machine's phases (the Standard machine's work is now callable apart from
+  its routes: `initialize_outcome()`, `write_start_segment()`,
+  `move_past_segment()`, `write_end_segment()`) with Lookforward, the BFP
+  test on least squares refitted at every observation, and paperbfp's
+  routes: fixed initialization threshold and peek, whole-series statistics,
+  start windows to the last observation, a failed search's Tmask drops
+  undone, the series end at an undecided shortened peek, Start and End
+  segments from 6 observations (the intercept alone below 12).
+  `HarmonicOptions::BFP` (`BfpOptions`) holds its parameters;
+  `with_method(bfp-paper)` sets them, DAY_DELTA 366 and no statistics
+  cutoff. On 1500 pixels of the Atlanta cell every pixel has JuliaCCD's
+  segments, days, observation counts and processing mask; the least-squares
+  coefficients agree within 1e-8 of each band's RMSE, RMSEs within 6e-9
+  relative, magnitudes within 1.1e-7. `BfpReference.EqualsJuliaCcdPaperbfp`
+  pins twelve of those pixels (`tests/ccd/procedure/bfp_reference_*.csv`).
+  A BFP run keeps no resume state: a resume reruns the pixel.
+
 ### Fixed
 
 - A build without OpenMP compiles: `ccd.cpp` includes `<omp.h>` only under

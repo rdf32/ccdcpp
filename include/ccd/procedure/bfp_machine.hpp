@@ -24,10 +24,11 @@ namespace bfp
 // Start and End segments and Restart's cursor move are the Standard
 // machine's own; Lookforward replaces Extend, and the routes are its own:
 //
-//   Prepare     -> Initialize; EndCatch (no room); Done (early exits)
+//   Prepare     -> Initialize; Done (early exits)
 //   Initialize  -> Initialize; after a stable start: Lookback while
 //                  window.start > prev_break, else the start guard;
-//                  EndCatch when no candidate is left
+//                  EndCatch when no candidate is left, the series as it was
+//                  before this start's search (its Tmask drops undone)
 //   Lookback    -> Lookback; the start guard
 //   start guard -> StartCatch when no segment is written yet and
 //                  window.start - prev_break >= BFP.START_CATCH_MIN, else
@@ -35,13 +36,19 @@ namespace bfp
 //   StartCatch  -> Lookforward
 //   Lookforward -> Lookforward (an observation appended or dropped);
 //                  Restart (a change); Done (the series end)
-//   Restart     -> Initialize; EndCatch (no room)
+//   Restart     -> Initialize while MEOW_SIZE observations follow the
+//                  break; EndCatch
 //   EndCatch    -> Done, after the End segment when the last segment ended
 //                  in a change and BFP.END_CATCH_MIN observations follow it
 //
-// There is no full-peek guard: the test runs on the observations left when
-// fewer than BFP.MAX_PEEK remain, and the series ends where a shortened peek
-// leaves the test undecided (JuliaCCD's lookForward).
+// As JuliaCCD's paperbfp does: Initialize and Lookback test against
+// CHANGE_THRESHOLD with a peek of PEEK_SIZE, not the cadence's (Prepare's
+// cadence is replaced by those); a start window may end at the last
+// observation; there is no full-peek guard: the test runs on the
+// observations left when fewer than BFP.MAX_PEEK remain, and the series ends
+// where a shortened peek leaves the test undecided. The Start and End
+// segments of fewer than COEFFICIENT_MIN * NUM_OBS_FACTOR observations fit
+// the intercept alone.
 //
 //==============================================================================
 
@@ -176,6 +183,10 @@ struct State
     standard::State core;
 
     Extension extension;
+
+    // The processing mask when the current start's search began, which an
+    // exhausted search returns to.
+    ProcessingMask search_mask;
 
     // Starts a pixel, as standard::State::reset().
     void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);

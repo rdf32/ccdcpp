@@ -6,12 +6,8 @@
 //     HarmonicBasis design (the trend column the ordinal day): coefficients
 //     as a segment reports them, SSR, residuals, and the whitened columns'
 //     leverages x' (X'X)^-1 x, at every coefficient count, on random series.
-//   * The machine on the CSV pixels: every segment's days, count and change
-//     probability; the first segment starts where the series' stable start
-//     does; segments do not overlap; BreakStart::First never skips an
-//     observation.
 //
-// Its decisions against JuliaCCD's paperbfp are pinned by
+// The machine's decisions against JuliaCCD's paperbfp are pinned by
 // test_bfp_reference.cpp.
 //
 //==============================================================================

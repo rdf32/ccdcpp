@@ -1,5 +1,6 @@
 #include "ccd/harmonic/harmonic.hpp"
 
+#include <limits>
 #include <stdexcept>
 
 
@@ -33,6 +34,9 @@ HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method)
     {
         options.BFP = BfpOptions{};
         options.DAY_DELTA = 366;
+        // paperbfp's statistics read the whole series
+        // (endDateForAllTimeCalculations 2100-12-31).
+        options.STAT_ORD = std::numeric_limits<std::int64_t>::max();
     }
     return options;
 }
