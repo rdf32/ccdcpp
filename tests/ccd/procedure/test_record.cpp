@@ -321,6 +321,11 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
     const std::pair<const char*, Set> harmonic[] = {
         {"METHOD bfp-paper", [](auto& h) { h.METHOD = ccd::ChangeMethod::BfpPaper; }},
         {"METHOD bfp", [](auto& h) { h.METHOD = ccd::ChangeMethod::Bfp; }},
+        {"BFP.GOOD", [](auto& h) { h.METHOD = ccd::ChangeMethod::BfpPaper; h.BFP.GOOD = 0.97; }},
+        {"BFP.MAX_PEEK", [](auto& h) { h.METHOD = ccd::ChangeMethod::BfpPaper; h.BFP.MAX_PEEK = 16; }},
+        {"BFP.BREAK_START", [](auto& h) { h.METHOD = ccd::ChangeMethod::BfpPaper;
+                                         h.BFP.BREAK_START = ccd::BreakStart::First; }},
+        {"BFP.END_CATCH_MIN", [](auto& h) { h.METHOD = ccd::ChangeMethod::BfpPaper; h.BFP.END_CATCH_MIN = 7; }},
         {"MEOW_SIZE", [](auto& h) { h.MEOW_SIZE = 13; }},
         {"PEEK_SIZE", [](auto& h) { h.PEEK_SIZE = 7; }},
         {"DAY_DELTA", [](auto& h) { h.DAY_DELTA = 366; }},
@@ -399,7 +404,7 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 // for, and a test that fails here is a reminder, not a platform difference.
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 448u);
+    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 576u);
     EXPECT_EQ(sizeof(ccd::LassoOptions), 40u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);

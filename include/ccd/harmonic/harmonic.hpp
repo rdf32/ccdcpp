@@ -56,8 +56,8 @@ enum class GreenFilterScope : std::uint8_t
 //   Bfp        "bfp": BFP with COLD's initialization and the changes JuliaCCD
 //              recommends.
 //
-// with_method() gives a run's options for a method. The BFP methods are not
-// available in this build: ccd::validate() refuses them.
+// with_method() gives a run's options for a method. bfp is not available in
+// this build: ccd::validate() refuses it.
 //
 //==============================================================================
 
@@ -66,6 +66,80 @@ enum class ChangeMethod : std::uint8_t
     Ccdc,
     BfpPaper,
     Bfp
+};
+
+//==============================================================================
+//
+// BfpOptions
+//
+// The BFP machine's parameters (bfp_machine.hpp, the test of bfp.hpp). The
+// defaults are JuliaCCD's paperbfp set, the method of Tollerud et al. 2023;
+// with_method() sets them for a BFP method. The ccdc method reads none.
+//
+//==============================================================================
+
+// Where a change's segment boundary falls in the peek that found it: at its
+// first observation, or at the longest run of individually anomalous
+// observations that ends the peek, when it holds SELECT_MIN_OBSERVATIONS
+// (JuliaCCD's selectBFP; the observations it skips belong to no segment).
+enum class BreakStart : std::uint8_t
+{
+    First,
+    Select
+};
+
+// The outlier test of each step without a change: the first peek
+// observation's sum over the detection bands of r^2 / MSE (no RMSE floor)
+// above OUTLIER_THRESHOLD.
+enum class BfpOutlier : std::uint8_t
+{
+    NoMinRmse
+};
+
+// The fit a segment reports: least squares over its observations, every
+// band, the segment's coefficient count.
+enum class OutputFit : std::uint8_t
+{
+    Ols
+};
+
+struct BfpOptions
+{
+    // An observation is "good" (consistent with the model when nothing
+    // changed) with probability GOOD: the paper's lambda is 1 - GOOD.
+    scalar_t GOOD = 0.95;
+
+    // P0 below THRESHOLD (times combos / 2^order with SCALE_THRESHOLD) is a
+    // change; the mean P of the largest subsets above NO_CHANGE_CUTOFF ends
+    // the test with none.
+    scalar_t THRESHOLD = 1e-10;
+    bool SCALE_THRESHOLD = true;
+    scalar_t NO_CHANGE_CUTOFF = 0.001;
+
+    // The peek is the next MAX_PEEK observations (fewer at the series end);
+    // the subsets' consecutive members are MIN_DAYS_BETWEEN apart.
+    index_t MAX_PEEK = 18;
+    std::int64_t MIN_DAYS_BETWEEN = 10;
+
+    // A change needs MIN_OBSERVATIONS_FOR_BREAK observations and a peek
+    // spanning MIN_DAYS_FOR_BREAK days; a peek spanning more than
+    // MAX_DAYS_FOR_BREAK has none.
+    index_t MIN_OBSERVATIONS_FOR_BREAK = 1;
+    std::int64_t MIN_DAYS_FOR_BREAK = 0;
+    std::int64_t MAX_DAYS_FOR_BREAK = 10000;
+
+    BreakStart BREAK_START = BreakStart::Select;
+    scalar_t SELECT_THRESHOLD = 1e-4;
+    index_t SELECT_MIN_OBSERVATIONS = 3;
+
+    BfpOutlier OUTLIER = BfpOutlier::NoMinRmse;
+
+    // The Start segment needs START_CATCH_MIN observations before the first
+    // stable window; the End segment, END_CATCH_MIN after the last change.
+    index_t START_CATCH_MIN = 6;
+    index_t END_CATCH_MIN = 6;
+
+    OutputFit OUTPUT_FIT = OutputFit::Ols;
 };
 
 //==============================================================================
@@ -83,6 +157,9 @@ struct HarmonicOptions
     // The Standard procedure's change detection (ChangeMethod above). Set it
     // with with_method(), which also sets the parameters the method fixes.
     ChangeMethod METHOD = ChangeMethod::Ccdc;
+
+    // The BFP machine's parameters, read when METHOD is a BFP method.
+    BfpOptions BFP;
 
     //----------------------------------------------------------------------
     // Processing window parameters
@@ -439,7 +516,8 @@ ChangeMethod method_from_name(const std::string& name);
 
 // `options` for a run of `method`: METHOD set, and the parameters the method
 // fixes set to its values; every other field as given, so a sensor profile's
-// unit constants carry through. ccdc fixes none.
+// unit constants carry through. ccdc fixes none; bfp-paper sets BFP to
+// paperbfp's (the defaults) and DAY_DELTA to 366, its initialization span.
 HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method);
 
 

@@ -814,13 +814,16 @@ class Unprofiled(unittest.TestCase):
         assert_same(self, without(ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile,
                                                              method="ccdc"), "threads"),
                     without(ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile), "threads"))
-        for method in ("bfp-paper", "bfp"):
-            with self.subTest(method=method):
-                with self.assertRaisesRegex(ValueError, f"the {method} method is not available"):
-                    ccdcpp.detect(d, s[0, 0], q[0, 0], h, lo, method=method)
-                with self.assertRaisesRegex(ValueError, "not available"):
-                    ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile, method=method)
-                self.assertEqual(ccdcpp.with_method(h, method).METHOD, method)
+        with self.assertRaisesRegex(ValueError, "the bfp method is not available"):
+            ccdcpp.detect(d, s[0, 0], q[0, 0], h, lo, method="bfp")
+        with self.assertRaisesRegex(ValueError, "not available"):
+            ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile, method="bfp")
+        # bfp-paper runs, the pixel and the cube entry alike, and differs from ccdc.
+        bfp = without(ccdcpp.detect_cube_columns(d, s, q, h, lo, 1, method="bfp-paper"), "threads")
+        self.assertEqual(ccdcpp.detect(d, s[0, 0], q[0, 0], h, lo, method="bfp-paper")["models"][0]["start_day"],
+                         bfp["start_day"][0])
+        self.assertEqual(ccdcpp.with_method(h, "bfp-paper").METHOD, "bfp-paper")
+        self.assertEqual(ccdcpp.with_method(h, "bfp").METHOD, "bfp")
         self.assertEqual(h.METHOD, "ccdc")
         with self.assertRaisesRegex(ValueError, "unknown change detection method"):
             ccdcpp.detect(d, s[0, 0], q[0, 0], h, lo, method="BFP")

@@ -134,6 +134,24 @@ void validate_cadence(const HarmonicOptions& options)
 // COEFFICIENT_MAX, and both peek bases are COEFFICIENT_MAX wide, which must
 // hold every model's coefficients and fit the harmonic basis (the intercept
 // and CCD_MAX_COEFS columns).
+void validate_bfp(const BfpOptions& b)
+{
+    const auto fail = [](const std::string& what)
+    { throw std::invalid_argument("BFP." + what); };
+    if (!(b.GOOD > 0 && b.GOOD < 1))
+        fail("GOOD is " + std::to_string(b.GOOD) + "; it must be in (0, 1)");
+    if (!(b.THRESHOLD > 0))
+        fail("THRESHOLD is " + std::to_string(b.THRESHOLD) + "; it must be positive");
+    if (b.MAX_PEEK < 1 || b.MAX_PEEK > bfp::Mixture::MAX_PEEK)
+        fail("MAX_PEEK is " + std::to_string(b.MAX_PEEK) + "; it must be 1 to " +
+             std::to_string(bfp::Mixture::MAX_PEEK));
+    if (b.MIN_DAYS_BETWEEN < 2)
+        fail("MIN_DAYS_BETWEEN is " + std::to_string(b.MIN_DAYS_BETWEEN) +
+             "; it must be at least 2");
+    if (b.SELECT_MIN_OBSERVATIONS < 1)
+        fail("SELECT_MIN_OBSERVATIONS is 0; it must be at least 1");
+}
+
 void validate_coefficients(const HarmonicOptions& options)
 {
     const index_t widest = CCD_MAX_COEFS + 1;
@@ -171,13 +189,15 @@ void validate_coefficients(const HarmonicOptions& options)
 
 void validate(const HarmonicOptions& options, index_t bands)
 {
-    if (options.METHOD != ChangeMethod::Ccdc)
+    if (options.METHOD == ChangeMethod::Bfp)
     {
         throw std::invalid_argument(
             std::string("the ") + method_name(options.METHOD) +
             " method is not available in this build"
         );
     }
+    if (options.METHOD != ChangeMethod::Ccdc)
+        validate_bfp(options.BFP);
 
     if (bands != options.NUM_BANDS)
     {
@@ -464,7 +484,23 @@ void digest(Fnv& h, const HarmonicOptions& o)
         h.integer(static_cast<std::int64_t>(v));
     // ccdc adds nothing, so its digest is the one it has always had.
     if (o.METHOD != ChangeMethod::Ccdc)
+    {
         h.integer(static_cast<std::int64_t>(o.METHOD));
+        const BfpOptions& b = o.BFP;
+        for (const scalar_t v : {b.GOOD, b.THRESHOLD, b.NO_CHANGE_CUTOFF, b.SELECT_THRESHOLD})
+            h.real(v);
+        h.flag(b.SCALE_THRESHOLD);
+        for (const std::int64_t v : {static_cast<std::int64_t>(b.MAX_PEEK), b.MIN_DAYS_BETWEEN,
+                                     static_cast<std::int64_t>(b.MIN_OBSERVATIONS_FOR_BREAK),
+                                     b.MIN_DAYS_FOR_BREAK, b.MAX_DAYS_FOR_BREAK,
+                                     static_cast<std::int64_t>(b.BREAK_START),
+                                     static_cast<std::int64_t>(b.SELECT_MIN_OBSERVATIONS),
+                                     static_cast<std::int64_t>(b.OUTLIER),
+                                     static_cast<std::int64_t>(b.START_CATCH_MIN),
+                                     static_cast<std::int64_t>(b.END_CATCH_MIN),
+                                     static_cast<std::int64_t>(b.OUTPUT_FIT)})
+            h.integer(v);
+    }
 }
 
 void digest(Fnv& h, const LassoOptions& o)
@@ -682,9 +718,20 @@ FitResult detect_pixel(
         loptions
     );
 
-    // The run's change detector fits the pixel's procedure. Standard is the
-    // only detector so far; a second one is picked per run, here, and makes
-    // the same call.
+    // The run's method's detector fits the pixel's procedure. The BFP
+    // methods keep no resume state: a record of one has no suspension, so a
+    // resume reruns the pixel.
+    if (hoptions.METHOD != ChangeMethod::Ccdc)
+    {
+        FitResult result = scratch.bfp.fit(pixel_procedure, hworkspace, std::move(mask), lworkspace, solver);
+        if (record)
+        {
+            record->standard = standard::Suspended{};
+            record->excluded_days.clear();
+        }
+        return result;
+    }
+
     standard::Detector& detector = scratch.standard;
 
     if (!record && !resume_from)

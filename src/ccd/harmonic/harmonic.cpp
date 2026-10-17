@@ -29,6 +29,11 @@ ChangeMethod method_from_name(const std::string& name)
 HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method)
 {
     options.METHOD = method;
+    if (method == ChangeMethod::BfpPaper)
+    {
+        options.BFP = BfpOptions{};
+        options.DAY_DELTA = 366;
+    }
     return options;
 }
 

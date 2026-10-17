@@ -11,6 +11,7 @@
 #include "ccd/ccd.hpp"
 
 #include "ccd/procedure/fit.hpp"
+#include "ccd/procedure/bfp_machine.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/qa_table.hpp"
 #include "ccd/record.hpp"
@@ -167,8 +168,10 @@ struct DetectScratch
 {
     LassoWorkspace lasso{0};
 
-    // The run's change detector, with its per-pixel record.
+    // The change detectors, each with its per-pixel record: the ccdc
+    // method's and the BFP methods'.
     standard::Detector standard;
+    bfp::Detector bfp;
 
     // The pixel's (B, T) as scalar_t, when it has to be converted or its
     // thermal band transformed.

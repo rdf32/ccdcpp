@@ -387,13 +387,33 @@ TEST(Validation, ChangeMethods)
     EXPECT_EQ(c.STAT_ORD, 736695);
     EXPECT_NO_THROW(ccd::validate(c, 7));
 
-    for (const ccd::ChangeMethod m : {ccd::ChangeMethod::BfpPaper, ccd::ChangeMethod::Bfp})
+    // bfp-paper: JuliaCCD's paperbfp parameters and its 366-day span.
+    const ccd::HarmonicOptions p = ccd::with_method(h, ccd::ChangeMethod::BfpPaper);
+    EXPECT_EQ(p.METHOD, ccd::ChangeMethod::BfpPaper);
+    EXPECT_EQ(p.DAY_DELTA, 366);
+    EXPECT_EQ(p.BFP.MAX_PEEK, 18u);
+    EXPECT_EQ(p.BFP.GOOD, 0.95);
+    EXPECT_EQ(p.PEEK_SIZE, 9u);
+    EXPECT_NO_THROW(ccd::validate(p, 7));
+
+    const ccd::HarmonicOptions b = ccd::with_method(h, ccd::ChangeMethod::Bfp);
+    EXPECT_EQ(b.METHOD, ccd::ChangeMethod::Bfp);
+    expect_layout_error(b, 7, "the bfp method is not available in this build");
+
+    // The BFP parameters a run of a BFP method checks.
+    const auto expect_bfp_error = [&](auto set, const std::string& expected)
     {
-        const ccd::HarmonicOptions b = ccd::with_method(h, m);
-        EXPECT_EQ(b.METHOD, m);
-        expect_layout_error(b, 7, std::string("the ") + ccd::method_name(m) +
-                                      " method is not available in this build");
-    }
+        ccd::HarmonicOptions o = p;
+        set(o.BFP);
+        expect_layout_error(o, 7, expected);
+    };
+    expect_bfp_error([](auto& f) { f.GOOD = 1.0; }, "BFP.GOOD is 1.000000; it must be in (0, 1)");
+    expect_bfp_error([](auto& f) { f.THRESHOLD = 0.0; }, "BFP.THRESHOLD is 0.000000; it must be positive");
+    expect_bfp_error([](auto& f) { f.MAX_PEEK = 21; }, "BFP.MAX_PEEK is 21; it must be 1 to 20");
+    expect_bfp_error([](auto& f) { f.MIN_DAYS_BETWEEN = 1; },
+                     "BFP.MIN_DAYS_BETWEEN is 1; it must be at least 2");
+    expect_bfp_error([](auto& f) { f.SELECT_MIN_OBSERVATIONS = 0; },
+                     "BFP.SELECT_MIN_OBSERVATIONS is 0; it must be at least 1");
 }
 
 // The cadence options are checked at the entry points too.
