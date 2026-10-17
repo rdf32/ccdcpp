@@ -16,6 +16,8 @@
 #include "ccd/qa_table.hpp"
 #include "ccd/preprocess/preprocess.hpp"
 
+#include "resume.hpp"
+
 namespace py = pybind11;
 
 //------------------------------------------------------------------------------
@@ -167,7 +169,17 @@ static ccd::PreprocessPlanPtr take_plan(
 // reads `spectral` without writing to it.
 //------------------------------------------------------------------------------
 
-py::dict detect_wrapper(
+// What a single-pixel resume continues from, converted while the GIL is held.
+struct PixelResumeFrom
+{
+    ccd::ResumeHeader header;
+    ccd::PixelRecord record;
+    std::vector<ccd::ChangeModel> segments;
+};
+
+// detect(), detect(resume_record=True) and resume() on one pixel: one input
+// check and one output dict. `from` null: detect; `record` adds the record.
+static py::dict pixel_wrapper(
     py::array_t<std::int64_t,
         py::array::c_style> dates,
 
@@ -179,7 +191,9 @@ py::dict detect_wrapper(
     ccd::HarmonicOptions hoptions,
     ccd::LassoOptions loptions,
     std::shared_ptr<ccd::QaTable> qa_table,
-    const ccd::preprocess::PreprocessPlan* preprocess_plan
+    const ccd::preprocess::PreprocessPlan* preprocess_plan,
+    bool record,
+    const PixelResumeFrom* from
 )
 {
     refuse_raw_without_table(qas_obj, qa_table != nullptr);
@@ -281,46 +295,47 @@ py::dict detect_wrapper(
     //----------------------------------------------------------------------
 
     ccd::FitResult final_result;
+    ccd::ResumeHeader header;
+    ccd::PixelRecord pixel_record;
+    ccd::ResumeStatus status = ccd::ResumeStatus::Resumed;
+
+    const auto run = [&](auto qa_view)
+    {
+        if (from)
+        {
+            ccd::Resumed r = ccd::resume(
+                dates_view, spectral_view, qa_view, hoptions, loptions,
+                from->header, from->record, from->segments, qa_table, preprocess);
+            final_result = std::move(r.result);
+            header = r.header;
+            pixel_record = std::move(r.record);
+            status = r.status;
+        }
+        else if (record)
+        {
+            ccd::Recorded r = ccd::detect_recorded(
+                dates_view, spectral_view, qa_view, hoptions, loptions, qa_table, preprocess);
+            final_result = std::move(r.result);
+            header = r.header;
+            pixel_record = std::move(r.record);
+        }
+        else
+        {
+            final_result = ccd::detect(
+                dates_view, spectral_view, qa_view, hoptions, loptions, qa_table, preprocess);
+        }
+    };
+
     {
         py::gil_scoped_release release;
 
         if (raw16)
-        {
-            final_result =
-                ccd::detect(
-                    dates_view,
-                    spectral_view,
-                    ccd::ArrayView<const std::uint16_t,1>::contiguous(
-                        static_cast<const std::uint16_t*>(qas_buf.ptr),
-                        {timesteps}
-                    ),
-                    hoptions,
-                    loptions,
-                    qa_table,
-                    preprocess
-                );
-        }
+            run(ccd::ArrayView<const std::uint16_t,1>::contiguous(
+                static_cast<const std::uint16_t*>(qas_buf.ptr), {timesteps}));
         else
-        {
-            final_result =
-                ccd::detect(
-                    dates_view,
-                    spectral_view,
-                    ccd::ArrayView<const std::uint8_t,1>::contiguous(
-                        static_cast<const std::uint8_t*>(qas_buf.ptr),
-                        {timesteps}
-                    ),
-                    hoptions,
-                    loptions,
-                    qa_table,
-                    preprocess
-                );
-        }
+            run(ccd::ArrayView<const std::uint8_t,1>::contiguous(
+                static_cast<const std::uint8_t*>(qas_buf.ptr), {timesteps}));
     }
-
-    //----------------------------------------------------------------------
-    // Python conversion (GIL restored)
-    //----------------------------------------------------------------------
 
     py::dict output;
     py::list models;
@@ -400,8 +415,51 @@ py::dict detect_wrapper(
 
     output["processing_mask"] = mask_array;
 
-    return output;
+    if (record || from)
+    {
+        output["resume"] = record_to_python(pixel_record);
+        output["resume_header"] = header_to_python(header);
+    }
+    if (from)
+        output["status"] = status == ccd::ResumeStatus::Resumed ? "resumed" : "rerun_input_changed";
 
+    return output;
+}
+
+py::dict detect_wrapper(
+    py::array_t<std::int64_t, py::array::c_style> dates,
+    py::array_t<ccd::scalar_t, py::array::c_style> spectral,
+    py::object qas_obj,
+    ccd::HarmonicOptions hoptions,
+    ccd::LassoOptions loptions,
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess_plan,
+    bool resume_record
+)
+{
+    return pixel_wrapper(dates, spectral, qas_obj, hoptions, loptions, std::move(qa_table),
+                         preprocess_plan, resume_record, nullptr);
+}
+
+py::dict resume_wrapper(
+    py::array_t<std::int64_t, py::array::c_style> dates,
+    py::array_t<ccd::scalar_t, py::array::c_style> spectral,
+    py::object qas_obj,
+    ccd::HarmonicOptions hoptions,
+    ccd::LassoOptions loptions,
+    py::dict resume,
+    py::dict resume_header,
+    py::list models,
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess_plan
+)
+{
+    const PixelResumeFrom from{
+        header_from_python(resume_header),
+        record_from_python(resume),
+        segments_from_python(models)};
+    return pixel_wrapper(dates, spectral, qas_obj, hoptions, loptions, std::move(qa_table),
+                         preprocess_plan, true, &from);
 }
 
 //------------------------------------------------------------------------------
@@ -539,6 +597,29 @@ static CubeInput check_cube(
 // and touches no Python object.
 //------------------------------------------------------------------------------
 
+template<typename Value, typename Qa>
+static ccd::CubeResult run_cube_typed(
+    const CubeInput& in,
+    ccd::ArrayView<const std::int64_t, 1> dates,
+    ccd::ArrayView<const Qa, 3> qas,
+    const ccd::HarmonicOptions& hoptions,
+    const ccd::LassoOptions& loptions,
+    int threads,
+    bool keep_masks,
+    bool record,
+    const ccd::CubeResumeFrom* from
+)
+{
+    const auto spectral = strided_view<Value, 4>(in.spectral);
+    if (from)
+        return ccd::resume_cube(
+            dates, spectral, qas, hoptions, loptions, *from, threads, keep_masks,
+            in.qa_table, in.preprocess);
+    return ccd::detect_cube(
+        dates, spectral, qas, hoptions, loptions, threads, keep_masks,
+        in.qa_table, in.preprocess, record);
+}
+
 template<typename Qa>
 static ccd::CubeResult run_cube_spectral(
     const CubeInput& in,
@@ -547,22 +628,21 @@ static ccd::CubeResult run_cube_spectral(
     const ccd::HarmonicOptions& hoptions,
     const ccd::LassoOptions& loptions,
     int threads,
-    bool keep_masks
+    bool keep_masks,
+    bool record,
+    const ccd::CubeResumeFrom* from
 )
 {
     if (in.spectral_type == SpectralType::UInt16)
-        return ccd::detect_cube(
-            dates, strided_view<std::uint16_t, 4>(in.spectral), qas,
-            hoptions, loptions, threads, keep_masks, in.qa_table, in.preprocess);
+        return run_cube_typed<std::uint16_t, Qa>(
+            in, dates, qas, hoptions, loptions, threads, keep_masks, record, from);
 
     if (in.spectral_type == SpectralType::Float32)
-        return ccd::detect_cube(
-            dates, strided_view<float, 4>(in.spectral), qas,
-            hoptions, loptions, threads, keep_masks, in.qa_table, in.preprocess);
+        return run_cube_typed<float, Qa>(
+            in, dates, qas, hoptions, loptions, threads, keep_masks, record, from);
 
-    return ccd::detect_cube(
-        dates, strided_view<double, 4>(in.spectral), qas,
-        hoptions, loptions, threads, keep_masks, in.qa_table, in.preprocess);
+    return run_cube_typed<double, Qa>(
+        in, dates, qas, hoptions, loptions, threads, keep_masks, record, from);
 }
 
 static ccd::CubeResult run_cube(
@@ -570,7 +650,9 @@ static ccd::CubeResult run_cube(
     const ccd::HarmonicOptions& hoptions,
     const ccd::LassoOptions& loptions,
     int threads,
-    bool keep_masks
+    bool keep_masks,
+    bool record = false,
+    const ccd::CubeResumeFrom* from = nullptr
 )
 {
     const auto dates =
@@ -582,11 +664,11 @@ static ccd::CubeResult run_cube(
     if (in.qa_type == QaType::UInt16)
         return run_cube_spectral(
             in, dates, strided_view<std::uint16_t, 3>(in.qas),
-            hoptions, loptions, threads, keep_masks);
+            hoptions, loptions, threads, keep_masks, record, from);
 
     return run_cube_spectral(
         in, dates, strided_view<std::uint8_t, 3>(in.qas),
-        hoptions, loptions, threads, keep_masks);
+        hoptions, loptions, threads, keep_masks, record, from);
 }
 
 //------------------------------------------------------------------------------
@@ -833,43 +915,10 @@ py::list detect_cube_wrapper(
 // count from curve_qa and must not test values against zero.
 //------------------------------------------------------------------------------
 
-py::dict detect_cube_columns_wrapper(
-    py::array_t<std::int64_t,
-        py::array::c_style> dates,
-
-    py::object spectral,
-
-    py::object qas,
-
-    ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions,
-    int threads,
-    std::shared_ptr<ccd::QaTable> qa_table,
-    const ccd::preprocess::PreprocessPlan* preprocess
-)
+// detect_cube_columns()'s dict of one cube's segments, pixel-major in raster
+// order.
+static py::dict cube_columns(const ccd::CubeResult& cube, const CubeInput& views)
 {
-    const CubeInput views =
-        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
-
-    //----------------------------------------------------------------------
-    // Run CCD
-    //----------------------------------------------------------------------
-
-    ccd::CubeResult cube;
-
-    {
-        py::gil_scoped_release release;
-
-        cube =
-            run_cube(
-                views,
-                hoptions,
-                loptions,
-                threads,
-                false   // no column holds the mask; see above
-            );
-    }
-
     //----------------------------------------------------------------------
     // Pass 1 -- count segments
     //----------------------------------------------------------------------
@@ -1015,6 +1064,84 @@ py::dict detect_cube_columns_wrapper(
     return output;
 }
 
+py::dict detect_cube_columns_wrapper(
+    py::array_t<std::int64_t,
+        py::array::c_style> dates,
+
+    py::object spectral,
+
+    py::object qas,
+
+    ccd::HarmonicOptions hoptions,
+    ccd::LassoOptions loptions,
+    int threads,
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess,
+    bool resume_record
+)
+{
+    const CubeInput views =
+        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
+
+    ccd::CubeResult cube;
+    {
+        py::gil_scoped_release release;
+
+        cube = run_cube(views, hoptions, loptions, threads,
+                        false,   // no column holds the mask
+                        resume_record);
+    }
+
+    py::dict output = cube_columns(cube, views);
+    if (resume_record)
+    {
+        output["resume"] = record_columns(cube, views.H, views.W, views.B, false);
+        output["resume_header"] = header_to_python(cube.header);
+    }
+    return output;
+}
+
+py::dict resume_cube_columns_wrapper(
+    py::array_t<std::int64_t, py::array::c_style> dates,
+    py::object spectral,
+    py::object qas,
+    ccd::HarmonicOptions hoptions,
+    ccd::LassoOptions loptions,
+    int threads,
+    py::dict resume,
+    py::dict resume_header,
+    py::dict segments,
+    std::shared_ptr<ccd::QaTable> qa_table,
+    const ccd::preprocess::PreprocessPlan* preprocess
+)
+{
+    const CubeInput views =
+        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
+    const ccd::CubeResumeFrom from =
+        cube_from_python(resume_header, resume, segments, views.H, views.W, views.B);
+
+    ccd::CubeResult cube;
+    {
+        py::gil_scoped_release release;
+
+        cube = run_cube(views, hoptions, loptions, threads, false, true, &from);
+    }
+
+    py::dict output = cube_columns(cube, views);
+    output["resume"] = record_columns(cube, views.H, views.W, views.B, true);
+    output["resume_header"] = header_to_python(cube.header);
+
+    std::int64_t resumed = 0, rerun = 0;
+    for (const auto& px : cube.pixels)
+        (px.status == ccd::ResumeStatus::Resumed ? resumed : rerun) += 1;
+    py::dict counts;
+    counts["resumed"] = resumed;
+    counts["rerun_input_changed"] = rerun;
+    counts["failed"] = static_cast<std::int64_t>(cube.failures.size());
+    output["counts"] = counts;
+    return output;
+}
+
 //------------------------------------------------------------------------------
 // Python registration
 //------------------------------------------------------------------------------
@@ -1030,6 +1157,22 @@ void bind_detect(py::module_& m)
         py::arg("hoptions"),
         py::arg("loptions"),
         py::kw_only(),
+        py::arg("qa_table") = py::none(),
+        py::arg("preprocess") = py::none(),
+        py::arg("resume_record") = false
+    );
+    m.def(
+        "resume",
+        &resume_wrapper,
+        py::arg("dates"),
+        py::arg("spectral"),
+        py::arg("qas"),
+        py::arg("hoptions"),
+        py::arg("loptions"),
+        py::kw_only(),
+        py::arg("resume"),
+        py::arg("resume_header"),
+        py::arg("models"),
         py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none()
     );
@@ -1057,7 +1200,27 @@ void bind_detect(py::module_& m)
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("qa_table") = py::none(),
+        py::arg("preprocess") = py::none(),
+        py::arg("resume_record") = false
+    );
+    m.def(
+        "resume_cube_columns",
+        &resume_cube_columns_wrapper,
+        py::arg("dates"),
+        py::arg("spectral"),
+        py::arg("qas"),
+        py::arg("hoptions"),
+        py::arg("loptions"),
+        py::arg("threads") = 0,
+        py::kw_only(),
+        py::arg("resume"),
+        py::arg("resume_header"),
+        py::arg("segments"),
+        py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none()
     );
+    m.def("resume_schema", &resume_schema);
+    m.attr("RESUME_FORMAT") = ccd::RESUME_FORMAT;
+    m.attr("RESULTS_VERSION") = ccd::RESULTS_VERSION;
 }
 

@@ -113,7 +113,7 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
 
 def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
            qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-           band_names=None):
+           band_names=None, resume_record=False):
     """CCD on one pixel.
 
     dates
@@ -147,6 +147,11 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         in the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked
         and a misordered stack runs. Needs profile= (TypeError otherwise).
+    resume_record
+        True to also return the run's resume record: "resume", the pixel's
+        record (a dict; see resume_schema()), and "resume_header", the
+        call's. What resume() takes back to continue the run on a longer
+        series.
 
     Returns a dict: models (one dict per segment, each with a bands list of
     B entries in row order), processing_mask and num_bands, plus band_names
@@ -157,7 +162,7 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         band_names)
     out = _extension.detect(
         dates, spectral, qas, hoptions, loptions, qa_table=qa_table,
-        preprocess=preprocess)
+        preprocess=preprocess, resume_record=resume_record)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -214,7 +219,7 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
 
 def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
                         threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-                        profile=None, band_names=None):
+                        profile=None, band_names=None, resume_record=False):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     Arguments as detect_cube. Returns a dict of arrays with one entry per
@@ -223,12 +228,96 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     [n, B, 7], rmse [n, B], magnitude [n, B]; and num_bands, failures,
     threads, pixels_total and pixels_with_segments, plus band_names (a
     tuple) with a profile.
+
+    resume_record=True also returns "resume", every pixel's resume record
+    as columns over the H x W pixels in raster order (see resume_schema();
+    each pixel's excluded days are excluded_days[excluded_offsets[i]:
+    excluded_offsets[i + 1]]), and "resume_header", the call's: what
+    resume_cube_columns() takes back.
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "detect_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
         profile, band_names)
     out = _extension.detect_cube_columns(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
+        preprocess=preprocess, resume_record=resume_record)
+    if profile is not None:
+        out["band_names"] = profile.band_names
+    return out
+
+
+def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
+           resume_header, models, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
+           profile=None, band_names=None):
+    """Continue a recorded run on one pixel's longer series.
+
+    dates, spectral, qas
+        The whole series: the stored run's input with the observations after
+        its series end (ValueError if it ends sooner).
+    resume, resume_header
+        detect(resume_record=True)'s "resume" and "resume_header" (or an
+        earlier resume's).
+    models
+        The stored run's segments, as detect() returned them; the first
+        resume["final_segments"] are kept as given.
+    hoptions, loptions, qa_table, preprocess, profile, band_names
+        As detect(), and the same as the stored run's: other options, plan
+        or QA table raise ValueError, as do another record format or results
+        version.
+
+    Returns detect()'s dict for the whole series, equal bit for bit to
+    detect() with every statistics cutoff capped at the first run's series
+    end, plus "resume" and "resume_header" for the next resume and
+    "status": "resumed", or "rerun_input_changed" when the pixel's
+    observations up to the stored series end differ from the stored run's
+    and it was rerun in full.
+    """
+    hoptions, loptions, qa_table, preprocess = _resolve(
+        "resume", spectral, hoptions, loptions, qa_table, preprocess, profile,
+        band_names)
+    out = _extension.resume(
+        dates, spectral, qas, hoptions, loptions, resume=resume,
+        resume_header=resume_header, models=models, qa_table=qa_table,
+        preprocess=preprocess)
+    if profile is not None:
+        out["band_names"] = profile.band_names
+    return out
+
+
+def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
+                        threads=0, *, resume, resume_header, segments,
+                        qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
+                        profile=None, band_names=None):
+    """Continue a recorded cube run on its longer series, as columns.
+
+    dates, spectral, qas
+        The whole series of the same cube (H, W): the stored run's input
+        with the observations after its series end.
+    resume, resume_header
+        detect_cube_columns(resume_record=True)'s "resume" and
+        "resume_header" (or an earlier resume's).
+    segments
+        The stored run's segment columns, as detect_cube_columns() returned
+        them (row, col, start_day, end_day, break_day, curve_qa,
+        observation_count, change_probability, intercept, coefficients,
+        rmse, magnitude); each pixel's first final_segments are kept as
+        given.
+    The other arguments as detect_cube_columns, and the same as the stored
+    run's (ValueError otherwise).
+
+    Returns detect_cube_columns()'s dict for the whole series, each pixel
+    equal bit for bit to resume() on it, plus "resume" (with a "status"
+    column: 0 resumed, 1 rerun because its input changed), "resume_header"
+    and "counts" (resumed, rerun_input_changed, failed). A pixel that fails
+    is in "failures"; its record is a default one, so the next resume
+    reruns it.
+    """
+    hoptions, loptions, qa_table, preprocess = _resolve(
+        "resume_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
+        profile, band_names)
+    out = _extension.resume_cube_columns(
+        dates, spectral, qas, hoptions, loptions, threads, resume=resume,
+        resume_header=resume_header, segments=segments, qa_table=qa_table,
         preprocess=preprocess)
     if profile is not None:
         out["band_names"] = profile.band_names

@@ -425,3 +425,145 @@ TEST(ResumeRefuses, WhatItCannotContinue)
     EXPECT_NO_THROW(ccd::resume(s.date_view(), s.spectral_view(), s.qa_view(), s.h, s.l,
                                 stored.header, stored.record, final_only));
 }
+
+//------------------------------------------------------------------------------
+// ResumeCube
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+// The golden c8 cube cut after observation `last`, as a (H, W, 7, T) block.
+struct CutCube
+{
+    golden::Cube cube;
+    std::size_t T = 0;
+    std::vector<double> spectral;
+    std::vector<std::uint8_t> qas;
+
+    CutCube(const golden::Cube& c, std::size_t count) : cube(c), T(count)
+    {
+        const std::size_t N = c.H * c.W;
+        spectral.resize(N * 7 * T);
+        qas.resize(N * T);
+        for (std::size_t p = 0; p < N; ++p)
+        {
+            for (std::size_t b = 0; b < 7; ++b)
+                std::copy_n(c.spectral.begin() + (p * 7 + b) * c.T, T,
+                            spectral.begin() + (p * 7 + b) * T);
+            std::copy_n(c.qas.begin() + p * c.T, T, qas.begin() + p * T);
+        }
+    }
+
+    ccd::ArrayView<const std::int64_t, 1> dates() const
+    {
+        return ccd::ArrayView<const std::int64_t, 1>::contiguous(cube.dates.data(), {T});
+    }
+    ccd::ArrayView<const double, 4> block() const
+    {
+        return ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {cube.H, cube.W, 7, T});
+    }
+    ccd::ArrayView<const std::uint8_t, 3> qa() const
+    {
+        return ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {cube.H, cube.W, T});
+    }
+};
+
+} // namespace
+
+TEST(ResumeCube, EachPixelAsResumeAlone)
+{
+    const golden::Cube c = golden::make_cube(12, golden::Regime::Cadence8, 6, 8);
+    const ccd::HarmonicOptions h;
+    const ccd::LassoOptions l;
+    const std::size_t N = c.H * c.W;
+
+    for (const std::size_t count : {c.T / 3, c.T / 2, (3 * c.T) / 4})
+    {
+        const CutCube cut(c, count);
+        const CutCube whole(c, c.T);
+
+        for (const int threads : {1, 4})
+        {
+            const ccd::CubeResult stored = ccd::detect_cube(
+                cut.dates(), cut.block(), cut.qa(), h, l, threads, true, nullptr, nullptr, true);
+            ASSERT_TRUE(stored.failures.empty());
+            ASSERT_EQ(stored.pixels.size(), N);
+
+            ccd::CubeResumeFrom from;
+            from.header = stored.header;
+            from.pixels.resize(N);
+            from.segments.resize(N);
+            for (const auto& px : stored.pixels)
+            {
+                const std::size_t at = px.row * c.W + px.col;
+                from.pixels[at] = px.record;
+                from.segments[at] = px.result.models;
+            }
+
+            const ccd::CubeResult resumed = ccd::resume_cube(
+                whole.dates(), whole.block(), whole.qa(), h, l, from, threads);
+            ASSERT_TRUE(resumed.failures.empty());
+            ASSERT_EQ(resumed.pixels.size(), N);
+            EXPECT_EQ(resumed.header.statistics_end, stored.header.series_end);
+
+            for (std::size_t p = 0; p < N; ++p)
+            {
+                const std::string at = "pixel " + std::to_string(p) + " cut " +
+                                       std::to_string(count) + " threads " + std::to_string(threads);
+                Series s;
+                s.name = at;
+                s.dates = c.dates;
+                s.spectral.assign(c.spectral.begin() + p * 7 * c.T, c.spectral.begin() + (p + 1) * 7 * c.T);
+                s.qas.assign(c.qas.begin() + p * c.T, c.qas.begin() + (p + 1) * c.T);
+
+                const ccd::Recorded alone = golden::recorded_at(s.prefix(count), h.STAT_ORD);
+                expect_same_record(stored.pixels[p].record, alone.record, at + " stored");
+
+                const ccd::Resumed one = resume_on(s, alone);
+                EXPECT_EQ(dump(resumed.pixels[p].result), dump(one.result)) << at;
+                expect_same_record(resumed.pixels[p].record, one.record, at);
+                EXPECT_EQ(resumed.pixels[p].status, one.status) << at;
+            }
+        }
+    }
+}
+
+TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
+{
+    const golden::Cube c = golden::make_cube(12, golden::Regime::Cadence8, 6, 8);
+    const std::size_t N = c.H * c.W;
+    const CutCube cut(c, c.T / 2);
+    const CutCube whole(c, c.T);
+    const ccd::CubeResult stored = ccd::detect_cube(
+        cut.dates(), cut.block(), cut.qa(), ccd::HarmonicOptions{}, ccd::LassoOptions{},
+        1, true, nullptr, nullptr, true);
+
+    ccd::CubeResumeFrom from;
+    from.header = stored.header;
+    from.pixels.resize(N);
+    from.segments.resize(N);
+    std::size_t victim = N;
+    for (const auto& px : stored.pixels)
+    {
+        const std::size_t at = px.row * c.W + px.col;
+        from.pixels[at] = px.record;
+        from.segments[at] = px.result.models;
+        if (victim == N && px.record.standard.final_segments > 0)
+            victim = at;
+    }
+    ASSERT_LT(victim, N);
+    from.segments[victim].clear();
+
+    const ccd::CubeResult resumed = ccd::resume_cube(
+        whole.dates(), whole.block(), whole.qa(), ccd::HarmonicOptions{}, ccd::LassoOptions{}, from, 2);
+    ASSERT_EQ(resumed.failures.size(), 1u);
+    EXPECT_EQ(resumed.failures[0].row * c.W + resumed.failures[0].col, victim);
+    EXPECT_EQ(resumed.pixels.size(), N - 1);
+
+    // The call itself refuses records that do not cover the cube.
+    from.pixels.pop_back();
+    EXPECT_THROW(ccd::resume_cube(whole.dates(), whole.block(), whole.qa(), ccd::HarmonicOptions{},
+                                  ccd::LassoOptions{}, from, 1),
+                 std::invalid_argument);
+}

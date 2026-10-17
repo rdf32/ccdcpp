@@ -74,4 +74,26 @@ struct PixelRecord
     std::vector<std::int64_t> excluded_days;
 };
 
+// What resume() did with a pixel.
+enum class ResumeStatus : std::uint8_t
+{
+    Resumed,            // continued from the record, or rerun with the same
+                        // result: the pixels that take no machine or stopped
+                        // early, and a pixel whose stored drop is on a date
+                        // the plan keeps twice (it does not say which)
+    RerunInputChanged   // the pixel's observations up to the stored series
+                        // end differ from the stored run's: rerun in full
+};
+
+// What a cube resumes from, in raster order over the cube (H x W entries
+// each): the stored call's header, each pixel's record and each pixel's
+// stored segments. A pixel without a stored record (one that failed) has a
+// default PixelRecord, whose fingerprint does not match: it is rerun.
+struct CubeResumeFrom
+{
+    ResumeHeader header;
+    std::vector<PixelRecord> pixels;
+    std::vector<std::vector<ChangeModel>> segments;
+};
+
 } // namespace ccd

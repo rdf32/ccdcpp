@@ -720,6 +720,134 @@ FitResult detect_pixel(
     return result;
 }
 
+// The cutoffs of a run resumed from one whose series ended at `end`: STAT_ORD
+// and every GreenMedian step's date, each capped at it.
+HarmonicOptions capped(const HarmonicOptions& options, std::int64_t end)
+{
+    HarmonicOptions out = options;
+    out.STAT_ORD = std::min(out.STAT_ORD, end);
+    return out;
+}
+
+preprocess::PreprocessPlan capped(const preprocess::PreprocessPlan& plan, std::int64_t end)
+{
+    preprocess::PreprocessPlan out = plan;
+    for (preprocess::ProcedurePlan* procedure :
+         {&out.standard, &out.snow, &out.insufficient_clear})
+        for (index_t i = 0; i < procedure->chain.size(); ++i)
+        {
+            preprocess::Step& step = procedure->chain.steps[i];
+            if (step.kind == preprocess::StepKind::GreenMedian)
+                step.max_date = std::min(step.max_date, end);
+        }
+    return out;
+}
+
+// The exits resume() continues the Standard machine from; the others (the
+// early exits) are rerun, as are the other procedures.
+bool resumable(standard::Exit exit)
+{
+    using standard::Exit;
+    return exit == Exit::NoRoomToInitialize || exit == Exit::InitializeExhausted ||
+        exit == Exit::PeekBeyondEnd || exit == Exit::SeriesEnd;
+}
+
+// The options and plan of a run resumed from one whose series ended at
+// `end`, every statistics cutoff capped at it.
+struct Capped
+{
+    HarmonicOptions options;
+    preprocess::PreprocessPlan plan;
+
+    Capped(const HarmonicOptions& o, const preprocess::PreprocessPlan& p, std::int64_t end)
+        : options(capped(o, end)), plan(capped(p, end))
+    {}
+};
+
+// The refusals of a resume call, before any pixel: another record format or
+// results version, other options, plan or QA table, a series that ends
+// before the record's.
+void check_resume(
+    const ResumeHeader& from,
+    std::uint64_t digest,
+    ArrayView<const std::int64_t, 1> dates
+)
+{
+    if (from.format != RESUME_FORMAT)
+        throw std::invalid_argument(
+            "the resume record's format is " + std::to_string(from.format) +
+            "; this ccdcpp reads " + std::to_string(RESUME_FORMAT));
+    if (from.results_version != RESULTS_VERSION)
+        throw std::invalid_argument(
+            "the resume record's results version is " +
+            std::to_string(from.results_version) + "; this ccdcpp's is " +
+            std::to_string(RESULTS_VERSION) + ": rerun in full");
+    if (from.options_digest != digest)
+        throw std::invalid_argument(
+            "the resume record was made with other options, plan or QA table");
+    if (dates.size() == 0 || dates(dates.size() - 1) < from.series_end)
+        throw std::invalid_argument(
+            "the series ends before the resume record's, on " +
+            std::to_string(from.series_end));
+}
+
+// One pixel of a resume: continued from its record when its input up to the
+// stored series end is the stored run's and it stopped where the machine can
+// continue; rerun under the capped cutoffs otherwise. Fills `record` and
+// `status`. Throws on fewer stored segments than the record's final ones.
+template<typename Value, typename Qa>
+FitResult resume_pixel(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const Value, 2> spectral,
+    ArrayView<const Qa, 1> qas,
+    const QaTable* qa_table,
+    const Capped& run,
+    const LassoOptions& loptions,
+    DetectScratch& scratch,
+    const ResumeHeader& from_header,
+    const PixelRecord& from,
+    const std::vector<ChangeModel>& stored_segments,
+    PixelRecord& record,
+    ResumeStatus& status
+)
+{
+    if (from.procedure == PixelProcedure::Standard &&
+        stored_segments.size() < from.standard.final_segments)
+        throw std::invalid_argument(
+            "the resume record has " + std::to_string(from.standard.final_segments) +
+            " final segments; " + std::to_string(stored_segments.size()) + " were given");
+
+    const std::uint64_t fingerprint = fingerprint_of<Value>(
+        dates, spectral, qa_codes<Qa>(qas, qa_table, scratch.qas),
+        run.options.QA_FILL, from_header.series_end);
+
+    status = fingerprint == from.input_fingerprint
+        ? ResumeStatus::Resumed
+        : ResumeStatus::RerunInputChanged;
+
+    const bool continues =
+        status == ResumeStatus::Resumed &&
+        from.procedure == PixelProcedure::Standard &&
+        resumable(from.standard.exit);
+
+    // The machine may still not continue (a stored drop on a date the plan
+    // keeps twice): then its result is a whole rerun, without the stored
+    // segments.
+    bool continued = false;
+    FitResult result = detect_pixel<Value, Qa>(
+        dates, spectral, qas, qa_table, run.plan, run.options, loptions, scratch,
+        &record, dates(dates.size() - 1), continues ? &from : nullptr, &continued);
+
+    if (continued)
+    {
+        result.models.insert(
+            result.models.begin(),
+            stored_segments.begin(),
+            stored_segments.begin() + from.standard.final_segments);
+    }
+    return result;
+}
+
 template<typename Value, typename Qa>
 CubeResult detect_cube_impl(
     ArrayView<const std::int64_t, 1> dates,
@@ -730,7 +858,9 @@ CubeResult detect_cube_impl(
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
     int threads,
-    bool keep_masks
+    bool keep_masks,
+    bool record = false,
+    const CubeResumeFrom* from = nullptr
 )
 {
     const index_t H = spectral.extent(0);
@@ -752,6 +882,29 @@ CubeResult detect_cube_impl(
     preprocess::PreprocessPlan local_plan;
     const preprocess::PreprocessPlan& plan =
         resolve_plan(given_plan, hoptions, spectral.extent(2), local_plan);
+
+    // The record's header, and for a resume its refusals, once per call.
+    ResumeHeader header;
+    if (record || from)
+    {
+        header.options_digest = options_digest(hoptions, loptions, plan, qa_table);
+        header.series_end = dates.size() > 0
+            ? dates(dates.size() - 1)
+            : std::numeric_limits<std::int64_t>::min();
+        header.statistics_end = header.series_end;
+    }
+    if (from)
+    {
+        check_resume(from->header, header.options_digest, dates);
+        const std::size_t cells = static_cast<std::size_t>(H) * static_cast<std::size_t>(W);
+        if (from->pixels.size() != cells || from->segments.size() != cells)
+            throw std::invalid_argument(
+                "the resume records hold " + std::to_string(from->pixels.size()) +
+                " pixels and " + std::to_string(from->segments.size()) +
+                " segment lists; the cube has " + std::to_string(cells));
+        header.statistics_end = from->header.statistics_end;
+    }
+    const Capped capped_run(hoptions, plan, header.statistics_end);
 
     // threads == 0 keeps the historical behaviour: let the OpenMP runtime
     // decide, which is OMP_NUM_THREADS or the core count. A positive value is
@@ -830,27 +983,23 @@ CubeResult detect_cube_impl(
             //------------------------------------------------------------------
             try
             {
-                FitResult result =
-                    detect_pixel<Value, Qa>(
-                        dates,
-                        spect_view,
-                        qa_view,
-                        qa_table,
-                        plan,
-                        hoptions,
-                        loptions,
-                        scratch
-                    );
+                PixelResult out{row, col, FitResult{}, PixelRecord{}, ResumeStatus::Resumed};
+                const std::size_t at = static_cast<std::size_t>(pixel);
+
+                if (from)
+                    out.result = resume_pixel<Value, Qa>(
+                        dates, spect_view, qa_view, qa_table, capped_run, loptions, scratch,
+                        from->header, from->pixels[at], from->segments[at],
+                        out.record, out.status);
+                else
+                    out.result = detect_pixel<Value, Qa>(
+                        dates, spect_view, qa_view, qa_table, plan, hoptions, loptions,
+                        scratch, record ? &out.record : nullptr, header.series_end);
 
                 if (!keep_masks)
-                    result.mask = ProcessingMask();
+                    out.result.mask = ProcessingMask();
 
-                by_pixel[static_cast<std::size_t>(pixel)] =
-                    PixelResult{
-                        row,
-                        col,
-                        std::move(result)
-                    };
+                by_pixel[at] = std::move(out);
 
                 succeeded[static_cast<std::size_t>(pixel)] = 1;
             }
@@ -920,6 +1069,7 @@ CubeResult detect_cube_impl(
             return a.row != b.row ? a.row < b.row : a.col < b.col;
         });
 
+    merged.header = header;
     return merged;
 }
 
@@ -1026,38 +1176,6 @@ Recorded detect_recorded(
 namespace
 {
 
-// The cutoffs of a run resumed from one whose series ended at `end`: STAT_ORD
-// and every GreenMedian step's date, each capped at it.
-HarmonicOptions capped(const HarmonicOptions& options, std::int64_t end)
-{
-    HarmonicOptions out = options;
-    out.STAT_ORD = std::min(out.STAT_ORD, end);
-    return out;
-}
-
-preprocess::PreprocessPlan capped(const preprocess::PreprocessPlan& plan, std::int64_t end)
-{
-    preprocess::PreprocessPlan out = plan;
-    for (preprocess::ProcedurePlan* procedure :
-         {&out.standard, &out.snow, &out.insufficient_clear})
-        for (index_t i = 0; i < procedure->chain.size(); ++i)
-        {
-            preprocess::Step& step = procedure->chain.steps[i];
-            if (step.kind == preprocess::StepKind::GreenMedian)
-                step.max_date = std::min(step.max_date, end);
-        }
-    return out;
-}
-
-// The exits resume() continues the Standard machine from; the others (the
-// early exits) are rerun, as are the other procedures.
-bool resumable(standard::Exit exit)
-{
-    using standard::Exit;
-    return exit == Exit::NoRoomToInitialize || exit == Exit::InitializeExhausted ||
-        exit == Exit::PeekBeyondEnd || exit == Exit::SeriesEnd;
-}
-
 template<typename Qa>
 Resumed resume_impl(
     ArrayView<const std::int64_t, 1> dates,
@@ -1079,67 +1197,18 @@ Resumed resume_impl(
     preprocess::PreprocessPlan local_plan;
     const preprocess::PreprocessPlan& plan =
         resolve_plan(given_plan, hoptions, spectral.extent(0), local_plan);
-    const std::uint64_t digest = options_digest(hoptions, loptions, plan, qa_table.get());
+    check_resume(from_header, options_digest(hoptions, loptions, plan, qa_table.get()), dates);
 
-    if (from_header.format != RESUME_FORMAT)
-        throw std::invalid_argument(
-            "the resume record's format is " + std::to_string(from_header.format) +
-            "; this ccdcpp reads " + std::to_string(RESUME_FORMAT));
-    if (from_header.results_version != RESULTS_VERSION)
-        throw std::invalid_argument(
-            "the resume record's results version is " +
-            std::to_string(from_header.results_version) + "; this ccdcpp's is " +
-            std::to_string(RESULTS_VERSION) + ": rerun in full");
-    if (from_header.options_digest != digest)
-        throw std::invalid_argument(
-            "the resume record was made with other options, plan or QA table");
-    if (dates.size() == 0 || dates(dates.size() - 1) < from_header.series_end)
-        throw std::invalid_argument(
-            "the series ends before the resume record's, on " +
-            std::to_string(from_header.series_end));
-    if (from.procedure == PixelProcedure::Standard &&
-        stored_segments.size() < from.standard.final_segments)
-        throw std::invalid_argument(
-            "the resume record has " + std::to_string(from.standard.final_segments) +
-            " final segments; " + std::to_string(stored_segments.size()) + " were given");
+    const Capped capped_run(hoptions, plan, from_header.statistics_end);
 
     Resumed out;
     out.header = from_header;
     out.header.series_end = dates(dates.size() - 1);
 
-    const HarmonicOptions resumed_options = capped(hoptions, from_header.statistics_end);
-    const preprocess::PreprocessPlan resumed_plan = capped(plan, from_header.statistics_end);
-
-    std::vector<std::uint8_t> decoded;
-    const std::uint64_t fingerprint = fingerprint_of<scalar_t>(
-        dates, spectral, qa_codes<Qa>(qas, qa_table.get(), decoded),
-        hoptions.QA_FILL, from_header.series_end);
-
-    out.status = fingerprint == from.input_fingerprint
-        ? ResumeStatus::Resumed
-        : ResumeStatus::RerunInputChanged;
-
-    const bool continues =
-        out.status == ResumeStatus::Resumed &&
-        from.procedure == PixelProcedure::Standard &&
-        resumable(from.standard.exit);
-
-    // The machine may still not continue (a stored drop on a date the plan
-    // keeps twice): then its result is a whole rerun, without the stored
-    // segments.
     DetectScratch scratch;
-    bool continued = false;
-    out.result = detect_pixel<scalar_t, Qa>(
-        dates, spectral, qas, qa_table.get(), resumed_plan, resumed_options, loptions,
-        scratch, &out.record, out.header.series_end, continues ? &from : nullptr, &continued);
-
-    if (continued)
-    {
-        out.result.models.insert(
-            out.result.models.begin(),
-            stored_segments.begin(),
-            stored_segments.begin() + from.standard.final_segments);
-    }
+    out.result = resume_pixel<scalar_t, Qa>(
+        dates, spectral, qas, qa_table.get(), capped_run, loptions, scratch,
+        from_header, from, stored_segments, out.record, out.status);
     return out;
 }
 
@@ -1255,10 +1324,29 @@ CubeResult detect_cube(
     int threads,
     bool keep_masks,
     const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan,
+    bool record
+) {
+    return detect_cube_impl<double, std::uint8_t>(
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        record);
+}
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const double, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table,
     const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<double, std::uint8_t>(
-        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        true, &from);
 }
 
 CubeResult detect_cube(
@@ -1270,10 +1358,29 @@ CubeResult detect_cube(
     int threads,
     bool keep_masks,
     const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan,
+    bool record
+) {
+    return detect_cube_impl<double, std::uint16_t>(
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        record);
+}
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const double, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table,
     const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<double, std::uint16_t>(
-        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        true, &from);
 }
 
 CubeResult detect_cube(
@@ -1282,13 +1389,32 @@ CubeResult detect_cube(
     ArrayView<const std::uint8_t, 3> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan,
+    bool record
+) {
+    return detect_cube_impl<float, std::uint8_t>(
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        record);
+}
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
     int threads,
     bool keep_masks,
     const QaTablePtr& qa_table,
     const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<float, std::uint8_t>(
-        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        true, &from);
 }
 
 CubeResult detect_cube(
@@ -1300,10 +1426,29 @@ CubeResult detect_cube(
     int threads,
     bool keep_masks,
     const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan,
+    bool record
+) {
+    return detect_cube_impl<float, std::uint16_t>(
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        record);
+}
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table,
     const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<float, std::uint16_t>(
-        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        true, &from);
 }
 
 CubeResult detect_cube(
@@ -1315,10 +1460,29 @@ CubeResult detect_cube(
     int threads,
     bool keep_masks,
     const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan,
+    bool record
+) {
+    return detect_cube_impl<std::uint16_t, std::uint8_t>(
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        record);
+}
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table,
     const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<std::uint16_t, std::uint8_t>(
-        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        true, &from);
 }
 
 CubeResult detect_cube(
@@ -1330,10 +1494,29 @@ CubeResult detect_cube(
     int threads,
     bool keep_masks,
     const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan,
+    bool record
+) {
+    return detect_cube_impl<std::uint16_t, std::uint16_t>(
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        record);
+}
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads,
+    bool keep_masks,
+    const QaTablePtr& qa_table,
     const PreprocessPlanPtr& given_plan
 ) {
     return detect_cube_impl<std::uint16_t, std::uint16_t>(
-        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks);
+        dates, spectral, qas, qa_table.get(), given_plan, hoptions, loptions, threads, keep_masks,
+        true, &from);
 }
 
 } // namespace ccd

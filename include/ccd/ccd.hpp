@@ -24,6 +24,11 @@ struct PixelResult
     index_t row;
     index_t col;
     FitResult result;
+
+    // The pixel's resume record and what a resume did with it: filled by
+    // detect_cube(record = true) and resume_cube().
+    PixelRecord record;
+    ResumeStatus status = ResumeStatus::Resumed;
 };
 
 //==============================================================================
@@ -69,6 +74,10 @@ struct CubeResult
     std::vector<PixelResult> pixels;
     std::vector<CubeFailure> failures;
     int threads = 0;
+
+    // The call's resume header, with the pixels' records (detect_cube(record
+    // = true), resume_cube()).
+    ResumeHeader header;
 };
 
 using Clock = std::chrono::high_resolution_clock;
@@ -351,17 +360,6 @@ Recorded detect_recorded(
     const PreprocessPlanPtr& preprocess = nullptr
 );
 
-// What resume() did with a pixel.
-enum class ResumeStatus : std::uint8_t
-{
-    Resumed,            // continued from the record, or rerun with the same
-                        // result: the pixels that take no machine or stopped
-                        // early, and a pixel whose stored drop is on a date
-                        // the plan keeps twice (it does not say which)
-    RerunInputChanged   // the pixel's observations up to the stored series
-                        // end differ from the stored run's: rerun in full
-};
-
 // resume()'s result: the complete result for the whole series, the record of
 // this run (for the next resume) and what was done.
 struct Resumed
@@ -451,6 +449,9 @@ Resumed resume(
 // the cube. One table serves every thread. A uint16 `qas` with a null
 // `qa_table` throws std::invalid_argument before any pixel runs.
 //
+// `record` true also fills each PixelResult::record and the call's
+// CubeResult::header, as detect_recorded() does for one pixel.
+//
 //------------------------------------------------------------------------------
 
 CubeResult detect_cube(
@@ -462,7 +463,8 @@ CubeResult detect_cube(
     int threads = 0,
     bool keep_masks = true,
     const QaTablePtr& qa_table = nullptr,
-    const PreprocessPlanPtr& preprocess = nullptr
+    const PreprocessPlanPtr& preprocess = nullptr,
+    bool record = false
 );
 
 CubeResult detect_cube(
@@ -474,7 +476,8 @@ CubeResult detect_cube(
     int threads = 0,
     bool keep_masks = true,
     const QaTablePtr& qa_table = nullptr,
-    const PreprocessPlanPtr& preprocess = nullptr
+    const PreprocessPlanPtr& preprocess = nullptr,
+    bool record = false
 );
 
 CubeResult detect_cube(
@@ -486,7 +489,8 @@ CubeResult detect_cube(
     int threads = 0,
     bool keep_masks = true,
     const QaTablePtr& qa_table = nullptr,
-    const PreprocessPlanPtr& preprocess = nullptr
+    const PreprocessPlanPtr& preprocess = nullptr,
+    bool record = false
 );
 
 CubeResult detect_cube(
@@ -498,7 +502,8 @@ CubeResult detect_cube(
     int threads = 0,
     bool keep_masks = true,
     const QaTablePtr& qa_table = nullptr,
-    const PreprocessPlanPtr& preprocess = nullptr
+    const PreprocessPlanPtr& preprocess = nullptr,
+    bool record = false
 );
 
 CubeResult detect_cube(
@@ -510,7 +515,8 @@ CubeResult detect_cube(
     int threads = 0,
     bool keep_masks = true,
     const QaTablePtr& qa_table = nullptr,
-    const PreprocessPlanPtr& preprocess = nullptr
+    const PreprocessPlanPtr& preprocess = nullptr,
+    bool record = false
 );
 
 CubeResult detect_cube(
@@ -519,6 +525,97 @@ CubeResult detect_cube(
     ArrayView<const std::uint16_t, 3> qas,
     const HarmonicOptions& hoptions,
     const LassoOptions& loptions,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr,
+    bool record = false
+);
+
+//------------------------------------------------------------------------------
+//
+// resume() over every pixel of a cube, in parallel as detect_cube(): `from`
+// holds the stored call's header and, in raster order, each pixel's record
+// and stored segments (H x W entries each). Every pixel's result is the
+// complete one, with its record and status; CubeResult::header is this
+// call's. The call refuses, before any pixel, what resume() refuses for the
+// whole call, and `from` without H x W records and segments; a pixel with
+// fewer stored segments than its record's final ones is a CubeFailure.
+//
+//------------------------------------------------------------------------------
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const double, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const double, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const float, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint8_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
+    int threads = 0,
+    bool keep_masks = true,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+CubeResult resume_cube(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const std::uint16_t, 4> spectral,
+    ArrayView<const std::uint16_t, 3> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const CubeResumeFrom& from,
     int threads = 0,
     bool keep_masks = true,
     const QaTablePtr& qa_table = nullptr,

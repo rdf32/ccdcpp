@@ -28,6 +28,28 @@
   and too few stored segments. `standard::Suspended` also keeps the last
   peek test's coefficient count and magnitudes, which write a series end's
   provisional segment again when a longer series still ends there.
+- Cubes: `detect_cube(..., record = true)` fills each `PixelResult::record`
+  and the call's `CubeResult::header`; `resume_cube()` (`CubeResumeFrom`: the
+  stored header and, in raster order, each pixel's record and stored
+  segments) resumes every pixel in parallel, each as `resume()` would, with
+  its `PixelResult::status`; a pixel with too few stored segments is a
+  `CubeFailure`, the rest run.
+
+### Added (Python)
+
+- `detect(..., resume_record=True)` and `detect_cube_columns(...,
+  resume_record=True)` also return `resume`, the record (one pixel's as a
+  dict; a cube's as columns over its H x W pixels in raster order, the
+  excluded days as `excluded_offsets` [N+1] and `excluded_days`), and
+  `resume_header`. `resume(..., resume=, resume_header=, models=)` and
+  `resume_cube_columns(..., resume=, resume_header=, segments=)` take them
+  back with the stored segments (as `detect()` and `detect_cube_columns()`
+  return them) and the whole series, and return the complete result with
+  the next record, `status` and, for cubes, `counts`. `resume_schema()`
+  names the record columns and their dtypes; `RESUME_FORMAT` and
+  `RESULTS_VERSION` are exported. Stored segments with placeholders where
+  the caller blanks a field (nlcd's break day and magnitude on no-break
+  rows, no observation count) come back as given.
 - `ResumeEqualsTheFullRun.*` (`tests/ccd/golden/test_resume.cpp`): at every
   cut of the characterization and CSV pixels and twelve of each golden cube
   pixel (14,695 cuts, 11,014 continued from the record), the resumed result

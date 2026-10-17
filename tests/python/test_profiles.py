@@ -774,23 +774,27 @@ class Unprofiled(unittest.TestCase):
                     EXT.detect(d, s[0, 0], raw[0, 0], h, lo, qa_table=table))
 
     def test_signatures_keep_names_and_positions(self):
-        for name, positional in (
-            ("detect", ["dates", "spectral", "qas", "hoptions", "loptions"]),
-            ("detect_cube", ["dates", "spectral", "qas", "hoptions", "loptions", "threads"]),
-            ("detect_cube_columns",
-             ["dates", "spectral", "qas", "hoptions", "loptions", "threads"]),
+        pixel = ["dates", "spectral", "qas", "hoptions", "loptions"]
+        cube = pixel + ["threads"]
+        common = ["qa_table", "preprocess", "profile", "band_names"]
+        for name, positional, keywords in (
+            ("detect", pixel, common + ["resume_record"]),
+            ("detect_cube", cube, common),
+            ("detect_cube_columns", cube, common + ["resume_record"]),
+            ("resume", pixel, ["resume", "resume_header", "models"] + common),
+            ("resume_cube_columns", cube, ["resume", "resume_header", "segments"] + common),
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
-                self.assertEqual(list(params),
-                                 positional + ["qa_table", "preprocess", "profile",
-                                               "band_names"])
+                self.assertEqual(list(params), positional + keywords)
                 kinds = [p.kind for p in params.values()]
                 self.assertEqual(kinds, [inspect.Parameter.POSITIONAL_OR_KEYWORD] * len(positional)
-                                 + [inspect.Parameter.KEYWORD_ONLY] * 4)
+                                 + [inspect.Parameter.KEYWORD_ONLY] * len(keywords))
                 self.assertIsNone(params["band_names"].default)
                 if "threads" in params:
                     self.assertEqual(params["threads"].default, 0)
+                if "resume_record" in params:
+                    self.assertIs(params["resume_record"].default, False)
 
     def test_options_required_without_a_profile(self):
         h = ccdcpp.HarmonicOptions()

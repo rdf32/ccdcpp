@@ -1007,6 +1007,7 @@ if(CCD_BUILD_PYTHON)
         bindings/qa_tables.cpp
         bindings/preprocess.cpp
         bindings/detect.cpp
+        bindings/resume.cpp
     )
 
     # Python import name:
@@ -1053,6 +1054,15 @@ if(CCD_BUILD_PYTHON)
 
     # The Python entry points, against the module just built.
     if(CCD_BUILD_TESTS)
+
+        add_test(
+            NAME python_resume
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_resume.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
 
         add_test(
             NAME python_bindings
