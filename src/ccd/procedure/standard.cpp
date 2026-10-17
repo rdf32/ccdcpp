@@ -654,10 +654,6 @@ Phase start_catch(const Context& context, State& state)
 namespace
 {
 
-// Writes the segment Extend has grown, from its last peek test, and ends the
-// extension. change_probability is 1 on a change, 0 at the series end. Each
-// band's magnitude is the median of its last peek residuals, or `magnitude`
-// when given (a resumed series end, whose last test the stored run made).
 // The bands no test reads (those not in DETECTION_BANDS), as the last test
 // would have had them: fitted on the last refit's window with its
 // coefficient count, their residuals over the last test's peek.
@@ -693,6 +689,10 @@ void complete_models(const Context& context, State& state)
     extension.complete = true;
 }
 
+// Writes the segment Extend has grown, from its last peek test, and ends the
+// extension. change_probability is 1 on a change, 0 at the series end. Each
+// band's magnitude is the median of its last peek residuals, or `magnitude`
+// when given (a resumed series end, whose last test the stored run made).
 void write_extended_segment(
     const Context& context,
     State& state,

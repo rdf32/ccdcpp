@@ -5,7 +5,7 @@
 ### Changed (speed; outputs bit for bit)
 
 - Extend refits the detection bands only, the bands its tests read; the
-  others are fitted once, when the segment is written, on the last refit's
+  others are fitted when the segment is written, on the last refit's
   window with its coefficient count, with their residuals over the last
   test's peek (before the drop when a drop ends the curve): the same models,
   magnitudes and segments, without fitting the other bands at every refit.

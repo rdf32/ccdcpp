@@ -118,7 +118,7 @@ The guards inside one call, in the order they are tested:
   observation the peek starts at, its break day); otherwise `Grown` (`window.stop + 1`). The
   curve that reaches the series end, by `SeriesEnd` or by a drop that leaves no full peek, is
   the last one: EndCatch follows, not Restart. A refit fits the detection bands, all a test
-  reads; the other bands are fitted once, on the last refit's window, when the segment is
+  reads; the other bands are fitted on the last refit's window when the segment is
   written (`complete_models`; before the drop when a drop ends the curve), which gives the
   models and peek residuals an every-band refit would have.
 
