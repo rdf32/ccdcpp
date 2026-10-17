@@ -247,6 +247,30 @@ std::vector<index_t> find_closest_doy(
     index_t count
 );
 
+// find_closest_doy() over one window at many targets. build() orders the
+// window's observations by their phase in the year, once; closest() then
+// walks out from a target's phase, so a selection costs its count (and the
+// ties at its last distance) rather than the window's size. The selection
+// and its order are find_closest_doy()'s.
+class SeasonalOrder
+{
+public:
+    void build(ArrayView<const std::int64_t, 1> dates, const Window& window);
+
+    // find_closest_doy(dates, i, window, count) for dates(i) == target_day,
+    // with the dates and window build() was given.
+    void closest(std::int64_t target_day, index_t count, std::vector<index_t>& out) const;
+
+private:
+    struct Entry
+    {
+        std::uint16_t phase;   // 4 * date mod 1461, quarter days into the year
+        index_t index;         // position in the window
+    };
+    std::vector<Entry> by_phase_;   // by phase, then index
+    mutable std::vector<index_t> group_;
+};
+
 // The norm of model's residuals at `indices`, over `divisor`
 // (HarmonicOptions::SEASONAL_RMSE_DIVISOR).
 scalar_t seasonal_rmse(

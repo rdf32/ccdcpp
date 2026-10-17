@@ -283,9 +283,15 @@ struct Extension
     // others' once they are fitted.
     std::vector<std::vector<scalar_t>> residuals;
 
+    // The fit window's observations by phase in the year, for the seasonal
+    // RMSE's selection; built at the first test that reads it after a refit.
+    SeasonalOrder seasonal;
+    bool seasonal_built = false;
+
     // Scratch, rewritten by every test.
     std::vector<scalar_t> comp_rmse;   // by position in DETECTION_BANDS
     std::vector<scalar_t> magnitude;
+    std::vector<index_t> closest;      // the seasonal RMSE's observations
 };
 
 // What one Extend step did, in the order it tests them.

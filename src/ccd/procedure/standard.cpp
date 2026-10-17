@@ -783,6 +783,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
         extension.trained = true;
         extension.fit_window = window;
         extension.fit_span = span(masked_dates, extension.fit_window);
+        extension.seasonal_built = false;
         LOG_DEBUG("Retrain models");
 
         // The detection bands: seasonal_rmse() reads their residuals; the
@@ -831,8 +832,16 @@ ExtendOutcome extend_step(const Context& context, State& state)
     } else {
 
         LOG_DEBUG("closest day residuals and rmse");
-        auto closest_indexes =
-            find_closest_doy(masked_dates, peek_window.stop - 1, extension.fit_window, options.SEASONAL_RMSE_COUNT);
+        // find_closest_doy(masked_dates, peek_window.stop - 1, fit_window,
+        // SEASONAL_RMSE_COUNT), by the fit window's SeasonalOrder.
+        if (!extension.seasonal_built)
+        {
+            extension.seasonal.build(masked_dates, extension.fit_window);
+            extension.seasonal_built = true;
+        }
+        std::vector<index_t>& closest_indexes = extension.closest;
+        extension.seasonal.closest(
+            masked_dates(peek_window.stop - 1), options.SEASONAL_RMSE_COUNT, closest_indexes);
 
         LOG_DEBUG("period: " << masked_dates);
         LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
@@ -1057,6 +1066,7 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     extension.trained = true;
     extension.fit_window = Window(window.start, from.fit_stop);
     extension.fit_span = span(dates, extension.fit_window);
+    extension.seasonal_built = false;
     fit_bands(
         dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
         spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),

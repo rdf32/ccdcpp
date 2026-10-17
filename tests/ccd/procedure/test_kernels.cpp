@@ -14,8 +14,9 @@
 //   * standard::change_magnitude(): the per-detection-band sum over copies
 //     of the residuals and the variogram (the positional form).
 //   * catch_segment(): the catch's fit and day rules.
-//   * find_closest_doy(): the integer counting sort against the sort by the
-//     double seasonal distance, on random windows.
+//   * find_closest_doy() and SeasonalOrder: the integer counting sort and
+//     the walk by phase against the sort by the double seasonal distance, on
+//     random windows.
 //
 // The procedures' outputs are held by the golden and transitions fixtures;
 // these tests say which kernel moved if one ever does.
@@ -686,9 +687,10 @@ std::vector<index_t> closest_doy_by_double(
 
 TEST(FindClosestDoy, EqualsTheSortByTheDoubleDistance)
 {
-    // Ascending dates with repeats and gaps from a day to years, a target
-    // inside, before or after the window, every count from 0 past the
-    // window's size.
+    // Ascending dates with repeats and gaps from a day to years, negative
+    // ordinals among them, a target inside, before or after the window,
+    // every count from 0 past the window's size; SeasonalOrder built once per
+    // window and asked at every target.
     std::mt19937_64 random(20261017);
     std::size_t windows = 0;
     for (int trial = 0; trial < 4000; ++trial)
@@ -696,7 +698,8 @@ TEST(FindClosestDoy, EqualsTheSortByTheDoubleDistance)
         const std::size_t T = 1 + random() % 300;
         const std::uint64_t gap = random() % 4 == 0 ? 900 : 40;
         std::vector<std::int64_t> dates(T);
-        std::int64_t day = 700000 + static_cast<std::int64_t>(random() % 20000);
+        std::int64_t day = (trial % 5 == 0 ? -30000 : 700000) +
+                           static_cast<std::int64_t>(random() % 20000);
         for (auto& d : dates)
         {
             d = day;
@@ -706,15 +709,25 @@ TEST(FindClosestDoy, EqualsTheSortByTheDoubleDistance)
 
         const index_t start = random() % T;
         const index_t stop = start + random() % (T - start + 1);
-        const index_t target = random() % T;
         const ccd::Window window(start, stop);
-        for (const index_t count : {index_t{0}, index_t{1}, index_t{24}, stop - start,
-                                    stop - start + 5, index_t(random() % 40)})
+        ccd::SeasonalOrder order;
+        order.build(view, window);
+        std::vector<index_t> walked;
+        for (int k = 0; k < 6; ++k)
         {
-            ASSERT_EQ(ccd::find_closest_doy(view, target, window, count),
-                      closest_doy_by_double(view, target, window, count))
-                << "trial " << trial << " window (" << start << ", " << stop << ") target "
-                << target << " count " << count;
+            const index_t target = random() % T;
+            for (const index_t count : {index_t{0}, index_t{1}, index_t{24}, stop - start,
+                                        stop - start + 5, index_t(random() % 40)})
+            {
+                const auto expected = closest_doy_by_double(view, target, window, count);
+                ASSERT_EQ(ccd::find_closest_doy(view, target, window, count), expected)
+                    << "trial " << trial << " window (" << start << ", " << stop << ") target "
+                    << target << " count " << count;
+                order.closest(dates[target], count, walked);
+                ASSERT_EQ(walked, expected)
+                    << "SeasonalOrder, trial " << trial << " window (" << start << ", " << stop
+                    << ") target " << target << " count " << count;
+            }
         }
         ++windows;
     }

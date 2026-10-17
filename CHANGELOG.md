@@ -13,7 +13,10 @@
 - `find_closest_doy()` (the seasonal RMSE's observations) computes the
   seasonal distance in integer quarter days and selects by a counting sort:
   the same observations in the same order, without a division per
-  observation and a partial sort.
+  observation and a partial sort. Extend selects through a `SeasonalOrder`:
+  the fit window's observations ordered by phase in the year once per refit,
+  each test walking out from its target's phase, so a selection costs its
+  count rather than the window's size.
 - Together: the synthetic bench at one thread 5.90 s -> 4.09 s (-31%).
 
 ### Tests

@@ -464,6 +464,90 @@ std::vector<index_t> find_closest_doy(
     return indices;
 }
 
+namespace
+{
+
+constexpr std::int64_t QUARTERS_PER_YEAR = 1461;
+
+// 4 * day mod 1461, in [0, 1461).
+std::uint16_t quarter_phase(std::int64_t day)
+{
+    const std::int64_t r = (4 * day) % QUARTERS_PER_YEAR;
+    return static_cast<std::uint16_t>(r < 0 ? r + QUARTERS_PER_YEAR : r);
+}
+
+} // namespace
+
+void SeasonalOrder::build(ArrayView<const std::int64_t, 1> dates, const Window& window)
+{
+    by_phase_.clear();
+    by_phase_.reserve(window.size());
+    for (index_t i = 0; i < window.size(); ++i)
+        by_phase_.push_back({quarter_phase(dates(window.start + i)), i});
+    std::sort(by_phase_.begin(), by_phase_.end(), [](const Entry& a, const Entry& b)
+              { return a.phase != b.phase ? a.phase < b.phase : a.index < b.index; });
+}
+
+void SeasonalOrder::closest(std::int64_t target_day, index_t count, std::vector<index_t>& out) const
+{
+    //----------------------------------------------------------
+    // find_closest_doy()'s distance, in quarter days, is the
+    // distance from 4 |delta| to the nearest multiple of 1461:
+    // min(m, 1461 - m) for m the phase difference mod 1461.
+    // Walking forward from the target's phase the forward
+    // difference only grows, walking backward the backward one;
+    // taking the nearer of the two walks each time reaches each
+    // observation first by its shorter way (the two ways sum to
+    // 1461, odd, so never tie), in order of distance. Each
+    // distance's observations are put in window order.
+    //----------------------------------------------------------
+    out.clear();
+    const index_t n = by_phase_.size();
+    count = std::min(count, n);
+    if (count == 0)
+        return;
+
+    const std::int64_t target = quarter_phase(target_day);
+    const auto start = std::lower_bound(
+        by_phase_.begin(), by_phase_.end(), target,
+        [](const Entry& e, std::int64_t phase) { return e.phase < phase; });
+    index_t ahead = static_cast<index_t>(start - by_phase_.begin()) % n;   // next forward
+    index_t behind = (ahead + n - 1) % n;                                  // next backward
+    index_t taken = 0;
+
+    const auto forward = [&](index_t k)
+    {
+        const std::int64_t d = by_phase_[k].phase - target;
+        return d < 0 ? d + QUARTERS_PER_YEAR : d;
+    };
+    const auto backward = [&](index_t k)
+    {
+        const std::int64_t d = target - by_phase_[k].phase;
+        return d < 0 ? d + QUARTERS_PER_YEAR : d;
+    };
+
+    while (out.size() < count && taken < n)
+    {
+        const std::int64_t distance = std::min(forward(ahead), backward(behind));
+        group_.clear();
+        while (taken < n && forward(ahead) == distance)
+        {
+            group_.push_back(by_phase_[ahead].index);
+            ahead = (ahead + 1) % n;
+            ++taken;
+        }
+        while (taken < n && backward(behind) == distance)
+        {
+            group_.push_back(by_phase_[behind].index);
+            behind = (behind + n - 1) % n;
+            ++taken;
+        }
+        std::sort(group_.begin(), group_.end());
+        out.insert(out.end(), group_.begin(), group_.end());
+    }
+    out.resize(count);
+}
+
 scalar_t seasonal_rmse(
     const LassoResult& model,
     const std::vector<index_t>& indices,
