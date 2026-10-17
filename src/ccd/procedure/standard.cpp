@@ -1,6 +1,7 @@
 #include "ccd/procedure/standard.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 #include <vector>
 #include <cassert>
 #include <cmath>
@@ -259,6 +260,7 @@ void State::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
     series.reset(workspace, std::move(mask));
     cursor = Cursor{};
     segments.clear();
+    carried = 0;
 
     // Prepare's derived values, set again before anything reads them.
     cadence = Cadence{};
@@ -302,7 +304,9 @@ void suspend(State& state, Exit why)
     s.prev_break = state.cursor.prev_break;
     s.fit_stop = 0;
     s.grow = false;
-    s.final_segments = state.segments.size();
+    s.num_coef = 0;
+    s.magnitude.clear();
+    s.final_segments = state.carried + state.segments.size();
 }
 
 // The route into EndCatch, recording why the segment loop ended.
@@ -337,7 +341,7 @@ bool start_catch_due(const State& state)
     const Cursor& cursor = state.cursor;
     assert(cursor.window.start >= cursor.prev_break);
 
-    return state.segments.empty() &&
+    return state.segments.empty() && state.carried == 0 &&
         cursor.window.start - cursor.prev_break > state.cadence.peek;
 }
 
@@ -651,8 +655,14 @@ namespace
 {
 
 // Writes the segment Extend has grown, from its last peek test, and ends the
-// extension. change_probability is 1 on a change, 0 at the series end.
-void write_extended_segment(State& state, scalar_t change_probability)
+// extension. change_probability is 1 on a change, 0 at the series end. Each
+// band's magnitude is the median of its last peek residuals, or `magnitude`
+// when given (a resumed series end, whose last test the stored run made).
+void write_extended_segment(
+    State& state,
+    scalar_t change_probability,
+    const std::vector<scalar_t>* magnitude = nullptr
+)
 {
     const MaskedSeries& series = state.series;
     const Window& window = state.cursor.window;
@@ -674,7 +684,7 @@ void write_extended_segment(State& state, scalar_t change_probability)
     result.bands.reserve(num_bands);
     for (index_t band = 0; band < num_bands; ++band) {
         BandFit fit = band_fit(extension.models[band]);
-        fit.magnitude = median(extension.residuals[band]);
+        fit.magnitude = magnitude ? (*magnitude)[band] : median(extension.residuals[band]);
         result.bands.push_back(fit);
     }
 
@@ -859,6 +869,10 @@ Phase extend(const Context& context, State& state)
     state.suspended.grow = outcome == ExtendOutcome::SeriesEnd;
 
     write_extended_segment(state, 0.0);
+    state.suspended.num_coef = state.extension.num_coef;
+    for (const BandFit& band : state.segments.back().bands)
+        state.suspended.magnitude.push_back(band.magnitude);
+
     state.cursor.prev_break = state.cursor.window.stop;
     state.exit = Exit::SeriesEnd;
     return Phase::EndCatch;
@@ -924,6 +938,142 @@ FitResult run(const Context& context, State& state, ProcessingMask mask)
     state.reset(context.pixel, std::move(mask));
     drive<Machine>(context, state);
     return state.take_result();
+}
+
+namespace
+{
+
+// resume()'s SeriesEnd: the open segment as the stored run left it, its
+// models refitted on its fit window (as the run fitted them, bit for bit),
+// then the guard that failed tested again on the longer series.
+Phase resume_series_end(const Context& context, State& state, const Suspended& from)
+{
+    Extension& extension = state.extension;
+    Window& window = state.cursor.window;
+    const auto dates = state.series.dates();
+    const auto spectral = state.series.spectral();
+
+    extension.trained = true;
+    extension.fit_window = Window(window.start, from.fit_stop);
+    extension.fit_span = span(dates, extension.fit_window);
+    fit_bands(
+        dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
+        spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
+        coefficient_count(extension.fit_window.size(), context.options),
+        KeepResiduals::Yes,
+        context.lasso,
+        context.solver,
+        extension.models
+    );
+
+    // After a grow the last peek reached the last observation: the series
+    // continues once it holds one more, and the grow is applied (testing
+    // that peek again would give the same outcome). After a drop no full
+    // peek was left.
+    const index_t reach = window.stop + state.cadence.peek;
+    if (from.grow ? reach < state.series.size() : reach <= state.series.size())
+    {
+        if (from.grow)
+            window = Window(window.start, window.stop + 1);
+        return Phase::Extend;
+    }
+
+    // The series still ends here: the stored run's last test, its segment.
+    extension.num_coef = from.num_coef;
+    extension.peek = Window(window.stop, reach);
+    write_extended_segment(state, 0.0, &from.magnitude);
+    state.cursor.prev_break = window.stop;
+    state.exit = Exit::SeriesEnd;
+    state.suspended = from;
+    return Phase::EndCatch;
+}
+
+} // namespace
+
+FitResult resume(
+    const Context& context,
+    State& state,
+    ProcessingMask mask,
+    const Suspended& from,
+    const std::vector<std::int64_t>& excluded_days
+)
+{
+    state.reset(context.pixel, std::move(mask));
+
+    // The statistics are the stored run's, and the series is no shorter, so
+    // Prepare neither exits early nor computes other values: it reads the
+    // series before any drop, as the stored run's did.
+    if (prepare(context, state) == Phase::Done)
+        return state.take_result();
+    state.exit = Exit::None;
+    state.suspended = Suspended{};
+
+    // The stored run's drops, the latest first, so each earlier position
+    // stays where the stored run found it.
+    Window unused;
+    for (auto day = excluded_days.rbegin(); day != excluded_days.rend(); ++day)
+    {
+        const auto dates = state.series.dates();
+        const std::int64_t* begin = &dates(0);
+        const std::int64_t* end = begin + dates.size();
+        const std::int64_t* at = std::lower_bound(begin, end, *day);
+        if (at == end || *at != *day)
+            throw std::invalid_argument(
+                "the resume record's dropped day " + std::to_string(*day) +
+                " is not an observation the filters keep");
+        state.series.drop(static_cast<index_t>(at - begin), unused);
+    }
+
+    state.carried = from.final_segments;
+    state.cursor = Cursor{from.window, from.prev_break};
+
+    switch (from.exit)
+    {
+        case Exit::NoRoomToInitialize:
+            state.phase = room_to_initialize(context, state)
+                ? Phase::Initialize
+                : end_catch_because(state, Exit::NoRoomToInitialize);
+            break;
+        case Exit::InitializeExhausted:
+            state.phase = Phase::Initialize;
+            break;
+        case Exit::PeekBeyondEnd:
+            state.phase = peek_guard(context, state);
+            break;
+        case Exit::SeriesEnd:
+            state.phase = resume_series_end(context, state, from);
+            break;
+        default:
+            assert(false && "resume() from an exit with nothing to resume");
+            state.phase = Phase::Done;
+    }
+
+    drive<Machine>(context, state);
+    return state.take_result();
+}
+
+FitResult Procedure::resume(
+    const HarmonicWorkspace& hworkspace,
+    ProcessingMask mask,
+    LassoWorkspace& lworkspace,
+    LassoSolver& solver,
+    const Suspended& from,
+    const std::vector<std::int64_t>& excluded_days
+) {
+    const Context context{hworkspace.options(), hworkspace, lworkspace, solver};
+    return standard::resume(context, state_, std::move(mask), from, excluded_days);
+}
+
+FitResult Detector::resume(
+    const HarmonicWorkspace& hworkspace,
+    ProcessingMask mask,
+    LassoWorkspace& lworkspace,
+    LassoSolver& solver,
+    const Suspended& from,
+    const std::vector<std::int64_t>& excluded_days
+)
+{
+    return procedure_.resume(hworkspace, std::move(mask), lworkspace, solver, from, excluded_days);
 }
 
 FitResult Procedure::run(

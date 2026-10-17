@@ -39,13 +39,9 @@
 //==============================================================================
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
-#include <fstream>
 #include <iostream>
 #include <map>
-#include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -53,49 +49,13 @@
 
 #include "ccd/ccd.hpp"
 
-#include "characterisation.hpp"
 #include "golden.hpp"
-#include "synthetic.hpp"
+#include "series_corpus.hpp"
 
 namespace
 {
 
-// One pixel's whole series and the options it runs under.
-struct Series
-{
-    std::string name;
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;   // (7, T), band-major
-    std::vector<std::uint8_t> qas;
-    ccd::HarmonicOptions h;
-    ccd::LassoOptions l;
-};
-
-// The first `count` observations of `s`, with STAT_ORD at `stat_ord`.
-ccd::Recorded run_prefix_recorded(const Series& s, std::size_t count, std::int64_t stat_ord)
-{
-    const std::size_t T = s.dates.size();
-
-    std::vector<double> block(7 * count);
-    for (std::size_t b = 0; b < 7; ++b)
-        std::copy_n(s.spectral.begin() + b * T, count, block.begin() + b * count);
-
-    ccd::HarmonicOptions h = s.h;
-    h.STAT_ORD = stat_ord;
-
-    return ccd::detect_recorded(
-        ccd::ArrayView<const std::int64_t, 1>::contiguous(s.dates.data(), {count}),
-        ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, count}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(s.qas.data(), {count}),
-        h,
-        s.l
-    );
-}
-
-ccd::FitResult run_prefix(const Series& s, std::size_t count, std::int64_t stat_ord)
-{
-    return run_prefix_recorded(s, count, stat_ord).result;
-}
+using golden::Series;
 
 // The number of leading final segments of `r` (see the header).
 std::size_t final_count(const ccd::FitResult& r)
@@ -129,12 +89,11 @@ struct Sweep
 };
 
 // Splits `s` after each observation index in `ends` (an index i keeps
-// observations [0, i]; an index followed by another observation of the same
-// date is skipped, so a split never cuts a date in two) and checks prefix
+// observations [0, i]; a split never cuts a date in two) and checks prefix
 // stability at each, counting into `out`.
 void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
 {
-    const std::size_t T = s.dates.size();
+    const std::size_t T = s.size();
 
     // The full run under each statistics cutoff, computed once.
     std::map<std::int64_t, ccd::FitResult> full;
@@ -142,22 +101,23 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
     {
         auto it = full.find(stat_ord);
         if (it == full.end())
-            it = full.emplace(stat_ord, run_prefix(s, T, stat_ord)).first;
+            it = full.emplace(stat_ord, golden::detect_at(s, stat_ord)).first;
         return it->second;
     };
 
     for (const std::size_t last : ends)
     {
-        if (last + 1 >= T || s.dates[last + 1] == s.dates[last])
+        if (!golden::splits_cleanly(s, last))
             continue;
 
         const std::int64_t split_day = s.dates[last];
         const std::int64_t stat_ord = std::min(s.h.STAT_ORD, split_day);
-        const ccd::Recorded recorded = run_prefix_recorded(s, last + 1, stat_ord);
+        const ccd::Recorded recorded = golden::recorded_at(s.prefix(last + 1), stat_ord);
         const ccd::FitResult& shorter = recorded.result;
         const ccd::FitResult& longer = full_at(stat_ord);
         ++out.splits;
 
+        const std::string at = s.name + " split after " + std::to_string(split_day);
         const std::size_t n = final_count(shorter);
 
         // The resume record names the same final segments.
@@ -165,12 +125,10 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
             recorded.record.procedure == ccd::PixelProcedure::Standard
                 ? recorded.record.standard.final_segments
                 : 0;
-        EXPECT_EQ(recorded_final, n) << s.name << " split after " << s.dates[last];
+        EXPECT_EQ(recorded_final, n) << at;
         if (n == 0)
             continue;
         ++out.with_final;
-
-        const std::string at = s.name + " split after " + std::to_string(split_day);
 
         ASSERT_LE(n, longer.models.size()) << at;
         EXPECT_EQ(dump_leading(shorter, n), dump_leading(longer, n)) << at;
@@ -191,61 +149,6 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
     }
 }
 
-// Every observation index.
-std::vector<std::size_t> every(std::size_t T)
-{
-    std::vector<std::size_t> out(T);
-    for (std::size_t i = 0; i < T; ++i)
-        out[i] = i;
-    return out;
-}
-
-// `count` indexes spread evenly over [0, T).
-std::vector<std::size_t> spread(std::size_t T, std::size_t count)
-{
-    std::vector<std::size_t> out;
-    for (std::size_t k = 1; k <= count; ++k)
-        out.push_back(k * T / (count + 1));
-    return out;
-}
-
-// A test CSV: date, seven bands, QA per row; `header` skips the first line.
-Series read_csv(const std::string& name, const std::string& path, bool header)
-{
-    std::ifstream file(path);
-    if (!file)
-        throw std::runtime_error("Unable to open " + path);
-
-    Series s;
-    s.name = name;
-    std::array<std::vector<double>, 7> bands;
-
-    std::string line;
-    if (header)
-        std::getline(file, line);
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string value;
-
-        std::getline(ss, value, ',');
-        s.dates.push_back(static_cast<std::int64_t>(std::stod(value)));
-        for (std::size_t b = 0; b < 7; ++b)
-        {
-            std::getline(ss, value, ',');
-            bands[b].push_back(std::stod(value));
-        }
-        std::getline(ss, value, ',');
-        s.qas.push_back(static_cast<std::uint8_t>(std::stod(value)));
-    }
-
-    const std::size_t T = s.dates.size();
-    s.spectral.resize(7 * T);
-    for (std::size_t b = 0; b < 7; ++b)
-        std::copy(bands[b].begin(), bands[b].end(), s.spectral.begin() + b * T);
-    return s;
-}
-
 void report(const std::string& corpus, const Sweep& total)
 {
     std::cout << "[ prefix   ] " << corpus << ": " << total.splits << " splits, "
@@ -256,16 +159,13 @@ void report(const std::string& corpus, const Sweep& total)
 } // namespace
 
 // The characterization pixels (characterisation.hpp), every split: they take
-// every reachable transition, Lookback below the break and the re-entry after
-// a series end among them.
+// every reachable transition, Lookback near the break and the series end at
+// a dense cadence among them.
 TEST(PrefixStability, CharacterizationPixelsEverySplit)
 {
     Sweep total;
-    for (const auto& p : golden::characterisation_pixels())
-    {
-        Series s{p.name, p.dates, p.spectral, p.qas, p.h, p.l};
-        sweep(s, every(s.dates.size()), total);
-    }
+    for (const auto& s : golden::characterization_series())
+        sweep(s, golden::every(s.size()), total);
     report("characterization", total);
     EXPECT_GT(total.with_final, 0u);
     EXPECT_GT(total.provisional, 0u);
@@ -275,19 +175,9 @@ TEST(PrefixStability, CharacterizationPixelsEverySplit)
 // pixel and the Atlanta pixel with a half-day median gap.
 TEST(PrefixStability, CsvPixelsEverySplit)
 {
-    const std::string dir = CCD_PREFIX_DATA_DIR;
-    std::vector<Series> pixels;
-    pixels.push_back(read_csv("pyccd", dir + "/test_3657_3610_observations.csv", false));
-    pixels.push_back(read_csv("atlanta_481_393", dir + "/test_atlanta_024013_00030008_481_393.csv", false));
-    {
-        Series c2 = read_csv("c2", dir + "/test002_c2.csv", true);
-        c2.h = golden::c2_harmonic();
-        pixels.push_back(std::move(c2));
-    }
-
     Sweep total;
-    for (const auto& s : pixels)
-        sweep(s, every(s.dates.size()), total);
+    for (const auto& s : golden::csv_series(CCD_PREFIX_DATA_DIR))
+        sweep(s, golden::every(s.size()), total);
     report("csv", total);
     EXPECT_GT(total.with_final, 0u);
     EXPECT_GT(total.provisional, 0u);
@@ -297,40 +187,9 @@ TEST(PrefixStability, CsvPixelsEverySplit)
 // under the DN defaults and the physical-unit preset.
 TEST(PrefixStability, SyntheticCubesTwelveSplits)
 {
-    struct Spec { const char* name; std::uint64_t seed; golden::Regime regime; std::size_t H, W; };
-    const Spec cubes[] = {
-        {"c16",    11, golden::Regime::Cadence16,  10, 16},
-        {"c8",     12, golden::Regime::Cadence8,    6,  8},
-        {"dup",    13, golden::Regime::Duplicates,  5,  8},
-        {"short",  14, golden::Regime::Short,       4,  5},
-        {"medium", 15, golden::Regime::Medium,      5,  8},
-    };
-
     Sweep total;
-    for (const auto& spec : cubes)
-    {
-        const golden::Cube c = golden::make_cube(spec.seed, spec.regime, spec.H, spec.W);
-        const std::size_t T = c.T;
-
-        for (const bool physical : {false, true})
-        {
-            for (std::size_t p = 0; p < c.H * c.W; ++p)
-            {
-                Series s;
-                s.name = std::string(spec.name) + (physical ? ":phys:" : ":dn:") + std::to_string(p);
-                s.dates = c.dates;
-                s.spectral.assign(c.spectral.begin() + p * 7 * T, c.spectral.begin() + (p + 1) * 7 * T);
-                s.qas.assign(c.qas.begin() + p * T, c.qas.begin() + (p + 1) * T);
-                if (physical)
-                {
-                    golden::to_physical(s.spectral.data(), T);
-                    s.h = golden::physical_harmonic();
-                    s.l = golden::physical_lasso();
-                }
-                sweep(s, spread(T, 12), total);
-            }
-        }
-    }
+    for (const auto& s : golden::synthetic_series())
+        sweep(s, golden::spread(s.size(), 12), total);
     report("synthetic", total);
     EXPECT_GT(total.with_final, 0u);
     EXPECT_GT(total.provisional, 0u);

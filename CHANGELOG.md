@@ -13,6 +13,29 @@
   stopped (`standard::Suspended`: the exit, the cursor, the fit window's
   stop, a pending grow, the final segment count) and the days the machine
   dropped. What a later resume reads to continue a run on a longer series.
+- `ccd::resume()` continues a recorded run on the whole of a longer series
+  and returns the complete result, equal bit for bit to `detect()` with every
+  statistics cutoff capped at the first run's series end (STAT_ORD and each
+  GreenMedian step's date), with the record of this run for the next resume.
+  The Standard machine continues from where it stopped (`standard::resume()`:
+  Prepare as usual, the stored drops, the cursor, the guard that failed
+  tested again; at a series end the open segment's models refitted on its fit
+  window); the stored final segments are kept as given. A pixel whose
+  observations up to the stored series end changed is rerun the same way,
+  with `ResumeStatus::RerunInputChanged`; the pixels with nothing to resume
+  (PermanentSnow, InsufficientClear, the early exits) are rerun too. Refuses
+  another record format or results version, other options, a shorter series
+  and too few stored segments. `standard::Suspended` also keeps the last
+  peek test's coefficient count and magnitudes, which write a series end's
+  provisional segment again when a longer series still ends there.
+- `ResumeEqualsTheFullRun.*` (`tests/ccd/golden/test_resume.cpp`): at every
+  cut of the characterization and CSV pixels and twelve of each golden cube
+  pixel (14,695 cuts, 11,014 continued from the record), the resumed result
+  and record equal the full run's; chains of two resumes; a reprocessed
+  observation rerun, a fill-only scene not a change, nothing new giving the
+  stored output again, a plan without Dedupe (a pixel whose stored drop is on
+  a date kept twice is rerun, since the day does not say which), and the
+  refusals.
 - `PrefixStability.*` also checks that the record's final segment count is
   the segments a longer series cannot rewrite, at every split.
 

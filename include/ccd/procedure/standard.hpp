@@ -185,16 +185,23 @@ const char* to_string(Exit exit);
 // segment written by then is final; a longer series makes the same
 // decisions up to here, then passes the guard this one failed.
 //
-//   exit            the guard (Exit::None while running); the early exits
-//                   and the whole-series fit have nothing to resume
+//   exit            the guard (Exit::None while running); after an early
+//                   exit, and for the whole-series fit, a longer series is
+//                   run from the start
 //   window,         the cursor at the guard, masked coordinates
 //   prev_break
 //   fit_stop        Extend's fit window's stop (SeriesEnd only; the fit
 //                   window starts at window.start)
 //   grow            SeriesEnd after a test whose peek reached the last
 //                   observation: that step's grow is pending (false after a
-//                   drop that left no full peek)
-//   final_segments  the segments written before the guard
+//                   drop that left no full peek). A resume that ignored it
+//                   would test that peek again, with the same outcome, and
+//                   grow then: one step more, the same result
+//   num_coef,       SeriesEnd: the last test's coefficient count and each
+//   magnitude       band's magnitude, which write the provisional segment
+//                   again when a longer series still ends there
+//   final_segments  the segments written before the guard, those of the run
+//                   it resumed included
 struct Suspended
 {
     Exit exit = Exit::None;
@@ -202,6 +209,8 @@ struct Suspended
     index_t prev_break = 0;
     index_t fit_stop = 0;
     bool grow = false;
+    index_t num_coef = 0;
+    std::vector<scalar_t> magnitude;
     index_t final_segments = 0;
 };
 
@@ -304,7 +313,12 @@ struct State
     // The shared parts (machine.hpp).
     MaskedSeries series;
     Cursor cursor;
-    std::vector<ChangeModel> segments;   // pyccd's `start` is segments.empty()
+    std::vector<ChangeModel> segments;   // written by this run
+
+    // The final segments of the run this one resumed, which come before
+    // `segments` (0 for a run from the start). "No segment yet", pyccd's
+    // `start`, is segments.empty() && carried == 0.
+    index_t carried = 0;
 
     // Standard's own: set in Prepare, read by every later phase.
     Cadence cadence{};
@@ -326,8 +340,9 @@ struct State
     Suspended suspended;
 
     // Starts a pixel: Prepare, no exit, the series of `workspace` that
-    // `mask` keeps, the cursor at 0, no segments, the cadence and
-    // Initialize's criteria cleared, no extension trained.
+    // `mask` keeps, the cursor at 0, no segments and none carried, the
+    // cadence and Initialize's criteria cleared, no extension trained, no
+    // suspension.
     void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);
 
     // The pixel's result once Done: the segments (none after an early exit)
@@ -467,6 +482,27 @@ struct Machine
 // Resets `state` for `mask`, drives it to Done and returns its result.
 FitResult run(const Context& context, State& state, ProcessingMask mask);
 
+// Continues a run that stopped at `from` on a longer series: `mask` is the
+// filter mask of the stored run's series with the observations after it,
+// and the context's statistics cutoffs are the stored run's, so Prepare's
+// values are its values. Prepare runs as usual, on the series as the filters
+// leave it; then the stored run's drops (`excluded_days`, each a day the
+// filters keep) leave the series, the cursor is put back and the guard that
+// failed is tested again: Initialize
+// for NoRoomToInitialize (when there is room) and InitializeExhausted, the
+// peek guard for PeekBeyondEnd, and for SeriesEnd the open segment's models
+// refitted on its fit window, then its pending grow and Extend when a full
+// peek now fits, or the same provisional segment again. Drives to Done; the
+// result's segments are this run's, after the carried final ones.
+// `from.exit` is one of those four.
+FitResult resume(
+    const Context& context,
+    State& state,
+    ProcessingMask mask,
+    const Suspended& from,
+    const std::vector<std::int64_t>& excluded_days
+);
+
 //==============================================================================
 //
 // Procedure
@@ -495,6 +531,16 @@ public:
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver
+    );
+
+    // run() from where a stored run stopped (standard::resume()).
+    FitResult resume(
+        const HarmonicWorkspace& hworkspace,
+        ProcessingMask mask,
+        LassoWorkspace& lworkspace,
+        LassoSolver& solver,
+        const Suspended& from,
+        const std::vector<std::int64_t>& excluded_days
     );
 
     // Where the last run() stopped.
@@ -537,6 +583,17 @@ public:
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver
+    );
+
+    // The Standard machine from where a stored run stopped (Procedure::
+    // resume()).
+    FitResult resume(
+        const HarmonicWorkspace& hworkspace,
+        ProcessingMask mask,
+        LassoWorkspace& lworkspace,
+        LassoSolver& solver,
+        const Suspended& from,
+        const std::vector<std::int64_t>& excluded_days
     );
 
     // Where the last Standard fit() stopped; stale after a whole-series fit,

@@ -16,10 +16,10 @@
 //
 //==============================================================================
 
+#include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <functional>
-#include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -178,6 +178,58 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         EXPECT_EQ(open.break_day, kept[s.window.stop]) << p.name;
         EXPECT_GT(s.fit_stop, s.window.start) << p.name;
         EXPECT_LE(s.fit_stop, s.window.stop) << p.name;
+
+        // The open segment's fits are those of its models: refitted from the
+        // record (the fit window, its coefficient count), bit for bit.
+        // The pixel as the Standard machine reads it: its plan's transform
+        // applied.
+        const auto plan = ccd::preprocess::default_plan(p.h);
+        const index_t T = p.dates.size();
+        std::vector<double> block = p.spectral;
+        if (plan.standard.transform)
+        {
+            const auto& a = *plan.standard.transform;
+            for (index_t t = 0; t < T; ++t)
+                block[a.band * T + t] = block[a.band * T + t] * a.scale + a.offset;
+        }
+        ccd::MaskedSeries series;
+        const ccd::HarmonicWorkspace ws(
+            dates_of(p), ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
+            qas_of(p), p.h);
+        series.reset(ws, r.result.mask);
+        ccd::LassoWorkspace lasso(0);
+        ccd::LassoSolver solver(p.l);
+        std::vector<ccd::LassoResult> fits;
+        const ccd::Window fit(s.window.start, s.fit_stop);
+        ccd::fit_bands(
+            series.dates().slice(ccd::range(fit.start, fit.stop)),
+            series.spectral().slice(ccd::all(), ccd::range(fit.start, fit.stop)),
+            ccd::standard::coefficient_count(fit.size(), p.h),
+            ccd::KeepResiduals::No, lasso, solver, fits);
+        for (std::size_t b = 0; b < fits.size(); ++b)
+        {
+            const ccd::BandFit refit = ccd::band_fit(fits[b]);
+            EXPECT_EQ(refit.intercept, open.bands[b].intercept) << p.name << " band " << b;
+            EXPECT_EQ(refit.coefficients, open.bands[b].coefficients) << p.name << " band " << b;
+            EXPECT_EQ(refit.rmse, open.bands[b].rmse) << p.name << " band " << b;
+        }
+        EXPECT_EQ(s.magnitude.size(), open.bands.size()) << p.name;
+        for (std::size_t b = 0; b < open.bands.size() && b < s.magnitude.size(); ++b)
+            EXPECT_EQ(s.magnitude[b], open.bands[b].magnitude) << p.name << " band " << b;
+        EXPECT_EQ(static_cast<int>(s.num_coef), static_cast<int>(open.curve_qa)) << p.name;
+    }
+
+    // prev_break is the last change's break, as a masked position.
+    for (const auto& p : golden::characterisation_pixels())
+    {
+        const ccd::Recorded r = recorded(p);
+        const ccd::standard::Suspended& s = r.record.standard;
+        if (r.record.procedure != ccd::PixelProcedure::Standard || s.final_segments == 0 ||
+            r.result.models[s.final_segments - 1].change_probability != 1.0)
+            continue;
+        const auto kept = kept_dates(p, r.result.mask);
+        ASSERT_LT(s.prev_break, kept.size()) << p.name;
+        EXPECT_EQ(kept[s.prev_break], r.result.models[s.final_segments - 1].break_day) << p.name;
     }
 
     // After a grow the peek reached the last observation; after a drop it

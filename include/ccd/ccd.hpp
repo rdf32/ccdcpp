@@ -351,6 +351,71 @@ Recorded detect_recorded(
     const PreprocessPlanPtr& preprocess = nullptr
 );
 
+// What resume() did with a pixel.
+enum class ResumeStatus : std::uint8_t
+{
+    Resumed,            // continued from the record (or refitted whole, for
+                        // the pixels that take no machine or stopped early)
+    RerunInputChanged   // the pixel's observations up to the stored series
+                        // end differ from the stored run's: rerun in full
+};
+
+// resume()'s result: the complete result for the whole series, the record of
+// this run (for the next resume) and what was done.
+struct Resumed
+{
+    FitResult result;
+    ResumeHeader header;
+    PixelRecord record;
+    ResumeStatus status = ResumeStatus::Resumed;
+};
+
+// Continues the run `from_header` and `from` record on the whole of a longer
+// series: `dates`, `spectral` and `qas` are the stored run's input with the
+// observations after its series end; `stored_segments` are the stored run's
+// segments, of which the first from.standard.final_segments are kept as they
+// are given.
+//
+// The result equals, bit for bit, detect() on the same input with every
+// statistics cutoff capped at from_header.statistics_end, whole output (the
+// segments and the processing mask). A pixel whose observations up to the
+// stored series end differ from the stored run's (reprocessed values, a
+// back-filled or removed scene that covers it) is rerun in full the same
+// way, and says so in the status; so are the pixels with nothing to resume
+// (PermanentSnow, InsufficientClear, the early exits), whose result is the
+// same either way.
+//
+// Throws std::invalid_argument, before any work, on a record of another
+// format or results version, on other options, plan or QA table (by
+// options_digest()), on a series that ends before the stored one, on fewer
+// stored segments than the record's final ones, and on what detect() throws
+// for.
+Resumed resume(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const ResumeHeader& from_header,
+    const PixelRecord& from,
+    const std::vector<ChangeModel>& stored_segments,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
+Resumed resume(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const ResumeHeader& from_header,
+    const PixelRecord& from,
+    const std::vector<ChangeModel>& stored_segments,
+    const QaTablePtr& qa_table = nullptr,
+    const PreprocessPlanPtr& preprocess = nullptr
+);
+
 //------------------------------------------------------------------------------
 //
 // Run detect() over every pixel of a cube, in parallel over H*W.

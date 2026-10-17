@@ -557,7 +557,8 @@ FitResult detect_pixel(
     const LassoOptions& loptions,
     DetectScratch& scratch,
     PixelRecord* record = nullptr,
-    std::int64_t through = 0
+    std::int64_t through = 0,
+    const PixelRecord* resume_from = nullptr
 ) {
     const ArrayView<const std::uint8_t, 1> qas =
         qa_codes<Qa>(raw_qas, qa_table, scratch.qas);
@@ -663,12 +664,46 @@ FitResult detect_pixel(
     // the same call.
     standard::Detector& detector = scratch.standard;
 
-    if (!record)
+    if (!record && !resume_from)
         return detector.fit(pixel_procedure, hworkspace, std::move(mask), lworkspace, solver);
 
     const ProcessingMask filtered = mask;
-    FitResult result =
-        detector.fit(pixel_procedure, hworkspace, std::move(mask), lworkspace, solver);
+    FitResult result;
+    // A stored drop on a date the filters keep twice (a plan without Dedupe)
+    // does not say which of the two it was: such a pixel is rerun.
+    bool unambiguous = true;
+    if (resume_from && pixel_procedure == PixelProcedure::Standard)
+    {
+        const auto& days = resume_from->excluded_days;
+        std::size_t next = 0;
+        index_t kept_on_day = 0;
+        for (index_t t = 0; t < dates.size() && next < days.size(); ++t)
+        {
+            while (next < days.size() && days[next] < dates(t))
+            {
+                unambiguous = unambiguous && kept_on_day <= 1;
+                kept_on_day = 0;
+                ++next;
+            }
+            if (next < days.size() && dates(t) == days[next] && mask[t])
+                ++kept_on_day;
+        }
+        unambiguous = unambiguous && kept_on_day <= 1;
+    }
+
+    if (resume_from && pixel_procedure == PixelProcedure::Standard && unambiguous)
+    {
+        result = detector.resume(
+            hworkspace, std::move(mask), lworkspace, solver,
+            resume_from->standard, resume_from->excluded_days);
+    }
+    else
+    {
+        result = detector.fit(pixel_procedure, hworkspace, std::move(mask), lworkspace, solver);
+    }
+
+    if (!record)
+        return result;
 
     record->standard = standard::Suspended{};
     record->excluded_days.clear();
@@ -983,6 +1018,158 @@ Recorded detect_recorded(
 {
     return detect_recorded_impl<std::uint16_t>(
         dates, spectral, qas, hoptions, loptions, qa_table, given_plan);
+}
+
+namespace
+{
+
+// The cutoffs of a run resumed from one whose series ended at `end`: STAT_ORD
+// and every GreenMedian step's date, each capped at it.
+HarmonicOptions capped(const HarmonicOptions& options, std::int64_t end)
+{
+    HarmonicOptions out = options;
+    out.STAT_ORD = std::min(out.STAT_ORD, end);
+    return out;
+}
+
+preprocess::PreprocessPlan capped(const preprocess::PreprocessPlan& plan, std::int64_t end)
+{
+    preprocess::PreprocessPlan out = plan;
+    for (preprocess::ProcedurePlan* procedure :
+         {&out.standard, &out.snow, &out.insufficient_clear})
+        for (index_t i = 0; i < procedure->chain.size(); ++i)
+        {
+            preprocess::Step& step = procedure->chain.steps[i];
+            if (step.kind == preprocess::StepKind::GreenMedian)
+                step.max_date = std::min(step.max_date, end);
+        }
+    return out;
+}
+
+// The exits resume() continues the Standard machine from; the others (the
+// early exits) are rerun, as are the other procedures.
+bool resumable(standard::Exit exit)
+{
+    using standard::Exit;
+    return exit == Exit::NoRoomToInitialize || exit == Exit::InitializeExhausted ||
+        exit == Exit::PeekBeyondEnd || exit == Exit::SeriesEnd;
+}
+
+template<typename Qa>
+Resumed resume_impl(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const Qa, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const ResumeHeader& from_header,
+    const PixelRecord& from,
+    const std::vector<ChangeModel>& stored_segments,
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
+)
+{
+    validate_shapes(hoptions, spectral.extent(0), spectral.extent(1), dates, qas.size());
+    if constexpr (std::is_same_v<Qa, std::uint16_t>)
+        validate_qa<std::uint16_t>(qa_table.get());
+
+    preprocess::PreprocessPlan local_plan;
+    const preprocess::PreprocessPlan& plan =
+        resolve_plan(given_plan, hoptions, spectral.extent(0), local_plan);
+    const std::uint64_t digest = options_digest(hoptions, loptions, plan, qa_table.get());
+
+    if (from_header.format != RESUME_FORMAT)
+        throw std::invalid_argument(
+            "the resume record's format is " + std::to_string(from_header.format) +
+            "; this ccdcpp reads " + std::to_string(RESUME_FORMAT));
+    if (from_header.results_version != RESULTS_VERSION)
+        throw std::invalid_argument(
+            "the resume record's results version is " +
+            std::to_string(from_header.results_version) + "; this ccdcpp's is " +
+            std::to_string(RESULTS_VERSION) + ": rerun in full");
+    if (from_header.options_digest != digest)
+        throw std::invalid_argument(
+            "the resume record was made with other options, plan or QA table");
+    if (dates.size() == 0 || dates(dates.size() - 1) < from_header.series_end)
+        throw std::invalid_argument(
+            "the series ends before the resume record's, on " +
+            std::to_string(from_header.series_end));
+    if (from.procedure == PixelProcedure::Standard &&
+        stored_segments.size() < from.standard.final_segments)
+        throw std::invalid_argument(
+            "the resume record has " + std::to_string(from.standard.final_segments) +
+            " final segments; " + std::to_string(stored_segments.size()) + " were given");
+
+    Resumed out;
+    out.header = from_header;
+    out.header.series_end = dates(dates.size() - 1);
+
+    const HarmonicOptions resumed_options = capped(hoptions, from_header.statistics_end);
+    const preprocess::PreprocessPlan resumed_plan = capped(plan, from_header.statistics_end);
+
+    std::vector<std::uint8_t> decoded;
+    const std::uint64_t fingerprint = fingerprint_of<scalar_t>(
+        dates, spectral, qa_codes<Qa>(qas, qa_table.get(), decoded),
+        hoptions.QA_FILL, from_header.series_end);
+
+    out.status = fingerprint == from.input_fingerprint
+        ? ResumeStatus::Resumed
+        : ResumeStatus::RerunInputChanged;
+
+    const bool continues =
+        out.status == ResumeStatus::Resumed &&
+        from.procedure == PixelProcedure::Standard &&
+        resumable(from.standard.exit);
+
+    DetectScratch scratch;
+    out.result = detect_pixel<scalar_t, Qa>(
+        dates, spectral, qas, qa_table.get(), resumed_plan, resumed_options, loptions,
+        scratch, &out.record, out.header.series_end, continues ? &from : nullptr);
+
+    if (continues)
+    {
+        out.result.models.insert(
+            out.result.models.begin(),
+            stored_segments.begin(),
+            stored_segments.begin() + from.standard.final_segments);
+    }
+    return out;
+}
+
+} // namespace
+
+Resumed resume(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const ResumeHeader& from_header,
+    const PixelRecord& from,
+    const std::vector<ChangeModel>& stored_segments,
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
+)
+{
+    return resume_impl<std::uint8_t>(dates, spectral, qas, hoptions, loptions,
+        from_header, from, stored_segments, qa_table, given_plan);
+}
+
+Resumed resume(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint16_t, 1> qas,
+    const HarmonicOptions& hoptions,
+    const LassoOptions& loptions,
+    const ResumeHeader& from_header,
+    const PixelRecord& from,
+    const std::vector<ChangeModel>& stored_segments,
+    const QaTablePtr& qa_table,
+    const PreprocessPlanPtr& given_plan
+)
+{
+    return resume_impl<std::uint16_t>(dates, spectral, qas, hoptions, loptions,
+        from_header, from, stored_segments, qa_table, given_plan);
 }
 
 FitResult detect(
