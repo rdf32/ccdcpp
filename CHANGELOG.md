@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Tests
+
+- Test tiers. The sweeps over cuts (`PrefixStability.*` and
+  `ResumeEqualsTheFullRun.*` but the chain) run as 8 shards each
+  (`Shards/<suite>.<test>/sample` and `/rest1` to `/rest7`), so ctest runs
+  them in parallel; together they test the same 14,695 cuts.
+  `ctest -LE corpus`, the quick tier, runs every test but the `rest` shards:
+  the sample shard takes every eighth cut, each series' last cut and the cuts
+  through the peek after each break (16-25% of the cuts). Plain `ctest` is
+  the full tier. The README's "Run the Tests" lists the tiers, the sanitizer
+  build among them (Debug at `-O2 -g`, asserts on). The labels need CMake
+  3.22 (discovery filters); before it every test runs unlabelled.
+
 ## 0.9.0 - 2026-10-17
 
 Resume from previous results: a run can keep a record of where each pixel's

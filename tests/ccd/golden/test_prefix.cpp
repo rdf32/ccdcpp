@@ -33,6 +33,9 @@
 //   * its resume record (record.hpp) names the same number of final
 //     segments.
 //
+// Each runs as golden::SHARDS tests (series_corpus.hpp): the sample in the
+// quick tier, the rest labelled corpus.
+//
 // Every change to the procedure must keep this. A change that breaks it lets
 // new data rewrite the past, and makes resuming from stored results unsound.
 //
@@ -158,14 +161,19 @@ void report(const std::string& corpus, const Sweep& total)
 
 } // namespace
 
+class PrefixStability : public ::testing::TestWithParam<std::size_t>
+{
+};
+
 // The characterization pixels (characterisation.hpp), every split: they take
 // every reachable transition, Lookback near the break and the series end at
 // a dense cadence among them.
-TEST(PrefixStability, CharacterizationPixelsEverySplit)
+TEST_P(PrefixStability, CharacterizationPixelsEverySplit)
 {
     Sweep total;
+    std::size_t ordinal = 0;
     for (const auto& s : golden::characterization_series())
-        sweep(s, golden::every(s.size()), total);
+        sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), total);
     report("characterization", total);
     EXPECT_GT(total.with_final, 0u);
     EXPECT_GT(total.provisional, 0u);
@@ -173,11 +181,12 @@ TEST(PrefixStability, CharacterizationPixelsEverySplit)
 
 // The CSV pixels, every split: the pyccd reference pixel, the Collection-2
 // pixel and the Atlanta pixel with a half-day median gap.
-TEST(PrefixStability, CsvPixelsEverySplit)
+TEST_P(PrefixStability, CsvPixelsEverySplit)
 {
     Sweep total;
+    std::size_t ordinal = 0;
     for (const auto& s : golden::csv_series(CCD_PREFIX_DATA_DIR))
-        sweep(s, golden::every(s.size()), total);
+        sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), total);
     report("csv", total);
     EXPECT_GT(total.with_final, 0u);
     EXPECT_GT(total.provisional, 0u);
@@ -185,12 +194,17 @@ TEST(PrefixStability, CsvPixelsEverySplit)
 
 // The golden synthetic cubes (synthetic.hpp), every pixel at 12 split dates,
 // under the DN defaults and the physical-unit preset.
-TEST(PrefixStability, SyntheticCubesTwelveSplits)
+TEST_P(PrefixStability, SyntheticCubesTwelveSplits)
 {
     Sweep total;
+    std::size_t ordinal = 0;
     for (const auto& s : golden::synthetic_series())
-        sweep(s, golden::spread(s.size(), 12), total);
+        sweep(s, golden::shard_of(s, ordinal++, golden::spread(s.size(), 12), GetParam()), total);
     report("synthetic", total);
     EXPECT_GT(total.with_final, 0u);
     EXPECT_GT(total.provisional, 0u);
 }
+
+INSTANTIATE_TEST_SUITE_P(Shards, PrefixStability,
+                         ::testing::Range(std::size_t{0}, golden::SHARDS),
+                         [](const auto& info) { return golden::shard_name(info.param); });

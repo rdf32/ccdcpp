@@ -903,9 +903,30 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)
     gtest_discover_tests(test_transitions)
-    gtest_discover_tests(test_prefix)
     gtest_discover_tests(test_record)
-    gtest_discover_tests(test_resume PROPERTIES TIMEOUT 600)
+
+    # The sweeps over cuts (tests/ccd/golden/series_corpus.hpp) run as shards:
+    # "sample" in every run, "restN" labelled corpus, so `ctest -LE corpus` is
+    # the quick tier. CMake before 3.22 cannot filter discovery: no label.
+    if(CMAKE_VERSION VERSION_LESS 3.22)
+        gtest_discover_tests(test_prefix)
+        gtest_discover_tests(test_resume PROPERTIES TIMEOUT 600)
+    else()
+        foreach(sharded_test test_prefix test_resume)
+            gtest_discover_tests(
+                ${sharded_test}
+                TEST_FILTER "-*/rest*"
+                TEST_LIST ${sharded_test}_quick
+                PROPERTIES TIMEOUT 600
+            )
+            gtest_discover_tests(
+                ${sharded_test}
+                TEST_FILTER "*/rest*"
+                TEST_LIST ${sharded_test}_corpus
+                PROPERTIES TIMEOUT 600 LABELS corpus
+            )
+        endforeach()
+    endif()
     gtest_discover_tests(test_bands)
     gtest_discover_tests(test_qa_tables)
     gtest_discover_tests(test_cadence)

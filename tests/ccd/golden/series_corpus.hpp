@@ -209,4 +209,55 @@ inline bool splits_cleanly(const Series& s, std::size_t last)
     return last + 1 < s.size() && s.dates[last + 1] != s.dates[last];
 }
 
+// The sweeps over cuts run as SHARDS tests each, so ctest runs them in
+// parallel. Shard 0 is the sample, the quick tier's part: every eighth cut,
+// a series' last clean cut, and every cut from two observations before a
+// break of the full run to NEAR_BREAK after it (where the machine finds the
+// break); shards 1 to SHARDS - 1 hold the rest, interleaved. Together they
+// take each cut once.
+inline constexpr std::size_t SHARDS = 8;
+inline constexpr std::size_t NEAR_BREAK = 10;
+
+// The cuts of `cuts` (indexes into `s`, ascending) that split `s` cleanly
+// and fall in `shard`; `ordinal` staggers the interleave from one series to
+// the next.
+inline std::vector<std::size_t> shard_of(const Series& s, std::size_t ordinal,
+                                         const std::vector<std::size_t>& cuts, std::size_t shard)
+{
+    std::vector<bool> near(s.size(), false);
+    for (const auto& m : detect_at(s, s.h.STAT_ORD).models)
+    {
+        if (m.change_probability != 1.0)
+            continue;
+        const std::size_t at = static_cast<std::size_t>(
+            std::lower_bound(s.dates.begin(), s.dates.end(), m.break_day) - s.dates.begin());
+        const std::size_t from = at < 2 ? 0 : at - 2;
+        for (std::size_t t = from; t < std::min(s.size(), at + NEAR_BREAK + 1); ++t)
+            near[t] = true;
+    }
+
+    std::vector<std::size_t> clean;
+    for (const std::size_t last : cuts)
+        if (splits_cleanly(s, last))
+            clean.push_back(last);
+
+    std::vector<std::size_t> out;
+    std::size_t rest = ordinal;
+    for (std::size_t k = 0; k < clean.size(); ++k)
+    {
+        const std::size_t last = clean[k];
+        const bool sample = k % SHARDS == 0 || k + 1 == clean.size() || near[last];
+        const std::size_t in = sample ? 0 : 1 + rest++ % (SHARDS - 1);
+        if (in == shard)
+            out.push_back(last);
+    }
+    return out;
+}
+
+// The test name of a shard: "sample" for shard 0, "restN" for the others.
+inline std::string shard_name(std::size_t shard)
+{
+    return shard == 0 ? "sample" : "rest" + std::to_string(shard);
+}
+
 } // namespace golden

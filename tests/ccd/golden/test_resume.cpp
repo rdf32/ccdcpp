@@ -137,29 +137,38 @@ const Series& named(const std::vector<Series>& all, const std::string& name)
 // ResumeEqualsTheFullRun
 //------------------------------------------------------------------------------
 
-TEST(ResumeEqualsTheFullRun, CharacterizationPixelsEveryCut)
+// Each sweep over cuts runs as golden::SHARDS tests (series_corpus.hpp): the
+// sample in the quick tier, the rest labelled corpus.
+class ResumeEqualsTheFullRun : public ::testing::TestWithParam<std::size_t>
+{
+};
+
+TEST_P(ResumeEqualsTheFullRun, CharacterizationPixelsEveryCut)
 {
     Counts c;
+    std::size_t ordinal = 0;
     for (const auto& s : golden::characterization_series())
-        sweep(s, golden::every(s.size()), c);
+        sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), c);
     report("characterization", c);
     EXPECT_GT(c.continued, c.splits / 2);
 }
 
-TEST(ResumeEqualsTheFullRun, CsvPixelsEveryCut)
+TEST_P(ResumeEqualsTheFullRun, CsvPixelsEveryCut)
 {
     Counts c;
+    std::size_t ordinal = 0;
     for (const auto& s : golden::csv_series(CCD_PREFIX_DATA_DIR))
-        sweep(s, golden::every(s.size()), c);
+        sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), c);
     report("csv", c);
     EXPECT_GT(c.continued, c.splits / 2);
 }
 
-TEST(ResumeEqualsTheFullRun, SyntheticCubesTwelveCuts)
+TEST_P(ResumeEqualsTheFullRun, SyntheticCubesTwelveCuts)
 {
     Counts c;
+    std::size_t ordinal = 0;
     for (const auto& s : golden::synthetic_series())
-        sweep(s, golden::spread(s.size(), 12), c);
+        sweep(s, golden::shard_of(s, ordinal++, golden::spread(s.size(), 12), GetParam()), c);
     report("synthetic", c);
     EXPECT_GT(c.continued, 0u);
 }
@@ -203,7 +212,7 @@ TEST(ResumeEqualsTheFullRun, AChainOfResumes)
 // A plan without Dedupe keeps two observations of one date, so a dropped
 // day may not say which of them the stored run dropped: such a pixel is rerun
 // rather than continued, and either way the result is the full run's.
-TEST(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
+TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
 {
     // The golden duplicates cube, and three more of its regime, whose
     // ambiguous drops come after final segments.
@@ -226,9 +235,9 @@ TEST(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
     }
 
     std::size_t cuts = 0;
+    std::size_t ordinal = 0;
     for (const auto& s : pixels)
     {
-
         auto plan = std::make_shared<ccd::preprocess::PreprocessPlan>(
             ccd::preprocess::default_plan(s.h));
         ccd::preprocess::Chain chain;
@@ -239,10 +248,9 @@ TEST(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
         const ccd::PreprocessPlanPtr given = plan;
 
         const bool more_cuts = s.name.rfind("dup:", 0) != 0;
-        for (const std::size_t last : golden::spread(s.size(), more_cuts ? 60 : 12))
+        for (const std::size_t last :
+             golden::shard_of(s, ordinal++, golden::spread(s.size(), more_cuts ? 60 : 12), GetParam()))
         {
-            if (!golden::splits_cleanly(s, last))
-                continue;
             const Series cut = s.prefix(last + 1);
             const std::int64_t T = cut.dates.back();
             const std::string at = s.name + " cut after " + std::to_string(T);
@@ -274,6 +282,10 @@ TEST(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
     }
     EXPECT_GT(cuts, 100u);
 }
+
+INSTANTIATE_TEST_SUITE_P(Shards, ResumeEqualsTheFullRun,
+                         ::testing::Range(std::size_t{0}, golden::SHARDS),
+                         [](const auto& info) { return golden::shard_name(info.param); });
 
 //------------------------------------------------------------------------------
 // ResumeOfChangedInput

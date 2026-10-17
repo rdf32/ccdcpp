@@ -566,6 +566,29 @@ cmake --build build --config Release
 pip install .
 ```
 
+## 5. Run the Tests
+
+Three tiers, from the cheapest:
+
+| Tier | Command | What it runs | When |
+|---|---|---|---|
+| Quick | `ctest --test-dir build -j8 -LE corpus` | every test, the sweeps over cuts (`PrefixStability.*`, `ResumeEqualsTheFullRun.*`) on their sample shard: every eighth cut, each series' last cut and the cuts through the peek after each break | while changing code |
+| Full | `ctest --test-dir build -j8` | every test, every cut | before a change is merged, and after any change to the machine, the fits, the record or resume |
+| Release | the full tier on a sanitizer build, below, and on Linux (`tools/linux-compare`) | memory errors, undefined behaviour and asserts; another compiler's arithmetic | before a release, or a change that can behave differently by platform |
+
+The sanitizer build is Debug at `-O2` (asserts on; at `-O0` the sweeps run several hundred times slower than Release):
+
+```bash
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS_DEBUG="-O2 -g" \
+  -DCCD_BUILD_PYTHON=OFF \
+  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+cmake --build build-asan -j8
+ctest --test-dir build-asan -j8
+```
+
+`Golden`, `Bands` and `Transitions.BitIdenticalToFixture` compare against fixtures written by a Release build on one platform (clang, arm64, macOS), so they fail on the sanitizer build and skip on Linux; every other test passes on both. The labels need CMake 3.22 or later; before it every test runs unlabelled.
+
 ---
 
 # Usage
