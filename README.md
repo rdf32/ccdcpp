@@ -83,7 +83,7 @@ The Standard machine; bracketed names are the exit reason the record keeps:
                       EndCatch [NoRoomToInitialize] ── the End segment, if prev_break + peek < size ──► Done
 ```
 
-[CCDC as a state machine](docs/ccdc-state-machine.md) describes the states, transitions and guards, the record and the shared parts, and why the code is shaped this way.
+[CCDC as a state machine](docs/ccdc-state-machine.md) describes the states, transitions and guards, the record and the shared parts, and why the code is shaped this way. [Floating-point sums](docs/floating-point-sums.md) explains why the order of the Lasso solver's sums is part of the output, and how they are made fast.
 
 # Performance Optimizations
 

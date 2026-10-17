@@ -13,6 +13,54 @@
 namespace ccd
 {
 
+namespace
+{
+
+//------------------------------------------------------------------------------
+// sum_i a[i] * b[i], in four interleaved partial sums.
+//
+// Why four sums and not one. A floating-point sum written as one loop,
+//
+//     s += a[i] * b[i];
+//
+// is one chain of additions: each waits for the one before it, because the
+// compiler may not reorder them. C++ fixes the order of floating-point
+// operations as written, and (x + y) + z rounds differently from
+// x + (y + z), so a reordered sum is a different result, not the same one
+// faster. The loop then runs at the latency of an add (about 3-4 cycles
+// each), however many the CPU could start per cycle.
+//
+// Four sums over every fourth term are four independent chains the CPU runs
+// at once, and the coordinate descent's two dot products (rho = X_j^T r and
+// the duality gap's X^T r) are most of the fit's time. It is the same sum in
+// another order: exact arithmetic gives the same value, floating point a
+// value rounded at other places, accurate to the same order (each order's
+// error is bounded by about n * 1.1e-16 times the sum of |a[i] * b[i]|; four
+// shorter chains, if anything, less). The order is part of the output:
+// changing it, or the number of sums, changes results in their last bits
+// and is a results version (record.hpp).
+//------------------------------------------------------------------------------
+inline scalar_t dot(const scalar_t* a, const scalar_t* b, index_t n)
+{
+    scalar_t s0 = 0.0;
+    scalar_t s1 = 0.0;
+    scalar_t s2 = 0.0;
+    scalar_t s3 = 0.0;
+    index_t i = 0;
+    for (; i + 4 <= n; i += 4) {
+        s0 += a[i] * b[i];
+        s1 += a[i + 1] * b[i + 1];
+        s2 += a[i + 2] * b[i + 2];
+        s3 += a[i + 3] * b[i + 3];
+    }
+    for (; i < n; ++i) {
+        s0 += a[i] * b[i];
+    }
+    return (s0 + s1) + (s2 + s3);
+}
+
+} // namespace
+
 void LassoWorkspace::build_basis(
     ArrayView<const std::int64_t, 1> dates,
     index_t num_coefficients
@@ -121,10 +169,7 @@ LassoModel LassoSolver::fit(
             //--------------------------------------------------
             // rho = X_j^T r
             //--------------------------------------------------
-            scalar_t rho=0.0;
-            for(index_t i = 0; i < num_samp; ++i) {
-                rho += X_center[j * num_samp + i] * workspace.y_resi[i];
-            }
+            const scalar_t rho = dot(X_center.data() + j * num_samp, workspace.y_resi.data(), num_samp);
             //--------------------------------------------------
             // Soft threshold
             //--------------------------------------------------
@@ -159,10 +204,7 @@ LassoModel LassoSolver::fit(
             scalar_t max_abs_XTr = 0.0;
             for(index_t j = 0; j < num_feat; ++j) {
 
-                scalar_t v = 0.0;
-                for(index_t i = 0; i < num_samp; ++i) {
-                    v += X_center[j * num_samp + i] * workspace.y_resi[i];
-                }
+                const scalar_t v = dot(X_center.data() + j * num_samp, workspace.y_resi.data(), num_samp);
                 max_abs_XTr  = std::max(max_abs_XTr,std::abs(v));
             }
 

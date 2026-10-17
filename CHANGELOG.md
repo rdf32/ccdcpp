@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Changed (outputs in their last bits; results version 2)
+
+- The Lasso solver's two dot products (rho = X_j^T r in the coordinate
+  descent, X^T r in the duality-gap test) sum in four interleaved partial
+  sums: the same sum in another order, rounded at other places, about 20%
+  faster over the whole run (the synthetic bench at one thread 3.87 s ->
+  3.06 s). Measured on the Atlanta h024v013 cell and the golden corpus,
+  every segment is unchanged (the same days, counts and change
+  probabilities; 455,231 and 26,021 segments), no fit stops at another
+  iteration (182,147 band fits), and the coefficients, RMSEs and
+  magnitudes move by at most 1.4e-10 relative (typically 1e-16). A fit
+  whose convergence test fell within rounding of its threshold could
+  differ by up to the solver tolerance; none did. `RESULTS_VERSION` is 2:
+  a record stored by 0.9.0 is refused, so the first run after the upgrade
+  is a full one. The Golden, Bands and Transitions fixtures are rewritten
+  (their diff moves band values only, at most 1.1e-11 relative).
+  `docs/floating-point-sums.md` explains the solver's sums, why their order
+  is part of the output and why four.
+
 ### Changed (speed; outputs bit for bit)
 
 - Extend refits the detection bands only, the bands its tests read; the
