@@ -558,7 +558,8 @@ FitResult detect_pixel(
     DetectScratch& scratch,
     PixelRecord* record = nullptr,
     std::int64_t through = 0,
-    const PixelRecord* resume_from = nullptr
+    const PixelRecord* resume_from = nullptr,
+    bool* continued = nullptr
 ) {
     const ArrayView<const std::uint8_t, 1> qas =
         qa_codes<Qa>(raw_qas, qa_table, scratch.qas);
@@ -696,6 +697,8 @@ FitResult detect_pixel(
         result = detector.resume(
             hworkspace, std::move(mask), lworkspace, solver,
             resume_from->standard, resume_from->excluded_days);
+        if (continued)
+            *continued = true;
     }
     else
     {
@@ -1121,12 +1124,16 @@ Resumed resume_impl(
         from.procedure == PixelProcedure::Standard &&
         resumable(from.standard.exit);
 
+    // The machine may still not continue (a stored drop on a date the plan
+    // keeps twice): then its result is a whole rerun, without the stored
+    // segments.
     DetectScratch scratch;
+    bool continued = false;
     out.result = detect_pixel<scalar_t, Qa>(
         dates, spectral, qas, qa_table.get(), resumed_plan, resumed_options, loptions,
-        scratch, &out.record, out.header.series_end, continues ? &from : nullptr);
+        scratch, &out.record, out.header.series_end, continues ? &from : nullptr, &continued);
 
-    if (continues)
+    if (continued)
     {
         out.result.models.insert(
             out.result.models.begin(),

@@ -205,11 +205,29 @@ TEST(ResumeEqualsTheFullRun, AChainOfResumes)
 // rather than continued, and either way the result is the full run's.
 TEST(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
 {
-    std::size_t cuts = 0;
+    // The golden duplicates cube, and three more of its regime, whose
+    // ambiguous drops come after final segments.
+    std::vector<Series> pixels;
     for (const auto& s : golden::synthetic_series())
+        if (s.name.rfind("dup:", 0) == 0)
+            pixels.push_back(s);
+    for (const std::uint64_t seed : {33u, 34u, 35u})
     {
-        if (s.name.rfind("dup:", 0) != 0)
-            continue;
+        const golden::Cube c = golden::make_cube(seed, golden::Regime::Duplicates, 4, 5);
+        for (std::size_t p = 0; p < c.H * c.W; ++p)
+        {
+            Series s;
+            s.name = "dup" + std::to_string(seed) + ":" + std::to_string(p);
+            s.dates = c.dates;
+            s.spectral.assign(c.spectral.begin() + p * 7 * c.T, c.spectral.begin() + (p + 1) * 7 * c.T);
+            s.qas.assign(c.qas.begin() + p * c.T, c.qas.begin() + (p + 1) * c.T);
+            pixels.push_back(std::move(s));
+        }
+    }
+
+    std::size_t cuts = 0;
+    for (const auto& s : pixels)
+    {
 
         auto plan = std::make_shared<ccd::preprocess::PreprocessPlan>(
             ccd::preprocess::default_plan(s.h));
@@ -220,7 +238,8 @@ TEST(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
         plan->standard.chain = chain;
         const ccd::PreprocessPlanPtr given = plan;
 
-        for (const std::size_t last : golden::spread(s.size(), 12))
+        const bool more_cuts = s.name.rfind("dup:", 0) != 0;
+        for (const std::size_t last : golden::spread(s.size(), more_cuts ? 60 : 12))
         {
             if (!golden::splits_cleanly(s, last))
                 continue;

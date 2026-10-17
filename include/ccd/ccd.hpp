@@ -354,8 +354,10 @@ Recorded detect_recorded(
 // What resume() did with a pixel.
 enum class ResumeStatus : std::uint8_t
 {
-    Resumed,            // continued from the record (or refitted whole, for
-                        // the pixels that take no machine or stopped early)
+    Resumed,            // continued from the record, or rerun with the same
+                        // result: the pixels that take no machine or stopped
+                        // early, and a pixel whose stored drop is on a date
+                        // the plan keeps twice (it does not say which)
     RerunInputChanged   // the pixel's observations up to the stored series
                         // end differ from the stored run's: rerun in full
 };
@@ -382,8 +384,9 @@ struct Resumed
 // stored series end differ from the stored run's (reprocessed values, a
 // back-filled or removed scene that covers it) is rerun in full the same
 // way, and says so in the status; so are the pixels with nothing to resume
-// (PermanentSnow, InsufficientClear, the early exits), whose result is the
-// same either way.
+// (PermanentSnow, InsufficientClear, the early exits) and a pixel whose
+// stored drop is on a date the plan keeps twice (a plan without Dedupe),
+// whose result is the same either way.
 //
 // Throws std::invalid_argument, before any work, on a record of another
 // format or results version, on other options, plan or QA table (by
