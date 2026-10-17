@@ -49,7 +49,7 @@ n = int(np.searchsorted(dates, CUT))
 print(f"T={dates.size}; stored run on {n} dates up to {dt.date.fromordinal(int(dates[n - 1]))}")
 
 profile = presets.landsat_c2()
-h, lo = profile.options()
+lo = profile.options()[1]
 capped = profile.options()[0]
 capped.STAT_ORD = min(capped.STAT_ORD, int(dates[n - 1]))
 
@@ -86,7 +86,8 @@ for r0 in range(0, N, STRIP):
 
     for k, v in update["counts"].items():
         counts[k] += v
-    same = all(np.array_equal(update[k], full[k]) for k in SEGMENTS)
+    same = (all(np.array_equal(update[k], full[k]) for k in SEGMENTS)
+            and update["failures"] == full["failures"])
     if not same:
         bad = set()
         a = {k: update[k] for k in SEGMENTS}
@@ -108,4 +109,6 @@ print(f"stored run {t_first:.1f} s; update {t_resume:.1f} s; full run {t_full:.1
 print(f"status {counts}; pixels where the update differs from the full run: {differing}; "
       f"maxrss {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9:.1f} GB")
 print("fingerprint", digest.hexdigest())
+if sum(counts.values()) != N * N or counts["failed"]:
+    sys.exit(f"{sys.argv[0]}: expected {N * N} pixels and none failed, got {counts}")
 sys.exit(1 if differing else 0)

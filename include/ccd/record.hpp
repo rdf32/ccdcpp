@@ -34,7 +34,7 @@ inline constexpr std::uint16_t RESUME_FORMAT = 1;
 
 // The outputs. Bumped whenever an output can change for the same input and
 // options, so a record of another version describes a run this one would
-// not make. 1 is ccdcpp 0.8.0's.
+// not make.
 inline constexpr std::uint32_t RESULTS_VERSION = 1;
 
 // One call's part of the record, shared by its pixels.

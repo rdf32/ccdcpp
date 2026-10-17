@@ -65,6 +65,14 @@ the full run (`tools/bench/bench_resume.py`).
   anything reads at its positions. Stored segments with placeholders where
   the caller blanks a field (nlcd's break day and magnitude on no-break
   rows, no observation count) come back as given.
+
+### Added (tools)
+
+- `tools/bench/bench_resume.py`: the annual update of the bench cell, timed
+  against the full run and checked against it pixel by pixel.
+
+### Tests
+
 - `ResumeEqualsTheFullRun.*` (`tests/ccd/golden/test_resume.cpp`): at every
   cut of the characterization and CSV pixels and twelve of each golden cube
   pixel (14,695 cuts, 11,014 continued from the record), the resumed result
@@ -75,11 +83,6 @@ the full run (`tools/bench/bench_resume.py`).
   refusals.
 - `PrefixStability.*` also checks that the record's final segment count is
   the segments a longer series cannot rewrite, at every split.
-
-### Added (tools)
-
-- `tools/bench/bench_resume.py`: the annual update of the bench cell, timed
-  against the full run and checked against it pixel by pixel.
 
 ## 0.8.0 - 2026-10-16
 
