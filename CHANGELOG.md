@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A build without OpenMP compiles: `ccd.cpp` includes `<omp.h>` only under
+  `_OPENMP` and runs the cube on one thread otherwise (`CubeResult::threads`
+  is 1).
+
 ## 0.10.0 - 2026-10-17
 
 Speed, and outputs moved in their last bits only. The Atlanta h024v013 cell

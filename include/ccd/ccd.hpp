@@ -422,12 +422,12 @@ Resumed resume(
 // Run detect() over every pixel of a cube, in parallel over H*W.
 //
 // `threads` is the OpenMP thread count. 0 means "whatever the runtime would
-// have chosen", i.e. omp_get_max_threads(), which is what this function used
-// unconditionally before -- so 0 reproduces the old behaviour exactly. Passing
-// it explicitly matters because omp_get_max_threads() is fixed from
-// OMP_NUM_THREADS at library load, which means a caller embedding this in a
-// scheduler cannot honour its own allocation without setting an environment
-// variable before the shared library is imported.
+// choose", omp_get_max_threads(). Passing it explicitly matters because
+// omp_get_max_threads() is fixed from OMP_NUM_THREADS at library load, so a
+// caller embedding this in a scheduler cannot otherwise honour its own
+// allocation without setting an environment variable before the shared
+// library is imported. A build without OpenMP runs one thread whatever the
+// count, and CubeResult::threads says 1.
 //
 // This never throws on account of a pixel; see CubeResult::failures. It
 // throws std::invalid_argument, before any pixel runs, on the checks detect()

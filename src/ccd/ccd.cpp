@@ -1,6 +1,17 @@
 #include "ccd/ccd.hpp"
 
+#ifdef _OPENMP
 #include <omp.h>
+#else
+// A build without OpenMP runs the cube on one thread: the pragmas are
+// ignored, and these are the runtime's answers for a single thread.
+namespace
+{
+int omp_get_max_threads() { return 1; }
+int omp_get_num_threads() { return 1; }
+int omp_get_thread_num() { return 0; }
+} // namespace
+#endif
 
 #include <algorithm>
 #include <cstring>
