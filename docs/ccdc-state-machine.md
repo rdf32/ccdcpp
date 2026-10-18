@@ -321,6 +321,9 @@ initialization, is a machine of its own beside the Standard one:
   machine with its record, as `standard::Procedure` is Standard's). Nothing is inherited.
 - It composes the shared parts: `MaskedSeries`, `Cursor`, the segments, `initialize_step` with
   its own `InitializeCriteria`, `HarmonicBasis`, and `drive` with its trace.
+- It can hold a `standard::State` and call the Standard machine's work for the phases they share
+  (`prepare`, `initialize_outcome`, `lookback_step`, `write_start_segment`, `move_past_segment`,
+  `write_end_segment`), with routes of its own.
 - Its detector is a sibling of `standard::Detector` with the same `fit` call, and it reuses
   `select_procedure` and `fit_whole_series` for the pixels that take no machine.
 - It is a `ChangeMethod` (`HarmonicOptions::METHOD`), named in `method_name()`, its parameters

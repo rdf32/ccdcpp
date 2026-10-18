@@ -446,7 +446,7 @@ Phase prepare(const Context& context, State& state)
     return end_catch_because(state, Exit::NoRoomToInitialize);
 }
 
-Phase initialize(const Context& context, State& state)
+InitializeOutcome initialize_outcome(const Context& context, State& state)
 {
     LOG_DEBUG("Initialize for change model #: " << state.segments.size());
 
@@ -462,6 +462,12 @@ Phase initialize(const Context& context, State& state)
         state.init_models
     );
     LOG_DEBUG("Initialize: " << to_string(outcome));
+    return outcome;
+}
+
+Phase initialize(const Context& context, State& state)
+{
+    const InitializeOutcome outcome = initialize_outcome(context, state);
 
     switch (outcome)
     {
@@ -631,7 +637,7 @@ Phase lookback(const Context& context, State& state)
     return after_lookback(context, state);
 }
 
-Phase start_catch(const Context& context, State& state)
+void write_start_segment(const Context& context, State& state)
 {
     const Cursor& cursor = state.cursor;
     assert(state.segments.empty() && cursor.prev_break == 0);
@@ -647,7 +653,11 @@ Phase start_catch(const Context& context, State& state)
         context.solver
     );
     state.segments.push_back(std::move(result));
+}
 
+Phase start_catch(const Context& context, State& state)
+{
+    write_start_segment(context, state);
     return peek_guard(context, state);
 }
 
@@ -935,12 +945,17 @@ Phase extend(const Context& context, State& state)
     return Phase::EndCatch;
 }
 
-Phase restart(const Context& context, State& state)
+void move_past_segment(const Context& context, State& state)
 {
     Cursor& cursor = state.cursor;
 
     cursor.prev_break = cursor.window.stop;
     cursor.window = Window(cursor.window.stop, cursor.window.stop + context.options.MEOW_SIZE);
+}
+
+Phase restart(const Context& context, State& state)
+{
+    move_past_segment(context, state);
 
     if (room_to_initialize(context, state))
         return Phase::Initialize;
@@ -948,24 +963,26 @@ Phase restart(const Context& context, State& state)
     return end_catch_because(state, Exit::NoRoomToInitialize);
 }
 
-Phase end_catch(const Context& context, State& state)
+void write_end_segment(const Context& context, State& state)
 {
     const MaskedSeries& series = state.series;
-    const index_t prev_break = state.cursor.prev_break;
+    auto window_1 = Window(state.cursor.prev_break, series.size());
+    ChangeModel result = catch_segment(
+        series.dates(),
+        series.spectral(),
+        window_1,
+        context.options.COEFFICIENT_MIN,
+        CurveQA::End,
+        context.lasso,
+        context.solver
+    );
+    state.segments.push_back(std::move(result));
+}
 
-    if (prev_break + state.cadence.peek < series.size()) {
-        auto window_1 = Window(prev_break, series.size());
-        ChangeModel result = catch_segment(
-            series.dates(),
-            series.spectral(),
-            window_1,
-            context.options.COEFFICIENT_MIN,
-            CurveQA::End,
-            context.lasso,
-            context.solver
-        );
-        state.segments.push_back(std::move(result));
-    }
+Phase end_catch(const Context& context, State& state)
+{
+    if (state.cursor.prev_break + state.cadence.peek < state.series.size())
+        write_end_segment(context, state);
     return Phase::Done;
 }
 
