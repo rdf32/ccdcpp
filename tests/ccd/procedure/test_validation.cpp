@@ -367,6 +367,25 @@ TEST(Validation, CoefficientRules)
     EXPECT_NO_THROW(ccd::validate(h, 7));
 }
 
+// A method's name and back; with_method() sets METHOD and keeps every other
+// field; a name this build does not have is refused.
+TEST(Validation, ChangeMethods)
+{
+    EXPECT_EQ(ccd::method_from_name(ccd::method_name(ccd::ChangeMethod::Ccdc)), ccd::ChangeMethod::Ccdc);
+    EXPECT_STREQ(ccd::method_name(ccd::ChangeMethod::Ccdc), "ccdc");
+    EXPECT_THROW(ccd::method_from_name("CCDC"), std::invalid_argument);
+    EXPECT_THROW(ccd::method_from_name(""), std::invalid_argument);
+
+    ccd::HarmonicOptions h;
+    h.PEEK_SIZE = 9;
+    h.STAT_ORD = 736695;
+    const ccd::HarmonicOptions c = ccd::with_method(h, ccd::ChangeMethod::Ccdc);
+    EXPECT_EQ(c.METHOD, ccd::ChangeMethod::Ccdc);
+    EXPECT_EQ(c.PEEK_SIZE, 9u);
+    EXPECT_EQ(c.STAT_ORD, 736695);
+    EXPECT_NO_THROW(ccd::validate(c, 7));
+}
+
 // The cadence options are checked at the entry points too.
 TEST(Validation, DetectRejectsACadenceOption)
 {

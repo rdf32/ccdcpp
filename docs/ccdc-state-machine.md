@@ -29,7 +29,7 @@ The procedure choice:
 
 | Guard, in order | Procedure | What fits it |
 |---|---|---|
-| clear percentage >= `CLEAR_PCT_THRESHOLD` | Standard | the Standard machine (section 2) |
+| clear percentage >= `CLEAR_PCT_THRESHOLD` | Standard | the run's method (`HarmonicOptions::METHOD`): `ccdc`, the Standard machine (section 2) |
 | else snow percentage >= `SNOW_PCT_THRESHOLD` | PermanentSnow | `ccd::fit_whole_series`, curve_qa 54 |
 | else | InsufficientClear | `ccd::fit_whole_series`, curve_qa 44 |
 
@@ -312,22 +312,19 @@ is that function and its test (the numbers are those of the tests and the CHANGE
 A sensor variant works the same way: a time-based start window or refit rule would change
 Initialize's and Extend's guards and nothing else.
 
-### A second procedure
+### Another procedure
 
-A second change-detection procedure is planned: the band-first probability test (BFP; Tollerud
-et al., "Toward consistent change detection across irregular remote sensing time series
-observations", Remote Sensing of Environment 285, 2023). It replaces Standard's change test and
-keeps its initialization. The design leaves its place ready:
+Another change-detection procedure, one that replaces Standard's change test, say, and keeps its
+initialization, is a machine of its own beside the Standard one:
 
-- BFP is a machine of its own, `ccd::bfp`, with its own `Phase`, `Exit`, `State`,
-  transitions and `bfp::Procedure` (the machine with its record, as `standard::Procedure`
-  is Standard's). Nothing is inherited from Standard's.
+- Its own namespace, with its own `Phase`, `Exit`, `State`, transitions and `Procedure` (the
+  machine with its record, as `standard::Procedure` is Standard's). Nothing is inherited.
 - It composes the shared parts: `MaskedSeries`, `Cursor`, the segments, `initialize_step` with
   its own `InitializeCriteria`, `HarmonicBasis`, and `drive` with its trace.
 - Its detector is a sibling of `standard::Detector` with the same `fit` call, and it reuses
   `select_procedure` and `fit_whole_series` for the pixels that take no machine.
-- The run picks the detector (a `detector=` option, added with BFP); `detect_pixel` is where the
-  pick goes.
+- It is a `ChangeMethod` (`HarmonicOptions::METHOD`), named in `method_name()`, its parameters
+  set by `with_method()`; `detect_pixel` picks its detector by the method.
 
 A segment reports each band's fit as a `BandFit` (`ChangeModel::bands`): intercept,
 coefficients, RMSE, magnitude and the solver's iteration count (0 for a fit in closed form), so

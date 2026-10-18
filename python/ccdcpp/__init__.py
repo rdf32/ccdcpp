@@ -82,7 +82,7 @@ def _plan(entry, preprocess, profile, hoptions):
 
 
 def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
-             band_names=None):
+             band_names=None, method=None):
     if profile is None:
         if band_names is not None:
             raise TypeError(
@@ -93,6 +93,8 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
             raise TypeError(
                 f"{entry}() needs hoptions and loptions, or profile="
             )
+        if method is not None:
+            hoptions = _extension.with_method(hoptions, method)
         return (hoptions, loptions, (None if qa_table is _FROM_PROFILE else qa_table),
                 _plan(entry, preprocess, None, hoptions))
 
@@ -106,6 +108,8 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
         h, lo = profile.options()
         hoptions = h if hoptions is None else hoptions
         loptions = lo if loptions is None else loptions
+    if method is not None:
+        hoptions = _extension.with_method(hoptions, method)
     if qa_table is _FROM_PROFILE:
         qa_table = profile.qa_table(hoptions)
     return hoptions, loptions, qa_table, _plan(entry, preprocess, profile, hoptions)
@@ -113,7 +117,7 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
 
 def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
            qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-           band_names=None, resume_record=False):
+           band_names=None, resume_record=False, method=None):
     """CCD on one pixel.
 
     dates
@@ -147,6 +151,11 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         in the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked
         and a misordered stack runs. Needs profile= (TypeError otherwise).
+    method
+        The Standard procedure's change detection, one of ccdcpp.METHODS
+        ("ccdc"), applied to the run's hoptions with
+        ccdcpp.with_method() before the QA table and the plan are built;
+        None (the default) runs hoptions.METHOD, "ccdc" unless set.
     resume_record
         True to also return the run's resume record: "resume", the pixel's
         record (a dict; see resume_schema()), and "resume_header", the
@@ -159,7 +168,7 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "detect", spectral, hoptions, loptions, qa_table, preprocess, profile,
-        band_names)
+        band_names, method)
     out = _extension.detect(
         dates, spectral, qas, hoptions, loptions, qa_table=qa_table,
         preprocess=preprocess, resume_record=resume_record)
@@ -170,7 +179,7 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
 
 def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
                 *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-                band_names=None):
+                band_names=None, method=None):
     """CCD on every pixel of a cube, in parallel.
 
     dates
@@ -205,13 +214,18 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
         in the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked
         and a misordered stack runs. Needs profile= (TypeError otherwise).
+    method
+        The Standard procedure's change detection, one of ccdcpp.METHODS
+        ("ccdc"), applied to the run's hoptions with
+        ccdcpp.with_method() before the QA table and the plan are built;
+        None (the default) runs hoptions.METHOD, "ccdc" unless set.
 
     Returns a list of per-pixel dicts in raster order: row, col, models and
     processing_mask, as detect's. They carry no band_names.
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "detect_cube", spectral, hoptions, loptions, qa_table, preprocess, profile,
-        band_names)
+        band_names, method)
     return _extension.detect_cube(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
         preprocess=preprocess)
@@ -219,7 +233,8 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
 
 def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
                         threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-                        profile=None, band_names=None, resume_record=False):
+                        profile=None, band_names=None, resume_record=False,
+                        method=None):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     Arguments as detect_cube. Returns a dict of arrays with one entry per
@@ -237,7 +252,7 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "detect_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
-        profile, band_names)
+        profile, band_names, method)
     out = _extension.detect_cube_columns(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
         preprocess=preprocess, resume_record=resume_record)
@@ -248,7 +263,7 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
 
 def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
            resume_header, models, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-           profile=None, band_names=None):
+           profile=None, band_names=None, method=None):
     """Continue a recorded run on one pixel's longer series.
 
     dates, spectral, qas
@@ -260,7 +275,7 @@ def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
     models
         The stored run's segments, as detect() returned them; the first
         resume["final_segments"] are kept as given.
-    hoptions, loptions, qa_table, preprocess, profile, band_names
+    hoptions, loptions, qa_table, preprocess, profile, band_names, method
         As detect(), and the same as the stored run's: other options, plan
         or QA table raise ValueError, as do another record format or results
         version.
@@ -274,7 +289,7 @@ def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "resume", spectral, hoptions, loptions, qa_table, preprocess, profile,
-        band_names)
+        band_names, method)
     out = _extension.resume(
         dates, spectral, qas, hoptions, loptions, resume=resume,
         resume_header=resume_header, models=models, qa_table=qa_table,
@@ -287,7 +302,7 @@ def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
 def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
                         threads=0, *, resume, resume_header, segments,
                         qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-                        profile=None, band_names=None):
+                        profile=None, band_names=None, method=None):
     """Continue a recorded cube run on its longer series, as columns.
 
     dates, spectral, qas
@@ -320,7 +335,7 @@ def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     """
     hoptions, loptions, qa_table, preprocess = _resolve(
         "resume_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
-        profile, band_names)
+        profile, band_names, method)
     out = _extension.resume_cube_columns(
         dates, spectral, qas, hoptions, loptions, threads, resume=resume,
         resume_header=resume_header, segments=segments, qa_table=qa_table,

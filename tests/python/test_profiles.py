@@ -778,11 +778,12 @@ class Unprofiled(unittest.TestCase):
         cube = pixel + ["threads"]
         common = ["qa_table", "preprocess", "profile", "band_names"]
         for name, positional, keywords in (
-            ("detect", pixel, common + ["resume_record"]),
-            ("detect_cube", cube, common),
-            ("detect_cube_columns", cube, common + ["resume_record"]),
-            ("resume", pixel, ["resume", "resume_header", "models"] + common),
-            ("resume_cube_columns", cube, ["resume", "resume_header", "segments"] + common),
+            ("detect", pixel, common + ["resume_record", "method"]),
+            ("detect_cube", cube, common + ["method"]),
+            ("detect_cube_columns", cube, common + ["resume_record", "method"]),
+            ("resume", pixel, ["resume", "resume_header", "models"] + common + ["method"]),
+            ("resume_cube_columns", cube,
+             ["resume", "resume_header", "segments"] + common + ["method"]),
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
@@ -795,6 +796,30 @@ class Unprofiled(unittest.TestCase):
                     self.assertEqual(params["threads"].default, 0)
                 if "resume_record" in params:
                     self.assertIs(params["resume_record"].default, False)
+                self.assertIsNone(params["method"].default)
+
+    def test_method(self):
+        # method= picks the Standard procedure's change detection over the
+        # call's options, with or without a profile; "ccdc" is the default
+        # run, an unknown name is refused, and the caller's options are not
+        # changed.
+        h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        d, s, q = DATES, CUBE_DN, CODES
+        self.assertEqual(ccdcpp.METHODS, ("ccdc",))
+        self.assertEqual(h.METHOD, "ccdc")
+        expected = without(ccdcpp.detect_cube_columns(d, s, q, h, lo, 1), "threads")
+        assert_same(self, without(ccdcpp.detect_cube_columns(d, s, q, h, lo, 1, method="ccdc"),
+                                  "threads"), expected)
+        profile = ccdcpp.presets.landsat_c1_dn()
+        assert_same(self, without(ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile,
+                                                             method="ccdc"), "threads"),
+                    without(ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile), "threads"))
+        self.assertEqual(ccdcpp.with_method(h, "ccdc").METHOD, "ccdc")
+        with self.assertRaisesRegex(ValueError, "unknown change detection method"):
+            ccdcpp.detect(d, s[0, 0], q[0, 0], h, lo, method="CCDC")
+        with self.assertRaisesRegex(ValueError, "unknown change detection method"):
+            h.METHOD = "other"
+        self.assertEqual(h.METHOD, "ccdc")
 
     def test_options_required_without_a_profile(self):
         h = ccdcpp.HarmonicOptions()

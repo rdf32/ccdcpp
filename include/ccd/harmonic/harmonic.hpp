@@ -3,6 +3,7 @@
 #include <vector>
 #include <cassert>
 #include <algorithm>
+#include <string>
 
 #include "ccd/types.hpp"
 #include "ccd/band_list.hpp"
@@ -42,6 +43,29 @@ enum class GreenFilterScope : std::uint8_t
 
 //==============================================================================
 //
+// ChangeMethod
+//
+// The change detection a pixel taking the Standard procedure runs. The
+// PermanentSnow and InsufficientClear procedures are the same whichever
+// method a run uses (pixel_procedure.hpp).
+//
+//   Ccdc       "ccdc": the Standard machine (standard.hpp), pyccd's
+//              procedure as pyccd intends it (the default).
+//
+// Another method is another machine (docs/ccdc-state-machine.md, "Another
+// procedure"): a value here, its name in method_name(), its parameters in
+// with_method(), its detector in detect_pixel(). with_method() gives a run's
+// options for a method.
+//
+//==============================================================================
+
+enum class ChangeMethod : std::uint8_t
+{
+    Ccdc
+};
+
+//==============================================================================
+//
 // HarmonicOptions
 //
 // Parameters controlling CCD harmonic processing.
@@ -52,6 +76,10 @@ enum class GreenFilterScope : std::uint8_t
 
 struct HarmonicOptions
 {
+    // The Standard procedure's change detection (ChangeMethod above). Set it
+    // with with_method(), which also sets the parameters the method fixes.
+    ChangeMethod METHOD = ChangeMethod::Ccdc;
+
     //----------------------------------------------------------------------
     // Processing window parameters
     //----------------------------------------------------------------------
@@ -399,6 +427,16 @@ struct HarmonicOptions
     index_t QA_IDX      = 7;
 
 };
+
+// A method's name ("ccdc") and the method of a name;
+// method_from_name() throws std::invalid_argument on any other name.
+const char* method_name(ChangeMethod method);
+ChangeMethod method_from_name(const std::string& name);
+
+// `options` for a run of `method`: METHOD set, and the parameters the method
+// fixes set to its values; every other field as given, so a sensor profile's
+// unit constants carry through. ccdc fixes none.
+HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method);
 
 
 //==============================================================================

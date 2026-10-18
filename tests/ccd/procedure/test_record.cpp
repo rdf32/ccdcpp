@@ -386,7 +386,7 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 // for, and a test that fails here is a reminder, not a platform difference.
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 440u);
+    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 448u);
     EXPECT_EQ(sizeof(ccd::LassoOptions), 40u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);

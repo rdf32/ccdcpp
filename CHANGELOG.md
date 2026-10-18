@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- A change detection method option: `HarmonicOptions::METHOD`
+  (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,
+  `ccd::method_name()` / `method_from_name()`; in Python `method=` on
+  `detect`, `detect_cube`, `detect_cube_columns`, `resume` and
+  `resume_cube_columns`, `HarmonicOptions.METHOD` (a name),
+  `ccdcpp.with_method()` and `ccdcpp.METHODS`. `ccdc` is the Standard
+  machine. Its options digest is unchanged, so resume records written by
+  0.10.0 stay valid. C++: `HarmonicOptions` gains its first field, so code
+  built against 0.10.0's headers is rebuilt.
+
 ### Fixed
 
 - A build without OpenMP compiles: `ccd.cpp` includes `<omp.h>` only under

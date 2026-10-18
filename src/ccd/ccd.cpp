@@ -454,6 +454,10 @@ void digest(Fnv& h, const HarmonicOptions& o)
     for (const index_t v : {o.BLUE_IDX, o.GREEN_IDX, o.RED_IDX, o.NIR_IDX, o.SWIR1_IDX,
                             o.SWIR2_IDX, o.THERMAL_IDX, o.QA_IDX})
         h.integer(static_cast<std::int64_t>(v));
+    // ccdc adds nothing, so its digest is the one it has always had; another
+    // method adds its value (and its parameters).
+    if (o.METHOD != ChangeMethod::Ccdc)
+        h.integer(static_cast<std::int64_t>(o.METHOD));
 }
 
 void digest(Fnv& h, const LassoOptions& o)

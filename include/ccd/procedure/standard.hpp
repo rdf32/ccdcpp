@@ -520,7 +520,7 @@ FitResult resume(
 // it steps. The record is a member so that its buffers keep their capacity
 // across the pixels one object fits; run() resets it for each pixel, so a
 // reused object gives every pixel the result a fresh one does. A second
-// machine has its own Procedure in its own namespace (bfp::Procedure).
+// machine has its own Procedure in its own namespace.
 //
 //==============================================================================
 
@@ -568,8 +568,8 @@ private:
 // Detector
 //
 // The Standard change detector, the one a run uses for every pixel of a call
-// (the only detector so far: a second one, BFP, is a sibling class with the
-// same call, and the run picks one). Each pixel's procedure is chosen before
+// (another method's detector is a sibling class with the same call, and the
+// run picks one by its METHOD). Each pixel's procedure is chosen before
 // it, by the shared ccd::select_procedure() (pixel_procedure.hpp); fit()
 // then fits the pixel's processing mask with this machine for Standard, and
 // with the shared ccd::fit_whole_series() for PermanentSnow and
