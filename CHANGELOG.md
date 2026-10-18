@@ -13,6 +13,14 @@
   machine. Its options digest is unchanged, so resume records written by
   0.10.0 stay valid. C++: `HarmonicOptions` gains its first field, so code
   built against 0.10.0's headers is rebuilt.
+- `docs/benchmarks.md`: the measured speed and memory against PyCCD, the
+  Atlanta cell's thread scaling, 0.10.0 against 0.9.0 and the annual
+  update, with how to repeat each. `tools/bench/bench_pyccd.py` times PyCCD
+  and ccdcpp on the same pixels (and, with `--only`, each one's memory in its
+  own process); `tools/bench/patch_pyccd.py` makes a copy of PyCCD with
+  ccdcpp's corrections, on which every pixel has the same segments;
+  `bench_cell.py` also prints the peak memory after reading the cell. The
+  README's speed claim is now the measured one.
 
 ### Fixed
 

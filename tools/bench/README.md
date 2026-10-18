@@ -11,6 +11,8 @@ against v0.6.1 measured in the same session.
 | `bench.sh` | Runs `bench_synthetic.py` for the three reported configs, each under `/usr/bin/time -l`. |
 | `bench_cell.py` | Times `detect_cube_columns` with `presets.landsat_c2()` on a 500 x 500 Landsat C2 ARD cell and prints a fingerprint of every output. |
 | `bench_resume.py` | An annual update of the same cell: a recorded run on the dates before a cut, `resume_cube_columns` on all of them, and the full run; checks the update equals the full run on every pixel and times the three. |
+| `bench_pyccd.py` | Times PyCCD's `ccd.detect` and `ccdcpp.detect` on the same pixels, one thread each (corpus pixels and PyCCD-format CSVs), and counts the pixels whose segments agree; with `--only pyccd` or `--only ccdcpp`, one of them in its own process with its peak memory. |
+| `patch_pyccd.py` | Copies PyCCD and applies ccdcpp's corrections to it (README, "Differences from pyccd"), so the two can be timed on the same algorithm. |
 
 ## Setup
 
@@ -44,3 +46,18 @@ c++ -std=c++17 -O2 -I <repo>/tests/ccd/golden <repo>/tools/bench/make_corpus.cpp
    all 250,000 pixels.
 3. Measure v0.6.1 again in the same session whenever the load differs much from the last
    baseline. The budget (at most 2% slower) is checked on the finished machine against v0.6.1.
+4. PyCCD. With an interpreter that has lcmap-pyccd 2021.7.19's dependencies (numpy, scipy,
+   scikit-learn) and PyCCD's `ccd` package in `<pyccd dir>`:
+
+   ```
+   <python> -I -W ignore tools/bench/bench_pyccd.py <package dir> <pyccd dir> c16.bin 402 \
+       tests/ccd/procedure/test_3657_3610_observations.csv \
+       tests/ccd/procedure/test_atlanta_024013_00030008_481_393.csv
+   ```
+
+   Run it twice and report the medians, totals and ratios of the last lines. For the same
+   algorithm on both sides, run it again with `<pyccd dir>` a copy made by
+   `python3 -I tools/bench/patch_pyccd.py <pyccd dir>/ccd <out dir>` (every pixel then has the
+   same segments). For memory, run each implementation alone with `--only pyccd` and
+   `--only ccdcpp`. `bench_cell.py` prints the peak after reading the cell as well as at the end,
+   so the input's share of the memory is known.

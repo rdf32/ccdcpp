@@ -6,7 +6,7 @@ A high-performance C++17 implementation of the Continuous Change Detection and C
 
 > **Performance**
 >
-> On the benchmark example included in the original PyCCD repository, `ccdcpp` achieved approximately **60× faster execution** than PyCCD. Actual performance improvements will vary depending on hardware, dataset size, and workload, but the implementation is designed to substantially reduce both execution time and memory allocations compared to the original Python implementation.
+> One pixel at a time on one thread, `ccdcpp` is about **200× faster** than PyCCD (median of 404 pixels; against PyCCD with ccdcpp's corrections applied, the same segments on every one), and about 70× on PyCCD's own 443-observation reference pixel, in about half the process memory. With OpenMP a 500 × 500 Landsat cell (1984–2023) takes 23 s on 18 threads, 12.8× its one-thread time. See [Benchmarks](docs/benchmarks.md) for the measurements and how to repeat them.
 
 ---
 

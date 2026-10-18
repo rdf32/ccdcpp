@@ -53,7 +53,8 @@ sr, bt = g["landsat-c2ard-sr"], g["landsat-c2ard-bt"]
 dates = np.array([dt.date.fromisoformat(t).toordinal() for t in sr.attrs["time"]], np.int64)
 s = sr[R0:R0 + N, C0:C0 + N, :, :]          # (500, 500, 7, T) uint16: SR_B1..B6 + QA_PIXEL
 th = bt[R0:R0 + N, C0:C0 + N, 0, :]         # (500, 500, T) uint16: ST
-print(f"read {s.nbytes / 1e9 + th.nbytes / 1e9:.2f} GB in {time.perf_counter() - t0:.1f} s; T={dates.size}")
+print(f"read {s.nbytes / 1e9 + th.nbytes / 1e9:.2f} GB in {time.perf_counter() - t0:.1f} s; T={dates.size}; "
+      f"maxrss after reading {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9:.1f} GB")
 
 profile = presets.landsat_c2()
 digest = hashlib.sha256()
