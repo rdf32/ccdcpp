@@ -24,6 +24,7 @@
 //
 //==============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -69,8 +70,15 @@ TEST(Registry, ListsTheCoreStrategies)
     const auto names = ccd::strategies::core_registry().names();
     ASSERT_EQ(names.count("noise_floor"), 1u);
     EXPECT_EQ(names.at("noise_floor"), (std::vector<std::string>{"variogram"}));
-    // A library built without extensions has the core's strategies.
-    EXPECT_EQ(ccd::strategies::library_registry().names(), names);
+    // The library's registry holds every core strategy (and its extensions').
+    const auto library = ccd::strategies::library_registry().names();
+    for (const auto& [stage, strategies] : names)
+        for (const auto& strategy : strategies)
+        {
+            ASSERT_EQ(library.count(stage), 1u) << stage;
+            const auto& in = library.at(stage);
+            EXPECT_NE(std::find(in.begin(), in.end(), strategy), in.end()) << stage << " " << strategy;
+        }
     ASSERT_EQ(names.count("mode"), 1u);
     EXPECT_EQ(names.at("mode"), (std::vector<std::string>{"pyccd"}));
     ASSERT_EQ(names.count("segment_fit"), 1u);
