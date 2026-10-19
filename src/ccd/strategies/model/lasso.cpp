@@ -93,6 +93,11 @@ LassoOptions Lasso::solver_options() const
     return o;
 }
 
+Capabilities Lasso::provides() const
+{
+    return Capability::PeekResiduals | Capability::ModelRmse | Capability::InWindowResiduals;
+}
+
 std::unique_ptr<Model> Lasso::make_model() const
 {
     return std::make_unique<LassoFits>(solver_options());

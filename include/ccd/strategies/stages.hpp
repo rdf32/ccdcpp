@@ -9,6 +9,7 @@
 #include "ccd/types.hpp"
 
 #include "ccd/procedure/fit.hpp"
+#include "ccd/strategies/capabilities.hpp"
 
 namespace ccd
 {
@@ -32,8 +33,14 @@ class Model;   // strategies/model.hpp
 //
 //   model         the fit Extend tests each peek against
 //   refit         when Extend refits it
-//   change_test   the pixel's peek and change threshold, and whether a peek
-//                 is a change
+//   change_test   the pixel's peek, whether a peek is a change, and the
+//                 segment's break and magnitudes
+//   outlier       whether the first peek observation is an outlier
+//
+// At an Extend peek the stages read one Peek, and the change test's results
+// (PeekResult) are what the outlier rule reads; which stage provides what
+// each needs is declared (Capabilities, strategies/capabilities.hpp) and
+// checked when the strategies are built.
 //
 // What a strategy changes from one call to the next (a model's fits, a
 // test's buffers) is not in the strategy: it makes one per thread
@@ -68,6 +75,7 @@ struct MonitoringModel
     static constexpr const char* stage = "model";
 
     virtual ~MonitoringModel() = default;
+    virtual Capabilities provides() const = 0;
     virtual std::unique_ptr<Model> make_model() const = 0;
 };
 
@@ -79,10 +87,10 @@ struct MonitoringModel
 // its detection band count: it returns the peek size, which the machine's
 // guards and Lookback also read, and keeps what it derives for the pixel
 // (chi2's threshold) in the thread's scratch. test() decides one Extend
-// peek, writing each peek observation's statistic into `magnitude`, which
-// the outlier test reads after it. break_at() and magnitude() are the
-// segment's break observation and each band's change magnitude, from the
-// segment's last test.
+// peek, writing everything it provides into the PeekResult on every call,
+// which the outlier rule reads after it. break_at() and magnitude() are the segment's break
+// observation and each band's change magnitude, from the segment's last
+// test.
 //------------------------------------------------------------------------------
 
 enum class TestOutcome : std::uint8_t
@@ -91,9 +99,9 @@ enum class TestOutcome : std::uint8_t
     NoChange
 };
 
-// What a change test reads at one Extend step. Windows are positions in the
-// masked series, whose dates are `dates`.
-struct PeekTest
+// One Extend peek, as every stage that tests it reads it. Windows are
+// positions in the masked series, whose dates are `dates`.
+struct Peek
 {
     const Model& model;                                    // fitted on fit_window
     ArrayView<const std::int64_t, 1> dates;
@@ -104,6 +112,14 @@ struct PeekTest
     const std::vector<std::vector<scalar_t>>& residuals;   // by band, over the peek
     const Variogram& variogram;
     const BandList& bands;                                 // the detection bands
+};
+
+// What the change test found at a peek, for the outlier rule (by
+// Capability: ComparisonRmse, PeekStatistic). Rewritten by every test.
+struct PeekResult
+{
+    std::vector<scalar_t> comparison_rmse;   // by position in the detection bands
+    std::vector<scalar_t> statistic;         // by peek observation
 };
 
 // A change test's buffers and per-pixel values for one thread
@@ -119,13 +135,35 @@ struct ChangeTest
     static constexpr const char* stage = "change_test";
 
     virtual ~ChangeTest() = default;
+    virtual Capabilities needs() const = 0;
+    virtual Capabilities provides() const = 0;
     virtual std::unique_ptr<TestScratch> make_scratch() const = 0;
     virtual index_t prepare(ArrayView<const std::int64_t, 1> statistics_dates,
                             index_t detection_bands, TestScratch& scratch) const = 0;
-    virtual TestOutcome test(const PeekTest& peek, TestScratch& scratch,
-                             std::vector<scalar_t>& magnitude) const = 0;
-    virtual index_t break_at(const PeekTest& peek) const = 0;
-    virtual scalar_t magnitude(const PeekTest& peek, index_t band) const = 0;
+    virtual TestOutcome test(const Peek& peek, TestScratch& scratch,
+                             PeekResult& result) const = 0;
+    virtual index_t break_at(const Peek& peek) const = 0;
+    virtual scalar_t magnitude(const Peek& peek, index_t band) const = 0;
+};
+
+//------------------------------------------------------------------------------
+// outlier: after a peek that is not a change, whether its first observation
+// (at the model window's stop) is an outlier, which Extend drops.
+//------------------------------------------------------------------------------
+
+enum class OutlierOutcome : std::uint8_t
+{
+    Keep,
+    Drop
+};
+
+struct OutlierRule
+{
+    static constexpr const char* stage = "outlier";
+
+    virtual ~OutlierRule() = default;
+    virtual Capabilities needs() const = 0;
+    virtual OutlierOutcome judge(const Peek& peek, const PeekResult& result) const = 0;
 };
 
 // One call's strategies, one per stage, built from its configuration.
@@ -134,6 +172,7 @@ struct Strategies
     std::shared_ptr<const MonitoringModel> model;
     std::shared_ptr<const RefitSchedule> refit;
     std::shared_ptr<const ChangeTest> change_test;
+    std::shared_ptr<const OutlierRule> outlier;
 };
 
 } // namespace ccd

@@ -140,7 +140,9 @@ add_library(
     src/ccd/config/params.cpp
     src/ccd/config/registry.cpp
     src/ccd/strategies/change_test/chi2.cpp
+    src/ccd/strategies/capabilities.cpp
     src/ccd/strategies/model/lasso.cpp
+    src/ccd/strategies/outlier/floored.cpp
     src/ccd/strategies/register_core.cpp
     src/ccd/strategies/refit/span_factor.cpp
     src/ccd/qa_table.cpp

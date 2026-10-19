@@ -248,16 +248,15 @@ struct Extension
     // The change test's buffers, made by the run's change-test strategy.
     PerThread<ChangeTest, TestScratch> test;
 
-    // Each peek observation's change magnitude, rewritten by every test; the
-    // outlier test reads the first.
-    std::vector<scalar_t> magnitude;
+    // What the change test found at the last peek, which the outlier rule
+    // reads.
+    PeekResult result;
 };
 
 // What one Extend step did, in the order it tests them.
 enum class ExtendOutcome : std::uint8_t
 {
-    Change,    // every peek magnitude above the change threshold: the segment
-               // ends at the window
+    Change,    // the change test's Change: the segment ends at the window
     Dropped,   // the first peek observation, at window.stop, is an outlier:
                // dropped, the window keeping its coordinates
     SeriesEnd, // no change, and the peek reached the last observation: the
@@ -374,11 +373,13 @@ Phase initialize(const Context& context, State& state);
 // init_models, whose RMSE is the comparison RMSE, and makes the
 // decision on the record. Pre: window.start > prev_break. In order:
 //
-//   * every peek magnitude above the change threshold: Change, the window
+//   * every peek magnitude above the cadence's threshold: Change, the window
 //     stays;
 //   * the first above OUTLIER_THRESHOLD: Dropped, the observation before the
 //     window dropped from the series and the window moved down with it;
 //   * otherwise Included: window.start - 1.
+//
+// Lookback's tests are pyccd's, from the options, until Lookback is a stage.
 LookbackOutcome lookback_step(const Context& context, State& state);
 
 // lookback_step(), then the route: after a drop or an include, Lookback
@@ -395,7 +396,7 @@ Phase start_catch(const Context& context, State& state);
 // refit schedule is due; then, in order:
 //
 //   * the change test's Change: Change, the window stays;
-//   * the first above OUTLIER_THRESHOLD: Dropped, that observation (at
+//   * the outlier rule's Drop: Dropped, the first peek observation (at
 //     window.stop) dropped, the window keeping its coordinates;
 //   * no change, and the peek reached the last observation (window.stop +
 //     peek == size): SeriesEnd, the window as it is;

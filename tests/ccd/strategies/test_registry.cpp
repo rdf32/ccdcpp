@@ -10,6 +10,9 @@
 //     uses, and the refit schedule decides as Extend's inline test did;
 //   * the lasso monitoring model fits, predicts and scores as the shared
 //     kernels do, bit for bit, with the solver options it was configured with;
+//   * a configuration whose strategy needs what no earlier stage provides is
+//     refused, naming both; the floored outlier rule judges the change
+//     test's statistic against its threshold;
 //   * the chi2 change test's peek is the adjusted peek of its parameters, and
 //     the threshold memo is adjust_change_threshold() for any arguments.
 //
@@ -63,6 +66,8 @@ TEST(Registry, ListsTheCoreStrategies)
     EXPECT_EQ(names.at("refit"), (std::vector<std::string>{"span-factor"}));
     ASSERT_EQ(names.count("change_test"), 1u);
     EXPECT_EQ(names.at("change_test"), (std::vector<std::string>{"chi2"}));
+    ASSERT_EQ(names.count("outlier"), 1u);
+    EXPECT_EQ(names.at("outlier"), (std::vector<std::string>{"floored"}));
 }
 
 TEST(Registry, BuildsByNameAndChecksTheParameters)
@@ -263,4 +268,108 @@ TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
             EXPECT_EQ(memo(peek, 6, h.CHANGE_THRESHOLD, 7, probability),
                       ccd::adjust_change_threshold(peek, 6, h.CHANGE_THRESHOLD, 7, probability))
                 << peek << " " << probability;
+}
+
+namespace
+{
+
+// Test-only strategies: a monitoring model that provides nothing, and a
+// change test that provides nothing but needs no more than chi2.
+struct Opaque final : ccd::MonitoringModel
+{
+    struct Params
+    {
+    };
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        static const std::vector<ccd::config::Field<Params>> s;
+        return s;
+    }
+    explicit Opaque(const Params&) {}
+    ccd::Capabilities provides() const override { return {}; }
+    std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
+};
+
+struct Silent final : ccd::ChangeTest
+{
+    struct Params
+    {
+    };
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        static const std::vector<ccd::config::Field<Params>> s;
+        return s;
+    }
+    explicit Silent(const Params&) {}
+    ccd::Capabilities needs() const override { return {}; }
+    ccd::Capabilities provides() const override { return {}; }
+    std::unique_ptr<ccd::TestScratch> make_scratch() const override { return nullptr; }
+    ccd::index_t prepare(ccd::ArrayView<const std::int64_t, 1>, ccd::index_t,
+                         ccd::TestScratch&) const override
+    {
+        return 6;
+    }
+    ccd::TestOutcome test(const ccd::Peek&, ccd::TestScratch&, ccd::PeekResult&) const override
+    {
+        return ccd::TestOutcome::NoChange;
+    }
+    ccd::index_t break_at(const ccd::Peek& peek) const override { return peek.peek.start; }
+    double magnitude(const ccd::Peek&, ccd::index_t) const override { return 0; }
+};
+
+} // namespace
+
+TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
+{
+    ccd::config::Registry r;
+    ccd::strategies::register_core_strategies(r);
+    r.add<ccd::MonitoringModel, Opaque>("opaque");
+    auto tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    EXPECT_NO_THROW(ccd::strategies::build_strategies(r, tree));
+    tree["model"] = {"opaque", {}};
+    expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
+                   "change_test 'chi2' needs peek_residuals, model_rmse, in_window_residuals, "
+                   "which model 'opaque' does not provide");
+
+    // The outlier rule's needs, from the model and the change test together.
+    r.add<ccd::ChangeTest, Silent>("silent");
+    tree["model"] = {"lasso", {}};
+    tree["change_test"] = {"silent", {}};
+    expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
+                   "outlier 'floored' needs peek_statistic, which model 'lasso' with "
+                   "change_test 'silent' does not provide");
+
+    // A configuration without an outlier stage.
+    tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    tree.erase("outlier");
+    expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
+                   "the configuration has no 'outlier' stage");
+}
+
+TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
+{
+    ccd::HarmonicOptions h;
+    h.OUTLIER_THRESHOLD = 10.0;
+    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    EXPECT_EQ(tree.at("outlier").strategy, "floored");
+    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+
+    const std::int64_t day = 730000;
+    const std::vector<std::vector<double>> residuals;
+    const ccd::Variogram variogram;
+    const ccd::BandList bands;
+    const auto model = ccd::strategies::core_registry()
+                           .make<ccd::MonitoringModel>({"lasso", {}})
+                           ->make_model();
+    const ccd::Peek peek{*model, ccd::ArrayView<const std::int64_t, 1>::contiguous(&day, {1}),
+                         {}, {}, 0, {}, residuals, variogram, bands};
+    ccd::PeekResult result;
+    result.statistic = {10.0, 99.0};
+    EXPECT_EQ(s.outlier->judge(peek, result), ccd::OutlierOutcome::Keep);
+    result.statistic = {10.5, 0.0};
+    EXPECT_EQ(s.outlier->judge(peek, result), ccd::OutlierOutcome::Drop);
+
+    h.OUTLIER_THRESHOLD = NAN;
+    expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
+                   "outlier 'floored' parameter 'threshold' is nan");
 }

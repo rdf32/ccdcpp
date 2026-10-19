@@ -115,8 +115,8 @@ The guards inside one call, in the order they are tested:
   Zhu's TrendSeasonalFit.
 - **Extend** (`extend_step`): first the refit schedule (refit when untrained, at most
   `RETRAIN_MIN_OBS` observations, or once the window spans `RETRAIN_SPAN_FACTOR` times the last
-  fit); then every magnitude above the threshold (`Change`); the first above
-  `OUTLIER_THRESHOLD` (`Dropped`, the observation at `window.stop` leaves the series); a peek that
+  fit); then the change test (`Change`); the outlier rule (`Dropped`, the observation at
+  `window.stop` leaves the series; pyccd's: its statistic above `OUTLIER_THRESHOLD`); a peek that
   reached the last observation (`SeriesEnd`: the curve ends at the window, before the
   observation the peek starts at, its break day); otherwise `Grown` (`window.stop + 1`). The
   curve that reaches the series end, by `SeriesEnd` or by a drop that leaves no full peek, is
@@ -190,7 +190,8 @@ checks a configuration's values (unknown names, types, ranges) when the strategy
 |---|---|---|
 | `model` | the fits Extend tests each peek against: each band's fit on the model window, its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
 | `refit` | whether Extend refits the model before a peek test (after the first) | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
-| `change_test` | the pixel's peek size and anything else it derives per pixel (`prepare()`), whether an Extend peek is a change (`test()`, writing each peek observation's statistic, which the outlier test reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
+| `change_test` | the pixel's peek size and anything else it derives per pixel (`prepare()`), whether an Extend peek is a change (`test()`, writing the peek's comparison RMSE and each observation's statistic into the `PeekResult`, which the outlier rule reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
+| `outlier` | after a peek that is not a change, whether its first observation is an outlier, which Extend drops | `floored`: pyccd's rule, the change test's statistic for that observation (noise floored at the variogram) above `threshold` |
 
 A run's configuration is the one its options describe
 (`ccd::config::from_options()`):
@@ -201,6 +202,7 @@ A run's configuration is the one its options describe
 | `span-factor` | `min_obs`, `factor` | `RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR` |
 | `chi2` | `peek_size`, `peek_reference_days`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `PEEK_REFERENCE_DAYS`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
 | `chi2` | `model_rmse_up_to`, `seasonal_count`, `seasonal_divisor` | `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT`, `SEASONAL_RMSE_DIVISOR` |
+| `floored` | `threshold` | `OUTLIER_THRESHOLD` (Extend's; Lookback's outlier test reads the option until Lookback is a stage) |
 
 `RETRAIN_MIN_OBS` sets two parameters, the refit's and the test's, as pyccd's one constant does;
 a configuration may set them apart. The mapping lives in one file (`include/ccd/config/from_options.hpp`).
@@ -208,6 +210,21 @@ The machine's other decisions are made inside its phases. The peek size the chan
 is also what the machine's guards and Lookback read; Initialize's stability check and Lookback
 compare against pyccd's threshold computed from the options, so the change test's
 `change_threshold` and `change_probability` change Extend's test only.
+
+At an Extend peek every stage reads one `Peek` (the model, the windows, the peek's residuals,
+the variogram and the detection bands), and the change test writes what it found into a
+`PeekResult` (the comparison RMSE and the per-observation statistic), which the outlier rule
+reads. What each strategy provides and needs is declared as `Capabilities`
+(`include/ccd/strategies/capabilities.hpp`: the model's `peek_residuals`, `model_rmse` and
+`in_window_residuals`; the change test's `comparison_rmse` and `peek_statistic`), and
+`build_strategies` refuses a configuration in which a strategy needs what no earlier stage's
+strategy provides:
+
+```cpp
+// A model strategy that provides nothing, registered as "opaque", with chi2:
+// std::invalid_argument: change_test 'chi2' needs peek_residuals, model_rmse,
+//   in_window_residuals, which model 'opaque' does not provide
+```
 
 A stage whose strategy keeps state from one call to the next (the model's fits; the test's
 per-pixel threshold and seasonal order) makes one per thread (`make_model()`, `make_scratch()`),
@@ -240,6 +257,7 @@ config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{}
 //                                  {"change_threshold", 15.0863}, {"change_probability", 0.99},
 //                                  {"model_rmse_up_to", 24}, {"seasonal_count", 24},
 //                                  {"seasonal_divisor", 4.0}}}
+// tree["outlier"] is {"floored", {{"threshold", 35.8882}}}
 
 // The monitoring model for reflectance input: a 10,000 times smaller penalty.
 tree["model"].params["alpha"] = config::real(1e-4);
@@ -250,6 +268,10 @@ tree["refit"].params["factor"] = config::real(2.0);
 // The change test compares against the model's own RMSE up to 40 observations (pyccd: 24),
 // apart from the refit schedule's 24.
 tree["change_test"].params["model_rmse_up_to"] = config::integer(40);
+
+// Extend drops fewer observations as outliers: chi2(5) at 0.99999 instead of pyccd's
+// 0.999999 (Lookback's outlier test still reads OUTLIER_THRESHOLD).
+tree["outlier"].params["threshold"] = config::real(30.856);
 
 Strategies s = strategies::build_strategies(strategies::core_registry(), tree);
 s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_span=*/100.0);  // false

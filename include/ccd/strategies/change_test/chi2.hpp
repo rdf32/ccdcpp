@@ -22,6 +22,7 @@ namespace strategies
 // A segment breaks at its last test's first peek observation, each band's
 // magnitude the median of that test's peek residuals.
 //
+// It provides the peek's comparison RMSE and each observation's statistic.
 // Each peek observation's statistic is the sum over the detection bands of
 // (residual / max(variogram, comparison RMSE))^2 (change_magnitude()); the
 // peek is a change when every statistic is above the threshold. The
@@ -47,13 +48,14 @@ struct Chi2 final : ChangeTest
 
     explicit Chi2(const Params& p) : p_(p) {}
 
+    Capabilities needs() const override;
+    Capabilities provides() const override;
     std::unique_ptr<TestScratch> make_scratch() const override;
     index_t prepare(ArrayView<const std::int64_t, 1> statistics_dates, index_t detection_bands,
                     TestScratch& scratch) const override;
-    TestOutcome test(const PeekTest& peek, TestScratch& scratch,
-                     std::vector<scalar_t>& magnitude) const override;
-    index_t break_at(const PeekTest& peek) const override;
-    scalar_t magnitude(const PeekTest& peek, index_t band) const override;
+    TestOutcome test(const Peek& peek, TestScratch& scratch, PeekResult& result) const override;
+    index_t break_at(const Peek& peek) const override;
+    scalar_t magnitude(const Peek& peek, index_t band) const override;
 
 private:
     Params p_;

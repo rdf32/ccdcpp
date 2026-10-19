@@ -33,6 +33,7 @@ struct Lasso final : MonitoringModel
 
     explicit Lasso(const Params& p) : p_(p) {}
 
+    Capabilities provides() const override;
     std::unique_ptr<Model> make_model() const override;
 
     // The solver's options these parameters are.

@@ -4,9 +4,10 @@
 
 ### Changed
 
-- A run refuses a NaN `CHANGE_THRESHOLD`, and Lasso options that are negative or NaN (`alpha`,
-  `tolerance`, `coef_floor`), when it is built, with `std::invalid_argument` naming the parameter ("model 'lasso'
-  parameter 'alpha' is -1; it must be at least 0"); they used to run.
+- A run refuses a NaN `CHANGE_THRESHOLD` or `OUTLIER_THRESHOLD`, and Lasso options that are
+  negative or NaN (`alpha`, `tolerance`, `coef_floor`), when it is built, with
+  `std::invalid_argument` naming the parameter ("model 'lasso' parameter 'alpha' is -1; it must
+  be at least 0"); they used to run.
 - **The C++ entry points are `ccd::run_pixel` and `ccd::run_cube`** (`include/ccd/run/run.hpp`),
   replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
   overloads. What a call runs is one `ccd::RunSpec` (the options, the QA table, the plan,
@@ -59,6 +60,14 @@
   `ccd::config::from_options()` and `ccd::config::strategies_for()`
   (`include/ccd/config/from_options.hpp`; were `ccd::strategies::config_from_options()` and
   `strategies_for()`). Outputs unchanged.
+- **The `outlier` stage**: Extend's outlier decision, `ccd::OutlierRule`, with its strategy
+  `floored` (pyccd's rule; `threshold` from `OUTLIER_THRESHOLD`). At an Extend peek the stages
+  read one `ccd::Peek` (was `PeekTest`), and the change test writes a `ccd::PeekResult` (the
+  comparison RMSE and per-observation statistic) that the outlier rule reads; `ChangeTest::test`
+  takes it. Strategies declare what they provide and need (`ccd::Capabilities`,
+  `include/ccd/strategies/capabilities.hpp`; `provides()`/`needs()` on the stage interfaces), and
+  `build_strategies` refuses a configuration whose strategy needs what no earlier stage
+  provides, naming both, and one without an `outlier` stage. Outputs unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

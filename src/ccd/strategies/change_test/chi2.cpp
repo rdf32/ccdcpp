@@ -24,7 +24,6 @@ class Chi2Scratch final : public TestScratch
 public:
     scalar_t change_threshold = 0;
     ChangeThresholdMemo thresholds;
-    std::vector<scalar_t> comp_rmse;   // by position in the detection bands
     SeasonalOrder seasonal;
     index_t seasonal_fit = 0;
     std::vector<index_t> closest;      // the seasonal RMSE's observations
@@ -52,6 +51,16 @@ const std::vector<config::Field<Chi2::Params>>& Chi2::schema()
          "the seasonal RMSE is their residuals' norm over this"},
     };
     return s;
+}
+
+Capabilities Chi2::needs() const
+{
+    return Capability::PeekResiduals | Capability::ModelRmse | Capability::InWindowResiduals;
+}
+
+Capabilities Chi2::provides() const
+{
+    return Capability::ComparisonRmse | Capability::PeekStatistic;
 }
 
 std::unique_ptr<TestScratch> Chi2::make_scratch() const
@@ -86,8 +95,7 @@ index_t Chi2::prepare(ArrayView<const std::int64_t, 1> statistics_dates,
     return peek;
 }
 
-TestOutcome Chi2::test(const PeekTest& peek, TestScratch& scratch,
-                       std::vector<scalar_t>& magnitude) const
+TestOutcome Chi2::test(const Peek& peek, TestScratch& scratch, PeekResult& result) const
 {
     Chi2Scratch& s = static_cast<Chi2Scratch&>(scratch);
     const BandList& detection_bands = peek.bands;
@@ -96,7 +104,7 @@ TestOutcome Chi2::test(const PeekTest& peek, TestScratch& scratch,
     const auto& masked_dates = peek.dates;
 
     // Indexed by position in the detection bands.
-    std::vector<scalar_t>& comp_rmses = s.comp_rmse;
+    std::vector<scalar_t>& comp_rmses = result.comparison_rmse;
     comp_rmses.resize(detection_bands.size());
     if (window.stop - window.start <= p_.model_rmse_up_to) {
         LOG_DEBUG("normal residuals and rmse");
@@ -134,19 +142,19 @@ TestOutcome Chi2::test(const PeekTest& peek, TestScratch& scratch,
         detection_bands,
         peek.variogram,
         comp_rmses,
-        magnitude
+        result.statistic
     );
 
-    return detect_change(magnitude, s.change_threshold) ? TestOutcome::Change
+    return detect_change(result.statistic, s.change_threshold) ? TestOutcome::Change
                                                         : TestOutcome::NoChange;
 }
 
-index_t Chi2::break_at(const PeekTest& peek) const
+index_t Chi2::break_at(const Peek& peek) const
 {
     return peek.peek.start;
 }
 
-scalar_t Chi2::magnitude(const PeekTest& peek, index_t band) const
+scalar_t Chi2::magnitude(const Peek& peek, index_t band) const
 {
     // median() orders its argument in place; the peek's residuals stay as
     // they are.

@@ -52,6 +52,7 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
          {"model_rmse_up_to", count(hoptions.RETRAIN_MIN_OBS)},
          {"seasonal_count", count(hoptions.SEASONAL_RMSE_COUNT)},
          {"seasonal_divisor", real(hoptions.SEASONAL_RMSE_DIVISOR)}}};
+    tree[OutlierRule::stage] = {"floored", {{"threshold", real(hoptions.OUTLIER_THRESHOLD)}}};
     return tree;
 }
 

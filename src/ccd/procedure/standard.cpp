@@ -43,11 +43,11 @@ TestScratch& test_scratch(const Context& context, Extension& extension)
                               [](const ChangeTest& c) { return c.make_scratch(); });
 }
 
-// What the change test reads of Extend's last peek.
-PeekTest peek_test(const Context& context, const State& state)
+// Extend's last peek, as its tests read it.
+Peek peek_of(const Context& context, const State& state)
 {
     const Extension& extension = state.extension;
-    return PeekTest{*extension.model, state.series.dates(), state.cursor.window,
+    return Peek{*extension.model, state.series.dates(), state.cursor.window,
                     extension.fit_window, extension.fits, extension.peek, extension.residuals,
                     state.variogram, context.options.DETECTION_BANDS};
 }
@@ -619,7 +619,7 @@ void write_extended_segment(
     result.start_day = masked_dates(window.start);
     result.end_day = masked_dates(window.stop - 1);
     const ChangeTest& change_test = *context.strategies.change_test;
-    const PeekTest last = peek_test(context, state);
+    const Peek last = peek_of(context, state);
     result.break_day = masked_dates(change_test.break_at(last));
     result.observation_count = window.stop - window.start;
     result.change_probability = change_probability;
@@ -709,8 +709,9 @@ ExtendOutcome extend_step(const Context& context, State& state)
         extension.residuals
     );
 
+    const Peek peek = peek_of(context, state);
     const TestOutcome outcome = context.strategies.change_test->test(
-        peek_test(context, state), test_scratch(context, extension), extension.magnitude);
+        peek, test_scratch(context, extension), extension.result);
 
     //--------------------------------------------------------------------------
     // Change detected: the segment ends at the window
@@ -724,10 +725,9 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // Outlier detected: drop the first peek observation, at window.stop; the
     // window keeps its coordinates
     //--------------------------------------------------------------------------
-    else if (detect_outlier(extension.magnitude[0], options.OUTLIER_THRESHOLD))
+    else if (context.strategies.outlier->judge(peek, extension.result) == OutlierOutcome::Drop)
     {
         LOG_DEBUG("Outlier detected at: " << peek_window.start);
-        LOG_DEBUG("mag: " << extension.magnitude[0] << " thresh: " << options.OUTLIER_THRESHOLD);
         LOG_DEBUG("Updating processing mask extend");
         // A drop that leaves no full peek ends the curve at this test: its
         // other bands are this test's, before the drop moves the peek.

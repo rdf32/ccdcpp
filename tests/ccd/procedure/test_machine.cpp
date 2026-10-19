@@ -780,7 +780,8 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     std::vector<double> rmse(bands.size());
     for (index_t i = 0; i < bands.size(); ++i)
         rmse[i] = e.model->rmse(bands[i]);
-    EXPECT_EQ(e.magnitude, magnitude_with(rmse));
+    EXPECT_EQ(e.result.comparison_rmse, rmse);
+    EXPECT_EQ(e.result.statistic, magnitude_with(rmse));
 
     r.step();   // window (0, 25): seasonal
     const auto closest = ccd::find_closest_doy(
@@ -788,7 +789,8 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     for (index_t i = 0; i < bands.size(); ++i)
         rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
                                      r.options.SEASONAL_RMSE_DIVISOR);
-    EXPECT_EQ(e.magnitude, magnitude_with(rmse));
+    EXPECT_EQ(e.result.comparison_rmse, rmse);
+    EXPECT_EQ(e.result.statistic, magnitude_with(rmse));
 }
 
 TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
@@ -814,7 +816,8 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
                                      r.options.SEASONAL_RMSE_DIVISOR);
     std::vector<double> want;
     ccd::change_magnitude(e.residuals, bands, r.state.variogram, rmse, want);
-    EXPECT_EQ(e.magnitude, want);
+    EXPECT_EQ(e.result.comparison_rmse, rmse);
+    EXPECT_EQ(e.result.statistic, want);
 }
 
 TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
