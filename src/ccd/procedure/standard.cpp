@@ -53,19 +53,13 @@ Scratch& lookback_scratch(const Context& context, State& state)
 namespace
 {
 
-#if CCD_OBSERVE
-// The observer's event of a segment just written.
-ObserverEvent segment_event(const ChangeModel& m)
-{
-    ObserverEvent e{ObserverEvent::Kind::Segment};
-    e.day = m.start_day;
-    e.day_to = m.end_day;
-    e.observations = m.observation_count;
-    e.outcome = "curve_qa " + std::to_string(static_cast<int>(m.curve_qa)) + " break " +
-                std::to_string(m.break_day) + " change " + std::to_string(m.change_probability);
-    return e;
-}
 
+} // namespace
+
+namespace
+{
+
+#if CCD_OBSERVE
 ObserverEvent day_event(ObserverEvent::Kind kind, std::int64_t day, std::string outcome)
 {
     ObserverEvent e{kind};
@@ -74,28 +68,6 @@ ObserverEvent day_event(ObserverEvent::Kind kind, std::int64_t day, std::string 
     return e;
 }
 #endif
-
-// The pixel's end, to the observer.
-void report_exit(const Context& context, const State& state)
-{
-#if CCD_OBSERVE
-    if (context.observe.observer)
-    {
-        ObserverEvent e{ObserverEvent::Kind::Exit};
-        e.outcome = to_string(state.exit);
-        e.observations = state.segments.size();
-        context.observe.observer->event(context.observe.pixel, e);
-    }
-#else
-    (void)context;
-    (void)state;
-#endif
-}
-
-} // namespace
-
-namespace
-{
 
 // The extension's change-test buffers, of the run's change-test strategy.
 Scratch& test_scratch(const Context& context, Extension& extension)
@@ -221,6 +193,33 @@ FitResult State::take_result()
     result.models = std::move(segments);
     result.mask = series.take_mask();
     return result;
+}
+
+ObserverEvent segment_event(const ChangeModel& m)
+{
+    ObserverEvent e{ObserverEvent::Kind::Segment};
+    e.day = m.start_day;
+    e.day_to = m.end_day;
+    e.observations = m.observation_count;
+    e.outcome = "curve_qa " + std::to_string(static_cast<int>(m.curve_qa)) + " break " +
+                std::to_string(m.break_day) + " change " + std::to_string(m.change_probability);
+    return e;
+}
+
+void report_exit(const Context& context, const State& state)
+{
+#if CCD_OBSERVE
+    if (context.observe.observer)
+    {
+        ObserverEvent e{ObserverEvent::Kind::Exit};
+        e.outcome = to_string(state.exit);
+        e.observations = state.segments.size();
+        context.observe.observer->event(context.observe.pixel, e);
+    }
+#else
+    (void)context;
+    (void)state;
+#endif
 }
 
 ObserverEvent observed(const State& state)

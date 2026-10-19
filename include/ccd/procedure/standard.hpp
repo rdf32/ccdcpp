@@ -309,10 +309,16 @@ struct Context
 // them.
 ObserverEvent observed(const State& state);
 
+// The observer's event of a segment written (Kind::Segment).
+ObserverEvent segment_event(const ChangeModel& segment);
+
 // The state's stability fit and stability-rule scratch, of the run's
 // strategies (made when the state's are another run's).
 Model& stability_fit(const Context& context, State& state);
 Scratch& stability_scratch(const Context& context, State& state);
+
+// Reports the pixel's exit (state.exit) to the context's observer, if any.
+void report_exit(const Context& context, const State& state);
 
 // The state's lookback and edge-fit scratch, of the run's strategies.
 Scratch& lookback_scratch(const Context& context, State& state);
