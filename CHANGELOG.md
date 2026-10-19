@@ -31,6 +31,13 @@
 
 ### Added
 
+- **The configuration from Python** (`docs/config.md`): `ccdcpp.Config` (immutable;
+  `replace(stage__param=value, stage="strategy")`, `check(bands=)`, `hash()`, `to_toml()`,
+  `Config.from_options(hoptions, loptions)`), `ccdcpp.config(name_or_path)` reading TOML presets
+  with `extends` (`ccdcpp/configs/ccdc.toml`, the default options' configuration), and
+  `ccdcpp.strategies()` listing every stage's strategies with their parameters' units, bounds,
+  defaults and meaning (`config::Registry::schemas()`, `config::ParameterInfo`). `detect`,
+  `detect_cube`, `detect_cube_columns`, `resume` and `resume_cube_columns` take `config=`.
 - **Stages and strategies** (1.0 step 2, begun): `include/ccd/strategies/stages.hpp` (the
   stage interfaces; `ccd::Strategies`, one per stage), `include/ccd/config/registry.hpp`
   (`config::Registry`, `StageConfig`, `ConfigTree`) and `include/ccd/config/params.hpp` (each

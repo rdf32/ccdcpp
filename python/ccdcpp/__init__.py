@@ -13,6 +13,7 @@ del sys
 
 from . import ccdcpp as _extension
 from . import presets
+from .config import Config, config, strategies
 from .profiles import (
     CADENCE_FIELDS,
     CELSIUS_HUNDREDTHS,
@@ -117,7 +118,7 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
 
 def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
            qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-           band_names=None, resume_record=False, method=None):
+           band_names=None, resume_record=False, method=None, config=None):
     """CCD on one pixel.
 
     dates
@@ -156,6 +157,12 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         ("ccdc"), applied to the run's hoptions with
         ccdcpp.with_method() before the QA table and the plan are built;
         None (the default) runs hoptions.METHOD, "ccdc" unless set.
+    config
+        A ccdcpp.Config (or a dict of stages): the algorithm, one strategy
+        and its parameters per stage (ccdcpp.config(), ccdcpp.strategies()).
+        None, the default, runs the configuration hoptions and loptions
+        describe. Checked before the pixel runs (ValueError); a resume
+        record of a configured run continues only under the same one.
     resume_record
         True to also return the run's resume record: "resume", the pixel's
         record (a dict; see resume_schema()), and "resume_header", the
@@ -171,7 +178,7 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         band_names, method)
     out = _extension.detect(
         dates, spectral, qas, hoptions, loptions, qa_table=qa_table,
-        preprocess=preprocess, resume_record=resume_record)
+        preprocess=preprocess, resume_record=resume_record, config=config)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -179,7 +186,7 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
 
 def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
                 *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-                band_names=None, method=None):
+                band_names=None, method=None, config=None):
     """CCD on every pixel of a cube, in parallel.
 
     dates
@@ -228,13 +235,13 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
         band_names, method)
     return _extension.detect_cube(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
-        preprocess=preprocess)
+        preprocess=preprocess, config=config)
 
 
 def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
                         threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
                         profile=None, band_names=None, resume_record=False,
-                        method=None):
+                        method=None, config=None):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     Arguments as detect_cube. Returns a dict of arrays with one entry per
@@ -255,7 +262,7 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
         profile, band_names, method)
     out = _extension.detect_cube_columns(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
-        preprocess=preprocess, resume_record=resume_record)
+        preprocess=preprocess, resume_record=resume_record, config=config)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -263,7 +270,7 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
 
 def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
            resume_header, models, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-           profile=None, band_names=None, method=None):
+           profile=None, band_names=None, method=None, config=None):
     """Continue a recorded run on one pixel's longer series.
 
     dates, spectral, qas
@@ -293,7 +300,7 @@ def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
     out = _extension.resume(
         dates, spectral, qas, hoptions, loptions, resume=resume,
         resume_header=resume_header, models=models, qa_table=qa_table,
-        preprocess=preprocess)
+        preprocess=preprocess, config=config)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -302,7 +309,7 @@ def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
 def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
                         threads=0, *, resume, resume_header, segments,
                         qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-                        profile=None, band_names=None, method=None):
+                        profile=None, band_names=None, method=None, config=None):
     """Continue a recorded cube run on its longer series, as columns.
 
     dates, spectral, qas
@@ -339,7 +346,7 @@ def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     out = _extension.resume_cube_columns(
         dates, spectral, qas, hoptions, loptions, threads, resume=resume,
         resume_header=resume_header, segments=segments, qa_table=qa_table,
-        preprocess=preprocess)
+        preprocess=preprocess, config=config)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out

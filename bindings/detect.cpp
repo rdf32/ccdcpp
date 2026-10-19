@@ -16,6 +16,7 @@
 #include "ccd/qa_table.hpp"
 #include "ccd/preprocess/preprocess.hpp"
 
+#include "config.hpp"
 #include "resume.hpp"
 
 namespace py = pybind11;
@@ -188,7 +189,8 @@ static py::dict pixel_wrapper(
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
     bool record,
-    const PixelResumeFrom* from
+    const PixelResumeFrom* from,
+    ConfigPtr config
 )
 {
     refuse_raw_without_table(qas_obj, qa_table != nullptr);
@@ -296,6 +298,7 @@ static py::dict pixel_wrapper(
 
     ccd::RunSpec spec{hoptions, loptions, qa_table, preprocess};
     spec.record = record;
+    spec.config = config;
 
     const auto run = [&](auto qa_view)
     {
@@ -414,11 +417,12 @@ py::dict detect_wrapper(
     ccd::LassoOptions loptions,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
-    bool resume_record
+    bool resume_record,
+    py::object config
 )
 {
     return pixel_wrapper(dates, spectral, qas_obj, hoptions, loptions, std::move(qa_table),
-                         preprocess_plan, resume_record, nullptr);
+                         preprocess_plan, resume_record, nullptr, config_from_python(config));
 }
 
 py::dict resume_wrapper(
@@ -431,7 +435,8 @@ py::dict resume_wrapper(
     py::dict resume_header,
     py::list models,
     std::shared_ptr<ccd::QaTable> qa_table,
-    const ccd::preprocess::PreprocessPlan* preprocess_plan
+    const ccd::preprocess::PreprocessPlan* preprocess_plan,
+    py::object config
 )
 {
     const PixelResumeFrom from{
@@ -439,7 +444,7 @@ py::dict resume_wrapper(
         record_from_python(resume),
         segments_from_python(models)};
     return pixel_wrapper(dates, spectral, qas_obj, hoptions, loptions, std::move(qa_table),
-                         preprocess_plan, true, &from);
+                         preprocess_plan, true, &from, config_from_python(config));
 }
 
 //------------------------------------------------------------------------------
@@ -487,6 +492,8 @@ struct CubeInput
     ccd::index_t W = 0;
     ccd::index_t B = 0;
     ccd::index_t T = 0;
+
+    ConfigPtr config;   // set by the caller after check_cube()
 };
 
 static CubeInput check_cube(
@@ -606,6 +613,7 @@ static ccd::CubeResult run_cube(
         : ccd::CubeQa(strided_view<std::uint8_t, 3>(in.qas));
 
     ccd::RunSpec spec{hoptions, loptions, in.qa_table, in.preprocess};
+    spec.config = in.config;
     spec.keep_masks = keep_masks;
     spec.record = record;
     return ccd::run_cube(spec, dates, spectral, qas, threads, from);
@@ -650,11 +658,13 @@ py::list detect_cube_wrapper(
     ccd::LassoOptions loptions,
     int threads,
     std::shared_ptr<ccd::QaTable> qa_table,
-    const ccd::preprocess::PreprocessPlan* preprocess
+    const ccd::preprocess::PreprocessPlan* preprocess,
+    py::object config
 )
 {
-    const CubeInput views =
+    CubeInput views =
         check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
+    views.config = config_from_python(config);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -1017,11 +1027,13 @@ py::dict detect_cube_columns_wrapper(
     int threads,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess,
-    bool resume_record
+    bool resume_record,
+    py::object config
 )
 {
-    const CubeInput views =
+    CubeInput views =
         check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
+    views.config = config_from_python(config);
 
     ccd::CubeResult cube;
     {
@@ -1052,11 +1064,13 @@ py::dict resume_cube_columns_wrapper(
     py::dict resume_header,
     py::dict segments,
     std::shared_ptr<ccd::QaTable> qa_table,
-    const ccd::preprocess::PreprocessPlan* preprocess
+    const ccd::preprocess::PreprocessPlan* preprocess,
+    py::object config
 )
 {
-    const CubeInput views =
+    CubeInput views =
         check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
+    views.config = config_from_python(config);
     const ccd::CubeResumeFrom from =
         cube_from_python(resume_header, resume, segments, views.H, views.W, views.B);
 
@@ -1099,7 +1113,8 @@ void bind_detect(py::module_& m)
         py::kw_only(),
         py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none(),
-        py::arg("resume_record") = false
+        py::arg("resume_record") = false,
+        py::arg("config") = py::none()
     );
     m.def(
         "resume",
@@ -1114,7 +1129,8 @@ void bind_detect(py::module_& m)
         py::arg("resume_header"),
         py::arg("models"),
         py::arg("qa_table") = py::none(),
-        py::arg("preprocess") = py::none()
+        py::arg("preprocess") = py::none(),
+        py::arg("config") = py::none()
     );
     m.def(
         "detect_cube",
@@ -1127,7 +1143,8 @@ void bind_detect(py::module_& m)
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("qa_table") = py::none(),
-        py::arg("preprocess") = py::none()
+        py::arg("preprocess") = py::none(),
+        py::arg("config") = py::none()
     );
     m.def(
         "detect_cube_columns",
@@ -1141,7 +1158,8 @@ void bind_detect(py::module_& m)
         py::kw_only(),
         py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none(),
-        py::arg("resume_record") = false
+        py::arg("resume_record") = false,
+        py::arg("config") = py::none()
     );
     m.def(
         "resume_cube_columns",
@@ -1157,7 +1175,8 @@ void bind_detect(py::module_& m)
         py::arg("resume_header"),
         py::arg("segments"),
         py::arg("qa_table") = py::none(),
-        py::arg("preprocess") = py::none()
+        py::arg("preprocess") = py::none(),
+        py::arg("config") = py::none()
     );
     m.def("resume_schema", &resume_schema);
     m.attr("RESUME_FORMAT") = ccd::RESUME_FORMAT;

@@ -41,6 +41,17 @@ namespace config
 //
 //==============================================================================
 
+// One parameter of a strategy, as its schema declares it: for listings, the
+// Python binding and the docs.
+struct ParameterInfo
+{
+    std::string name;
+    Unit unit;
+    std::string bounds;   // describe() of its bounds
+    std::string doc;
+    Value default_value;
+};
+
 struct StageConfig
 {
     std::string strategy;
@@ -69,6 +80,13 @@ public:
         if (stage.count(name))
             throw std::logic_error(std::string(Interface::stage) + " strategy '" + name +
                                    "' registered twice");
+        {
+            std::vector<ParameterInfo>& info = schemas_[Interface::stage][name];
+            const Values defaults = to_values(Strategy::schema(), typename Strategy::Params{});
+            for (const auto& field : Strategy::schema())
+                info.push_back(ParameterInfo{field.name, field.unit, describe(field.bounds),
+                                             field.doc, defaults.at(field.name)});
+        }
         band_checks_[Interface::stage][name] =
             [name](const Values& values, index_t bands, const std::string& where)
         {
@@ -104,6 +122,13 @@ public:
     // The strategy names of each stage, for listings and tests.
     std::map<std::string, std::vector<std::string>> names() const;
 
+    // Each strategy's parameters with their defaults, by stage and name.
+    const std::map<std::string, std::map<std::string, std::vector<ParameterInfo>>>&
+    schemas() const
+    {
+        return schemas_;
+    }
+
     // Throws std::invalid_argument when a band-list parameter of a strategy
     // `config` names, as set there or by default, names a band an input of
     // `bands` bands does not have, or repeats one. Strategies the registry
@@ -121,6 +146,7 @@ private:
     std::map<std::string, std::map<std::string, Factory>> factories_;
     using BandCheck = std::function<void(const Values&, index_t, const std::string&)>;
     std::map<std::string, std::map<std::string, BandCheck>> band_checks_;
+    std::map<std::string, std::map<std::string, std::vector<ParameterInfo>>> schemas_;
 };
 
 } // namespace config

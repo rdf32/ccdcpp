@@ -1,0 +1,92 @@
+# The ccdc preset: pyccd's algorithm, as ccdcpp corrects it (README), with the default
+# HarmonicOptions and LassoOptions, whose values are Collection-1 DN's. Written out by
+# ccdcpp.Config.from_options(ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()).to_toml().
+
+[change_test]
+strategy = "chi2"
+[change_test.params]
+change_probability = 0.99
+change_threshold = 15.086272469388987
+model_rmse_up_to = 24
+peek_reference_days = 16.0
+peek_size = 6
+seasonal_count = 24
+seasonal_divisor = 4.0
+
+[edge_fit]
+strategy = "lasso"
+[edge_fit.params]
+alpha = 1.0
+coef_floor = 1.0
+coefficients = 4
+max_iter = 1000
+min_observations = 12
+tolerance = 0.0001
+
+[lookback]
+strategy = "pyccd"
+[lookback.params]
+change_probability = 0.99
+change_threshold = 15.086272469388987
+outlier_threshold = 35.88818687961042
+peek_size = 6
+
+[mode]
+strategy = "pyccd"
+[mode.params]
+clear_pct_threshold = 0.25
+snow_pct_threshold = 0.75
+
+[model]
+strategy = "lasso"
+[model.params]
+alpha = 1.0
+coef_floor = 1.0
+max_iter = 1000
+tolerance = 0.0001
+
+[noise_floor]
+strategy = "variogram"
+[noise_floor.params]
+min_lag_days = 30
+
+[outlier]
+strategy = "floored"
+[outlier.params]
+threshold = 35.88818687961042
+
+[refit]
+strategy = "span-factor"
+[refit.params]
+factor = 1.33
+min_obs = 24
+
+[segment_fit]
+strategy = "model-fit"
+
+[stability_fit]
+strategy = "lasso"
+[stability_fit.params]
+alpha = 1.0
+coef_floor = 1.0
+max_iter = 1000
+tolerance = 0.0001
+
+[stability_rule]
+strategy = "pyccd"
+[stability_rule.params]
+change_probability = 0.99
+change_threshold = 15.086272469388987
+peek_size = 6
+
+[start_search]
+strategy = "pyccd"
+[start_search.params]
+day_delta = 365
+meow_size = 12
+
+[window_screen]
+strategy = "tmask"
+[window_screen.params]
+bands = [1, 4]
+t_const = 4.89

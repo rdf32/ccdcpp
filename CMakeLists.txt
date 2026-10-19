@@ -1111,6 +1111,7 @@ if(CCD_BUILD_PYTHON)
         ccd_python
 
         bindings/module.cpp
+        bindings/config.cpp
         bindings/options.cpp
         bindings/regression.cpp
         bindings/fit.cpp
@@ -1176,6 +1177,14 @@ if(CCD_BUILD_PYTHON)
                 ${PROJECT_SOURCE_DIR}
         )
 
+        add_test(
+            NAME python_config
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_config.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
         add_test(
             NAME python_bindings
             COMMAND

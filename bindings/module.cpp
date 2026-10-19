@@ -20,6 +20,7 @@ void bind_options(py::module_& m);
 void bind_qa_tables(py::module_& m);
 void bind_preprocess(py::module_& m);
 void bind_detect(py::module_& m);
+void bind_config(py::module_& m);
 
 
 PYBIND11_MODULE(ccdcpp, m)
@@ -35,6 +36,7 @@ PYBIND11_MODULE(ccdcpp, m)
     bind_qa_tables(m);
     bind_preprocess(m);
     bind_detect(m);
+    bind_config(m);
 }
 
 

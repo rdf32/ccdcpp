@@ -778,12 +778,13 @@ class Unprofiled(unittest.TestCase):
         cube = pixel + ["threads"]
         common = ["qa_table", "preprocess", "profile", "band_names"]
         for name, positional, keywords in (
-            ("detect", pixel, common + ["resume_record", "method"]),
-            ("detect_cube", cube, common + ["method"]),
-            ("detect_cube_columns", cube, common + ["resume_record", "method"]),
-            ("resume", pixel, ["resume", "resume_header", "models"] + common + ["method"]),
+            ("detect", pixel, common + ["resume_record", "method", "config"]),
+            ("detect_cube", cube, common + ["method", "config"]),
+            ("detect_cube_columns", cube, common + ["resume_record", "method", "config"]),
+            ("resume", pixel,
+             ["resume", "resume_header", "models"] + common + ["method", "config"]),
             ("resume_cube_columns", cube,
-             ["resume", "resume_header", "segments"] + common + ["method"]),
+             ["resume", "resume_header", "segments"] + common + ["method", "config"]),
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
