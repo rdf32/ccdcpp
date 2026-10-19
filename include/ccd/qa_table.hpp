@@ -20,7 +20,7 @@ namespace ccd
 // QA_CLOUD). Indexed by the raw value, so it covers every uint16 value, and a
 // uint8 value reads its first 256 entries.
 //
-// detect() and detect_cube() take one as a separate argument, never through
+// run_pixel() and run_cube() take one in RunSpec::qa_table, never through
 // HarmonicOptions: the options are copied once per pixel, and the table is
 // 64 KiB that every pixel and thread shares read-only through a
 // std::shared_ptr<const QaTable>. With a table, each pixel's T raw values are

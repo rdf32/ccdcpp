@@ -60,7 +60,7 @@ PixelProcedure select_procedure(
 //
 // `procedure` is PermanentSnow or InsufficientClear; `mask` is that
 // procedure's processing mask over hworkspace's series, built by the
-// caller (ccd::detect builds it with the procedure's filter chain).
+// caller (Run::pixel builds it with the procedure's filter chain).
 FitResult fit_whole_series(
     PixelProcedure procedure,
     const HarmonicWorkspace& hworkspace,

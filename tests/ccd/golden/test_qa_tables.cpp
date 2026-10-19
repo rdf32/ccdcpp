@@ -6,8 +6,8 @@
 // as passing the decoded codes as uint8. These tests take the golden corpus's
 // QA codes, encode each one into a raw value of each product -- cycling
 // through several raw values per code, flag combinations that exercise the
-// precedence among them -- and compare detect_cube() on the raw values plus
-// the table with detect_cube() on the codes, exactly, as hexfloat dumps.
+// precedence among them -- and compare run_cube() on the raw values plus
+// the table with run_cube() on the codes, exactly, as hexfloat dumps.
 //
 // The corpus uses code 8 (QA_CIRRUS1) beside the six classes. The procedures
 // read no code but QA_FILL, QA_CLEAR, QA_WATER, QA_SNOW and QA_CLOUD, so 8 is
@@ -167,11 +167,12 @@ std::string run_cube(
     const QaTablePtr& table
 )
 {
-    return dump(ccd::detect_cube(
+    return dump(ccd::run_cube(
+        ccd::RunSpec{h, LassoOptions{}, table},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, c.T}),
         ccd::ArrayView<const Qa, 3>::contiguous(qas.data(), {c.H, c.W, c.T}),
-        h, LassoOptions{}, threads, true, table));
+        threads));
 }
 
 struct CubeSpec
@@ -255,7 +256,7 @@ TEST(QaTables, DecodedEqualsPreDecoded)
 }
 
 //------------------------------------------------------------------------------
-// detect() on one pixel, raw plus table, against the codes.
+// run_pixel() on one pixel, raw plus table, against the codes.
 //------------------------------------------------------------------------------
 
 TEST(QaTables, DetectDecodes)
@@ -282,26 +283,28 @@ TEST(QaTables, DetectDecodes)
                 raw[t] = encode(s, codes[t], t);
 
             std::string expected, actual;
-            golden::dump_pixel(expected, "", ccd::detect(dates, spectral,
-                ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T}),
-                h, LassoOptions{}));
-            golden::dump_pixel(actual, "", ccd::detect(dates, spectral,
-                ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}),
-                h, LassoOptions{}, table));
+            golden::dump_pixel(expected, "", ccd::run_pixel(
+                ccd::RunSpec{h, LassoOptions{}},
+                dates,
+                spectral,
+                ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T})).result);
+            golden::dump_pixel(actual, "", ccd::run_pixel(
+                ccd::RunSpec{h, LassoOptions{}, table},
+                dates,
+                spectral,
+                ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T})).result);
             EXPECT_EQ(expected, actual) << s.name << " pixel " << p;
 
-            // Caller-held scratch, reused across a table and no table.
-            ccd::DetectScratch scratch;
-            std::string with_scratch;
-            golden::dump_pixel(with_scratch, "", ccd::detect(dates, spectral,
-                ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}),
-                h, LassoOptions{}, scratch, table));
-            EXPECT_EQ(expected, with_scratch) << s.name << " pixel " << p;
+            // One Worker, reused across a run with a table and one without.
+            ccd::Worker worker;
+            const ccd::Run with_table(ccd::RunSpec{h, LassoOptions{}, table}, dates, 7, T, T, true);
+            const ccd::Run without(ccd::RunSpec{h, LassoOptions{}}, dates, 7, T, T, false);
+            std::string with_worker;
+            golden::dump_pixel(with_worker, "", with_table.pixel(spectral, ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}), {}, worker).result);
+            EXPECT_EQ(expected, with_worker) << s.name << " pixel " << p;
 
             std::string after;
-            golden::dump_pixel(after, "", ccd::detect(dates, spectral,
-                ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T}),
-                h, LassoOptions{}, scratch));
+            golden::dump_pixel(after, "", without.pixel(spectral, ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T}), {}, worker).result);
             EXPECT_EQ(expected, after) << s.name << " pixel " << p;
         }
     }
@@ -368,11 +371,12 @@ TEST(QaTables, StridedRawQa)
         for (std::size_t t = 0; t < T; ++t)
             thw[t * H * W + p] = encode(s, c.qas[p * T + t], p * T + t);
 
-    EXPECT_EQ(reference, dump(ccd::detect_cube(
+    EXPECT_EQ(reference, dump(ccd::run_cube(
+        ccd::RunSpec{h, LassoOptions{}, table},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
         ccd::ArrayView<const std::uint16_t, 3>::strided(thw.data(), {H, W, T}, {W, 1, H * W}),
-        h, LassoOptions{}, 2, true, table)));
+        2)));
 }
 
 //------------------------------------------------------------------------------
@@ -492,33 +496,45 @@ TEST(QaTables, Uint16NeedsATable)
         }
     };
 
-    expect_refused([&] { ccd::detect(dates, pixel, qa1, h, l); });
-    expect_refused([&] { ccd::detect(dates, pixel, qa1, h, l, nullptr); });
-
-    ccd::DetectScratch scratch;
-    expect_refused([&] { ccd::detect(dates, pixel, qa1, h, l, scratch); });
+    expect_refused([&] { ccd::run_pixel(ccd::RunSpec{h, l}, dates, pixel, qa1); });
+    expect_refused([&] { ccd::Run(ccd::RunSpec{h, l}, dates, 7, T, T, true); });
 
     const std::vector<float> f32(c.spectral.begin(), c.spectral.end());
     std::vector<std::uint16_t> u16(c.spectral.size());
     for (std::size_t i = 0; i < u16.size(); ++i)
         u16[i] = static_cast<std::uint16_t>(std::max(0.0, c.spectral[i]));
 
-    expect_refused([&] { ccd::detect_cube(dates,
+    expect_refused([&] { ccd::run_cube(
+        ccd::RunSpec{h, l},
+        dates,
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {1, 2, 7, T}),
-        qa3, h, l, 1); });
-    expect_refused([&] { ccd::detect_cube(dates,
+        qa3,
+        1); });
+    expect_refused([&] { ccd::run_cube(
+        ccd::RunSpec{h, l},
+        dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 2, 7, T}),
-        qa3, h, l, 1); });
-    expect_refused([&] { ccd::detect_cube(dates,
+        qa3,
+        1); });
+    expect_refused([&] { ccd::run_cube(
+        ccd::RunSpec{h, l},
+        dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 2, 7, T}),
-        qa3, h, l, 1); });
+        qa3,
+        1); });
 
     // With a table it runs, for every spectral type.
     const QaTablePtr table = ccd::qa_tables::hls_fmask(h);
-    EXPECT_EQ(ccd::detect_cube(dates,
+    EXPECT_EQ(ccd::run_cube(
+        ccd::RunSpec{h, l, table},
+        dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 2, 7, T}),
-        qa3, h, l, 1, true, table).pixels.size(), 2u);
-    EXPECT_EQ(ccd::detect_cube(dates,
+        qa3,
+        1).pixels.size(), 2u);
+    EXPECT_EQ(ccd::run_cube(
+        ccd::RunSpec{h, l, table},
+        dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 2, 7, T}),
-        qa3, h, l, 1, true, table).pixels.size(), 2u);
+        qa3,
+        1).pixels.size(), 2u);
 }

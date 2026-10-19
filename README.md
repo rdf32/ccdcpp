@@ -433,7 +433,7 @@ Every procedure keeps `QA_CLEAR` and `QA_WATER`, tests `THERMAL_IDX` against `TH
 
 ### A custom plan in C++
 
-A plan is a value; edit the default or build chains from the named step constructors, and pass it to `detect` or `detect_cube` as the trailing `preprocess` argument, shared by every pixel and thread of the call:
+A plan is a value; edit the default or build chains from the named step constructors, and pass it as `RunSpec::plan` to `run_pixel` or `run_cube`, shared by every pixel and thread of the call:
 
 ```cpp
 #include "ccd/ccd.hpp"
@@ -456,7 +456,9 @@ plan.standard.chain = pp::Chain{
 };
 
 const auto shared = std::make_shared<const pp::PreprocessPlan>(plan);
-ccd::FitResult result = ccd::detect(dates, spectral, qas, h, l, nullptr, shared);
+ccd::RunSpec spec{h, l};
+spec.plan = shared;
+ccd::FitResult result = ccd::run_pixel(spec, dates, spectral, qas).result;
 ```
 
 `pp::validate(plan, bands)` runs once per call, before any pixel, and throws `std::invalid_argument`, naming the procedure and the step, when a band is not below the band count, a `GreenMedian` has no band, a transformed band is also tested by a `BandRange` of its procedure, an `AddQa` is not followed by a `Dedupe`, or a chain is over capacity.
@@ -709,7 +711,7 @@ update = ccdcpp.resume_cube_columns(
 - **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene that covers it) is rerun in full, the same way, and its `status` says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed; `update["counts"]`). A scene the pixel's QA marks fill does not count as a change.
 - **A record that does not match the call is refused** (`ValueError`): another record format or results version (`ccdcpp.RESULTS_VERSION` changes whenever a release changes outputs), other options, preset, plan or QA table, a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
 - The record is plain columns (`ccdcpp.resume_schema()`); the caller stores them, beside its segments. Stored segments may carry placeholders in fields the caller does not keep (a break day or magnitude where there is no break, the observation count); they come back as given.
-- One pixel: `detect(..., resume_record=True)` and `resume(..., resume=, resume_header=, models=)`. C++: `ccd::detect_recorded`, `ccd::resume`, `ccd::detect_cube(..., record = true)`, `ccd::resume_cube` (`include/ccd/record.hpp`, `include/ccd/ccd.hpp`).
+- One pixel: `detect(..., resume_record=True)` and `resume(..., resume=, resume_header=, models=)`. C++: `ccd::run_pixel` and `ccd::run_cube` with `RunSpec::record`, and with the stored run as their `resume` argument (a `PixelResume`, a `CubeResumeFrom`) (`include/ccd/run/run.hpp`, `include/ccd/record.hpp`).
 
 ---
 

@@ -1,5 +1,6 @@
 #include "ccd/ccd.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <fstream>
 
@@ -122,23 +123,21 @@ int main() {
         {data.dates.size()}
     );
 
-    auto t0 = ccd::Clock::now();
+    const auto t0 = std::chrono::steady_clock::now();
     ccd::HarmonicOptions hoptions;
     ccd::LassoOptions loptions;
 
-    auto results = ccd::detect(
-        dates,
-        spectral,
-        qas,
-        hoptions,
-        loptions
-    );
+    auto results = ccd::run_pixel(ccd::RunSpec{hoptions, loptions}, dates, spectral, qas).result;
 
-    auto tf = ccd::Clock::now();
+    const auto tf = std::chrono::steady_clock::now();
 
-    print_change_models(
-        results.models
-    );
+    for (std::size_t i = 0; i < results.models.size(); ++i)
+    {
+        const ccd::ChangeModel& m = results.models[i];
+        std::cout << "Change model " << i + 1 << ": " << m.start_day << " .. " << m.end_day
+                  << ", break " << m.break_day << ", " << m.observation_count
+                  << " observations, curve QA " << static_cast<int>(m.curve_qa) << "\n";
+    }
 
     std::cout << "Processing Mask: " << std::endl;
     for (std::size_t obs = 0; obs < results.mask.size(); ++obs)
@@ -149,6 +148,6 @@ int main() {
     std::cout << "number of change models: " << results.models.size() << std::endl;
 
     std::cout << "Total CCD time: " 
-        << ccd::elapsed_ms(t0, tf) 
+        << std::chrono::duration<double, std::milli>(tf - t0).count() 
         << " ms" << std::endl;
 }

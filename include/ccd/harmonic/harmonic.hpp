@@ -54,7 +54,7 @@ enum class GreenFilterScope : std::uint8_t
 //
 // Another method is another machine (docs/ccdc-state-machine.md, "Another
 // procedure"): a value here, its name in method_name(), its parameters in
-// with_method(), its detector in detect_pixel(). with_method() gives a run's
+// with_method(), its detector in Run::pixel(). with_method() gives a run's
 // options for a method.
 //
 //==============================================================================
@@ -294,7 +294,7 @@ struct HarmonicOptions
     //                        The guard runs them the other way -- DN input,
     //                        physical bound -- where the mask empties and the
     //                        pixel returns 0 segments instead of 5.
-    //   MEDIAN_GREEN_FILTER  unreachable through detect() on the reference
+    //   MEDIAN_GREEN_FILTER  unreachable through run_pixel() on the reference
     //                        pixel, because the default plan runs the
     //                        green median filter in the InsufficientClear
     //                        chain only and that pixel takes the Standard
@@ -308,7 +308,7 @@ struct HarmonicOptions
     // the obvious test.
     //--------------------------------------------------------------------------
 
-    // Applied to the thermal band of detect()'s per-pixel copy before the
+    // Applied to the thermal band of Run::pixel's per-pixel copy before the
     // Standard procedure runs:
     //
     //     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET

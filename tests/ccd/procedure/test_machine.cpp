@@ -18,9 +18,9 @@
 //   * Whole pixels stepped by hand: every self-transition is one decision,
 //     and the result is the driven machine's.
 //   * Exits: standard::run() on the characterization pixels that end the
-//     segment loop each way, with the same preprocessing ccd::detect() runs,
+//     segment loop each way, with the same preprocessing ccd::run_pixel() runs,
 //     against the Exit the run leaves in the record. The result of each run
-//     is also checked against detect()'s, field for field.
+//     is also checked against run_pixel()'s, field for field.
 //   * select_procedure(): the clear percentage first, then the snow
 //     percentage, each threshold on its >= side; Detector::fit(): the
 //     machine for Standard, the shared whole-series fit for the others.
@@ -876,7 +876,7 @@ TEST(StandardExtend, TheSeriesEndAfterADropBreaksAfterTheDroppedObservation)
 // Exits on whole pixels
 //------------------------------------------------------------------------------
 
-// standard::run() on a characterization pixel, preprocessed as detect() does
+// standard::run() on a characterization pixel, preprocessed as run_pixel() does
 // for the Standard procedure: the plan's transform on a copy, its chain for
 // the mask.
 struct MachineRun
@@ -925,13 +925,11 @@ MachineRun run_machine(const golden::CharPixel& p)
 ccd::FitResult run_detect(const golden::CharPixel& p)
 {
     const std::size_t T = p.dates.size();
-    return ccd::detect(
+    return ccd::run_pixel(
+        ccd::RunSpec{p.h, p.l},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-        p.h,
-        p.l
-    );
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
 }
 
 void expect_same(const ccd::FitResult& a, const ccd::FitResult& b, const std::string& name)

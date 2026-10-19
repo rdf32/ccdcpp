@@ -1,14 +1,16 @@
 // The golden driver: generates the synthetic corpus, and dumps every output of
-// detect() and detect_cube() (threads 1 and 8) on it and on the CSV pixels as
+// run_pixel() and run_cube() (threads 1 and 8) on it and on the CSV pixels as
 // hexfloat text, one file per input and option set.
 //
 //   golden_driver gen <corpus_dir>
 //   golden_driver run <corpus_dir> <csv_dir> <out_dir> [bench]
 //
 // <csv_dir> is a tree's tests/ccd/procedure. Build it against a tree's
-// include/, tests/ccd/golden/ and libccd_core.a. It compiles against v0.6.1
-// and every later tree, so two trees' dumps compare file for file. This is
-// the driver of the refactor's golden check, kept here for linux-compare.
+// include/, tests/ccd/golden/ and libccd_core.a. Every tree's dumps compare
+// file for file with every other's: v0.6.1 to v0.10.0 ran it through their
+// detect() and detect_cube() (this driver as of v0.10.0), 1.0 on through
+// run_pixel() and run_cube(). This is the driver of the refactor's golden
+// check, kept here for linux-compare.
 
 #include <algorithm>
 #include <array>
@@ -171,11 +173,10 @@ int main(int argc, char** argv)
             {
                 std::vector<double> spec = csv.spectral;
                 if (set.first == "phys") golden::to_physical(spec.data(), csv.T);
-                auto r = ccd::detect(
+                auto r = ccd::run_pixel({set.second.first, set.second.second},
                     ccd::ArrayView<const std::int64_t, 1>::contiguous(csv.dates.data(), {csv.T}),
-                    ccd::ArrayView<double, 2>::contiguous(spec.data(), {7, csv.T}),
-                    ccd::ArrayView<const std::uint8_t, 1>::contiguous(csv.qas.data(), {csv.T}),
-                    set.second.first, set.second.second);
+                    ccd::ArrayView<const double, 2>::contiguous(spec.data(), {7, csv.T}),
+                    ccd::ArrayView<const std::uint8_t, 1>::contiguous(csv.qas.data(), {csv.T})).result;
                 golden::dump_pixel(s, std::string(fn) + ":" + set.first, r);
             }
         }
@@ -206,11 +207,10 @@ int main(int argc, char** argv)
             for (std::size_t p = 0; p < N; ++p)
             {
                 std::copy(c.spectral.begin() + p * 7 * T, c.spectral.begin() + (p + 1) * 7 * T, px.begin());
-                auto r = ccd::detect(
+                auto r = ccd::run_pixel({o.h, o.l},
                     dates,
-                    ccd::ArrayView<double, 2>::contiguous(px.data(), {7, T}),
-                    ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T}),
-                    o.h, o.l);
+                    ccd::ArrayView<const double, 2>::contiguous(px.data(), {7, T}),
+                    ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T})).result;
                 if (!bench)
                     golden::dump_pixel(s, std::to_string(p / c.W) + "," + std::to_string(p % c.W), r);
             }
@@ -224,11 +224,11 @@ int main(int argc, char** argv)
             {
                 std::vector<double> cube_spec = c.spectral;
                 const double c0 = now_ms();
-                auto cube = ccd::detect_cube(
+                auto cube = ccd::run_cube({o.h, o.l},
                     dates,
-                    ccd::ArrayView<double, 4>::contiguous(cube_spec.data(), {c.H, c.W, 7, T}),
+                    ccd::ArrayView<const double, 4>::contiguous(cube_spec.data(), {c.H, c.W, 7, T}),
                     ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
-                    o.h, o.l, threads);
+                    threads);
                 const double c1 = now_ms();
                 std::fprintf(stderr, "cube %s %s threads=%d: %.1f ms (%.3f ms/px)\n",
                     spec.name, o.name, threads, c1 - c0, (c1 - c0) / N);

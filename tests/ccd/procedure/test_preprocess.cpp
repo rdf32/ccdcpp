@@ -13,12 +13,12 @@
 //                     combination of the four inclusive flags. The
 //                     filter::standard/snow/insufficientclear wrappers are
 //                     held to the same references.
-//   CustomPlan.*      plans that change what detect() does: a Standard chain
+//   CustomPlan.*      plans that change what run_pixel() does: a Standard chain
 //                     that keeps snow, and the thermal transform on every
 //                     procedure; a null plan and an explicit default plan
 //                     agree.
-//   PlanValidation.*  every plan validate() rejects, and that detect() and
-//                     detect_cube() reject them before any pixel runs.
+//   PlanValidation.*  every plan validate() rejects, and that run_pixel() and
+//                     run_cube() reject them before any pixel runs.
 //   Microbench.*      apply(default chain) against the hand-written chain on
 //                     the 443-observation pyccd reference pixel. Reported,
 //                     not gated.
@@ -533,7 +533,7 @@ ccd::FitResult run_detect(
     const ccd::PreprocessPlanPtr& plan
 )
 {
-    return ccd::detect(px.dates, px.spectral, px.qas, h, l, nullptr, plan);
+    return ccd::run_pixel(ccd::RunSpec{h, l, nullptr, plan}, px.dates, px.spectral, px.qas).result;
 }
 
 } // namespace
@@ -673,7 +673,7 @@ TEST(DefaultPlan, ApplyResetsTheMask)
 //==============================================================================
 
 // A null plan and an explicit default plan give the same output, through
-// detect() and detect_cube().
+// run_pixel() and run_cube().
 TEST(CustomPlan, NullIsTheDefaultPlan)
 {
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
@@ -691,11 +691,12 @@ TEST(CustomPlan, NullIsTheDefaultPlan)
 
     auto cube = [&](const ccd::PreprocessPlanPtr& given)
     {
-        const ccd::CubeResult r = ccd::detect_cube(
+        const ccd::CubeResult r = ccd::run_cube(
+            ccd::RunSpec{h, l, nullptr, given},
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
-            h, l, 2, true, nullptr, given);
+            2);
         std::string out;
         for (const auto& px : r.pixels)
             out += dump(px.result);
@@ -813,11 +814,12 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     EXPECT_GT(other_changed, 0u);
     EXPECT_EQ(standard_changed, 0u);
 
-    const ccd::CubeResult cube = ccd::detect_cube(
+    const ccd::CubeResult cube = ccd::run_cube(
+        ccd::RunSpec{h, l, nullptr, plan},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
-        h, l, 4, true, nullptr, plan);
+        4);
     std::string from_cube;
     for (const auto& px : cube.pixels)
         from_cube += dump(px.result);
@@ -932,7 +934,7 @@ TEST(PlanValidation, ChainOverCapacity)
     expect_rejected(plan, 7, "standard chain: holds 9 steps; at most 8");
 }
 
-// detect() and detect_cube() run validate() once per call, before any pixel:
+// run_pixel() and run_cube() run validate() once per call, before any pixel:
 // an invalid plan throws rather than landing in CubeResult::failures.
 TEST(PlanValidation, EntryPointsReject)
 {
@@ -949,11 +951,12 @@ TEST(PlanValidation, EntryPointsReject)
     EXPECT_THROW(run_detect(px, h, l, plan), std::invalid_argument);
 
     EXPECT_THROW(
-        ccd::detect_cube(
+        ccd::run_cube(
+            ccd::RunSpec{h, l, nullptr, plan},
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
-            h, l, 1, true, nullptr, plan),
+            1),
         std::invalid_argument);
 }
 

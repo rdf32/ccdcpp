@@ -74,7 +74,7 @@ struct PixelRecord
     std::vector<std::int64_t> excluded_days;
 };
 
-// What resume() did with a pixel.
+// What a resume did with a pixel.
 enum class ResumeStatus : std::uint8_t
 {
     Resumed,            // continued from the record, or rerun with the same

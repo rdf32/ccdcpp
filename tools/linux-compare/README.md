@@ -10,7 +10,7 @@ can change which multiply-adds fuse.
 |---|---|
 | `compare.sh` | Host side: archives each git ref, runs `in_container.sh` in one throwaway container, keeps everything under the output directory. |
 | `in_container.sh` | Container side: installs conda-forge GCC with micromamba, builds each tree (CMake Release, no `-march`, so the conda-forge x86-64 baseline without FMA), writes each tree's golden-driver dumps and its Golden, Bands and Transitions fixtures, and compares each tree's files with the last tree's. Each fixture write must exit 0 and leave the container's platform header (`# platform: gcc <version> / x86_64 / linux / ...`); a tree's committed fixture is the Mac's, so a write that did not happen stops the run. |
-| `golden_driver.cpp` | The driver that dumps every output of `detect()` and `detect_cube()` (threads 1 and 8) on the synthetic corpus and the CSV pixels as hexfloat text. The one source of the golden check's driver: `-DCCD_BUILD_GOLDEN_DRIVER=ON` builds it as the CMake target `golden_driver`, and `in_container.sh` compiles this copy against every tree, older ones included. |
+| `golden_driver.cpp` | The driver that dumps every output of `run_pixel()` and `run_cube()` (threads 1 and 8) on the synthetic corpus and the CSV pixels as hexfloat text. The one source of the golden check's driver: `-DCCD_BUILD_GOLDEN_DRIVER=ON` builds it as the CMake target `golden_driver`, and `in_container.sh` compiles this copy against every tree. It calls the 1.0 entry points (`run_pixel`, `run_cube`), so it builds only against 1.0 trees and later; to compare a tree before 1.0, put the 0.10.0 copy in its place (`git show v0.10.0:tools/linux-compare/golden_driver.cpp`), which builds against v0.6.1 to v0.10.0. |
 
 ## Image
 

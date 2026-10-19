@@ -1,6 +1,6 @@
 //==============================================================================
 //
-// The per-pixel records below detect_pixel: MaskedSeries (the processing
+// The per-pixel records below Run::pixel: MaskedSeries (the processing
 // mask and the observations it keeps), Variogram, and the Standard
 // procedure's Cadence. The procedures' outputs are held by the golden and transitions
 // fixtures; these tests hold the records' own contracts.
@@ -327,7 +327,7 @@ TEST(StandardCadence, MeasureCadenceIsTheAdjustedPeekAndThreshold)
 }
 
 // The workspace refers to the caller's options, cannot be built from a
-// temporary, and gives only const access: nothing below detect_pixel can
+// temporary, and gives only const access: nothing below Run::pixel can
 // write them.
 TEST(HarmonicWorkspace, RefersToTheCallerOptionsConstOnly)
 {

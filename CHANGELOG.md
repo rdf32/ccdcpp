@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Changed
+
+- **The C++ entry points are `ccd::run_pixel` and `ccd::run_cube`** (`include/ccd/run/run.hpp`),
+  replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
+  overloads. What a call runs is one `ccd::RunSpec` (the options, the QA table, the plan,
+  `record`, `keep_masks`); the values and QA are views of any supported element type
+  (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`), dispatched once per call; a resume is
+  an argument (`PixelResume`, `CubeResumeFrom`). `run_pixel` returns a `PixelRun` (result,
+  record, status, header); `run_cube` a `CubeResult` as before. Underneath, a `ccd::Run` is
+  built once per call (every check, the plan, the resume header) and a `ccd::Worker` per thread
+  (today's `DetectScratch`, renamed); `Run::pixel` is the per-pixel pipeline as named steps
+  (decode the QA, choose the procedure, the values, the mask, the fit, the record). The checks,
+  their order and messages, and every output are unchanged. The old calls map as:
+  `detect(d, s, q, h, l, table, plan)` -> `run_pixel({h, l, table, plan}, d, s, q).result`;
+  `detect_recorded(...)` -> `run_pixel` with `RunSpec::record = true`;
+  `resume(d, s, q, h, l, header, record, segments)` -> `run_pixel({h, l}, d, s, q,
+  PixelResume{header, record, segments})`; `detect_cube(d, s, q, h, l, threads, keep_masks,
+  table, plan, record)` -> `run_cube({h, l, table, plan, record, keep_masks}, d, s, q,
+  threads)`; `resume_cube(..., from, ...)` -> `run_cube(..., threads, &from)`. Also gone from
+  `ccd.hpp`: `Recorded` and `Resumed` (both are `PixelRun`), `DetectScratch` (`Worker`), and the
+  debugging helpers `Clock`, `elapsed_ms` and `print_change_model(s)`; `ccd.hpp` no longer
+  includes `<iostream>`, `<chrono>`, `<string>` or `<vector>`. The Python API is unchanged.
+
 ### Added
 
 - A change detection method option: `HarmonicOptions::METHOD`

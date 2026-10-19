@@ -33,7 +33,7 @@ py::dict record_columns(
     bool status
 );
 
-// What resume_cube() reads: the header, record_columns()'s dict and
+// What run_cube()'s resume reads: the header, record_columns()'s dict and
 // detect_cube_columns()'s segment columns.
 ccd::CubeResumeFrom cube_from_python(
     const py::dict& header,

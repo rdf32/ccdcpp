@@ -104,13 +104,11 @@ Pixel make_pixel(
 
 ccd::FitResult run(const Pixel& p, const ccd::HarmonicOptions& h)
 {
-    return ccd::detect(
+    return ccd::run_pixel(
+        ccd::RunSpec{h, ccd::LassoOptions{}},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-        h,
-        ccd::LassoOptions{}
-    );
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
 }
 
 // Segments that end in a detected change.
@@ -155,11 +153,11 @@ std::string dump_cube(
         if (physical)
             golden::to_physical(block, c.T);
 
-        golden::dump_pixel(out, std::to_string(p), ccd::detect(
+        golden::dump_pixel(out, std::to_string(p), ccd::run_pixel(
+            ccd::RunSpec{h, l},
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
             ccd::ArrayView<const double, 2>::contiguous(block, {7, c.T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * c.T, {c.T}),
-            h, l));
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * c.T, {c.T})).result);
     }
     return out;
 }
@@ -393,7 +391,7 @@ TEST(Cadence, SeasonalRmseCount)
 //==============================================================================
 // CHANGE_PROBABILITY: a higher probability raises the threshold of a peek
 // window longer than the default. Read by adjust_change_threshold(), tested
-// there and through detect() on a dense series.
+// there and through run_pixel() on a dense series.
 //==============================================================================
 
 TEST(Cadence, ChangeProbability)

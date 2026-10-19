@@ -135,6 +135,7 @@ add_library(
     src/ccd/procedure/standard.cpp
 
     src/ccd/ccd.cpp
+    src/ccd/run/run.cpp
     src/ccd/qa_table.cpp
 )
 
@@ -421,7 +422,7 @@ if(CCD_BUILD_TESTS)
     )
 
     # The preprocessing plan: default_plan() against the hand-written
-    # chains, custom plans through detect(), plan validation, and a
+    # chains, custom plans through run_pixel(), plan validation, and a
     # microbenchmark of apply(). See tests/ccd/procedure/test_preprocess.cpp.
     add_executable(
         test_preprocess
@@ -470,7 +471,7 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
-    # The per-pixel records below detect_pixel: MaskedSeries, Variogram, Cadence.
+    # The per-pixel records below Run::pixel: MaskedSeries, Variogram, Cadence.
     add_executable(
         test_masked_series
 
@@ -552,7 +553,7 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
-    # The bit-exact gate: detect() and detect_cube() against a committed
+    # The bit-exact gate: run_pixel() and run_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
     add_executable(
         test_golden
@@ -648,7 +649,7 @@ if(CCD_BUILD_TESTS)
             CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/procedure"
     )
 
-    # The resume record: what detect_recorded() writes. See
+    # The resume record: what run_pixel() with RunSpec::record writes. See
     # tests/ccd/procedure/test_record.cpp.
     add_executable(
         test_record
@@ -938,7 +939,7 @@ if(CCD_BUILD_TESTS)
 
 endif()
 
-# The golden check's driver: dumps every output of detect() and detect_cube()
+# The golden check's driver: dumps every output of run_pixel() and run_cube()
 # on the synthetic corpus and the CSV pixels (tools/linux-compare/README.md).
 # Its one source is tools/linux-compare/golden_driver.cpp, which
 # linux-compare also compiles against older trees by hand.

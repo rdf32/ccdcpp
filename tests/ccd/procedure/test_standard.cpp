@@ -497,7 +497,11 @@ TEST(CCD, DetectStandardHalfDayMedianGap)
     const ccd::HarmonicOptions hoptions;
     const ccd::LassoOptions loptions;
 
-    const auto result = ccd::detect(dates, spectral, qas, hoptions, loptions);
+    const auto result = ccd::run_pixel(
+        ccd::RunSpec{hoptions, loptions},
+        dates,
+        spectral,
+        qas).result;
 
     ASSERT_EQ(result.models.size(), 1u);
     const auto& m = result.models[0];

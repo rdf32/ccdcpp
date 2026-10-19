@@ -170,12 +170,7 @@ static ccd::PreprocessPlanPtr take_plan(
 //------------------------------------------------------------------------------
 
 // What a single-pixel resume continues from, converted while the GIL is held.
-struct PixelResumeFrom
-{
-    ccd::ResumeHeader header;
-    ccd::PixelRecord record;
-    std::vector<ccd::ChangeModel> segments;
-};
+using PixelResumeFrom = ccd::PixelResume;
 
 // detect(), detect(resume_record=True) and resume() on one pixel: one input
 // check and one output dict. `from` null: detect; `record` adds the record.
@@ -299,31 +294,16 @@ static py::dict pixel_wrapper(
     ccd::PixelRecord pixel_record;
     ccd::ResumeStatus status = ccd::ResumeStatus::Resumed;
 
+    ccd::RunSpec spec{hoptions, loptions, qa_table, preprocess};
+    spec.record = record;
+
     const auto run = [&](auto qa_view)
     {
-        if (from)
-        {
-            ccd::Resumed r = ccd::resume(
-                dates_view, spectral_view, qa_view, hoptions, loptions,
-                from->header, from->record, from->segments, qa_table, preprocess);
-            final_result = std::move(r.result);
-            header = r.header;
-            pixel_record = std::move(r.record);
-            status = r.status;
-        }
-        else if (record)
-        {
-            ccd::Recorded r = ccd::detect_recorded(
-                dates_view, spectral_view, qa_view, hoptions, loptions, qa_table, preprocess);
-            final_result = std::move(r.result);
-            header = r.header;
-            pixel_record = std::move(r.record);
-        }
-        else
-        {
-            final_result = ccd::detect(
-                dates_view, spectral_view, qa_view, hoptions, loptions, qa_table, preprocess);
-        }
+        ccd::PixelRun r = ccd::run_pixel(spec, dates_view, spectral_view, qa_view, from);
+        final_result = std::move(r.result);
+        header = r.header;
+        pixel_record = std::move(r.record);
+        status = r.status;
     };
 
     {
@@ -591,59 +571,12 @@ static CubeInput check_cube(
 }
 
 //------------------------------------------------------------------------------
-// detect_cube on a checked input, dispatched on the spectral and QA dtypes.
+// run_cube on a checked input: its spectral and QA dtypes as the views
+// ccd::run_cube dispatches on.
 //
 // Called with the GIL released: it only reads buffers that `in` keeps alive,
 // and touches no Python object.
 //------------------------------------------------------------------------------
-
-template<typename Value, typename Qa>
-static ccd::CubeResult run_cube_typed(
-    const CubeInput& in,
-    ccd::ArrayView<const std::int64_t, 1> dates,
-    ccd::ArrayView<const Qa, 3> qas,
-    const ccd::HarmonicOptions& hoptions,
-    const ccd::LassoOptions& loptions,
-    int threads,
-    bool keep_masks,
-    bool record,
-    const ccd::CubeResumeFrom* from
-)
-{
-    const auto spectral = strided_view<Value, 4>(in.spectral);
-    if (from)
-        return ccd::resume_cube(
-            dates, spectral, qas, hoptions, loptions, *from, threads, keep_masks,
-            in.qa_table, in.preprocess);
-    return ccd::detect_cube(
-        dates, spectral, qas, hoptions, loptions, threads, keep_masks,
-        in.qa_table, in.preprocess, record);
-}
-
-template<typename Qa>
-static ccd::CubeResult run_cube_spectral(
-    const CubeInput& in,
-    ccd::ArrayView<const std::int64_t, 1> dates,
-    ccd::ArrayView<const Qa, 3> qas,
-    const ccd::HarmonicOptions& hoptions,
-    const ccd::LassoOptions& loptions,
-    int threads,
-    bool keep_masks,
-    bool record,
-    const ccd::CubeResumeFrom* from
-)
-{
-    if (in.spectral_type == SpectralType::UInt16)
-        return run_cube_typed<std::uint16_t, Qa>(
-            in, dates, qas, hoptions, loptions, threads, keep_masks, record, from);
-
-    if (in.spectral_type == SpectralType::Float32)
-        return run_cube_typed<float, Qa>(
-            in, dates, qas, hoptions, loptions, threads, keep_masks, record, from);
-
-    return run_cube_typed<double, Qa>(
-        in, dates, qas, hoptions, loptions, threads, keep_masks, record, from);
-}
 
 static ccd::CubeResult run_cube(
     const CubeInput& in,
@@ -661,14 +594,21 @@ static ccd::CubeResult run_cube(
             {in.T}
         );
 
-    if (in.qa_type == QaType::UInt16)
-        return run_cube_spectral(
-            in, dates, strided_view<std::uint16_t, 3>(in.qas),
-            hoptions, loptions, threads, keep_masks, record, from);
+    const ccd::CubeSpectral spectral =
+        in.spectral_type == SpectralType::UInt16
+            ? ccd::CubeSpectral(strided_view<std::uint16_t, 4>(in.spectral))
+        : in.spectral_type == SpectralType::Float32
+            ? ccd::CubeSpectral(strided_view<float, 4>(in.spectral))
+            : ccd::CubeSpectral(strided_view<double, 4>(in.spectral));
 
-    return run_cube_spectral(
-        in, dates, strided_view<std::uint8_t, 3>(in.qas),
-        hoptions, loptions, threads, keep_masks, record, from);
+    const ccd::CubeQa qas = in.qa_type == QaType::UInt16
+        ? ccd::CubeQa(strided_view<std::uint16_t, 3>(in.qas))
+        : ccd::CubeQa(strided_view<std::uint8_t, 3>(in.qas));
+
+    ccd::RunSpec spec{hoptions, loptions, in.qa_table, in.preprocess};
+    spec.keep_masks = keep_masks;
+    spec.record = record;
+    return ccd::run_cube(spec, dates, spectral, qas, threads, from);
 }
 
 //------------------------------------------------------------------------------

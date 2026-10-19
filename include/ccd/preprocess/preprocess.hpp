@@ -30,7 +30,7 @@ namespace preprocess
 // that builds the processing mask.
 //
 //   PreprocessPlan     one ProcedurePlan per procedure (standard, snow,
-//                      insufficient_clear); ccd::detect picks the one of
+//                      insufficient_clear); Run::pixel picks the one of
 //                      the procedure it selected.
 //   ProcedurePlan      the transform and the chain of one procedure.
 //   Chain              up to CHAIN_CAPACITY steps, stored inline, run in
@@ -38,7 +38,7 @@ namespace preprocess
 //   Step               one filter: a StepKind and the parameters it reads.
 //
 // default_plan(options) is the plan HarmonicOptions describe, and the one
-// ccd::detect runs when it is given none. A plan is checked against the band
+// a Run runs when it is given none. A plan is checked against the band
 // count once per call by validate(), never per pixel.
 //
 // apply() starts from a mask that keeps every observation; each step then
@@ -246,7 +246,7 @@ struct Chain
 //
 //     value <- value * scale + offset
 //
-// ccd::detect applies it to its private scalar_t copy; the caller's buffer is
+// Run::pixel applies it to its private scalar_t copy; the caller's buffer is
 // never written.
 //
 //------------------------------------------------------------------------------
@@ -271,7 +271,7 @@ struct PreprocessPlan
     ProcedurePlan insufficient_clear;
 };
 
-// detect() and detect_cube() take a plan as they take a QaTable: shared,
+// run_pixel() and run_cube() take a plan as they take a QaTable: shared,
 // read-only, by every pixel and thread of the call.
 using PreprocessPlanPtr = std::shared_ptr<const PreprocessPlan>;
 
@@ -324,7 +324,7 @@ std::optional<Affine> thermal_transform(const HarmonicOptions& options);
 
 //------------------------------------------------------------------------------
 //
-// The plan check ccd::detect runs once per call, before any work.
+// The plan check a Run makes once per call, before any work.
 //
 // Throws std::invalid_argument, naming the procedure and the step, when a
 // procedure's

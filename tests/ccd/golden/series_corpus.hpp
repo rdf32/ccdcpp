@@ -75,20 +75,28 @@ struct Series
     }
 };
 
-// detect() on `s` with STAT_ORD at `stat_ord`.
+// run_pixel() on `s` with STAT_ORD at `stat_ord`.
 inline ccd::FitResult detect_at(const Series& s, std::int64_t stat_ord)
 {
     ccd::HarmonicOptions h = s.h;
     h.STAT_ORD = stat_ord;
-    return ccd::detect(s.date_view(), s.spectral_view(), s.qa_view(), h, s.l);
+    return ccd::run_pixel(
+        ccd::RunSpec{h, s.l},
+        s.date_view(),
+        s.spectral_view(),
+        s.qa_view()).result;
 }
 
-// detect_recorded() on `s` with STAT_ORD at `stat_ord`.
-inline ccd::Recorded recorded_at(const Series& s, std::int64_t stat_ord)
+// run_pixel() with RunSpec::record on `s` with STAT_ORD at `stat_ord`.
+inline ccd::PixelRun recorded_at(const Series& s, std::int64_t stat_ord)
 {
     ccd::HarmonicOptions h = s.h;
     h.STAT_ORD = stat_ord;
-    return ccd::detect_recorded(s.date_view(), s.spectral_view(), s.qa_view(), h, s.l);
+    return ccd::run_pixel(
+        ccd::RunSpec{h, s.l, nullptr, nullptr, true},
+        s.date_view(),
+        s.spectral_view(),
+        s.qa_view());
 }
 
 // A test CSV: date, seven bands, QA per row; `header` skips the first line.

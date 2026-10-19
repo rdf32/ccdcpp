@@ -15,8 +15,8 @@
 //              snow, unflagged cloud-like spikes, saturated or negative
 //              optical values and (with a thermal row) out-of-range thermal
 //              values, and sometimes long fill gaps that starve the pixel.
-//   Snow       snow-dominated QA, so detect() takes PermanentSnow.
-//   Cloudy     cloud-dominated QA, so detect() takes InsufficientClear.
+//   Snow       snow-dominated QA, so run_pixel() takes PermanentSnow.
+//   Cloudy     cloud-dominated QA, so run_pixel() takes InsufficientClear.
 //
 // Optical rows are reflectance x 10000 and a thermal row is Kelvin x 10, the
 // units of the default HarmonicOptions. Fill observations carry -9999 in

@@ -64,7 +64,7 @@
 // chain, and this pixel takes the Standard procedure, so the constant is never
 // read. Even
 // setting it to 0.0 -- which would drop every observation at or above the
-// median green -- changes nothing through detect(). Its guard therefore has to
+// median green -- changes nothing through run_pixel(). Its guard therefore has to
 // fit the InsufficientClear procedure directly (ccd::fit_whole_series), the way
 // test_clear.cpp does. That is
 // GreenMedianFilterIsAUnitConstant, and without it this file would have looked
@@ -153,7 +153,7 @@ Observations read_observations(const std::string& filename)
 //------------------------------------------------------------------------------
 // Collection-1 DN -> the preset's units.
 //
-// The thermal row applies the transform detect() would otherwise have applied
+// The thermal row applies the transform run_pixel() would otherwise have applied
 // itself, THEN divides by the same 10,000 as every other band. That second
 // division is the whole trick: it puts thermal on the same scale factor as the
 // optical bands, which is what lets one `alpha` serve all seven fits. Leaving
@@ -228,16 +228,16 @@ ccd::FitResult run(
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
         obs.qas.data(), {obs.T});
 
-    return ccd::detect(dates, spec, qas, h, lo);
+    return ccd::run_pixel(ccd::RunSpec{h, lo}, dates, spec, qas).result;
 }
 
 //------------------------------------------------------------------------------
 // Fit the InsufficientClear procedure directly (ccd::fit_whole_series), as
 // test_clear.cpp does.
 //
-// Needed because MEDIAN_GREEN_FILTER is unreachable through detect() on this
+// Needed because MEDIAN_GREEN_FILTER is unreachable through run_pixel() on this
 // pixel: the default plan runs the green median filter only in the
-// InsufficientClear chain, and detect() sends this pixel to the Standard
+// InsufficientClear chain, and run_pixel() sends this pixel to the Standard
 // procedure.
 //
 // This procedure applies NO thermal transform -- that is Standard-only, both
@@ -618,7 +618,7 @@ TEST(Units, BoundsAreUnitConstants)
 }
 
 //------------------------------------------------------------------------------
-// Negative control 4 -- the constant detect() cannot see.
+// Negative control 4 -- the constant run_pixel() cannot see.
 //
 // Through the InsufficientClear procedure, because that is the only caller of
 // apply_green_median_filter. Two assertions: the plain-divisor equivalence holds

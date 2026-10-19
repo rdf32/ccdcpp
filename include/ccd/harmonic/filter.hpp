@@ -84,7 +84,7 @@ inline Range thermal_range(const HarmonicOptions& options)
 // insufficientclear is standard followed by the green median filter, then
 // deduplicated again.
 //
-// Each builds the default plan per call; ccd::detect builds it once per call
+// Each builds the default plan per call; a Run builds it once per call
 // instead and runs preprocess::apply() per pixel.
 //
 //------------------------------------------------------------------------------
@@ -123,7 +123,7 @@ void remove_duplicate_dates(
 // (HarmonicOptions::THERM_MIN/THERM_MAX and their flags, exclusive on both
 // ends by default). The bounds are in the unit of `spectral`'s
 // thermal band AT THE POINT THIS RUNS -- which for the Standard procedure is
-// after ccd::detect applied HarmonicOptions::THERMAL_SCALE/THERMAL_OFFSET, and
+// after Run::pixel applied HarmonicOptions::THERMAL_SCALE/THERMAL_OFFSET, and
 // for the PermanentSnow and InsufficientClear procedures is the caller's own
 // unit, because nothing converted it. See the "Input unit convention" block in
 // harmonic.hpp for why that asymmetry is deliberate.

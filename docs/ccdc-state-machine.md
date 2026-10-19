@@ -13,7 +13,10 @@ otherwise (the rules in section 7); see the README's
 
 ## 1. One pixel, end to end
 
-`detect_pixel` (`src/ccd/ccd.cpp`) is a straight pipeline, not a machine:
+`Run::pixel` (`src/ccd/run/run.cpp`) is a straight pipeline, not a machine. A `Run` is built
+once per call (`include/ccd/run/run.hpp`): it checks the options, dates, QA and plan and holds
+what every pixel shares; each OpenMP thread holds a `Worker` with the buffers and the change
+detector it reuses from pixel to pixel. The steps of one pixel:
 
 1. decode the QA (through a `QaTable` when one is given);
 2. compute the QA statistics of the observations dated up to `STAT_ORD`
@@ -140,7 +143,7 @@ A transition is a function of two arguments, `(const Context&, State&)`. What it
 in the `State`. What it reads but never changes is in the `Context`.
 
 **`standard::Context`** holds the caller's `HarmonicOptions` (never written below
-`detect_pixel`), the pixel's `HarmonicWorkspace` (its dates, spectral and QA), and the Lasso
+`Run::pixel`), the pixel's `HarmonicWorkspace` (its dates, spectral and QA), and the Lasso
 solver with its workspace.
 
 **`standard::State`** is one pixel's record:
@@ -165,7 +168,7 @@ observations by one rule: a window bound above the dropped position moves down b
 
 The record's buffers keep their capacity across pixels: `State::reset` starts a pixel without
 freeing anything. `standard::Procedure` owns one record, `standard::Detector` owns one
-`standard::Procedure`, and `DetectScratch` (`include/ccd/ccd.hpp`) holds one `Detector` per
+`standard::Procedure`, and a `Worker` (`include/ccd/run/run.hpp`) holds one `Detector` per
 OpenMP thread.
 
 ## 4. Shared functions and Standard's own
@@ -234,8 +237,8 @@ that guard is final.
 That guard is where the record stops: `standard::Suspended` (`standard.hpp`) is captured by
 every route into EndCatch and by the early exits, before anything after the guard writes. It
 holds the exit, the cursor, the fit window's end, a pending grow, the last peek test's
-coefficient count and magnitudes, and the final segment count. `ccd::detect_recorded()` returns
-it inside a `PixelRecord`, with the pixel's input fingerprint and the days the machine dropped
+coefficient count and magnitudes, and the final segment count. `ccd::run_pixel()` with `RunSpec::record`
+returns it inside a `PixelRecord`, with the pixel's input fingerprint and the days the machine dropped
 (`include/ccd/record.hpp`).
 
 `standard::resume()` continues from it on the longer series:
@@ -251,7 +254,8 @@ it inside a `PixelRecord`, with the pixel's input fingerprint and the days the m
    provisional segment again when the series still ends there.
 
 `State::carried` counts the stored final segments, which come before the new ones, so
-StartCatch stays the first segment's. `ccd::resume()` keeps the stored final segments as given
+StartCatch stays the first segment's. A resume (`run_pixel()` or `run_cube()` with the stored
+run) keeps the stored final segments as given
 and returns the complete result, equal bit for bit to the run on the whole series
 (`ResumeEqualsTheFullRun.*`, `tests/ccd/golden/test_resume.cpp`). A pixel whose stored input
 changed, the pixels that take no machine and the early exits are rerun instead.
@@ -327,7 +331,7 @@ initialization, is a machine of its own beside the Standard one:
 - Its detector is a sibling of `standard::Detector` with the same `fit` call, and it reuses
   `select_procedure` and `fit_whole_series` for the pixels that take no machine.
 - It is a `ChangeMethod` (`HarmonicOptions::METHOD`), named in `method_name()`, its parameters
-  set by `with_method()`; `detect_pixel` picks its detector by the method.
+  set by `with_method()`; `Run::pixel` picks its detector by the method.
 
 A segment reports each band's fit as a `BandFit` (`ChangeModel::bands`): intercept,
 coefficients, RMSE, magnitude and the solver's iteration count (0 for a fit in closed form), so

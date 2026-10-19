@@ -544,7 +544,7 @@ public:
     //----------------------------------------------------------------------
     // Fits the observations of hworkspace that `mask` keeps (the Standard
     // procedure's processing mask over its series, built by the caller:
-    // ccd::detect builds it with the procedure's filter chain), through
+    // Run::pixel builds it with the procedure's filter chain), through
     // standard::run(). The result carries the mask, after an early exit
     // too.
     //----------------------------------------------------------------------

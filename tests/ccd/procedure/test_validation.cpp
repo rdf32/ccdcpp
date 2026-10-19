@@ -2,7 +2,7 @@
 //
 // Input validation at the entry points.
 //
-// detect() and detect_cube() reject a band layout ccd::validate() refuses --
+// run_pixel() and run_cube() reject a band layout ccd::validate() refuses --
 // a band count other than HarmonicOptions::NUM_BANDS, an index off the band
 // axis, a repeated or missing band -- inputs whose timestep counts
 // disagree, and dates that decrease, with std::invalid_argument before any
@@ -62,13 +62,11 @@ ccd::FitResult run_detect(
     const auto spectral = make_spectral<double>(B, T);
     const std::vector<std::uint8_t> qas(qa_count, 0);
 
-    return ccd::detect(
+    return ccd::run_pixel(
+        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {date_count}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {B, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {qa_count}),
-        ccd::HarmonicOptions(),
-        ccd::LassoOptions()
-    );
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {qa_count})).result;
 }
 
 // A 2 x 3 cube, (H, W, B, T).
@@ -91,14 +89,12 @@ ccd::CubeResult run_cube(
 
     const std::vector<std::uint8_t> qas(H * W * T, 0);
 
-    return ccd::detect_cube(
+    return ccd::run_cube(
+        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {date_count}),
         ccd::ArrayView<const Value, 4>::contiguous(spectral.data(), {H, W, B, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
-        ccd::HarmonicOptions(),
-        ccd::LassoOptions(),
-        2
-    );
+        2);
 }
 
 // The message names both counts.
@@ -318,7 +314,7 @@ TEST(Validation, CadenceRules)
     expect_error([](auto& h) { h.CHANGE_PROBABILITY = 1.0; },
         "CHANGE_PROBABILITY is 1.000000; it must be in (0, 1)");
 
-    // PEEK_SIZE 0 and 1 leave a peek empty (they crashed detect() before
+    // PEEK_SIZE 0 and 1 leave a peek empty (they crashed run_pixel() before
     // the check).
     expect_error([](auto& h) { h.PEEK_SIZE = 0; },
         "PEEK_SIZE is 0; it must be at least 2");
@@ -398,22 +394,23 @@ TEST(Validation, DetectRejectsACadenceOption)
     h.SEASONAL_RMSE_DIVISOR = 0.0;
 
     EXPECT_THROW(
-        ccd::detect(
+        ccd::run_pixel(
+            ccd::RunSpec{h, ccd::LassoOptions()},
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h, ccd::LassoOptions()),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})),
         std::invalid_argument);
 
-    EXPECT_THROW(ccd::detect_cube(
-            ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
-            ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
-            ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {1, 1, T}),
-            h, ccd::LassoOptions(), 1),
+    EXPECT_THROW(ccd::run_cube(
+        ccd::RunSpec{h, ccd::LassoOptions()},
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+        ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
+        ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {1, 1, T}),
+        1),
         std::invalid_argument);
 }
 
-// PEEK_SIZE 1 crashed detect() before the check; the smallest accepted
+// PEEK_SIZE 1 crashed run_pixel() before the check; the smallest accepted
 // value runs every transition the characterization pixels take.
 TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
 {
@@ -422,11 +419,11 @@ TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
         const std::size_t T = p.dates.size();
         const auto run = [&]()
         {
-            return ccd::detect(
+            return ccd::run_pixel(
+                ccd::RunSpec{p.h, p.l},
                 ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
                 ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
-                ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-                p.h, p.l);
+                ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
         };
 
         p.h.PEEK_SIZE = 1;
@@ -448,11 +445,11 @@ TEST(Validation, CoefficientExtremesThroughDetect)
             const std::size_t T = p.dates.size();
             p.h.COEFFICIENT_MIN = p.h.COEFFICIENT_MID = p.h.COEFFICIENT_MAX = count;
             ccd::FitResult r;
-            EXPECT_NO_THROW(r = ccd::detect(
+            EXPECT_NO_THROW(r = ccd::run_pixel(
+                ccd::RunSpec{p.h, p.l},
                 ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
                 ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
-                ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-                p.h, p.l)) << p.name << " " << count;
+                ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result) << p.name << " " << count;
             for (const auto& m : r.models)
                 for (const auto& b : m.bands)
                     EXPECT_TRUE(std::isfinite(b.rmse)) << p.name << " " << count;
@@ -476,8 +473,8 @@ TEST(Validation, BandListRejectsWhatItCannotHold)
     EXPECT_EQ(ordered.to_vector(), (std::vector<ccd::index_t>{5, 1, 3}));
 }
 
-// The layout is checked before any pixel runs, for detect() and for
-// detect_cube() of every dtype.
+// The layout is checked before any pixel runs, for run_pixel() and for
+// run_cube() of every dtype.
 TEST(Validation, EntryPointsRejectALayout)
 {
     constexpr ccd::index_t T = 40;
@@ -489,11 +486,11 @@ TEST(Validation, EntryPointsRejectALayout)
     h.DETECTION_BANDS = {1, 2, 7};
 
     EXPECT_THROW(
-        ccd::detect(
+        ccd::run_pixel(
+            ccd::RunSpec{h, ccd::LassoOptions()},
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h, ccd::LassoOptions()),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})),
         std::invalid_argument);
 
     const std::vector<std::uint8_t> cube_qas(T, 0);
@@ -502,15 +499,24 @@ TEST(Validation, EntryPointsRejectALayout)
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T});
     const auto q = ccd::ArrayView<const std::uint8_t, 3>::contiguous(cube_qas.data(), {1, 1, T});
 
-    EXPECT_THROW(ccd::detect_cube(d,
+    EXPECT_THROW(ccd::run_cube(
+        ccd::RunSpec{h, ccd::LassoOptions()},
+        d,
         ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
-        q, h, ccd::LassoOptions(), 1), std::invalid_argument);
-    EXPECT_THROW(ccd::detect_cube(d,
+        q,
+        1), std::invalid_argument);
+    EXPECT_THROW(ccd::run_cube(
+        ccd::RunSpec{h, ccd::LassoOptions()},
+        d,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 1, 7, T}),
-        q, h, ccd::LassoOptions(), 1), std::invalid_argument);
-    EXPECT_THROW(ccd::detect_cube(d,
+        q,
+        1), std::invalid_argument);
+    EXPECT_THROW(ccd::run_cube(
+        ccd::RunSpec{h, ccd::LassoOptions()},
+        d,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 1, 7, T}),
-        q, h, ccd::LassoOptions(), 1), std::invalid_argument);
+        q,
+        1), std::invalid_argument);
 }
 
 TEST(Validation, DetectRejectsBandCount)
@@ -565,13 +571,11 @@ TEST(Validation, SeriesNoLongerThanBandCountRuns)
         {
             const std::vector<std::uint8_t> qas(T, qa);
 
-            const auto result = ccd::detect(
+            const auto result = ccd::run_pixel(
+                ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
                 ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
                 ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
-                ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-                ccd::HarmonicOptions(),
-                ccd::LassoOptions()
-            );
+                ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})).result;
 
             EXPECT_TRUE(result.models.empty()) << "T=" << T << " qa=" << int(qa);
         }
@@ -599,14 +603,12 @@ ccd::CubeResult run_cube_dates(const std::vector<std::int64_t>& dates)
 
     const std::vector<std::uint8_t> qas(H * W * T, 0);
 
-    return ccd::detect_cube(
+    return ccd::run_cube(
+        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const Value, 4>::contiguous(spectral.data(), {H, W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
-        ccd::HarmonicOptions(),
-        ccd::LassoOptions(),
-        2
-    );
+        2);
 }
 
 ccd::FitResult run_detect_dates(const std::vector<std::int64_t>& dates)
@@ -615,13 +617,11 @@ ccd::FitResult run_detect_dates(const std::vector<std::int64_t>& dates)
     const auto spectral = make_spectral<double>(7, T);
     const std::vector<std::uint8_t> qas(T, 0);
 
-    return ccd::detect(
+    return ccd::run_pixel(
+        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-        ccd::HarmonicOptions(),
-        ccd::LassoOptions()
-    );
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})).result;
 }
 
 std::vector<std::int64_t> swapped(ccd::index_t T, ccd::index_t at)
@@ -676,13 +676,11 @@ TEST(Validation, DetectRejectsUnsortedDates)
     const auto dates = swapped(40, 10);
     const auto spectral = make_spectral<double>(7, 40);
     const std::vector<std::uint16_t> raw(40, 0);
-    EXPECT_THROW(ccd::detect(
+    EXPECT_THROW(ccd::run_pixel(
+        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions(), std::make_shared<ccd::QaTable>()},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {40}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, 40}),
-        ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {40}),
-        ccd::HarmonicOptions(),
-        ccd::LassoOptions(),
-        std::make_shared<ccd::QaTable>()), std::invalid_argument);
+        ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {40})), std::invalid_argument);
 }
 
 TEST(Validation, DetectAcceptsEqualDates)

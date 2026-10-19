@@ -9,7 +9,7 @@
 //
 //   * Bands.BitIdenticalToFixture: synthetic profiles with 7, 8 and 10 bands,
 //     with and without thermal, and an 8-band detection list, through
-//     detect() and detect_cube(), against their own hexfloat fixture. The
+//     run_pixel() and run_cube(), against their own hexfloat fixture. The
 //     profiles live here, in the test; ccdcpp ships no presets for them.
 //
 //   * Equivalences that need no fixture, on the Landsat corpus and on the
@@ -64,7 +64,7 @@ using namespace golden::bands;
 // Helpers
 //------------------------------------------------------------------------------
 
-// detect() on a private copy of one (B, T) block.
+// run_pixel() on a private copy of one (B, T) block.
 ccd::FitResult run_detect(
     const std::vector<std::int64_t>& dates,
     const double* spectral,
@@ -77,13 +77,11 @@ ccd::FitResult run_detect(
     const std::size_t T = dates.size();
     std::vector<double> block(spectral, spectral + B * T);
 
-    return ccd::detect(
+    return ccd::run_pixel(
+        ccd::RunSpec{h, l},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(block.data(), {B, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas, {T}),
-        h,
-        l
-    );
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas, {T})).result;
 }
 
 // `result` with each model's bands replaced by bands[rows[0]], bands[rows[1]],
@@ -163,7 +161,7 @@ Series with_inert_rows(const Series& s, std::size_t k, std::uint64_t seed)
     return out;
 }
 
-// Every pixel's detect() dump, with each result passed through `map` first.
+// Every pixel's run_pixel() dump, with each result passed through `map` first.
 template<typename Map>
 std::string dump_series(
     const Series& s,
@@ -281,14 +279,12 @@ TEST(Bands, BitIdenticalToFixture)
 
             for (int threads : {1, 4})
             {
-                ccd::CubeResult cube = ccd::detect_cube(
+                ccd::CubeResult cube = ccd::run_cube(
+                    ccd::RunSpec{profile.h, l},
                     ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
                     ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, B, c.T}),
                     ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, c.T}),
-                    profile.h,
-                    l,
-                    threads
-                );
+                    threads);
 
                 EXPECT_TRUE(cube.failures.empty());
                 ASSERT_EQ(cube.pixels.size(), s.N);
@@ -302,7 +298,7 @@ TEST(Bands, BitIdenticalToFixture)
                         px.result);
 
                 EXPECT_TRUE(from_cube_dump == single)
-                    << "detect_cube(threads=" << threads << ") differs from detect() on "
+                    << "run_cube(threads=" << threads << ") differs from run_pixel() on "
                     << profile.name << ":" << spec.name;
             }
 
