@@ -26,6 +26,7 @@ int omp_get_thread_num() { return 0; }
 #include "ccd/logger.hpp"
 #include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/config/from_options.hpp"
+#include "ccd/strategies/register_core.hpp"
 
 #include "../fnv.hpp"
 
@@ -407,6 +408,14 @@ Run::Run(
     {
         header_.options_digest =
             options_digest(spec_.hoptions, spec_.loptions, plan_, spec_.qa_table.get());
+        // A run under a configuration of its own: the configuration too.
+        if (spec_.config)
+        {
+            detail::Fnv h;
+            h.integer(static_cast<std::int64_t>(header_.options_digest));
+            h.integer(static_cast<std::int64_t>(config::digest(*spec_.config)));
+            header_.options_digest = h.value();
+        }
         header_.series_end = dates.size() > 0
             ? dates(dates.size() - 1)
             : std::numeric_limits<std::int64_t>::min();
@@ -429,8 +438,15 @@ Run::Run(
         run_plan_ = plan_;
     }
 
-    // The run's strategies, from the configuration its options describe.
-    strategies_ = config::strategies_for(options_, spec_.loptions);
+    // The run's strategies: its configuration's, or the one its options
+    // describe.
+    if (spec_.config)
+    {
+        strategies::library_registry().check_bands(*spec_.config, bands_);
+        strategies_ = strategies::build_strategies(strategies::library_registry(), *spec_.config);
+    }
+    else
+        strategies_ = config::strategies_for(options_, spec_.loptions);
 }
 
 template<typename Value, typename Qa>

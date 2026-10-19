@@ -66,6 +66,15 @@ option(
     ON
 )
 
+# Strategy extensions built into the library: directories, relative to the
+# source directory, each with an extension.cmake that appends to
+#   CCD_EXTENSION_SOURCES        its library sources
+#   CCD_EXTENSION_INCLUDE_DIRS   its include directories
+#   CCD_EXTENSION_REGISTRATIONS  its registration functions' names, each a
+#                                void ccd::strategies::NAME(config::Registry&)
+#                                the library calls (library_registry())
+set(CCD_EXTENSIONS "" CACHE STRING "Strategy extension directories to build into the library")
+
 option(
     CCD_BUILD_GOLDEN_DRIVER
     "Build golden_driver, the golden check's dump driver (tools/linux-compare)"
@@ -113,6 +122,38 @@ find_package(Eigen3 REQUIRED)
 
 
 # --------------------------------------------------
+# Strategy extensions
+# --------------------------------------------------
+
+set(CCD_EXTENSION_SOURCES "")
+set(CCD_EXTENSION_INCLUDE_DIRS "")
+set(CCD_EXTENSION_REGISTRATIONS "")
+set(extensions ${CCD_EXTENSIONS})
+list(REMOVE_DUPLICATES extensions)
+foreach(extension IN LISTS extensions)
+    set(CCD_EXTENSION_DIR ${PROJECT_SOURCE_DIR}/${extension})
+    if(NOT EXISTS ${CCD_EXTENSION_DIR}/extension.cmake)
+        message(FATAL_ERROR "CCD_EXTENSIONS: ${extension} has no extension.cmake")
+    endif()
+    include(${CCD_EXTENSION_DIR}/extension.cmake)
+endforeach()
+list(REMOVE_DUPLICATES CCD_EXTENSION_REGISTRATIONS)
+set(CCD_EXTENSION_DECLARATIONS "")
+set(CCD_EXTENSION_CALLS "")
+foreach(registration IN LISTS CCD_EXTENSION_REGISTRATIONS)
+    if(NOT registration MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
+        message(FATAL_ERROR "CCD_EXTENSIONS: ${registration} is not a function name")
+    endif()
+    string(APPEND CCD_EXTENSION_DECLARATIONS "void ${registration}(config::Registry& registry);\n")
+    string(APPEND CCD_EXTENSION_CALLS "    ${registration}(registry);\n")
+endforeach()
+configure_file(
+    ${PROJECT_SOURCE_DIR}/src/ccd/strategies/register_extensions.cpp.in
+    ${PROJECT_BINARY_DIR}/generated/register_extensions.cpp
+)
+
+
+# --------------------------------------------------
 # Core library
 # --------------------------------------------------
 
@@ -145,6 +186,7 @@ add_library(
     src/ccd/strategies/lookback/pyccd.cpp
     src/ccd/strategies/mode/pyccd.cpp
     src/ccd/strategies/model/lasso.cpp
+    src/ccd/strategies/noise_floor/variogram.cpp
     src/ccd/strategies/outlier/floored.cpp
     src/ccd/strategies/register_core.cpp
     src/ccd/strategies/refit/span_factor.cpp
@@ -153,6 +195,8 @@ add_library(
     src/ccd/strategies/start_search/pyccd.cpp
     src/ccd/strategies/window_screen/tmask.cpp
     src/ccd/qa_table.cpp
+    ${PROJECT_BINARY_DIR}/generated/register_extensions.cpp
+    ${CCD_EXTENSION_SOURCES}
 )
 
 
@@ -161,6 +205,7 @@ target_include_directories(
 
     PUBLIC
         ${PROJECT_SOURCE_DIR}/include
+        ${CCD_EXTENSION_INCLUDE_DIRS}
 )
 
 

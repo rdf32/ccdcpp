@@ -106,6 +106,17 @@
   `COEFFICIENT_MIN`, `min_observations` from `MEOW_SIZE`, and the Lasso parameters).
   `fit_whole_series()` takes its minimum observation count and coefficient count. Outputs
   unchanged.
+- **The `noise_floor` stage** (`ccd::NoiseFloor`, strategy `variogram`, `min_lag_days` from
+  `VARIOGRAM_MIN_LAG_DAYS`).
+- **A run's own configuration**: `RunSpec::config` (a `config::ConfigTree`; null keeps the one
+  the options describe), checked when the run is built, its band lists against the input's
+  bands (`config::Registry::check_bands`), and folded into the resume digest
+  (`config::digest()`), so a record of a configured run continues only under the same
+  configuration. Records of runs without one are unchanged.
+- **Strategy extensions**: CMake's `CCD_EXTENSIONS` lists extension directories built into the
+  library, each an `extension.cmake` adding its sources, include directories and registration
+  functions; `ccd::strategies::library_registry()` holds the library's
+  strategies and theirs.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

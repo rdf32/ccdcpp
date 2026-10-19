@@ -8,6 +8,7 @@
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/mode/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
+#include "ccd/strategies/noise_floor/variogram.hpp"
 #include "ccd/strategies/outlier/floored.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
 #include "ccd/strategies/segment_fit/model_fit.hpp"
@@ -23,6 +24,7 @@ namespace strategies
 void register_core_strategies(config::Registry& registry)
 {
     registry.add<ModeRule, PyccdMode>("pyccd");
+    registry.add<NoiseFloor, VariogramFloor>("variogram");
     registry.add<StartSearch, PyccdSearch>("pyccd");
     registry.add<WindowScreen, Tmask>("tmask");
     registry.add<StabilityFit, Lasso>("lasso");
@@ -47,6 +49,18 @@ const config::Registry& core_registry()
     return registry;
 }
 
+const config::Registry& library_registry()
+{
+    static const config::Registry registry = []
+    {
+        config::Registry r;
+        register_core_strategies(r);
+        register_extension_strategies(r);
+        return r;
+    }();
+    return registry;
+}
+
 namespace
 {
 
@@ -65,6 +79,7 @@ Strategies build_strategies(const config::Registry& registry, const config::Conf
 {
     Strategies s;
     s.mode = registry.make<ModeRule>(stage_of(config, ModeRule::stage));
+    s.noise_floor = registry.make<NoiseFloor>(stage_of(config, NoiseFloor::stage));
     s.start_search = registry.make<StartSearch>(stage_of(config, StartSearch::stage));
     s.window_screen = registry.make<WindowScreen>(stage_of(config, WindowScreen::stage));
     s.stability_fit = registry.make<StabilityFit>(stage_of(config, StabilityFit::stage));

@@ -38,6 +38,7 @@ class Model;   // strategies/model.hpp
 //
 //   mode             the pixel's procedure: change detection, or one curve
 //                    over the whole series
+//   noise_floor      each band's noise, which every test scales by
 //   start_search     where the search for a stable start window begins, and
 //                    when it has no candidate left
 //   window_screen    the outliers of a candidate start window, dropped before
@@ -79,6 +80,20 @@ struct ModeRule
 
     virtual ~ModeRule() = default;
     virtual PixelProcedure choose(const Quality::Statistics& statistics) const = 0;
+};
+
+//------------------------------------------------------------------------------
+// noise_floor: each band's noise floor, from the pixel's statistics-window
+// observations (dates, spectral (B, n)): one value per spectral row. A NaN in
+// it ends the pixel without segments.
+//------------------------------------------------------------------------------
+struct NoiseFloor
+{
+    static constexpr const char* stage = "noise_floor";
+
+    virtual ~NoiseFloor() = default;
+    virtual std::vector<scalar_t> estimate(ArrayView<const std::int64_t, 1> dates,
+                                           ArrayView<const scalar_t, 2> spectral) const = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -358,6 +373,7 @@ struct EdgeFit
 struct Strategies
 {
     std::shared_ptr<const ModeRule> mode;
+    std::shared_ptr<const NoiseFloor> noise_floor;
     std::shared_ptr<const StartSearch> start_search;
     std::shared_ptr<const WindowScreen> window_screen;
     std::shared_ptr<const StabilityFit> stability_fit;

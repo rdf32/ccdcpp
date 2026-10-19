@@ -322,12 +322,7 @@ Phase prepare(const Context& context, State& state)
 
     LOG_DEBUG("Peek size: " << state.cadence.peek);
 
-    state.variogram.bands =
-        adjusted_variogram(
-            stat_dates,
-            stat_spectral,
-            options.VARIOGRAM_MIN_LAG_DAYS
-        );
+    state.variogram.bands = context.strategies.noise_floor->estimate(stat_dates, stat_spectral);
 
     if (!state.variogram.usable())
     {

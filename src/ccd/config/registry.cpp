@@ -1,5 +1,11 @@
 #include "ccd/config/registry.hpp"
 
+#include <set>
+#include <string>
+#include <type_traits>
+
+#include "../fnv.hpp"
+
 namespace ccd
 {
 namespace config
@@ -29,6 +35,78 @@ std::map<std::string, std::vector<std::string>> Registry::names() const
         for (const auto& [name, factory] : strategies)
             out[stage].push_back(name);
     return out;
+}
+
+void check_band_list(const BandList& list, index_t bands, const std::string& where)
+{
+    std::set<index_t> seen;
+    for (const index_t band : list)
+    {
+        if (band >= bands)
+            throw std::invalid_argument(where + " holds band " + std::to_string(band) +
+                                        "; the input has " + std::to_string(bands) + " bands");
+        if (!seen.insert(band).second)
+            throw std::invalid_argument(where + " holds band " + std::to_string(band) +
+                                        " twice");
+    }
+}
+
+void Registry::check_bands(const ConfigTree& config, index_t bands) const
+{
+    for (const auto& [stage, chosen] : config)
+    {
+        const auto s = band_checks_.find(stage);
+        if (s == band_checks_.end())
+            continue;
+        const auto f = s->second.find(chosen.strategy);
+        if (f == s->second.end())
+            continue;
+        f->second(chosen.params, bands, stage + " '" + chosen.strategy + "'");
+    }
+}
+
+std::uint64_t digest(const ConfigTree& config)
+{
+    detail::Fnv h;
+    const auto text = [&h](const std::string& s)
+    {
+        h.integer(static_cast<std::int64_t>(s.size()));
+        for (const char c : s)
+            h.byte(static_cast<std::uint8_t>(c));
+    };
+    h.integer(static_cast<std::int64_t>(config.size()));
+    for (const auto& [stage, chosen] : config)
+    {
+        text(stage);
+        text(chosen.strategy);
+        h.integer(static_cast<std::int64_t>(chosen.params.size()));
+        for (const auto& [name, value] : chosen.params)
+        {
+            text(name);
+            h.byte(static_cast<std::uint8_t>(value.index()));
+            std::visit(
+                [&](const auto& v)
+                {
+                    using T = std::decay_t<decltype(v)>;
+                    if constexpr (std::is_same_v<T, bool>)
+                        h.flag(v);
+                    else if constexpr (std::is_same_v<T, std::int64_t>)
+                        h.integer(v);
+                    else if constexpr (std::is_same_v<T, double>)
+                        h.real(v);
+                    else if constexpr (std::is_same_v<T, std::string>)
+                        text(v);
+                    else
+                    {
+                        h.integer(static_cast<std::int64_t>(v.size()));
+                        for (const std::int64_t b : v)
+                            h.integer(b);
+                    }
+                },
+                value);
+        }
+    }
+    return h.value();
 }
 
 } // namespace config

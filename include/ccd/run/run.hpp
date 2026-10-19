@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ccd/array_view.hpp"
+#include "ccd/config/registry.hpp"
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/preprocess/preprocess.hpp"
 #include "ccd/procedure/fit.hpp"
@@ -83,6 +84,13 @@ using CubeQa = std::variant<
 //                       call's header
 //   keep_masks          false drops each pixel's processing mask (T bytes
 //                       per pixel) once it is done; FitResult::mask is empty
+//   config              the algorithm's configuration, one strategy per stage
+//                       by name (config/registry.hpp), in the library's
+//                       registry with its extensions; null: the one hoptions
+//                       and loptions describe (config::from_options()). A
+//                       configuration is checked when the run is built (names,
+//                       parameters, capabilities, band lists against the
+//                       input's bands) and is part of the resume digest
 //
 // A resume is an input of the call (run_pixel's and run_cube's `resume`),
 // not part of what it runs.
@@ -96,6 +104,7 @@ struct RunSpec
     PreprocessPlanPtr plan = nullptr;
     bool record = false;
     bool keep_masks = true;
+    std::shared_ptr<const config::ConfigTree> config = nullptr;
 };
 
 // One pixel's stored run, for a resume: its record and its stored segments

@@ -41,6 +41,8 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
         "pyccd",
         {{"clear_pct_threshold", real(hoptions.CLEAR_PCT_THRESHOLD)},
          {"snow_pct_threshold", real(hoptions.SNOW_PCT_THRESHOLD)}}};
+    tree[NoiseFloor::stage] = {
+        "variogram", {{"min_lag_days", integer(hoptions.VARIOGRAM_MIN_LAG_DAYS)}}};
     tree[StartSearch::stage] = {
         "pyccd",
         {{"meow_size", count(hoptions.MEOW_SIZE)}, {"day_delta", integer(hoptions.DAY_DELTA)}}};

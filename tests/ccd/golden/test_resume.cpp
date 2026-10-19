@@ -33,6 +33,7 @@
 #include <gtest/gtest.h>
 
 #include "ccd/ccd.hpp"
+#include "ccd/config/from_options.hpp"
 
 #include "golden.hpp"
 #include "series_corpus.hpp"
@@ -614,5 +615,51 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
         whole.qa(),
         1,
         &from),
+                 std::invalid_argument);
+}
+
+// A run under a configuration (RunSpec::config) runs its strategies: under
+// the configuration the options describe, every pixel's output is the
+// options run's, bit for bit, while the resume digest tells the two apart;
+// a configuration's band list is checked against the input's bands.
+TEST(RunConfiguration, TheOptionsConfigurationRunsAsTheOptions)
+{
+    std::size_t pixels = 0;
+    for (const auto& s : golden::synthetic_series())
+    {
+        if (++pixels > 40)
+            break;
+        ccd::RunSpec by_options{s.h, s.l, nullptr, nullptr, true};
+        ccd::RunSpec by_config = by_options;
+        by_config.config = std::make_shared<const ccd::config::ConfigTree>(
+            ccd::config::from_options(s.h, s.l));
+        const ccd::PixelRun a =
+            ccd::run_pixel(by_options, s.date_view(), s.spectral_view(), s.qa_view());
+        const ccd::PixelRun b =
+            ccd::run_pixel(by_config, s.date_view(), s.spectral_view(), s.qa_view());
+        EXPECT_EQ(dump(a.result), dump(b.result)) << s.name;
+        EXPECT_NE(a.header.options_digest, b.header.options_digest) << s.name;
+    }
+
+    const Series& s = golden::synthetic_series().front();
+    ccd::RunSpec spec{s.h, s.l};
+    auto tree = ccd::config::from_options(s.h, s.l);
+    tree["window_screen"].params["bands"] = ccd::config::bands({1, 9});
+    spec.config = std::make_shared<const ccd::config::ConfigTree>(tree);
+    try
+    {
+        ccd::run_pixel(spec, s.date_view(), s.spectral_view(), s.qa_view());
+        ADD_FAILURE() << "a band the input lacks was accepted";
+    }
+    catch (const std::invalid_argument& e)
+    {
+        EXPECT_NE(std::string(e.what()).find(
+                      "window_screen 'tmask' parameter 'bands' holds band 9; the input has 7 bands"),
+                  std::string::npos)
+            << e.what();
+    }
+    tree["window_screen"].params["bands"] = ccd::config::bands({1, 1});
+    spec.config = std::make_shared<const ccd::config::ConfigTree>(tree);
+    EXPECT_THROW(ccd::run_pixel(spec, s.date_view(), s.spectral_view(), s.qa_view()),
                  std::invalid_argument);
 }

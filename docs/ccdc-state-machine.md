@@ -199,6 +199,7 @@ rows, `config::bands({1, 4})`).
 | Stage | Decides | Strategies |
 |---|---|---|
 | `mode` | the pixel's procedure from its QA statistics: change detection (Standard), or one curve over the whole series (PermanentSnow, InsufficientClear) | `pyccd`: Standard at `clear_pct_threshold` clear, else PermanentSnow at `snow_pct_threshold` snow, else InsufficientClear |
+| `noise_floor` | each band's noise floor from the statistics window, which every test scales by (a NaN ends the pixel) | `variogram`: the first-order variogram at the first lag whose most common separation exceeds `min_lag_days` (`VARIOGRAM_MIN_LAG_DAYS`) |
 | `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `meow_size` observations needing `meow_size` more after them, spanning `day_delta` days |
 | `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
 | `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`) | `lasso`: the monitoring model's Lasso, `COEFFICIENT_MIN` coefficients |
@@ -225,6 +226,7 @@ A run's configuration is the one its options describe
 | `chi2` | `model_rmse_up_to`, `seasonal_count`, `seasonal_divisor` | `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT`, `SEASONAL_RMSE_DIVISOR` |
 | `floored` | `threshold` | `OUTLIER_THRESHOLD` |
 | `pyccd` (mode) | `clear_pct_threshold`, `snow_pct_threshold` | `CLEAR_PCT_THRESHOLD`, `SNOW_PCT_THRESHOLD` |
+| `variogram` | `min_lag_days` | `VARIOGRAM_MIN_LAG_DAYS` |
 | `lasso` (edge fit) | `coefficients`, `min_observations`, and the Lasso's four | `COEFFICIENT_MIN`, `MEOW_SIZE`, `LassoOptions` |
 | `pyccd` (lookback) | `peek_size`, `change_threshold`, `change_probability`, `outlier_threshold` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, `OUTLIER_THRESHOLD` |
 
@@ -324,11 +326,28 @@ Strategies s = strategies::build_strategies(strategies::core_registry(), tree);
 s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_span=*/100.0);  // false
 s.refit->due(30, 200.0, 100.0);                                              // true
 
+// A run under a configuration of its own (RunSpec::config): checked when the run is built,
+// band lists against the input's bands, and part of its resume records' digest.
+RunSpec spec{HarmonicOptions{}, LassoOptions{}};
+spec.config = std::make_shared<const config::ConfigTree>(tree);
+PixelRun run = run_pixel(spec, dates, spectral, qas);
+
 // A value out of range is refused when the strategies are built:
 tree["refit"].params["factor"] = config::real(0.0);
 strategies::build_strategies(strategies::core_registry(), tree);
 // std::invalid_argument: refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
 ```
+
+### Configurations and extensions
+
+A run's configuration is the one its options describe unless `RunSpec::config` holds one. That
+configuration names its strategies in `ccd::strategies::library_registry()`: the library's own
+(`register_core_strategies()`) and those of the extensions it was built with. An extension is a
+directory in CMake's `CCD_EXTENSIONS` whose `extension.cmake` adds its sources, include
+directories and registration functions (`CCD_EXTENSION_SOURCES`, `CCD_EXTENSION_INCLUDE_DIRS`,
+`CCD_EXTENSION_REGISTRATIONS`); the library calls each registration function when the registry
+is first built (`src/ccd/strategies/register_extensions.cpp.in`). A public build has none; the
+registry's listing is `library_registry().names()`.
 
 ## 4. Shared functions and Standard's own
 

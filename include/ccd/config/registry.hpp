@@ -50,6 +50,14 @@ struct StageConfig
 // The whole configuration, by stage name.
 using ConfigTree = std::map<std::string, StageConfig>;
 
+// Throws std::invalid_argument, naming `where`, when `list` names a band an
+// input of `bands` bands does not have, or repeats one.
+void check_band_list(const BandList& list, index_t bands, const std::string& where);
+
+// A digest of a configuration: equal for equal trees (every stage, strategy
+// name and parameter, by name), on any platform.
+std::uint64_t digest(const ConfigTree& config);
+
 class Registry
 {
 public:
@@ -61,6 +69,16 @@ public:
         if (stage.count(name))
             throw std::logic_error(std::string(Interface::stage) + " strategy '" + name +
                                    "' registered twice");
+        band_checks_[Interface::stage][name] =
+            [name](const Values& values, index_t bands, const std::string& where)
+        {
+            typename Strategy::Params params;
+            apply(Strategy::schema(), values, params, where);
+            for (const auto& field : Strategy::schema())
+                if (const auto* member = std::get_if<BandList Strategy::Params::*>(&field.member))
+                    check_band_list(params.**member, bands,
+                                    where + " parameter '" + field.name + "'");
+        };
         stage[name] = [name](const Values& values) -> std::shared_ptr<const void>
         {
             typename Strategy::Params params;
@@ -86,6 +104,12 @@ public:
     // The strategy names of each stage, for listings and tests.
     std::map<std::string, std::vector<std::string>> names() const;
 
+    // Throws std::invalid_argument when a band-list parameter of a strategy
+    // `config` names, as set there or by default, names a band an input of
+    // `bands` bands does not have, or repeats one. Strategies the registry
+    // does not hold are not checked (build_strategies() refuses them).
+    void check_bands(const ConfigTree& config, index_t bands) const;
+
 private:
 
     using Factory = std::function<std::shared_ptr<const void>(const Values&)>;
@@ -95,6 +119,8 @@ private:
     const Factory* find(const std::string& stage, const std::string& strategy) const;
 
     std::map<std::string, std::map<std::string, Factory>> factories_;
+    using BandCheck = std::function<void(const Values&, index_t, const std::string&)>;
+    std::map<std::string, std::map<std::string, BandCheck>> band_checks_;
 };
 
 } // namespace config

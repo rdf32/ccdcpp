@@ -67,6 +67,10 @@ void expect_refused(F make, const std::string& fragment)
 TEST(Registry, ListsTheCoreStrategies)
 {
     const auto names = ccd::strategies::core_registry().names();
+    ASSERT_EQ(names.count("noise_floor"), 1u);
+    EXPECT_EQ(names.at("noise_floor"), (std::vector<std::string>{"variogram"}));
+    // A library built without extensions has the core's strategies.
+    EXPECT_EQ(ccd::strategies::library_registry().names(), names);
     ASSERT_EQ(names.count("mode"), 1u);
     EXPECT_EQ(names.at("mode"), (std::vector<std::string>{"pyccd"}));
     ASSERT_EQ(names.count("segment_fit"), 1u);
@@ -745,4 +749,56 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     }
     EXPECT_EQ(got.break_day, want.break_day);
     EXPECT_EQ(got.curve_qa, ccd::CurveQA::End);
+}
+
+TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
+{
+    ccd::HarmonicOptions h;
+    h.VARIOGRAM_MIN_LAG_DAYS = 45;
+    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const ccd::index_t n = 50, bands = 3;
+    std::vector<std::int64_t> dates(n);
+    std::vector<double> spectral(bands * n);
+    for (ccd::index_t t = 0; t < n; ++t)
+    {
+        dates[t] = 730000 + 16 * static_cast<std::int64_t>(t) + (t % 3);
+        for (ccd::index_t b = 0; b < bands; ++b)
+            spectral[b * n + t] = 500.0 + 30.0 * std::sin(0.4 * t + b) + ((t * 5 + b) % 7);
+    }
+    const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
+    const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
+    EXPECT_EQ(s.noise_floor->estimate(d, x), ccd::adjusted_variogram(d, x, 45));
+    EXPECT_EQ(std::get<std::int64_t>(ccd::config::from_options(h, ccd::LassoOptions{})
+                                         .at("noise_floor")
+                                         .params.at("min_lag_days")),
+              45);
+}
+
+TEST(ConfigDigest, EqualTreesAndOnlyThem)
+{
+    const auto a = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    auto b = a;
+    EXPECT_EQ(ccd::config::digest(a), ccd::config::digest(b));
+    b["refit"].params["factor"] = ccd::config::real(1.34);
+    EXPECT_NE(ccd::config::digest(a), ccd::config::digest(b));
+    b = a;
+    b["refit"].params["factor"] = ccd::config::integer(1);   // another type
+    auto c = a;
+    c["refit"].params["factor"] = ccd::config::real(1.0);
+    EXPECT_NE(ccd::config::digest(b), ccd::config::digest(c));
+}
+
+TEST(Registry, BandListsAreCheckedAgainstTheInputAsSetAndByDefault)
+{
+    const auto& r = ccd::strategies::core_registry();
+    auto tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    EXPECT_NO_THROW(r.check_bands(tree, 7));
+    expect_refused([&] { r.check_bands(tree, 4); },
+                   "window_screen 'tmask' parameter 'bands' holds band 4; the input has 4 bands");
+    // Left out: Tmask's default bands, {1, 4}, are checked too.
+    tree["window_screen"].params.erase("bands");
+    EXPECT_NO_THROW(r.check_bands(tree, 5));
+    expect_refused([&] { r.check_bands(tree, 3); }, "holds band 4; the input has 3 bands");
+    tree["window_screen"].params["bands"] = ccd::config::bands({2, 2});
+    expect_refused([&] { r.check_bands(tree, 7); }, "holds band 2 twice");
 }
