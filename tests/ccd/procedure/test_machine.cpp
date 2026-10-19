@@ -379,8 +379,6 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     const ccd::InitializeCriteria& c = r.state.initialize_criteria;
     EXPECT_EQ(c.meow_size, r.options.MEOW_SIZE);
     EXPECT_EQ(c.day_delta, r.options.DAY_DELTA);
-    EXPECT_EQ(c.t_const, r.options.T_CONST);
-    EXPECT_EQ(c.tmask_bands.size(), r.options.TMASK_BANDS.size());
     EXPECT_EQ(c.detection_bands.size(), r.options.DETECTION_BANDS.size());
     EXPECT_EQ(c.num_coefficients, r.options.COEFFICIENT_MIN);
     EXPECT_EQ(c.max_coefficients, r.options.COEFFICIENT_MAX);
@@ -416,8 +414,10 @@ ccd::InitializeOutcome outcome_of(index_t n, Setup setup)
     Record r(n);
     setup(r);
     return ccd::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
-                                r.state.variogram, r.stability_fit(), *r.strategies.stability_rule,
-                                r.stability_scratch());
+                                r.state.variogram,
+                                ccd::InitializeStages{*r.strategies.window_screen, r.stability_fit(),
+                                                      *r.strategies.stability_rule,
+                                                      r.stability_scratch()});
 }
 
 TEST(StandardInitialize, NoCandidateLeftIsExhausted)

@@ -22,8 +22,6 @@ InitializeCriteria initialize_criteria(const HarmonicOptions& options)
     return InitializeCriteria{
         options.MEOW_SIZE,
         options.DAY_DELTA,
-        options.TMASK_BANDS,
-        options.T_CONST,
         options.DETECTION_BANDS,
         options.COEFFICIENT_MIN,
         options.COEFFICIENT_MAX
@@ -352,9 +350,8 @@ InitializeOutcome initialize_outcome(const Context& context, State& state)
         state.cursor.window,
         state.initialize_criteria,
         state.variogram,
-        stability_fit(context, state),
-        *context.strategies.stability_rule,
-        stability_scratch(context, state)
+        InitializeStages{*context.strategies.window_screen, stability_fit(context, state),
+                         *context.strategies.stability_rule, stability_scratch(context, state)}
     );
     LOG_DEBUG("Initialize: " << to_string(outcome));
     return outcome;

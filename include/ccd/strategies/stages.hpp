@@ -6,6 +6,7 @@
 
 #include "ccd/array_view.hpp"
 #include "ccd/band_list.hpp"
+#include "ccd/pmask.hpp"
 #include "ccd/types.hpp"
 
 #include "ccd/procedure/fit.hpp"
@@ -32,6 +33,8 @@ class Model;   // strategies/model.hpp
 //
 // The stages so far (the others are still decided inside the machine):
 //
+//   window_screen    the outliers of a candidate start window, dropped before
+//                    it is fitted
 //   stability_fit    the fit Initialize judges a candidate start window on,
 //                    which Lookback tests against
 //   stability_rule   whether that candidate is stable
@@ -52,6 +55,25 @@ class Model;   // strategies/model.hpp
 // (strategies/per_thread.hpp).
 //
 //==============================================================================
+
+//------------------------------------------------------------------------------
+// window_screen: the observations of a candidate start window that are
+// outliers, set in the returned mask (one entry per window observation).
+// Initialize drops them before fitting the window when what is left is still
+// long enough, and grows the window when every observation is one.
+//
+//   dates, spectral   the window's observations (spectral is (B, n))
+//   variogram         the pixel's noise floor
+//------------------------------------------------------------------------------
+struct WindowScreen
+{
+    static constexpr const char* stage = "window_screen";
+
+    virtual ~WindowScreen() = default;
+    virtual ProcessingMask screen(ArrayView<const std::int64_t, 1> dates,
+                                  ArrayView<const scalar_t, 2> spectral,
+                                  const Variogram& variogram) const = 0;
+};
 
 //------------------------------------------------------------------------------
 // stability_fit: the fit of a candidate start window's detection bands
@@ -202,6 +224,7 @@ struct OutlierRule
 // One call's strategies, one per stage, built from its configuration.
 struct Strategies
 {
+    std::shared_ptr<const WindowScreen> window_screen;
     std::shared_ptr<const StabilityFit> stability_fit;
     std::shared_ptr<const StabilityRule> stability_rule;
     std::shared_ptr<const MonitoringModel> model;

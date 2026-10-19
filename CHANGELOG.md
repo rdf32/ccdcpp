@@ -80,6 +80,12 @@
   and `State::stability` is the rule's scratch; `standard::stability_fit()` and
   `stability_scratch()` give both. The per-thread state base is `ccd::Scratch`
   (`strategies/per_thread.hpp`; was `TestScratch`). Outputs unchanged.
+- **The `window_screen` stage**: Initialize's outlier screen, `ccd::WindowScreen`, with its
+  strategy `tmask` (`bands` from `TMASK_BANDS`, `t_const` from `T_CONST`). Strategy parameters
+  may be band lists (`config::Unit::Bands`, `config::bands()`; a configuration holds them as
+  `std::vector<std::int64_t>`). `ccd::initialize_step` takes its strategies as one
+  `ccd::InitializeStages`; `InitializeCriteria` no longer holds `tmask_bands` and `t_const`.
+  Outputs unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

@@ -16,6 +16,7 @@ namespace ccd
 {
 
 class Model;           // strategies/model.hpp
+struct WindowScreen;   // strategies/stages.hpp
 struct StabilityRule;  // strategies/stages.hpp
 class Scratch;         // strategies/per_thread.hpp
 
@@ -149,11 +150,20 @@ struct InitializeCriteria
 {
     index_t meow_size;          // fewest observations in a window
     std::int64_t day_delta;     // shortest span, days
-    BandList tmask_bands;       // Tmask's bands
-    scalar_t t_const;           // Tmask's residual threshold, in variograms
     BandList detection_bands;   // the bands fitted and tested for stability
     index_t num_coefficients;   // of the stability fits
     index_t max_coefficients;   // the widest model's: their peek basis width
+};
+
+// The strategies one Initialize step runs, of the run's stages: the window
+// screen, the stability fit (its Model, which holds the fits) and the
+// stability rule with its scratch, prepared for the pixel.
+struct InitializeStages
+{
+    const WindowScreen& screen;
+    Model& fit;
+    const StabilityRule& rule;
+    const Scratch& rule_scratch;
 };
 
 // What one step of the start-window search did, in the order the step tests
@@ -186,27 +196,27 @@ const char* to_string(InitializeOutcome outcome);
 //
 //   * window.stop + meow_size < series.size() fails: Exhausted;
 //   * the window spans fewer than day_delta days: it grows by one;
-//   * Tmask flags every observation of the window: it grows by one;
-//   * Tmask flags some: they are dropped from `series` if what is left of
+//   * the window screen flags every observation of the window: it grows by
+//     one (AllOutliers);
+//   * it flags some: they are dropped from `series` if what is left of
 //     the window still spans day_delta days and holds meow_size
 //     observations (MaskedSeries::drop_outliers_if(), which shortens the
 //     window), and the step goes on; otherwise the window grows by one with
 //     nothing dropped (RejectedOutliers);
-//   * the detection bands are fitted over the window by `fit` (residuals
-//     kept): Stable (DroppedThenStable after a drop) when `rule` finds the
-//     fit stable, with `window` the stable window and `fit` its fits;
-//     otherwise the window shifts by one (Unstable, DroppedThenUnstable).
+//   * the detection bands are fitted over the window by the stability fit
+//     (residuals kept): Stable (DroppedThenStable after a drop) when the
+//     stability rule finds the fit stable, with `window` the stable window
+//     and the fit its fits; otherwise the window shifts by one (Unstable,
+//     DroppedThenUnstable).
 //
 // Only the detection bands are fitted, and only on the four fitted
-// outcomes. `rule_scratch` is the rule's, prepared for the pixel.
+// outcomes.
 InitializeOutcome initialize_step(
     MaskedSeries& series,
     Window& window,
     const InitializeCriteria& criteria,
     const Variogram& variogram,
-    Model& fit,
-    const StabilityRule& rule,
-    const Scratch& rule_scratch
+    const InitializeStages& stages
 );
 
 } // namespace ccd

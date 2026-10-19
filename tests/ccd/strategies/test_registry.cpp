@@ -10,6 +10,8 @@
 //     uses, and the refit schedule decides as Extend's inline test did;
 //   * the lasso monitoring model fits, predicts and scores as the shared
 //     kernels do, bit for bit, with the solver options it was configured with;
+//   * a band list parameter takes indices 0 to CCD_MAX_BANDS - 1, and the
+//     tmask window screen is tmask() of its bands and t_const;
 //   * the pyccd stability rule is pyccd's check of the stability fit, against
 //     its threshold for the pixel's peek;
 //   * a configuration whose strategy needs what no earlier stage provides is
@@ -62,6 +64,8 @@ void expect_refused(F make, const std::string& fragment)
 TEST(Registry, ListsTheCoreStrategies)
 {
     const auto names = ccd::strategies::core_registry().names();
+    ASSERT_EQ(names.count("window_screen"), 1u);
+    EXPECT_EQ(names.at("window_screen"), (std::vector<std::string>{"tmask"}));
     ASSERT_EQ(names.count("stability_fit"), 1u);
     EXPECT_EQ(names.at("stability_fit"), (std::vector<std::string>{"lasso"}));
     ASSERT_EQ(names.count("stability_rule"), 1u);
@@ -164,7 +168,7 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
-        "the configuration has no 'stability_fit' stage");
+        "the configuration has no 'window_screen' stage");
 }
 
 TEST(MonitoringModel, TheLassoIsTheKernelsFit)
@@ -460,4 +464,71 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
     fit->fit(d, ccd::ArrayView<const double, 2>::contiguous(steep.data(), {bands, n}),
              h.COEFFICIENT_MIN, h.COEFFICIENT_MAX, detection, ccd::KeepResiduals::Yes);
     EXPECT_FALSE(s.stability_rule->stable(*fit, d, variogram, detection, *scratch));
+}
+
+TEST(Params, ABandListTakesBandIndices)
+{
+    struct P
+    {
+        ccd::BandList bands = {1};
+    };
+    const std::vector<ccd::config::Field<P>> schema = {
+        {"bands", &P::bands, ccd::config::Unit::Bands, ccd::config::any(), "some bands"}};
+    P p;
+    ccd::config::apply(schema, {{"bands", ccd::config::bands({3, 0, 2})}}, p, "test");
+    EXPECT_EQ(std::vector<ccd::index_t>(p.bands.begin(), p.bands.end()),
+              (std::vector<ccd::index_t>{3, 0, 2}));
+    EXPECT_EQ(std::get<std::vector<std::int64_t>>(ccd::config::to_values(schema, p).at("bands")),
+              (std::vector<std::int64_t>{3, 0, 2}));
+    using List = std::vector<std::int64_t>;
+    expect_refused(
+        [&] { ccd::config::apply(schema, {{"bands", ccd::config::integer(1)}}, p, "test"); },
+        "test parameter 'bands' is a list of band indices");
+    expect_refused(
+        [&] { ccd::config::apply(schema, {{"bands", ccd::config::Value(List{1, -1})}}, p, "test"); },
+        "test parameter 'bands' holds band -1; a band index is at least 0");
+    expect_refused(
+        [&]
+        {
+            ccd::config::apply(
+                schema, {{"bands", ccd::config::Value(List{1, ccd::CCD_MAX_BANDS})}}, p, "test");
+        },
+        "test parameter 'bands': band index");
+}
+
+TEST(WindowScreen, TmaskIsTmaskOfItsBands)
+{
+    ccd::HarmonicOptions h;
+    h.TMASK_BANDS = {2, 5};
+    h.T_CONST = 3.5;
+    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    const auto& screen = tree.at("window_screen");
+    EXPECT_EQ(screen.strategy, "tmask");
+    EXPECT_EQ(std::get<std::vector<std::int64_t>>(screen.params.at("bands")),
+              (std::vector<std::int64_t>{2, 5}));
+    EXPECT_EQ(std::get<double>(screen.params.at("t_const")), 3.5);
+
+    // 30 observations, 16 days apart, two of them far off in band 5.
+    const ccd::index_t n = 30, bands = 7;
+    std::vector<std::int64_t> dates(n);
+    std::vector<double> spectral(bands * n);
+    for (ccd::index_t t = 0; t < n; ++t)
+    {
+        dates[t] = 730000 + 16 * static_cast<std::int64_t>(t);
+        for (ccd::index_t b = 0; b < bands; ++b)
+            spectral[b * n + t] = 1000.0 + 50.0 * std::sin(0.3 * t + b) +
+                                  ((t == 7 || t == 19) && b == 5 ? 900.0 : 0.0);
+    }
+    const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
+    const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
+    const ccd::Variogram variogram{std::vector<double>(bands, 20.0)};
+
+    const ccd::ProcessingMask got = s.window_screen->screen(d, x, variogram);
+    const ccd::ProcessingMask want = ccd::tmask(d, x, variogram, h.TMASK_BANDS, h.T_CONST);
+    ASSERT_EQ(got.size(), want.size());
+    for (ccd::index_t i = 0; i < n; ++i)
+        EXPECT_EQ(got[i], want[i]) << i;
+    EXPECT_TRUE(got[7]);
+    EXPECT_TRUE(got[19]);
 }

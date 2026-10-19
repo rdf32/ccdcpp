@@ -10,6 +10,7 @@
 #include <variant>
 #include <vector>
 
+#include "ccd/band_list.hpp"
 #include "ccd/types.hpp"
 
 namespace ccd
@@ -42,17 +43,20 @@ namespace config
 //==============================================================================
 
 // What a parameter's value is measured in: dimensionless, a count of
-// observations, days, or the input's reflectance.
+// observations, days, the input's reflectance, or rows of the spectral array
+// (a band list).
 enum class Unit : std::uint8_t
 {
     None,
     Observations,
     Days,
-    Reflectance
+    Reflectance,
+    Bands
 };
 
-// One parameter's value, as a configuration holds it.
-using Value = std::variant<bool, std::int64_t, double, std::string>;
+// One parameter's value, as a configuration holds it: a flag, a whole
+// number, a real, a name, or a list of band indices.
+using Value = std::variant<bool, std::int64_t, double, std::string, std::vector<std::int64_t>>;
 
 // A strategy's parameters, by name.
 using Values = std::map<std::string, Value>;
@@ -62,6 +66,10 @@ using Values = std::map<std::string, Value>;
 inline Value real(double v) { return Value(std::in_place_type<double>, v); }
 inline Value integer(std::int64_t v) { return Value(std::in_place_type<std::int64_t>, v); }
 inline Value flag(bool v) { return Value(std::in_place_type<bool>, v); }
+inline Value bands(const BandList& v)
+{
+    return Value(std::in_place_type<std::vector<std::int64_t>>, v.begin(), v.end());
+}
 
 // The allowed values of a number: lo <(=) value <(=) hi. NaN never passes.
 struct Bounds
@@ -92,7 +100,8 @@ std::string number(double v);
 template<class P>
 struct Field
 {
-    using Member = std::variant<double P::*, index_t P::*, std::int64_t P::*, bool P::*>;
+    using Member =
+        std::variant<double P::*, index_t P::*, std::int64_t P::*, bool P::*, BandList P::*>;
 
     const char* name;
     Member member;
@@ -106,7 +115,8 @@ struct Field
 // std::invalid_argument, naming `where` (e.g. "refit 'span-factor'") and the
 // field, on a name the schema does not hold, a value of the wrong type
 // (an integer is accepted for a real), a whole number its member cannot
-// hold, and a value outside the field's bounds.
+// hold, a value outside the field's bounds, and a band list with an index
+// below 0 or not below CCD_MAX_BANDS, or longer than CCD_MAX_BANDS.
 //------------------------------------------------------------------------------
 template<class P>
 void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
@@ -139,6 +149,28 @@ void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
                     if (!std::holds_alternative<bool>(value))
                         throw std::invalid_argument(at + " is a flag (true or false)");
                     params.*member = std::get<bool>(value);
+                }
+                else if constexpr (std::is_same_v<T, BandList>)
+                {
+                    if (!std::holds_alternative<std::vector<std::int64_t>>(value))
+                        throw std::invalid_argument(at + " is a list of band indices");
+                    BandList list;
+                    for (const std::int64_t band : std::get<std::vector<std::int64_t>>(value))
+                    {
+                        if (band < 0)
+                            throw std::invalid_argument(at + " holds band " +
+                                                        std::to_string(band) +
+                                                        "; a band index is at least 0");
+                        try
+                        {
+                            list.push_back(static_cast<index_t>(band));
+                        }
+                        catch (const std::invalid_argument& e)
+                        {
+                            throw std::invalid_argument(at + ": " + e.what());
+                        }
+                    }
+                    params.*member = list;
                 }
                 else
                 {
@@ -186,6 +218,8 @@ Values to_values(const std::vector<Field<P>>& schema, const P& params)
                 using T = std::remove_cv_t<std::remove_reference_t<decltype(params.*member)>>;
                 if constexpr (std::is_same_v<T, bool>)
                     out[f.name] = flag(params.*member);
+                else if constexpr (std::is_same_v<T, BandList>)
+                    out[f.name] = bands(params.*member);
                 else if constexpr (std::is_same_v<T, double>)
                     out[f.name] = real(params.*member);
                 else

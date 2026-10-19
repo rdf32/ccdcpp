@@ -187,9 +187,7 @@ InitializeOutcome initialize_step(
     Window& window,
     const InitializeCriteria& criteria,
     const Variogram& variogram,
-    Model& fit,
-    const StabilityRule& rule,
-    const Scratch& rule_scratch
+    const InitializeStages& stages
 )
 {
     assert(window.size() >= criteria.meow_size);
@@ -226,19 +224,12 @@ InitializeOutcome initialize_step(
         << ")"
     );
     //--------------------------------------------------------------------------
-    // Run TMask
+    // The window screen (Tmask)
     //--------------------------------------------------------------------------
-    auto outliers =
-        tmask(
-            dates,
-            spectral,
-            variogram,
-            criteria.tmask_bands,
-            criteria.t_const
-        );
+    auto outliers = stages.screen.screen(dates, spectral, variogram);
     LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
     //--------------------------------------------------------------------------
-    // TMask removed everything
+    // The screen removed everything
     //--------------------------------------------------------------------------
     if (outliers.count() == window.size())
     {
@@ -289,7 +280,7 @@ InitializeOutcome initialize_step(
     //
     // Only these are read: the stability rule here and Lookback after it.
     //--------------------------------------------------------------------------
-    fit.fit(
+    stages.fit.fit(
         dates,
         spectral,
         criteria.num_coefficients,
@@ -301,12 +292,12 @@ InitializeOutcome initialize_step(
     //--------------------------------------------------------------------------
     // Stability check
     //--------------------------------------------------------------------------
-    if (rule.stable(
-            fit,
+    if (stages.rule.stable(
+            stages.fit,
             dates,
             variogram,
             criteria.detection_bands,
-            rule_scratch))
+            stages.rule_scratch))
     {
         LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
         return dropped ? InitializeOutcome::DroppedThenStable : InitializeOutcome::Stable;

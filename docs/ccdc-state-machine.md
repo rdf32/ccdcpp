@@ -100,8 +100,9 @@ call and say what they did as an outcome value, so the trace and the tests see e
 The guards inside one call, in the order they are tested:
 
 - **Initialize** (`initialize_step`, `src/ccd/procedure/kernels.cpp`): no candidate left
-  (`Exhausted`); a span under `DAY_DELTA` (`ShortSpan`, grow); Tmask flags every observation
-  (`AllOutliers`, grow); Tmask flags some and the shortened window is too short or too sparse
+  (`Exhausted`); a span under `DAY_DELTA` (`ShortSpan`, grow); the window screen (Tmask) flags
+  every observation (`AllOutliers`, grow); it flags some and the shortened window is too short
+  or too sparse
   (`RejectedOutliers`, grow, nothing dropped); then the detection bands are fitted by the
   stability fit and judged by the stability rule (`Stable`, or `Unstable` and a shift). When Tmask's outliers are dropped, the
   same call fits the shortened window, as pyccd does in one pass of its loop; those steps report
@@ -185,10 +186,13 @@ The run builds its strategies once per call, through the registry
 (`include/ccd/config/registry.hpp`, `ccd::strategies::core_registry()`), from a configuration of
 one `{strategy, parameters}` per stage, and hands them to the machine in `Context::strategies`.
 Each strategy declares its parameters once, as a schema (`include/ccd/config/params.hpp`), which
-checks a configuration's values (unknown names, types, ranges) when the strategy is built.
+checks a configuration's values (unknown names, types, ranges) when the strategy is built. A
+parameter is a flag, a whole number, a real, a name or a band list (indices into the spectral
+rows, `config::bands({1, 4})`).
 
 | Stage | Decides | Strategies |
 |---|---|---|
+| `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
 | `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`) | `lasso`: the monitoring model's Lasso, `COEFFICIENT_MIN` coefficients |
 | `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's peek size) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is |
 | `model` | the fits Extend tests each peek against: each band's fit on the model window, its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
@@ -201,6 +205,7 @@ A run's configuration is the one its options describe
 
 | Strategy | Parameter | From |
 |---|---|---|
+| `tmask` | `bands`, `t_const` | `TMASK_BANDS`, `T_CONST` |
 | `lasso` (both stages) | `max_iter`, `alpha`, `tolerance`, `coef_floor` | `LassoOptions`' fields of those names |
 | `pyccd` (stability rule) | `peek_size`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
 | `span-factor` | `min_obs`, `factor` | `RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR` |
@@ -255,6 +260,7 @@ using namespace ccd;
 
 // The configuration a run under the defaults uses, and its strategies.
 config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{});
+// tree["window_screen"] is {"tmask", {{"bands", {1, 4}}, {"t_const", 4.89}}}
 // tree["stability_fit"] and tree["model"] are {"lasso", {{"max_iter", 1000}, {"alpha", 1.0},
 //                                           {"tolerance", 1e-4}, {"coef_floor", 1.0}}}
 // tree["stability_rule"] is {"pyccd", {{"peek_size", 6}, {"change_threshold", 15.0863},
@@ -265,6 +271,10 @@ config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{}
 //                                  {"model_rmse_up_to", 24}, {"seasonal_count", 24},
 //                                  {"seasonal_divisor", 4.0}}}
 // tree["outlier"] is {"floored", {{"threshold", 35.8882}}}
+
+// Tmask over green, red and swir1, and a looser outlier cut.
+tree["window_screen"].params["bands"] = config::bands({1, 2, 4});
+tree["window_screen"].params["t_const"] = config::real(6.0);
 
 // Initialize's and Extend's fits for reflectance input: a 10,000 times smaller penalty
 // (the catch segments' fits read LassoOptions until they are stages).

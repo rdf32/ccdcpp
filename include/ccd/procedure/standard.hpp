@@ -44,7 +44,7 @@ struct Cadence
 };
 
 // What Initialize tests a candidate window against: the options' MEOW_SIZE,
-// DAY_DELTA, TMASK_BANDS, T_CONST and DETECTION_BANDS, and stability fits of
+// DAY_DELTA and DETECTION_BANDS, and stability fits of
 // COEFFICIENT_MIN coefficients in a basis COEFFICIENT_MAX wide. Built once
 // per pixel, in Prepare.
 InitializeCriteria initialize_criteria(const HarmonicOptions& options);

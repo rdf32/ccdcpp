@@ -8,6 +8,7 @@
 #include "ccd/strategies/outlier/floored.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
 #include "ccd/strategies/stability_rule/pyccd.hpp"
+#include "ccd/strategies/window_screen/tmask.hpp"
 
 namespace ccd
 {
@@ -16,6 +17,7 @@ namespace strategies
 
 void register_core_strategies(config::Registry& registry)
 {
+    registry.add<WindowScreen, Tmask>("tmask");
     registry.add<StabilityFit, Lasso>("lasso");
     registry.add<StabilityRule, PyccdStability>("pyccd");
     registry.add<MonitoringModel, Lasso>("lasso");
@@ -52,6 +54,7 @@ const config::StageConfig& stage_of(const config::ConfigTree& config, const char
 Strategies build_strategies(const config::Registry& registry, const config::ConfigTree& config)
 {
     Strategies s;
+    s.window_screen = registry.make<WindowScreen>(stage_of(config, WindowScreen::stage));
     s.stability_fit = registry.make<StabilityFit>(stage_of(config, StabilityFit::stage));
     s.stability_rule = registry.make<StabilityRule>(stage_of(config, StabilityRule::stage));
     s.model = registry.make<MonitoringModel>(stage_of(config, MonitoringModel::stage));
