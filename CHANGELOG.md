@@ -99,6 +99,13 @@
   `standard::Cadence` holds only the peek (its `change_threshold` was Lookback's), and
   `State::lookback` is the lookback's scratch (`standard::lookback_scratch()`). Outputs
   unchanged.
+- **The `mode`, `segment_fit` and `edge_fit` stages**: the pixel's procedure (`ccd::ModeRule`,
+  strategy `pyccd` from `CLEAR_PCT_THRESHOLD` and `SNOW_PCT_THRESHOLD`; `select_procedure()` is
+  gone), a grown segment's coefficients (`ccd::SegmentFit`, strategy `model-fit`), and the
+  Start, End and whole-series fits (`ccd::EdgeFit`, strategy `lasso`: `coefficients` from
+  `COEFFICIENT_MIN`, `min_observations` from `MEOW_SIZE`, and the Lasso parameters).
+  `fit_whole_series()` takes its minimum observation count and coefficient count. Outputs
+  unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

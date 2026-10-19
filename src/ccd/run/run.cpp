@@ -178,12 +178,13 @@ ArrayView<const std::uint8_t, 1> decode_qa(
 PixelProcedure choose_procedure(
     ArrayView<const std::uint8_t, 1> qas,
     ArrayView<const std::int64_t, 1> dates,
-    const HarmonicOptions& options
+    const HarmonicOptions& options,
+    const ModeRule& mode
 )
 {
     Quality quality;
     const Quality::Statistics statistics = quality.compute_until(qas, dates, options);
-    return select_procedure(statistics, options);
+    return mode.choose(statistics);
 }
 
 // The plan of procedure `type`.
@@ -337,7 +338,7 @@ FitResult run_steps(
 )
 {
     const auto qas = decode_qa<Qa>(raw_qas, qa_table, worker.qas);
-    const PixelProcedure procedure = choose_procedure(qas, dates, options);
+    const PixelProcedure procedure = choose_procedure(qas, dates, options, *strategies.mode);
 
     if (request.record)
     {

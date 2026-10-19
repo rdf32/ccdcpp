@@ -37,6 +37,10 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
                           {"alpha", real(loptions.alpha)},
                           {"tolerance", real(loptions.tolerance)},
                           {"coef_floor", real(loptions.coef_floor)}};
+    tree[ModeRule::stage] = {
+        "pyccd",
+        {{"clear_pct_threshold", real(hoptions.CLEAR_PCT_THRESHOLD)},
+         {"snow_pct_threshold", real(hoptions.SNOW_PCT_THRESHOLD)}}};
     tree[StartSearch::stage] = {
         "pyccd",
         {{"meow_size", count(hoptions.MEOW_SIZE)}, {"day_delta", integer(hoptions.DAY_DELTA)}}};
@@ -69,6 +73,11 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
          {"seasonal_count", count(hoptions.SEASONAL_RMSE_COUNT)},
          {"seasonal_divisor", real(hoptions.SEASONAL_RMSE_DIVISOR)}}};
     tree[OutlierRule::stage] = {"floored", {{"threshold", real(hoptions.OUTLIER_THRESHOLD)}}};
+    tree[SegmentFit::stage] = {"model-fit", {}};
+    Values edges = lasso;
+    edges["coefficients"] = count(hoptions.COEFFICIENT_MIN);
+    edges["min_observations"] = count(hoptions.MEOW_SIZE);
+    tree[EdgeFit::stage] = {"lasso", edges};
     return tree;
 }
 

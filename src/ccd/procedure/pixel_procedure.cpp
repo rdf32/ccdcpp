@@ -9,25 +9,12 @@
 namespace ccd
 {
 
-PixelProcedure select_procedure(
-    const Quality::Statistics& statistics,
-    const HarmonicOptions& options
-)
-{
-    if (!statistics.enough_clear(options.CLEAR_PCT_THRESHOLD)) {
-        if (statistics.enough_snow(options.SNOW_PCT_THRESHOLD)) {
-            return PixelProcedure::PermanentSnow;
-        } else {
-            return PixelProcedure::InsufficientClear;
-        }
-    }
-    return PixelProcedure::Standard;
-}
-
 FitResult fit_whole_series(
     PixelProcedure procedure,
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
+    index_t min_observations,
+    index_t num_coefficients,
     LassoWorkspace& lworkspace,
     LassoSolver& solver
 )
@@ -36,12 +23,10 @@ FitResult fit_whole_series(
 
     LOG_DEBUG((procedure == PixelProcedure::PermanentSnow ? "Snow" : "Clear"));
 
-    const auto& options = hworkspace.options();
-
     //----------------------------------------------------------
     // Not enough observations: no segment, and the mask
     //----------------------------------------------------------
-    if (mask.count() < options.MEOW_SIZE)
+    if (mask.count() < min_observations)
     {
         FitResult none;
         none.mask = std::move(mask);
@@ -84,7 +69,7 @@ FitResult fit_whole_series(
     fit_bands(
         masked_dates,
         masked_spectral,
-        options.COEFFICIENT_MIN,
+        num_coefficients,
         KeepResiduals::No,
         lworkspace,
         solver,

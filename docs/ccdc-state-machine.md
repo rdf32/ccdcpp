@@ -21,8 +21,8 @@ detector it reuses from pixel to pixel. The steps of one pixel:
 1. decode the QA (through a `QaTable` when one is given);
 2. compute the QA statistics of the observations dated up to `STAT_ORD`
    (`Quality::compute_until`, `include/ccd/harmonic/quality.hpp`);
-3. choose the pixel's procedure, `ccd::select_procedure`
-   (`include/ccd/procedure/pixel_procedure.hpp`);
+3. choose the pixel's procedure: the run's `mode` stage (`ModeRule::choose`,
+   `include/ccd/strategies/stages.hpp`);
 4. apply that procedure's transform to the pixel's private copy and run its filter chain to
    build the processing mask (`include/ccd/preprocess/preprocess.hpp`);
 5. fit the mask with the run's change detector, `standard::Detector::fit`
@@ -38,7 +38,8 @@ The procedure choice:
 
 The whole-series fit has no loop, so it is a function, not a machine. With fewer than
 `MEOW_SIZE` kept observations it returns no segment, with the processing mask. Otherwise it returns one segment over the
-whole series, every band fitted with `COEFFICIENT_MIN` coefficients.
+whole series, every band fitted with `COEFFICIENT_MIN` coefficients (the `lasso` edge fit's
+`coefficients`; its `min_observations` is `MEOW_SIZE`).
 
 ## 2. The Standard machine
 
@@ -197,6 +198,7 @@ rows, `config::bands({1, 4})`).
 
 | Stage | Decides | Strategies |
 |---|---|---|
+| `mode` | the pixel's procedure from its QA statistics: change detection (Standard), or one curve over the whole series (PermanentSnow, InsufficientClear) | `pyccd`: Standard at `clear_pct_threshold` clear, else PermanentSnow at `snow_pct_threshold` snow, else InsufficientClear |
 | `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `meow_size` observations needing `meow_size` more after them, spanning `day_delta` days |
 | `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
 | `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`) | `lasso`: the monitoring model's Lasso, `COEFFICIENT_MIN` coefficients |
@@ -206,6 +208,8 @@ rows, `config::bands({1, 4})`).
 | `refit` | whether Extend refits the model before a peek test (after the first) | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
 | `change_test` | the pixel's peek size and anything else it derives per pixel (`prepare()`), whether an Extend peek is a change (`test()`, writing the peek's comparison RMSE and each observation's statistic into the `PeekResult`, which the outlier rule reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
 | `outlier` | after a peek that is not a change, whether its first observation is an outlier, which Extend drops | `floored`: pyccd's rule, the change test's statistic for that observation (noise floored at the variogram) above `threshold` |
+| `segment_fit` | the coefficients each band of a segment Extend grew reports | `model-fit`: the monitoring model's, as its last refit left them |
+| `edge_fit` | the Start and End segments' fits (`catch_window()`) and the whole-series curve (`whole_series()`) | `lasso`: every band a Lasso fit of `coefficients` coefficients (pyccd: `COEFFICIENT_MIN`); no whole-series segment under `min_observations` kept observations (`MEOW_SIZE`) |
 
 A run's configuration is the one its options describe
 (`ccd::config::from_options()`):
@@ -220,6 +224,8 @@ A run's configuration is the one its options describe
 | `chi2` | `peek_size`, `peek_reference_days`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `PEEK_REFERENCE_DAYS`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
 | `chi2` | `model_rmse_up_to`, `seasonal_count`, `seasonal_divisor` | `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT`, `SEASONAL_RMSE_DIVISOR` |
 | `floored` | `threshold` | `OUTLIER_THRESHOLD` |
+| `pyccd` (mode) | `clear_pct_threshold`, `snow_pct_threshold` | `CLEAR_PCT_THRESHOLD`, `SNOW_PCT_THRESHOLD` |
+| `lasso` (edge fit) | `coefficients`, `min_observations`, and the Lasso's four | `COEFFICIENT_MIN`, `MEOW_SIZE`, `LassoOptions` |
 | `pyccd` (lookback) | `peek_size`, `change_threshold`, `change_probability`, `outlier_threshold` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, `OUTLIER_THRESHOLD` |
 
 `RETRAIN_MIN_OBS` sets two parameters, the refit's and the test's, as pyccd's one constant does;
@@ -331,7 +337,7 @@ record:
 
 | Function or type | File |
 |---|---|
-| `select_procedure`, `fit_whole_series`, `PixelProcedure` | `include/ccd/procedure/pixel_procedure.hpp` |
+| `fit_whole_series`, `PixelProcedure` | `include/ccd/procedure/pixel_procedure.hpp` |
 | `MaskedSeries` | `include/ccd/procedure/masked_series.hpp` |
 | `Cursor`, `drive` | `include/ccd/procedure/machine.hpp` |
 | `fit_bands` (the one per-band fit loop), `peek_residuals`, `change_magnitude`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/procedure/kernels.hpp` |
@@ -482,7 +488,7 @@ initialization, is a machine of its own beside the Standard one:
   (`prepare`, `initialize_outcome`, `lookback_step`, `write_start_segment`, `move_past_segment`,
   `write_end_segment`), with routes of its own.
 - Its detector is a sibling of `standard::Detector` with the same `fit` call, and it reuses
-  `select_procedure` and `fit_whole_series` for the pixels that take no machine.
+  the `mode` stage and the edge fit's `whole_series()` for the pixels that take no machine.
 - It is a `ChangeMethod` (`HarmonicOptions::METHOD`), named in `method_name()`, its parameters
   set by `with_method()`; `Run::pixel` picks its detector by the method.
 

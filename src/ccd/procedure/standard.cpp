@@ -38,6 +38,12 @@ Scratch& stability_scratch(const Context& context, State& state)
                                [](const StabilityRule& r) { return r.make_scratch(); });
 }
 
+Scratch& edge_scratch(const Context& context, State& state)
+{
+    return state.edges.get(context.strategies.edge_fit,
+                           [](const EdgeFit& e) { return e.make_scratch(); });
+}
+
 Scratch& lookback_scratch(const Context& context, State& state)
 {
     return state.lookback.get(context.strategies.lookback,
@@ -424,14 +430,12 @@ void write_start_segment(const Context& context, State& state)
     assert(state.segments.empty() && cursor.prev_break == 0);
 
     auto window_0 = Window(cursor.prev_break, cursor.window.start);
-    ChangeModel result = catch_segment(
+    ChangeModel result = context.strategies.edge_fit->catch_window(
         state.series.dates(),
         state.series.spectral(),
         window_0,
-        context.options.COEFFICIENT_MIN,
         CurveQA::Start,
-        context.lasso,
-        context.solver
+        edge_scratch(context, state)
     );
     state.segments.push_back(std::move(result));
 }
@@ -522,7 +526,7 @@ void write_extended_segment(
 
     result.bands.reserve(num_bands);
     for (index_t band = 0; band < num_bands; ++band) {
-        BandFit fit = extension.model->band_fit(band);
+        BandFit fit = context.strategies.segment_fit->band(*extension.model, band);
         fit.magnitude = magnitude ? (*magnitude)[band] : change_test.magnitude(last, band);
         result.bands.push_back(fit);
     }
@@ -702,14 +706,12 @@ void write_end_segment(const Context& context, State& state)
 {
     const MaskedSeries& series = state.series;
     auto window_1 = Window(state.cursor.prev_break, series.size());
-    ChangeModel result = catch_segment(
+    ChangeModel result = context.strategies.edge_fit->catch_window(
         series.dates(),
         series.spectral(),
         window_1,
-        context.options.COEFFICIENT_MIN,
         CurveQA::End,
-        context.lasso,
-        context.solver
+        edge_scratch(context, state)
     );
     state.segments.push_back(std::move(result));
 }
@@ -978,7 +980,9 @@ FitResult Detector::fit(
         return procedure_.run(hworkspace, std::move(mask), lworkspace, solver, strategies);
     }
 
-    return fit_whole_series(procedure, hworkspace, std::move(mask), lworkspace, solver);
+    return strategies.edge_fit->whole_series(
+        procedure, hworkspace, std::move(mask),
+        edges_.get(strategies.edge_fit, [](const EdgeFit& e) { return e.make_scratch(); }));
 }
 
 } // namespace standard

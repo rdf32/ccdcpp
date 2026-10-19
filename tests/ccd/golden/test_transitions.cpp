@@ -62,7 +62,7 @@
 // fixtures; this table is checked against a trace-instrumented build
 // (MAX_LOG_LEVEL=0) of the code it describes.
 //
-//   Select (ccd::select_procedure, called by Run::pixel)
+//   Select (the run's mode, called by Run::pixel)
 //     Standard                  select_clear_at_threshold (clear 25/100 =
 //                               CLEAR_PCT_THRESHOLD, the >= side), every
 //                               Standard pixel below; corpus pyccd:dn

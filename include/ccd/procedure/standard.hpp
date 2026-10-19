@@ -264,6 +264,7 @@ struct State
     PerThread<StabilityFit, Model> init_model;
     PerThread<StabilityRule, Scratch> stability;
     PerThread<Lookback, Scratch> lookback;   // the lookback's per-pixel state
+    PerThread<EdgeFit, Scratch> edges;       // the edge fit's buffers
 
     // Extend's carried state.
     Extension extension;
@@ -307,8 +308,9 @@ struct Context
 Model& stability_fit(const Context& context, State& state);
 Scratch& stability_scratch(const Context& context, State& state);
 
-// The state's lookback scratch, of the run's lookback strategy.
+// The state's lookback and edge-fit scratch, of the run's strategies.
 Scratch& lookback_scratch(const Context& context, State& state);
+Scratch& edge_scratch(const Context& context, State& state);
 
 //------------------------------------------------------------------------------
 // Transitions: one per phase but Done. Each makes one decision and returns
@@ -514,10 +516,9 @@ private:
 // The Standard change detector, the one a run uses for every pixel of a call
 // (another method's detector is a sibling class with the same call, and the
 // run picks one by its METHOD). Each pixel's procedure is chosen before
-// it, by the shared ccd::select_procedure() (pixel_procedure.hpp); fit()
-// then fits the pixel's processing mask with this machine for Standard, and
-// with the shared ccd::fit_whole_series() for PermanentSnow and
-// InsufficientClear.
+// it, by the run's mode (ModeRule); fit() then fits the pixel's processing
+// mask with this machine for Standard, and with the run's edge fit
+// (EdgeFit::whole_series()) for PermanentSnow and InsufficientClear.
 //
 // Holds the machine's record: one Detector per thread reuses its buffers
 // across the pixels it fits.
@@ -529,7 +530,7 @@ class Detector
 public:
 
     // Fits the observations of `hworkspace` that `mask` keeps with
-    // `procedure`: Procedure::run() or fit_whole_series().
+    // `procedure`: Procedure::run() or the edge fit's whole_series().
     FitResult fit(
         PixelProcedure procedure,
         const HarmonicWorkspace& hworkspace,
@@ -561,6 +562,7 @@ public:
 private:
 
     Procedure procedure_;
+    PerThread<EdgeFit, Scratch> edges_;   // the whole-series fit's
 };
 
 } // namespace standard

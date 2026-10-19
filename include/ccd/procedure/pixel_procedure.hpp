@@ -26,7 +26,8 @@ namespace ccd
 //
 //==============================================================================
 
-// A pixel's procedure, chosen per pixel by select_procedure().
+// A pixel's procedure, chosen per pixel by the run's mode (ModeRule,
+// strategies/stages.hpp).
 enum class PixelProcedure
 {
     Standard,
@@ -34,18 +35,9 @@ enum class PixelProcedure
     PermanentSnow
 };
 
-// pyccd's choice, from the statistics of the observations dated up to
-// STAT_ORD: Standard when the clear percentage reaches CLEAR_PCT_THRESHOLD;
-// otherwise PermanentSnow when the snow percentage reaches
-// SNOW_PCT_THRESHOLD; otherwise InsufficientClear.
-PixelProcedure select_procedure(
-    const Quality::Statistics& statistics,
-    const HarmonicOptions& options
-);
-
 // The whole-series fit of a PermanentSnow or InsufficientClear pixel: one
 // segment over every observation `mask` keeps, every band fitted with
-// COEFFICIENT_MIN coefficients:
+// num_coefficients coefficients:
 //
 //     start_day, end_day  the first and last date of the whole series (not
 //                         only the kept observations), as pyccd
@@ -55,8 +47,8 @@ PixelProcedure select_procedure(
 //     curve_qa            PersistentSnow (54) or InsufficientClear (44)
 //     bands[b].score      rmse, magnitude 0, no residuals
 //
-// The result carries `mask`, also when there are fewer than MEOW_SIZE kept
-// observations and so no segment.
+// The result carries `mask`, also when there are fewer than min_observations
+// kept observations and so no segment.
 //
 // `procedure` is PermanentSnow or InsufficientClear; `mask` is that
 // procedure's processing mask over hworkspace's series, built by the
@@ -65,6 +57,8 @@ FitResult fit_whole_series(
     PixelProcedure procedure,
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
+    index_t min_observations,
+    index_t num_coefficients,
     LassoWorkspace& lworkspace,
     LassoSolver& solver
 );

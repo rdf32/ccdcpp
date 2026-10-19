@@ -284,6 +284,8 @@ ccd::FitResult run_insufficient_clear(
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
         ccd::filter::insufficientclear(hworkspace),
+        hworkspace.options().MEOW_SIZE,
+        hworkspace.options().COEFFICIENT_MIN,
         lworkspace,
         solver
     );

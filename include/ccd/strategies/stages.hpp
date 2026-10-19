@@ -9,7 +9,10 @@
 #include "ccd/pmask.hpp"
 #include "ccd/types.hpp"
 
+#include "ccd/harmonic/harmonic.hpp"
+#include "ccd/harmonic/quality.hpp"
 #include "ccd/procedure/fit.hpp"
+#include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/strategies/capabilities.hpp"
 #include "ccd/strategies/per_thread.hpp"
 
@@ -33,6 +36,8 @@ class Model;   // strategies/model.hpp
 //
 // The stages so far (the others are still decided inside the machine):
 //
+//   mode             the pixel's procedure: change detection, or one curve
+//                    over the whole series
 //   start_search     where the search for a stable start window begins, and
 //                    when it has no candidate left
 //   window_screen    the outliers of a candidate start window, dropped before
@@ -47,6 +52,9 @@ class Model;   // strategies/model.hpp
 //   change_test      the pixel's peek, whether a peek is a change, and the
 //                    segment's break and magnitudes
 //   outlier          whether the first peek observation is an outlier
+//   segment_fit      the coefficients a segment Extend grew reports
+//   edge_fit         the fits of the Start and End segments and of the
+//                    whole-series curve
 //
 // At an Extend peek the stages read one Peek, and the change test's results
 // (PeekResult) are what the outlier rule reads; which stage provides what
@@ -59,6 +67,19 @@ class Model;   // strategies/model.hpp
 // (strategies/per_thread.hpp).
 //
 //==============================================================================
+
+//------------------------------------------------------------------------------
+// mode: the pixel's procedure, from the QA statistics of its statistics
+// window: Standard (the change-detection machine), or PermanentSnow or
+// InsufficientClear (one curve over the whole series, the edge fit's).
+//------------------------------------------------------------------------------
+struct ModeRule
+{
+    static constexpr const char* stage = "mode";
+
+    virtual ~ModeRule() = default;
+    virtual PixelProcedure choose(const Quality::Statistics& statistics) const = 0;
+};
 
 //------------------------------------------------------------------------------
 // start_search: the search for a stable start window. Its decisions, in the
@@ -300,9 +321,43 @@ struct OutlierRule
     virtual OutlierOutcome judge(const Peek& peek, const PeekResult& result) const = 0;
 };
 
+//------------------------------------------------------------------------------
+// segment_fit: the coefficients of each band of a segment Extend grew, from
+// the monitoring model fitted on it (magnitude set by the change test).
+//------------------------------------------------------------------------------
+struct SegmentFit
+{
+    static constexpr const char* stage = "segment_fit";
+
+    virtual ~SegmentFit() = default;
+    virtual BandFit band(const Model& model, index_t band) const = 0;
+};
+
+//------------------------------------------------------------------------------
+// edge_fit: the fits that are not a test's. catch_window() is the segment
+// catching `window` of the masked series (`dates`, `spectral` (B, n)): the
+// Start segment before the first stable start, the End segment after the
+// last break; whole_series() is a PermanentSnow or InsufficientClear pixel's
+// one curve over the observations `mask` keeps (no segment when too few).
+// Both have change probability 0 and magnitude 0.
+//------------------------------------------------------------------------------
+struct EdgeFit
+{
+    static constexpr const char* stage = "edge_fit";
+
+    virtual ~EdgeFit() = default;
+    virtual std::unique_ptr<Scratch> make_scratch() const = 0;
+    virtual ChangeModel catch_window(ArrayView<const std::int64_t, 1> dates,
+                                     ArrayView<const scalar_t, 2> spectral, const Window& window,
+                                     CurveQA curve_qa, Scratch& scratch) const = 0;
+    virtual FitResult whole_series(PixelProcedure procedure, const HarmonicWorkspace& pixel,
+                                   ProcessingMask mask, Scratch& scratch) const = 0;
+};
+
 // One call's strategies, one per stage, built from its configuration.
 struct Strategies
 {
+    std::shared_ptr<const ModeRule> mode;
     std::shared_ptr<const StartSearch> start_search;
     std::shared_ptr<const WindowScreen> window_screen;
     std::shared_ptr<const StabilityFit> stability_fit;
@@ -312,6 +367,8 @@ struct Strategies
     std::shared_ptr<const RefitSchedule> refit;
     std::shared_ptr<const ChangeTest> change_test;
     std::shared_ptr<const OutlierRule> outlier;
+    std::shared_ptr<const SegmentFit> segment_fit;
+    std::shared_ptr<const EdgeFit> edge_fit;
 };
 
 } // namespace ccd

@@ -365,6 +365,8 @@ TEST(CCD, DetectSnow)
         ccd::PixelProcedure::PermanentSnow,
         hworkspace,
         ccd::filter::snow(hworkspace),
+        hworkspace.options().MEOW_SIZE,
+        hworkspace.options().COEFFICIENT_MIN,
         lworkspace,
         solver
     );

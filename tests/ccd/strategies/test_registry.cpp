@@ -67,6 +67,12 @@ void expect_refused(F make, const std::string& fragment)
 TEST(Registry, ListsTheCoreStrategies)
 {
     const auto names = ccd::strategies::core_registry().names();
+    ASSERT_EQ(names.count("mode"), 1u);
+    EXPECT_EQ(names.at("mode"), (std::vector<std::string>{"pyccd"}));
+    ASSERT_EQ(names.count("segment_fit"), 1u);
+    EXPECT_EQ(names.at("segment_fit"), (std::vector<std::string>{"model-fit"}));
+    ASSERT_EQ(names.count("edge_fit"), 1u);
+    EXPECT_EQ(names.at("edge_fit"), (std::vector<std::string>{"lasso"}));
     ASSERT_EQ(names.count("start_search"), 1u);
     EXPECT_EQ(names.at("start_search"), (std::vector<std::string>{"pyccd"}));
     ASSERT_EQ(names.count("window_screen"), 1u);
@@ -175,7 +181,7 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
-        "the configuration has no 'start_search' stage");
+        "the configuration has no 'mode' stage");
 }
 
 TEST(MonitoringModel, TheLassoIsTheKernelsFit)
@@ -692,4 +698,51 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
     const auto judged = lookback.judge(fit, d, x, window, 0, variogram, detection, *scratch);
     EXPECT_EQ(judged.verdict, ccd::LookbackVerdict::Change);
     EXPECT_EQ(judged.observation, 14u);
+}
+
+TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
+{
+    ccd::HarmonicOptions h;
+    h.COEFFICIENT_MIN = 6;
+    h.MEOW_SIZE = 15;
+    ccd::LassoOptions l;
+    l.alpha = 0.5;
+    const auto tree = ccd::config::from_options(h, l);
+    const auto& edges = tree.at("edge_fit");
+    EXPECT_EQ(edges.strategy, "lasso");
+    EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients")), 6);
+    EXPECT_EQ(std::get<std::int64_t>(edges.params.at("min_observations")), 15);
+    EXPECT_EQ(std::get<double>(edges.params.at("alpha")), 0.5);
+    EXPECT_EQ(tree.at("segment_fit").strategy, "model-fit");
+    EXPECT_EQ(tree.at("mode").strategy, "pyccd");
+
+    const auto s = ccd::config::strategies_for(h, l);
+    const ccd::index_t n = 40, bands = 3;
+    std::vector<std::int64_t> dates(n);
+    std::vector<double> spectral(bands * n);
+    for (ccd::index_t t = 0; t < n; ++t)
+    {
+        dates[t] = 730000 + 16 * static_cast<std::int64_t>(t);
+        for (ccd::index_t b = 0; b < bands; ++b)
+            spectral[b * n + t] = 900.0 + 100.0 * std::sin(0.2 * t + b) + 7.0 * ((t + b) % 3);
+    }
+    const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
+    const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
+    const ccd::Window window(3, 31);
+
+    const auto scratch = s.edge_fit->make_scratch();
+    const ccd::ChangeModel got =
+        s.edge_fit->catch_window(d, x, window, ccd::CurveQA::End, *scratch);
+    ccd::LassoWorkspace workspace(0);
+    ccd::LassoSolver solver(l);
+    const ccd::ChangeModel want =
+        ccd::catch_segment(d, x, window, 6, ccd::CurveQA::End, workspace, solver);
+    ASSERT_EQ(got.bands.size(), want.bands.size());
+    for (std::size_t b = 0; b < got.bands.size(); ++b)
+    {
+        EXPECT_EQ(got.bands[b].coefficients, want.bands[b].coefficients) << b;
+        EXPECT_EQ(got.bands[b].rmse, want.bands[b].rmse) << b;
+    }
+    EXPECT_EQ(got.break_day, want.break_day);
+    EXPECT_EQ(got.curve_qa, ccd::CurveQA::End);
 }

@@ -21,7 +21,7 @@
 //     segment loop each way, with the same preprocessing ccd::run_pixel() runs,
 //     against the Exit the run leaves in the record. The result of each run
 //     is also checked against run_pixel()'s, field for field.
-//   * select_procedure(): the clear percentage first, then the snow
+//   * the mode's choose(): the clear percentage first, then the snow
 //     percentage, each threshold on its >= side; Detector::fit(): the
 //     machine for Standard, the shared whole-series fit for the others.
 //
@@ -1216,6 +1216,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
 TEST(SelectProcedure, TheClearThenTheSnowPercentage)
 {
     const ccd::HarmonicOptions options;   // clear 0.25, snow 0.75
+    const auto mode = ccd::config::strategies_for(options, ccd::LassoOptions{}).mode;
 
     auto stats = [](scalar_t clear, scalar_t snow)
     {
@@ -1227,13 +1228,13 @@ TEST(SelectProcedure, TheClearThenTheSnowPercentage)
 
     // At, just above and just below each threshold; enough clear wins
     // whatever the snow percentage.
-    EXPECT_EQ(ccd::select_procedure(stats(0.25, 0.9), options), ccd::PixelProcedure::Standard);
-    EXPECT_EQ(ccd::select_procedure(stats(0.2501, 0.0), options), ccd::PixelProcedure::Standard);
-    EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.75), options),
+    EXPECT_EQ(mode->choose(stats(0.25, 0.9)), ccd::PixelProcedure::Standard);
+    EXPECT_EQ(mode->choose(stats(0.2501, 0.0)), ccd::PixelProcedure::Standard);
+    EXPECT_EQ(mode->choose(stats(0.2499, 0.75)),
               ccd::PixelProcedure::PermanentSnow);
-    EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.7501), options),
+    EXPECT_EQ(mode->choose(stats(0.2499, 0.7501)),
               ccd::PixelProcedure::PermanentSnow);
-    EXPECT_EQ(ccd::select_procedure(stats(0.2499, 0.7499), options),
+    EXPECT_EQ(mode->choose(stats(0.2499, 0.7499)),
               ccd::PixelProcedure::InsufficientClear);
 }
 
@@ -1262,7 +1263,8 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
             detector.fit(procedure, r.workspace, mask, r.lasso, r.solver, r.strategies);
         expect_same(
             fit,
-            ccd::fit_whole_series(procedure, r.workspace, mask, r.lasso, r.solver),
+            ccd::fit_whole_series(procedure, r.workspace, mask, r.options.MEOW_SIZE,
+                                  r.options.COEFFICIENT_MIN, r.lasso, r.solver),
             "whole series");
         ASSERT_EQ(fit.models.size(), 1u);
         EXPECT_EQ(fit.models[0].curve_qa,

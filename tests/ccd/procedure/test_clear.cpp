@@ -365,6 +365,8 @@ TEST(CCD, DetectClear)
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
         ccd::filter::insufficientclear(hworkspace),
+        hworkspace.options().MEOW_SIZE,
+        hworkspace.options().COEFFICIENT_MIN,
         lworkspace,
         solver
     );
