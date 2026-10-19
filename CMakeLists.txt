@@ -136,8 +136,10 @@ add_library(
 
     src/ccd/ccd.cpp
     src/ccd/run/run.cpp
+    src/ccd/config/from_options.cpp
     src/ccd/config/params.cpp
     src/ccd/config/registry.cpp
+    src/ccd/strategies/change_test/chi2.cpp
     src/ccd/strategies/model/lasso.cpp
     src/ccd/strategies/register_core.cpp
     src/ccd/strategies/refit/span_factor.cpp
@@ -476,7 +478,7 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
-    # The per-pixel records below Run::pixel: MaskedSeries, Variogram, Cadence.
+    # The per-pixel records below Run::pixel: MaskedSeries, Variogram.
     add_executable(
         test_masked_series
 

@@ -11,7 +11,7 @@
 //   * peek_residuals(): an 8-coefficient basis over the peek,
 //     predict, |y - prediction|; on a forward peek (Extend) and a reversed
 //     one (Lookback).
-//   * standard::change_magnitude(): the per-detection-band sum over copies
+//   * change_magnitude(): the per-detection-band sum over copies
 //     of the residuals and the variogram (the positional form).
 //   * catch_segment(): the catch's fit and day rules.
 //   * find_closest_doy() and SeasonalOrder: the integer counting sort and
@@ -587,7 +587,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
                         rmse.push_back(models[band].score.rmse * scale);
 
                     std::vector<scalar_t> magnitude{-1.0};
-                    ccd::standard::change_magnitude(got, detection, variogram, rmse, magnitude);
+                    ccd::change_magnitude(got, detection, variogram, rmse, magnitude);
                     EXPECT_TRUE(same_bits(magnitude, magnitude_loop(got, detection, variogram, rmse)));
                 }
             }
@@ -603,10 +603,10 @@ TEST(ChangeMagnitude, NonPositiveNormAndNoBands)
     const ccd::Variogram variogram{{0.0, 2.0}};
     std::vector<scalar_t> magnitude;
 
-    ccd::standard::change_magnitude(residuals, ccd::BandList{0, 1}, variogram, {0.0, 1.0}, magnitude);
+    ccd::change_magnitude(residuals, ccd::BandList{0, 1}, variogram, {0.0, 1.0}, magnitude);
     EXPECT_EQ(magnitude, (std::vector<scalar_t>{2.25, 4.0}));
 
-    ccd::standard::change_magnitude(residuals, ccd::BandList{}, variogram, {}, magnitude);
+    ccd::change_magnitude(residuals, ccd::BandList{}, variogram, {}, magnitude);
     EXPECT_TRUE(magnitude.empty());
 }
 

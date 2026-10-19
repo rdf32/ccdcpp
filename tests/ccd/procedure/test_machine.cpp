@@ -45,6 +45,7 @@
 #include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/regression/lasso_solver.hpp"
+#include "ccd/config/from_options.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 #include "../golden/characterisation.hpp"
@@ -89,7 +90,7 @@ struct Record
               ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {n}),
               options),
           solver(lasso_options),
-          strategies(ccd::strategies::strategies_for(options, lasso_options)),
+          strategies(ccd::config::strategies_for(options, lasso_options)),
           context{options, workspace, lasso, solver, strategies}
     {
         ccd::ProcessingMask mask(n);
@@ -104,6 +105,15 @@ struct Record
         state.cursor = ccd::Cursor{ccd::Window(start, stop), prev_break};
         state.cadence = ccd::standard::Cadence{peek, options.CHANGE_THRESHOLD};
         state.initialize_criteria = ccd::standard::initialize_criteria(options, state.cadence);
+
+        // The change test as Prepare leaves it on a series at the reference
+        // cadence (16 days): its threshold CHANGE_THRESHOLD.
+        const std::int64_t reference[] = {730000, 730016};
+        strategies.change_test->prepare(
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(reference, {2}),
+            options.DETECTION_BANDS.size(),
+            state.extension.test.get(strategies.change_test,
+                                     [](const ccd::ChangeTest& c) { return c.make_scratch(); }));
     }
 
     // A segment already written, as Extend or StartCatch leaves one.
@@ -721,7 +731,7 @@ TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
     EXPECT_TRUE(e.trained);
     EXPECT_EQ(e.fit_window.start, 0u);
     EXPECT_EQ(e.fit_window.stop, 24u);
-    ASSERT_NE(e.model, nullptr);
+    ASSERT_TRUE(e.model);
     EXPECT_EQ(e.peek.start, 24u);
     EXPECT_EQ(e.peek.stop, 30u);
     EXPECT_EQ(e.num_coef, ccd::standard::coefficient_count(24, r.options));
@@ -758,18 +768,53 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     Record r(80);
     in_extend(r, 0, 24);
     r.step();
+    // The magnitudes the test wrote are change_magnitude() of those RMSEs.
     const ccd::standard::Extension& e = r.state.extension;
     const auto& bands = r.options.DETECTION_BANDS;
+    const auto magnitude_with = [&](const std::vector<double>& rmse)
+    {
+        std::vector<double> m;
+        ccd::change_magnitude(e.residuals, bands, r.state.variogram, rmse, m);
+        return m;
+    };
+    std::vector<double> rmse(bands.size());
     for (index_t i = 0; i < bands.size(); ++i)
-        EXPECT_EQ(e.comp_rmse[i], e.model->rmse(bands[i]));
+        rmse[i] = e.model->rmse(bands[i]);
+    EXPECT_EQ(e.magnitude, magnitude_with(rmse));
 
     r.step();   // window (0, 25): seasonal
     const auto closest = ccd::find_closest_doy(
         r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.options.SEASONAL_RMSE_COUNT);
     for (index_t i = 0; i < bands.size(); ++i)
-        EXPECT_EQ(e.comp_rmse[i],
-                  ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
-                                    r.options.SEASONAL_RMSE_DIVISOR));
+        rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
+                                     r.options.SEASONAL_RMSE_DIVISOR);
+    EXPECT_EQ(e.magnitude, magnitude_with(rmse));
+}
+
+TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
+{
+    // The change test's model_rmse_up_to set apart from the refit's min_obs:
+    // a 24-observation window, refitted (min_obs 24), compares against the
+    // seasonal RMSE when the test's limit is 10.
+    Record r(80);
+    auto tree = ccd::config::from_options(r.options, r.lasso_options);
+    tree["change_test"].params["model_rmse_up_to"] = ccd::config::integer(10);
+    r.strategies = ccd::strategies::build_strategies(ccd::strategies::core_registry(), tree);
+    in_extend(r, 0, 24);
+    r.step();
+
+    const ccd::standard::Extension& e = r.state.extension;
+    EXPECT_EQ(e.fit_window.stop, 24u);
+    const auto& bands = r.options.DETECTION_BANDS;
+    const auto closest = ccd::find_closest_doy(
+        r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.options.SEASONAL_RMSE_COUNT);
+    std::vector<double> rmse(bands.size());
+    for (index_t i = 0; i < bands.size(); ++i)
+        rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
+                                     r.options.SEASONAL_RMSE_DIVISOR);
+    std::vector<double> want;
+    ccd::change_magnitude(e.residuals, bands, r.state.variogram, rmse, want);
+    EXPECT_EQ(e.magnitude, want);
 }
 
 TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
@@ -916,7 +961,7 @@ MachineRun run_machine(const golden::CharPixel& p)
 
     ccd::LassoWorkspace lasso(0);
     ccd::LassoSolver solver(p.l);
-    const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h, p.l);
+    const ccd::Strategies strategies = ccd::config::strategies_for(p.h, p.l);
     const ccd::standard::Context context{p.h, workspace, lasso, solver, strategies};
 
     ccd::standard::State state;
@@ -1052,7 +1097,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
 
         ccd::LassoWorkspace lasso(0);
         ccd::LassoSolver solver(p.l);
-        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h, p.l);
+        const ccd::Strategies strategies = ccd::config::strategies_for(p.h, p.l);
         const ccd::standard::Context context{p.h, workspace, lasso, solver, strategies};
 
         ccd::standard::State driven;
@@ -1140,7 +1185,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
         ccd::LassoWorkspace lasso(0);
         ccd::LassoSolver solver(p.l);
         ccd::standard::Procedure fresh;
-        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h, p.l);
+        const ccd::Strategies strategies = ccd::config::strategies_for(p.h, p.l);
         const ccd::FitResult once = fresh.run(workspace, mask, lasso, solver, strategies);
         const ccd::FitResult again = reused.run(workspace, mask, lasso, solver, strategies);
         expect_same(again, once, p.name);

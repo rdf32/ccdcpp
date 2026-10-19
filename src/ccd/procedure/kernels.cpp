@@ -1,5 +1,6 @@
 #include "ccd/procedure/kernels.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <utility>
 
@@ -383,6 +384,49 @@ void peek_residuals(
             residuals[band]
         );
     }
+}
+
+void change_magnitude(
+    const std::vector<std::vector<scalar_t>>& residuals,
+    const BandList& bands,
+    const Variogram& variogram,
+    const std::vector<scalar_t>& rmse,
+    std::vector<scalar_t>& magnitude
+)
+{
+    assert(rmse.size() >= bands.size());
+
+    magnitude.clear();
+
+    if (bands.empty())
+        return;
+
+    const index_t count =
+        residuals[bands.front()].size();
+
+    magnitude.assign(count, 0.0);
+    for (index_t i = 0; i < bands.size(); ++i)
+    {
+        const scalar_t norm =
+            std::max(
+                variogram[bands[i]],
+                rmse[i]
+            );
+
+        if (norm <= 0.0)
+            continue;
+
+        const auto& band_residuals = residuals[bands[i]];
+
+        for (index_t j = 0; j < count; ++j)
+        {
+            const scalar_t value =
+                band_residuals[j] / norm;
+
+            magnitude[j] += value * value;
+        }
+    }
+    LOG_DEBUG("Magnitudes of change: " << magnitude);
 }
 
 } // namespace ccd

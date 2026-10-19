@@ -1,18 +1,15 @@
 //==============================================================================
 //
 // The per-pixel records below Run::pixel: MaskedSeries (the processing
-// mask and the observations it keeps), Variogram, and the Standard
-// procedure's Cadence. The procedures' outputs are held by the golden and transitions
-// fixtures; these tests hold the records' own contracts.
+// mask and the observations it keeps) and Variogram. The procedures' outputs
+// are held by the golden and transitions fixtures; these tests hold the
+// records' own contracts.
 //
 //   * MaskedSeries: after reset() and after any sequence of drops, dates() and
 //     spectral() equal apply_mask(workspace, mask()) and size() equals
 //     mask().count(); each drop moves the caller's window by the one rule
 //     (a bound above the dropped position moves down by one); a rejected
 //     Tmask removal changes nothing.
-//   * Cadence: measure_cadence() is adjust_peek() and
-//     adjust_change_threshold() of the caller's PEEK_SIZE and
-//     CHANGE_THRESHOLD.
 //   * HarmonicWorkspace: refers to the caller's options and gives only const
 //     access to them.
 //
@@ -282,48 +279,6 @@ TEST(Variogram, ReadsAndUsable)
 
     const ccd::Variogram nan{{1.5, std::numeric_limits<double>::quiet_NaN(), 3.5}};
     EXPECT_FALSE(nan.usable());
-}
-
-// measure_cadence() is the two adjust_* kernels of the caller's options,
-// at the reference cadence (no adjustment) and at a denser one.
-TEST(StandardCadence, MeasureCadenceIsTheAdjustedPeekAndThreshold)
-{
-    for (const std::int64_t gap : {16, 8, 5})
-    {
-        std::vector<std::int64_t> dates(100);
-        for (std::size_t i = 0; i < dates.size(); ++i)
-            dates[i] = 730000 + gap * static_cast<std::int64_t>(i);
-        const auto view = ccd::ArrayView<const std::int64_t, 1>::contiguous(
-            dates.data(), {dates.size()});
-
-        const ccd::HarmonicOptions h;
-        const ccd::standard::Cadence c = ccd::standard::measure_cadence(view, h);
-
-        const index_t peek = ccd::adjust_peek(view, h.PEEK_SIZE, h.PEEK_REFERENCE_DAYS);
-        EXPECT_EQ(c.peek, peek) << gap;
-        EXPECT_EQ(c.change_threshold,
-            ccd::adjust_change_threshold(peek, h.PEEK_SIZE, h.CHANGE_THRESHOLD,
-                h.DETECTION_BANDS.size(), h.CHANGE_PROBABILITY)) << gap;
-
-        if (gap == 16)
-        {
-            EXPECT_EQ(c.peek, h.PEEK_SIZE);
-            EXPECT_EQ(c.change_threshold, h.CHANGE_THRESHOLD);
-        }
-        else
-        {
-            EXPECT_GT(c.peek, h.PEEK_SIZE) << gap;
-            EXPECT_LT(c.change_threshold, h.CHANGE_THRESHOLD) << gap;
-        }
-    }
-
-    // Fewer than two dates: the caller's values.
-    const std::int64_t one = 730000;
-    const ccd::HarmonicOptions h;
-    const auto c = ccd::standard::measure_cadence(
-        ccd::ArrayView<const std::int64_t, 1>::contiguous(&one, {1}), h);
-    EXPECT_EQ(c.peek, h.PEEK_SIZE);
-    EXPECT_EQ(c.change_threshold, h.CHANGE_THRESHOLD);
 }
 
 // The workspace refers to the caller's options, cannot be built from a

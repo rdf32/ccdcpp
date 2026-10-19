@@ -1,8 +1,14 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include "ccd/array_view.hpp"
+#include "ccd/band_list.hpp"
 #include "ccd/types.hpp"
+
+#include "ccd/procedure/fit.hpp"
 
 namespace ccd
 {
@@ -24,8 +30,15 @@ class Model;   // strategies/model.hpp
 //
 // The stages so far (the others are still decided inside the machine):
 //
-//   model   the fit Extend tests each peek against
-//   refit   when Extend refits it
+//   model         the fit Extend tests each peek against
+//   refit         when Extend refits it
+//   change_test   the pixel's peek and change threshold, and whether a peek
+//                 is a change
+//
+// What a strategy changes from one call to the next (a model's fits, a
+// test's buffers) is not in the strategy: it makes one per thread
+// (make_model(), make_scratch()), which the thread keeps in a PerThread
+// (strategies/per_thread.hpp).
 //
 //==============================================================================
 
@@ -58,11 +71,69 @@ struct MonitoringModel
     virtual std::unique_ptr<Model> make_model() const = 0;
 };
 
+//------------------------------------------------------------------------------
+// change_test: the pixel's peek, whether a peek is a change, and what the
+// segment a change ends reports.
+//
+// prepare() is called once per pixel, with its statistics-window dates and
+// its detection band count: it returns the peek size, which the machine's
+// guards and Lookback also read, and keeps what it derives for the pixel
+// (chi2's threshold) in the thread's scratch. test() decides one Extend
+// peek, writing each peek observation's statistic into `magnitude`, which
+// the outlier test reads after it. break_at() and magnitude() are the
+// segment's break observation and each band's change magnitude, from the
+// segment's last test.
+//------------------------------------------------------------------------------
+
+enum class TestOutcome : std::uint8_t
+{
+    Change,
+    NoChange
+};
+
+// What a change test reads at one Extend step. Windows are positions in the
+// masked series, whose dates are `dates`.
+struct PeekTest
+{
+    const Model& model;                                    // fitted on fit_window
+    ArrayView<const std::int64_t, 1> dates;
+    Window window;                                         // the model window
+    Window fit_window;                                     // the last refit's
+    index_t fit;                                           // that refit's number: a new one per refit
+    Window peek;
+    const std::vector<std::vector<scalar_t>>& residuals;   // by band, over the peek
+    const Variogram& variogram;
+    const BandList& bands;                                 // the detection bands
+};
+
+// A change test's buffers and per-pixel values for one thread
+// (make_scratch()).
+class TestScratch
+{
+public:
+    virtual ~TestScratch() = default;
+};
+
+struct ChangeTest
+{
+    static constexpr const char* stage = "change_test";
+
+    virtual ~ChangeTest() = default;
+    virtual std::unique_ptr<TestScratch> make_scratch() const = 0;
+    virtual index_t prepare(ArrayView<const std::int64_t, 1> statistics_dates,
+                            index_t detection_bands, TestScratch& scratch) const = 0;
+    virtual TestOutcome test(const PeekTest& peek, TestScratch& scratch,
+                             std::vector<scalar_t>& magnitude) const = 0;
+    virtual index_t break_at(const PeekTest& peek) const = 0;
+    virtual scalar_t magnitude(const PeekTest& peek, index_t band) const = 0;
+};
+
 // One call's strategies, one per stage, built from its configuration.
 struct Strategies
 {
     std::shared_ptr<const MonitoringModel> model;
     std::shared_ptr<const RefitSchedule> refit;
+    std::shared_ptr<const ChangeTest> change_test;
 };
 
 } // namespace ccd

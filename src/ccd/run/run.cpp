@@ -25,7 +25,7 @@ int omp_get_thread_num() { return 0; }
 #include "ccd/harmonic/quality.hpp"
 #include "ccd/logger.hpp"
 #include "ccd/procedure/pixel_procedure.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/config/from_options.hpp"
 
 #include "../fnv.hpp"
 
@@ -429,7 +429,7 @@ Run::Run(
     }
 
     // The run's strategies, from the configuration its options describe.
-    strategies_ = strategies::strategies_for(options_, spec_.loptions);
+    strategies_ = config::strategies_for(options_, spec_.loptions);
 }
 
 template<typename Value, typename Qa>

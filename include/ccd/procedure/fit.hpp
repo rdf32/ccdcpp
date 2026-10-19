@@ -152,6 +152,21 @@ scalar_t adjust_change_threshold(
     scalar_t probability
 );
 
+// adjust_change_threshold() remembering its last arguments and value: a
+// run's pixels mostly share a peek, so the quantile is computed again only
+// when the arguments change.
+class ChangeThresholdMemo
+{
+public:
+    scalar_t operator()(index_t peek, index_t defpeek, scalar_t defthresh, index_t df,
+                        scalar_t probability);
+
+private:
+    bool valid_ = false;
+    index_t peek_ = 0, defpeek_ = 0, df_ = 0;
+    scalar_t defthresh_ = 0, probability_ = 0, value_ = 0;
+};
+
 // The chi-squared quantile at probability p with df degrees of freedom: the
 // distribution adjust_change_threshold() reads its threshold from.
 scalar_t chi2_quantile(scalar_t p, index_t df);

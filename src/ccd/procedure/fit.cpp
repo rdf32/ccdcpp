@@ -84,6 +84,23 @@ scalar_t adjust_change_threshold(
     return chi2_quantile(pt, df);
 }
 
+scalar_t ChangeThresholdMemo::operator()(index_t peek, index_t defpeek, scalar_t defthresh,
+                                         index_t df, scalar_t probability)
+{
+    if (!(valid_ && peek == peek_ && defpeek == defpeek_ && df == df_ &&
+          defthresh == defthresh_ && probability == probability_))
+    {
+        value_ = adjust_change_threshold(peek, defpeek, defthresh, df, probability);
+        peek_ = peek;
+        defpeek_ = defpeek;
+        df_ = df;
+        defthresh_ = defthresh;
+        probability_ = probability;
+        valid_ = true;
+    }
+    return value_;
+}
+
 scalar_t chi2_quantile(scalar_t p, index_t df)
 {
     boost::math::chi_squared dist(static_cast<scalar_t>(df));

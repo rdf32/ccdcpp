@@ -17,34 +17,6 @@ namespace ccd
 namespace standard
 {
 
-Cadence measure_cadence(
-    ArrayView<const std::int64_t, 1> statistics_dates,
-    const HarmonicOptions& options
-)
-{
-    Cadence cadence;
-
-    cadence.peek =
-        adjust_peek(
-            statistics_dates,
-            options.PEEK_SIZE,
-            options.PEEK_REFERENCE_DAYS
-        );
-
-    // Compares the adjusted peek with the caller's PEEK_SIZE and starts from
-    // the caller's CHANGE_THRESHOLD.
-    cadence.change_threshold =
-        adjust_change_threshold(
-            cadence.peek,
-            options.PEEK_SIZE,
-            options.CHANGE_THRESHOLD,
-            options.DETECTION_BANDS.size(),
-            options.CHANGE_PROBABILITY
-        );
-
-    return cadence;
-}
-
 InitializeCriteria initialize_criteria(
     const HarmonicOptions& options,
     const Cadence& cadence
@@ -60,6 +32,27 @@ InitializeCriteria initialize_criteria(
         cadence.change_threshold
     };
 }
+
+namespace
+{
+
+// The extension's change-test buffers, of the run's change-test strategy.
+TestScratch& test_scratch(const Context& context, Extension& extension)
+{
+    return extension.test.get(context.strategies.change_test,
+                              [](const ChangeTest& c) { return c.make_scratch(); });
+}
+
+// What the change test reads of Extend's last peek.
+PeekTest peek_test(const Context& context, const State& state)
+{
+    const Extension& extension = state.extension;
+    return PeekTest{*extension.model, state.series.dates(), state.cursor.window,
+                    extension.fit_window, extension.fits, extension.peek, extension.residuals,
+                    state.variogram, context.options.DETECTION_BANDS};
+}
+
+} // namespace
 
 index_t coefficient_count(
     index_t observations,
@@ -81,49 +74,6 @@ index_t coefficient_count(
     {
         return options.COEFFICIENT_MAX;
     }
-}
-
-void change_magnitude(
-    const std::vector<std::vector<scalar_t>>& residuals,
-    const BandList& bands,
-    const Variogram& variogram,
-    const std::vector<scalar_t>& rmse,
-    std::vector<scalar_t>& magnitude
-)
-{
-    assert(rmse.size() >= bands.size());
-
-    magnitude.clear();
-
-    if (bands.empty())
-        return;
-
-    const index_t count =
-        residuals[bands.front()].size();
-
-    magnitude.assign(count, 0.0);
-    for (index_t i = 0; i < bands.size(); ++i)
-    {
-        const scalar_t norm =
-            std::max(
-                variogram[bands[i]],
-                rmse[i]
-            );
-
-        if (norm <= 0.0)
-            continue;
-
-        const auto& band_residuals = residuals[bands[i]];
-
-        for (index_t j = 0; j < count; ++j)
-        {
-            const scalar_t value =
-                band_residuals[j] / norm;
-
-            magnitude[j] += value * value;
-        }
-    }
-    LOG_DEBUG("Magnitudes of change: " << magnitude);
 }
 
 //==============================================================================
@@ -347,10 +297,14 @@ Phase prepare(const Context& context, State& state)
     // The pixel's cadence and variogram, read by every step
     // below; the caller's options are never written
     //----------------------------------------------------------
-    state.cadence = measure_cadence(stat_dates, options);
+    const index_t detection_bands = options.DETECTION_BANDS.size();
+    state.cadence.peek = context.strategies.change_test->prepare(
+        stat_dates, detection_bands, test_scratch(context, state.extension));
+    state.cadence.change_threshold = state.thresholds(
+        state.cadence.peek, options.PEEK_SIZE, options.CHANGE_THRESHOLD, detection_bands,
+        options.CHANGE_PROBABILITY);
     state.initialize_criteria = initialize_criteria(options, state.cadence);
 
-    assert(state.cadence.peek >= options.PEEK_SIZE);
     LOG_DEBUG("Peek size: " << state.cadence.peek);
     LOG_DEBUG("Chng thresh: " << state.cadence.change_threshold);
 
@@ -596,16 +550,13 @@ Phase start_catch(const Context& context, State& state)
 namespace
 {
 
-// The extension's model: one made by the run's monitoring-model strategy,
-// made again when the extension's is another strategy's.
-Model& monitoring_model(const Context& context, Extension& extension)
+// The extension's model, of the run's monitoring-model strategy, for a
+// refit: the refit's number is the next.
+Model& refit_model(const Context& context, Extension& extension)
 {
-    if (extension.model_of != context.strategies.model)
-    {
-        extension.model = context.strategies.model->make_model();
-        extension.model_of = context.strategies.model;
-    }
-    return *extension.model;
+    ++extension.fits;
+    return extension.model.get(context.strategies.model,
+                               [](const MonitoringModel& m) { return m.make_model(); });
 }
 
 // The bands no test reads (those not in DETECTION_BANDS), as the last test
@@ -667,7 +618,9 @@ void write_extended_segment(
     ChangeModel result;
     result.start_day = masked_dates(window.start);
     result.end_day = masked_dates(window.stop - 1);
-    result.break_day = masked_dates(extension.peek.start);
+    const ChangeTest& change_test = *context.strategies.change_test;
+    const PeekTest last = peek_test(context, state);
+    result.break_day = masked_dates(change_test.break_at(last));
     result.observation_count = window.stop - window.start;
     result.change_probability = change_probability;
     result.curve_qa = static_cast<CurveQA>(extension.num_coef);
@@ -675,7 +628,7 @@ void write_extended_segment(
     result.bands.reserve(num_bands);
     for (index_t band = 0; band < num_bands; ++band) {
         BandFit fit = extension.model->band_fit(band);
-        fit.magnitude = magnitude ? (*magnitude)[band] : median(extension.residuals[band]);
+        fit.magnitude = magnitude ? (*magnitude)[band] : change_test.magnitude(last, band);
         result.bands.push_back(fit);
     }
 
@@ -709,8 +662,6 @@ ExtendOutcome extend_step(const Context& context, State& state)
 
     // Indexed by band.
     extension.residuals.resize(masked_spectral.extent(0));
-    // Indexed by position in DETECTION_BANDS.
-    extension.comp_rmse.resize(detection_bands.size());
 
     extension.num_coef = coefficient_count(window.size(), options);
 
@@ -731,13 +682,12 @@ ExtendOutcome extend_step(const Context& context, State& state)
         extension.trained = true;
         extension.fit_window = window;
         extension.fit_span = span(masked_dates, extension.fit_window);
-        extension.seasonal_built = false;
         LOG_DEBUG("Retrain models");
 
         // The detection bands: seasonal_rmse() reads their residuals; the
         // magnitude is set from the peek residuals when the segment is
         // written, which fits the other bands (complete_models()).
-        monitoring_model(context, extension).fit(
+        refit_model(context, extension).fit(
             masked_dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
             masked_spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
             extension.num_coef,
@@ -759,50 +709,13 @@ ExtendOutcome extend_step(const Context& context, State& state)
         extension.residuals
     );
 
-    std::vector<scalar_t>& comp_rmses = extension.comp_rmse;
-    if (window.stop - window.start <= options.RETRAIN_MIN_OBS) {
-        LOG_DEBUG("normal residuals and rmse");
-        for (index_t i = 0; i < detection_bands.size(); ++i)
-        {
-            comp_rmses[i] = extension.model->rmse(detection_bands[i]);
-        }
-    } else {
-
-        LOG_DEBUG("closest day residuals and rmse");
-        // find_closest_doy(masked_dates, peek_window.stop - 1, fit_window,
-        // SEASONAL_RMSE_COUNT), by the fit window's SeasonalOrder.
-        if (!extension.seasonal_built)
-        {
-            extension.seasonal.build(masked_dates, extension.fit_window);
-            extension.seasonal_built = true;
-        }
-        std::vector<index_t>& closest_indexes = extension.closest;
-        extension.seasonal.closest(
-            masked_dates(peek_window.stop - 1), options.SEASONAL_RMSE_COUNT, closest_indexes);
-
-        LOG_DEBUG("period: " << masked_dates);
-        LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
-        LOG_DEBUG("fit window: (" << extension.fit_window.start << ", " << extension.fit_window.stop << ")");
-        LOG_DEBUG("closest inds: " << closest_indexes);
-
-        for (index_t i = 0; i < detection_bands.size(); ++i)
-        {
-            comp_rmses[i] = seasonal_rmse(extension.model->residuals(detection_bands[i]), closest_indexes, options.SEASONAL_RMSE_DIVISOR);
-        }
-    }
-
-    change_magnitude(
-        extension.residuals,
-        detection_bands,
-        variogram,
-        comp_rmses,
-        extension.magnitude
-    );
+    const TestOutcome outcome = context.strategies.change_test->test(
+        peek_test(context, state), test_scratch(context, extension), extension.magnitude);
 
     //--------------------------------------------------------------------------
     // Change detected: the segment ends at the window
     //--------------------------------------------------------------------------
-    if (detect_change(extension.magnitude, cadence.change_threshold))
+    if (outcome == TestOutcome::Change)
     {
         LOG_DEBUG("Change detected at: " << peek_window.start);
         return ExtendOutcome::Change;
@@ -1010,11 +923,10 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     extension.trained = true;
     extension.fit_window = Window(window.start, from.fit_stop);
     extension.fit_span = span(dates, extension.fit_window);
-    extension.seasonal_built = false;
     BandList bands;
     for (index_t band = 0; band < spectral.extent(0); ++band)
         bands.push_back(band);
-    monitoring_model(context, extension).fit(
+    refit_model(context, extension).fit(
         dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
         spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
         coefficient_count(extension.fit_window.size(), context.options),

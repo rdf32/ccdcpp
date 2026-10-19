@@ -89,7 +89,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 | Phase | One call | Next |
 |---|---|---|
-| `Prepare` (`prepare`) | The early exits; the statistics window; the cadence (`measure_cadence`); Initialize's criteria (`initialize_criteria`); the variogram; the cursor at `(0, MEOW_SIZE)` | Initialize, EndCatch or Done |
+| `Prepare` (`prepare`) | The early exits; the statistics window; the cadence (the change test's `prepare()` for the peek; the stability check's and Lookback's threshold from the options); Initialize's criteria (`initialize_criteria`); the variogram; the cursor at `(0, MEOW_SIZE)` | Initialize, EndCatch or Done |
 | `Initialize` (`initialize`) | One candidate start window: `ccd::initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
 | `Lookback` (`lookback`) | One observation before the window: `lookback_step` returns a `LookbackOutcome` | itself while `window.start > prev_break`; then StartCatch, Extend or EndCatch |
 | `StartCatch` (`start_catch`) | The first segment's leading observations as a Start segment (curve_qa 14) | Extend or EndCatch |
@@ -159,7 +159,7 @@ parameters), so a direct caller of `standard::Procedure` builds both from the sa
 | `cursor` (`Cursor`, `include/ccd/procedure/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
-| `cadence` (`Cadence`) | the peek size and change threshold, scaled to the pixel's revisit interval | Standard's |
+| `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), and the threshold Initialize's stability check and Lookback compare against (pyccd's, from the options, until those are stages) | Standard's |
 | `variogram` (`Variogram`, `include/ccd/procedure/fit.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
 | `init_models` | the stable start window's fits, which Lookback tests against | Standard's |
@@ -190,11 +190,29 @@ checks a configuration's values (unknown names, types, ranges) when the strategy
 |---|---|---|
 | `model` | the fits Extend tests each peek against: each band's fit on the model window, its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
 | `refit` | whether Extend refits the model before a peek test (after the first) | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
+| `change_test` | the pixel's peek size and anything else it derives per pixel (`prepare()`), whether an Extend peek is a change (`test()`, writing each peek observation's statistic, which the outlier test reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
 
 A run's configuration is the one its options describe
-(`ccd::strategies::config_from_options()`: `LassoOptions`' `max_iter`, `alpha`, `tolerance` and
-`coef_floor` are `lasso`'s parameters; `RETRAIN_MIN_OBS` and `RETRAIN_SPAN_FACTOR` are
-`span-factor`'s). The machine's other decisions are made inside its phases.
+(`ccd::config::from_options()`):
+
+| Strategy | Parameter | From |
+|---|---|---|
+| `lasso` | `max_iter`, `alpha`, `tolerance`, `coef_floor` | `LassoOptions`' fields of those names |
+| `span-factor` | `min_obs`, `factor` | `RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR` |
+| `chi2` | `peek_size`, `peek_reference_days`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `PEEK_REFERENCE_DAYS`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
+| `chi2` | `model_rmse_up_to`, `seasonal_count`, `seasonal_divisor` | `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT`, `SEASONAL_RMSE_DIVISOR` |
+
+`RETRAIN_MIN_OBS` sets two parameters, the refit's and the test's, as pyccd's one constant does;
+a configuration may set them apart. The mapping lives in one file (`include/ccd/config/from_options.hpp`).
+The machine's other decisions are made inside its phases. The peek size the change test chooses
+is also what the machine's guards and Lookback read; Initialize's stability check and Lookback
+compare against pyccd's threshold computed from the options, so the change test's
+`change_threshold` and `change_probability` change Extend's test only.
+
+A stage whose strategy keeps state from one call to the next (the model's fits; the test's
+per-pixel threshold and seasonal order) makes one per thread (`make_model()`, `make_scratch()`),
+which the extension keeps in a `PerThread` (`include/ccd/strategies/per_thread.hpp`) and makes
+again only when the run's strategy is another.
 
 The monitoring model's contract is `ccd::Model` (`include/ccd/strategies/model.hpp`): one
 thread's fits of one pixel, which the strategy makes (`make_model()`) and the thread keeps across
@@ -208,21 +226,31 @@ A configuration, its strategies, and a strategy's decision (`tests/ccd/strategie
 has more):
 
 ```cpp
+#include "ccd/config/from_options.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 using namespace ccd;
 
 // The configuration a run under the defaults uses, and its strategies.
-config::ConfigTree tree = strategies::config_from_options(HarmonicOptions{}, LassoOptions{});
+config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{});
 // tree["model"] is {"lasso", {{"max_iter", 1000}, {"alpha", 1.0}, {"tolerance", 1e-4},
 //                             {"coef_floor", 1.0}}}
 // tree["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
+// tree["change_test"] is {"chi2", {{"peek_size", 6}, {"peek_reference_days", 16.0},
+//                                  {"change_threshold", 15.0863}, {"change_probability", 0.99},
+//                                  {"model_rmse_up_to", 24}, {"seasonal_count", 24},
+//                                  {"seasonal_divisor", 4.0}}}
 
 // The monitoring model for reflectance input: a 10,000 times smaller penalty.
 tree["model"].params["alpha"] = config::real(1e-4);
 
 // Refit less often: once the window spans twice the last fit's span.
 tree["refit"].params["factor"] = config::real(2.0);
+
+// The change test compares against the model's own RMSE up to 40 observations (pyccd: 24),
+// apart from the refit schedule's 24.
+tree["change_test"].params["model_rmse_up_to"] = config::integer(40);
+
 Strategies s = strategies::build_strategies(strategies::core_registry(), tree);
 s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_span=*/100.0);  // false
 s.refit->due(30, 200.0, 100.0);                                              // true
@@ -243,13 +271,13 @@ record:
 | `select_procedure`, `fit_whole_series`, `PixelProcedure` | `include/ccd/procedure/pixel_procedure.hpp` |
 | `MaskedSeries` | `include/ccd/procedure/masked_series.hpp` |
 | `Cursor`, `drive` | `include/ccd/procedure/machine.hpp` |
-| `fit_bands` (the one per-band fit loop), `peek_residuals`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/procedure/kernels.hpp` |
+| `fit_bands` (the one per-band fit loop), `peek_residuals`, `change_magnitude`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/procedure/kernels.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
 | `Variogram`, `adjusted_variogram`, `tmask`, `stable`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/procedure/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
-(`include/ccd/procedure/standard.hpp`): `Cadence` and `measure_cadence`, `initialize_criteria`,
-`lookback_peek`, `change_magnitude`, `coefficient_count`, the phases, the
+(`include/ccd/procedure/standard.hpp`): `initialize_criteria`, `lookback_peek`,
+`coefficient_count`, the phases, the
 transitions and the routing. A function moves to the shared list once a second machine or a
 strategy uses it.
 

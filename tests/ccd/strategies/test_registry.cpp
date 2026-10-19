@@ -9,7 +9,9 @@
 //   * the configuration the options describe builds the strategies a run
 //     uses, and the refit schedule decides as Extend's inline test did;
 //   * the lasso monitoring model fits, predicts and scores as the shared
-//     kernels do, bit for bit, with the solver options it was configured with.
+//     kernels do, bit for bit, with the solver options it was configured with;
+//   * the chi2 change test's peek is the adjusted peek of its parameters, and
+//     the threshold memo is adjust_change_threshold() for any arguments.
 //
 //==============================================================================
 
@@ -27,6 +29,7 @@
 #include "ccd/strategies/model.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
+#include "ccd/config/from_options.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 namespace
@@ -58,6 +61,8 @@ TEST(Registry, ListsTheCoreStrategies)
     EXPECT_EQ(names.at("model"), (std::vector<std::string>{"lasso"}));
     ASSERT_EQ(names.count("refit"), 1u);
     EXPECT_EQ(names.at("refit"), (std::vector<std::string>{"span-factor"}));
+    ASSERT_EQ(names.count("change_test"), 1u);
+    EXPECT_EQ(names.at("change_test"), (std::vector<std::string>{"chi2"}));
 }
 
 TEST(Registry, BuildsByNameAndChecksTheParameters)
@@ -128,10 +133,10 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
     ccd::HarmonicOptions h;
     h.RETRAIN_MIN_OBS = 30;
     h.RETRAIN_SPAN_FACTOR = 1.5;
-    const auto tree = ccd::strategies::config_from_options(h, ccd::LassoOptions{});
+    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
     const StageConfig& refit = tree.at("refit");
     EXPECT_EQ(refit.strategy, "span-factor");
-    const auto s = ccd::strategies::strategies_for(h, ccd::LassoOptions{});
+    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
     EXPECT_TRUE(s.refit->due(30, 1.0, 1.0));
     EXPECT_FALSE(s.refit->due(31, 149.0, 100.0));
     EXPECT_TRUE(s.refit->due(31, 150.0, 100.0));
@@ -144,7 +149,7 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
     // RETRAIN_MIN_OBS past what a configuration holds: refit at every step.
     h.RETRAIN_MIN_OBS = std::numeric_limits<ccd::index_t>::max();
-    EXPECT_TRUE(ccd::strategies::strategies_for(h, ccd::LassoOptions{}).refit->due(1u << 20, 1.0, 100.0));
+    EXPECT_TRUE(ccd::config::strategies_for(h, ccd::LassoOptions{}).refit->due(1u << 20, 1.0, 100.0));
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
@@ -156,9 +161,9 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     ccd::LassoOptions l;
     l.alpha = 0.5;
     l.max_iter = 300;
-    const auto tree = ccd::strategies::config_from_options(ccd::HarmonicOptions{}, l);
+    const auto tree = ccd::config::from_options(ccd::HarmonicOptions{}, l);
     EXPECT_EQ(tree.at("model").strategy, "lasso");
-    const auto s = ccd::strategies::strategies_for(ccd::HarmonicOptions{}, l);
+    const auto s = ccd::config::strategies_for(ccd::HarmonicOptions{}, l);
     const auto& lasso = static_cast<const ccd::strategies::Lasso&>(*s.model);
     EXPECT_EQ(lasso.solver_options().alpha, 0.5);
     EXPECT_EQ(lasso.solver_options().max_iter, 300u);
@@ -211,7 +216,51 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     EXPECT_TRUE(got[1].empty());   // band 1 was not fitted
 
     const auto& r = ccd::strategies::core_registry();
+    ccd::HarmonicOptions nan_threshold;
+    nan_threshold.CHANGE_THRESHOLD = NAN;
+    expect_refused([&] { ccd::config::strategies_for(nan_threshold, l); },
+                   "change_test 'chi2' parameter 'change_threshold' is nan");
     expect_refused(
         [&] { r.make<ccd::MonitoringModel>({"lasso", {{"alpha", ccd::config::real(-1)}}}); },
         "model 'lasso' parameter 'alpha' is -1; it must be at least 0");
+}
+
+// chi2's peek is adjust_peek() of its parameters (the options' PEEK_SIZE
+// and PEEK_REFERENCE_DAYS) at the reference cadence (no adjustment) and at
+// denser ones; the threshold memo gives adjust_change_threshold()'s value
+// for every sequence of arguments.
+TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
+{
+    const ccd::HarmonicOptions h;
+    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const auto scratch = s.change_test->make_scratch();
+    for (const std::int64_t gap : {16, 8, 5})
+    {
+        std::vector<std::int64_t> dates(100);
+        for (std::size_t i = 0; i < dates.size(); ++i)
+            dates[i] = 730000 + gap * static_cast<std::int64_t>(i);
+        const auto view = ccd::ArrayView<const std::int64_t, 1>::contiguous(
+            dates.data(), {dates.size()});
+
+        const ccd::index_t peek =
+            s.change_test->prepare(view, h.DETECTION_BANDS.size(), *scratch);
+        EXPECT_EQ(peek, ccd::adjust_peek(view, h.PEEK_SIZE, h.PEEK_REFERENCE_DAYS)) << gap;
+        if (gap == 16)
+            EXPECT_EQ(peek, h.PEEK_SIZE);
+        else
+            EXPECT_GT(peek, h.PEEK_SIZE) << gap;
+    }
+
+    // Fewer than two dates: the default peek.
+    const std::int64_t one = 730000;
+    EXPECT_EQ(s.change_test->prepare(ccd::ArrayView<const std::int64_t, 1>::contiguous(&one, {1}),
+                                     h.DETECTION_BANDS.size(), *scratch),
+              h.PEEK_SIZE);
+
+    ccd::ChangeThresholdMemo memo;
+    for (const ccd::index_t peek : {6u, 9u, 9u, 6u, 12u, 12u, 9u})
+        for (const double probability : {0.99, 0.95, 0.99})
+            EXPECT_EQ(memo(peek, 6, h.CHANGE_THRESHOLD, 7, probability),
+                      ccd::adjust_change_threshold(peek, 6, h.CHANGE_THRESHOLD, 7, probability))
+                << peek << " " << probability;
 }

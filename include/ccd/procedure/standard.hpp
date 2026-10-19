@@ -14,6 +14,7 @@
 #include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/strategies/model.hpp"
+#include "ccd/strategies/per_thread.hpp"
 #include "ccd/strategies/stages.hpp"
 
 namespace ccd
@@ -26,32 +27,21 @@ namespace standard
 //
 // Cadence
 //
-// The Standard procedure's per-pixel cadence: the peek window, scaled to the
-// pixel's revisit interval, and the change threshold that goes with it.
-// Derived once per pixel from the statistics-window dates (measure_cadence)
-// and read by every later step in place of the caller's PEEK_SIZE and
-// CHANGE_THRESHOLD, which are never written. Standard's own record: a
-// procedure that does not count observations has no use for it.
+// The Standard procedure's per-pixel cadence, set in Prepare: the peek size
+// the run's change test chose for the pixel (ChangeTest::prepare()), which
+// Extend, Lookback and the machine's guards read, and the threshold
+// Initialize's stability check and Lookback compare against. That threshold
+// is pyccd's, from the options (adjust_change_threshold() of PEEK_SIZE,
+// CHANGE_THRESHOLD, the detection band count and CHANGE_PROBABILITY for the
+// peek), until the stability rule and Lookback are stages with their own.
 //
 //==============================================================================
 
 struct Cadence
 {
-    // adjust_peek(): PEEK_SIZE scaled by PEEK_REFERENCE_DAYS over the median
-    // gap, never below PEEK_SIZE. Observations.
-    index_t peek;
-
-    // adjust_change_threshold() for `peek`: CHANGE_THRESHOLD when peek is
-    // PEEK_SIZE, lower for a longer peek.
-    scalar_t change_threshold;
+    index_t peek;                // observations a peek holds
+    scalar_t change_threshold;   // the stability check's and Lookback's
 };
-
-// The cadence of a pixel whose statistics window (the observations dated <=
-// STAT_ORD) has dates `statistics_dates`.
-Cadence measure_cadence(
-    ArrayView<const std::int64_t, 1> statistics_dates,
-    const HarmonicOptions& options
-);
 
 // What Initialize tests a candidate window against on a pixel of `cadence`:
 // the options' MEOW_SIZE, DAY_DELTA, TMASK_BANDS, T_CONST and
@@ -77,21 +67,6 @@ InitializeCriteria initialize_criteria(
 index_t coefficient_count(
     index_t observations,
     const HarmonicOptions& options
-);
-
-// The change magnitude of each peek observation j, into `magnitude`:
-//
-//     sum over i of (residuals[bands[i]][j] / max(variogram[bands[i]], rmse[i]))^2
-//
-// in the order of `bands`, a band whose max(...) is not above 0 adding
-// nothing. rmse[i] is the comparison RMSE of bands[i]; every residuals[b]
-// named has the peek's length. Empty for an empty `bands`.
-void change_magnitude(
-    const std::vector<std::vector<scalar_t>>& residuals,
-    const BandList& bands,
-    const Variogram& variogram,
-    const std::vector<scalar_t>& rmse,
-    std::vector<scalar_t>& magnitude
 );
 
 //==============================================================================
@@ -255,27 +230,27 @@ struct Extension
     Window peek;
 
     // The fits, one per band, made by the run's monitoring-model strategy
-    // (model_of) and kept across pixels. A refit fits the detection bands,
-    // all a test reads; the others are fitted on the same window when the
-    // segment is written (complete), which takes band_fit() of each.
-    std::unique_ptr<Model> model;
-    std::shared_ptr<const MonitoringModel> model_of;
+    // and kept across pixels. A refit fits the detection bands, all a test
+    // reads; the others are fitted on the same window when the segment is
+    // written (complete), which takes band_fit() of each.
+    PerThread<MonitoringModel, Model> model;
     bool complete = false;
+
+    // The refits made, never reset: a test's buffers built on a fit (the
+    // change test's) know it by its number.
+    index_t fits = 0;
 
     // Indexed by band: the residuals over the last peek, whose medians are
     // the segment's magnitudes; the detection bands' at each test, the
     // others' once they are fitted.
     std::vector<std::vector<scalar_t>> residuals;
 
-    // The fit window's observations by phase in the year, for the seasonal
-    // RMSE's selection; built at the first test that reads it after a refit.
-    SeasonalOrder seasonal;
-    bool seasonal_built = false;
+    // The change test's buffers, made by the run's change-test strategy.
+    PerThread<ChangeTest, TestScratch> test;
 
-    // Scratch, rewritten by every test.
-    std::vector<scalar_t> comp_rmse;   // by position in DETECTION_BANDS
+    // Each peek observation's change magnitude, rewritten by every test; the
+    // outlier test reads the first.
     std::vector<scalar_t> magnitude;
-    std::vector<index_t> closest;      // the seasonal RMSE's observations
 };
 
 // What one Extend step did, in the order it tests them.
@@ -315,6 +290,7 @@ struct State
 
     // Standard's own: set in Prepare, read by every later phase.
     Cadence cadence{};
+    ChangeThresholdMemo thresholds;             // the cadence's threshold
     Variogram variogram;
     InitializeCriteria initialize_criteria{};   // from the cadence
 
@@ -415,13 +391,10 @@ Phase lookback(const Context& context, State& state);
 Phase start_catch(const Context& context, State& state);
 
 // One Extend step, one peek test after the window. Pre: peek_fits().
-// Refits every band over the window when the extension is not trained, the
-// window holds at most RETRAIN_MIN_OBS observations (the windows that also
-// compare against the model RMSE), or it spans at least RETRAIN_SPAN_FACTOR
-// times the last fit's span; then, in order:
+// Refits the model over the window when the extension is not trained or the
+// refit schedule is due; then, in order:
 //
-//   * every peek magnitude above the change threshold: Change, the window
-//     stays;
+//   * the change test's Change: Change, the window stays;
 //   * the first above OUTLIER_THRESHOLD: Dropped, that observation (at
 //     window.stop) dropped, the window keeping its coordinates;
 //   * no change, and the peek reached the last observation (window.stop +

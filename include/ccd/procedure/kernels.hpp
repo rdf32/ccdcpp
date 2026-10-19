@@ -117,6 +117,21 @@ void peek_residuals(
     std::vector<std::vector<scalar_t>>& residuals
 );
 
+// The change magnitude of each peek observation j, into `magnitude`:
+//
+//     sum over i of (residuals[bands[i]][j] / max(variogram[bands[i]], rmse[i]))^2
+//
+// in the order of `bands`, a band whose max(...) is not above 0 adding
+// nothing. rmse[i] is the comparison RMSE of bands[i]; every residuals[b]
+// named has the peek's length. Empty for an empty `bands`.
+void change_magnitude(
+    const std::vector<std::vector<scalar_t>>& residuals,
+    const BandList& bands,
+    const Variogram& variogram,
+    const std::vector<scalar_t>& rmse,
+    std::vector<scalar_t>& magnitude
+);
+
 //------------------------------------------------------------------------------
 // Initialize
 //------------------------------------------------------------------------------

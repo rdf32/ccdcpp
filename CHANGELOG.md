@@ -4,8 +4,8 @@
 
 ### Changed
 
-- A run refuses Lasso options that are negative or NaN (`alpha`, `tolerance`, `coef_floor`)
-  when it is built, with `std::invalid_argument` naming the parameter ("model 'lasso'
+- A run refuses a NaN `CHANGE_THRESHOLD`, and Lasso options that are negative or NaN (`alpha`,
+  `tolerance`, `coef_floor`), when it is built, with `std::invalid_argument` naming the parameter ("model 'lasso'
   parameter 'alpha' is -1; it must be at least 0"); they used to run.
 - **The C++ entry points are `ccd::run_pixel` and `ccd::run_cube`** (`include/ccd/run/run.hpp`),
   replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
@@ -37,7 +37,7 @@
   The first stage is `refit`, whose strategy `span-factor` is Extend's refit test, unchanged
   (`RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR`). The machine's `Context` carries the run's
   strategies; `standard::Procedure::run`/`resume` and `standard::Detector::fit`/`resume` take
-  them (`ccd::strategies::strategies_for(hoptions, loptions)` builds them for a direct
+  them (`ccd::config::strategies_for(hoptions, loptions)` builds them for a direct
   caller). Outputs unchanged.
 - **The `model` stage**: the monitoring model, `ccd::Model` (`include/ccd/strategies/model.hpp`),
   made per thread by the stage's strategy, which Extend fits, tests each peek against and writes
@@ -46,6 +46,19 @@
   `peek_residuals` moved from `ccd::standard` to the shared kernels (`ccd::peek_residuals`,
   `procedure/kernels.hpp`); `seasonal_rmse` takes a fit's residuals instead of its
   `LassoResult`. Outputs unchanged.
+- **The `change_test` stage**: the pixel's peek, Extend's change decision and the segment's break
+  and magnitudes, `ccd::ChangeTest` (`include/ccd/strategies/stages.hpp`), with its strategy
+  `chi2` (pyccd's test; parameters from `PEEK_SIZE`, `PEEK_REFERENCE_DAYS`, `CHANGE_THRESHOLD`,
+  `CHANGE_PROBABILITY`, `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT` and `SEASONAL_RMSE_DIVISOR`).
+  `standard::measure_cadence()` is gone: the strategy's `prepare()` gives the peek, and the
+  stability check's and Lookback's threshold is computed from the options in Prepare.
+  `change_magnitude` moved to the shared kernels (`ccd::change_magnitude`);
+  `ccd::ChangeThresholdMemo` (`procedure/fit.hpp`) computes `adjust_change_threshold()` again
+  only when its arguments change. `ccd::PerThread` (`strategies/per_thread.hpp`) holds a
+  strategy's per-thread object. The options-to-configuration mapping is
+  `ccd::config::from_options()` and `ccd::config::strategies_for()`
+  (`include/ccd/config/from_options.hpp`; were `ccd::strategies::config_from_options()` and
+  `strategies_for()`). Outputs unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

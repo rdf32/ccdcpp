@@ -21,7 +21,7 @@
 #include "ccd/harmonic/filter.hpp"
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/standard.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/config/from_options.hpp"
 
 
 using Clock = std::chrono::high_resolution_clock;
@@ -365,7 +365,7 @@ TEST(CCD, DetectStandard)
         ccd::filter::standard(hworkspace),
         lworkspace,
         solver,
-        ccd::strategies::strategies_for(hoptions, loptions)
+        ccd::config::strategies_for(hoptions, loptions)
     );
 
     ::print_change_models(result.models);
