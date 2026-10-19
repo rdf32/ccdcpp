@@ -377,8 +377,6 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     // Initialize's criteria, once for the pixel: the options' (COEFFICIENT_MIN
     // coefficients in a COEFFICIENT_MAX-wide basis among them).
     const ccd::InitializeCriteria& c = r.state.initialize_criteria;
-    EXPECT_EQ(c.meow_size, r.options.MEOW_SIZE);
-    EXPECT_EQ(c.day_delta, r.options.DAY_DELTA);
     EXPECT_EQ(c.detection_bands.size(), r.options.DETECTION_BANDS.size());
     EXPECT_EQ(c.num_coefficients, r.options.COEFFICIENT_MIN);
     EXPECT_EQ(c.max_coefficients, r.options.COEFFICIENT_MAX);
@@ -415,7 +413,8 @@ ccd::InitializeOutcome outcome_of(index_t n, Setup setup)
     setup(r);
     return ccd::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
                                 r.state.variogram,
-                                ccd::InitializeStages{*r.strategies.window_screen, r.stability_fit(),
+                                ccd::InitializeStages{*r.strategies.start_search,
+                                                      *r.strategies.window_screen, r.stability_fit(),
                                                       *r.strategies.stability_rule,
                                                       r.stability_scratch()});
 }

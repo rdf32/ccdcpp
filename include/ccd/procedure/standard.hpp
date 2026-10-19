@@ -43,8 +43,8 @@ struct Cadence
     scalar_t change_threshold;   // Lookback's
 };
 
-// What Initialize tests a candidate window against: the options' MEOW_SIZE,
-// DAY_DELTA and DETECTION_BANDS, and stability fits of
+// What Initialize fits a candidate window with: the options' DETECTION_BANDS,
+// and stability fits of
 // COEFFICIENT_MIN coefficients in a basis COEFFICIENT_MAX wide. Built once
 // per pixel, in Prepare.
 InitializeCriteria initialize_criteria(const HarmonicOptions& options);
@@ -98,7 +98,7 @@ index_t coefficient_count(
 // and the peek guard follow Lookback, or the stable start directly.
 //
 // Invariants the transitions assert: in Initialize the window holds at least
-// MEOW_SIZE observations; in Lookback window.start > prev_break; in Extend a
+// the start search's min_window() observations; in Lookback window.start > prev_break; in Extend a
 // full peek fits after the window (peek_fits()).
 //
 //==============================================================================
@@ -123,11 +123,13 @@ const char* to_string(Phase phase);
 enum class Exit : std::uint8_t
 {
     None,                 // still running
-    TooFewObservations,   // Prepare: at most MEOW_SIZE observations
+    TooFewObservations,   // Prepare: too few observations to start (the start
+                          // search's too_few(); pyccd: at most MEOW_SIZE)
     VariogramNaN,         // Prepare: a NaN in the variogram
     InitializeExhausted,  // Initialize: no stable window before the end
     PeekBeyondEnd,        // no full peek after the stable window
-    NoRoomToInitialize,   // no MEOW_SIZE window after the cursor
+    NoRoomToInitialize,   // no room for the start search's first candidate
+                          // after the cursor
     SeriesEnd             // Extend: a curve reached the series end
 };
 
@@ -345,11 +347,11 @@ Scratch& stability_scratch(const Context& context, State& state);
 // the next phase; a route into EndCatch sets state.exit to why.
 //------------------------------------------------------------------------------
 
-// Done (TooFewObservations) when the series holds at most MEOW_SIZE
-// observations. Otherwise sets the cadence, Initialize's criteria and the
+// Done (TooFewObservations) when the start search finds too few observations
+// (too_few()). Otherwise sets the cadence, Initialize's criteria and the
 // variogram from the statistics window (the observations dated <= STAT_ORD); Done
-// (VariogramNaN) on a NaN in it. Puts the window at (0, MEOW_SIZE) and
-// prev_break at 0. Next: Initialize, or EndCatch (NoRoomToInitialize).
+// (VariogramNaN) on a NaN in it. Puts the window at the search's first(0)
+// and prev_break at 0. Next: Initialize, or EndCatch (NoRoomToInitialize).
 Phase prepare(const Context& context, State& state);
 
 // The work of the phases, apart from their routes: what another machine
@@ -416,8 +418,8 @@ ExtendOutcome extend_step(const Context& context, State& state);
 // the last test's: its break day is the first observation after its end.
 Phase extend(const Context& context, State& state);
 
-// prev_break moves to window.stop and the window to (stop, stop +
-// MEOW_SIZE). Next: Initialize, or EndCatch (NoRoomToInitialize).
+// prev_break moves to window.stop and the window to the start search's
+// first(stop). Next: Initialize, or EndCatch (NoRoomToInitialize).
 Phase restart(const Context& context, State& state);
 
 // Writes the End segment over (prev_break, size) with COEFFICIENT_MIN
@@ -428,7 +430,7 @@ Phase end_catch(const Context& context, State& state);
 // Routing: the guards between phases, in the order the procedure tests them.
 //------------------------------------------------------------------------------
 
-// Room for a start window after the cursor: window.stop + MEOW_SIZE <= size.
+// Room for a start window after the cursor: the start search's room().
 bool room_to_initialize(const Context& context, const State& state);
 
 // A full peek after the window: window.stop + peek <= size.

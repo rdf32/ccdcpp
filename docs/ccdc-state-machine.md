@@ -78,6 +78,10 @@ whole series, every band fitted with `COEFFICIENT_MIN` coefficients.
                       EndCatch [NoRoomToInitialize] ── the End segment, if prev_break + peek < size ──► Done
 ```
 
+`MEOW_SIZE` and `DAY_DELTA` here are the `pyccd` start search's `meow_size` and `day_delta`
+(the `start_search` stage, section 3): the machine asks the run's start search where a candidate
+is, whether it has room and whether the search is exhausted.
+
 Bracketed names are the `Exit` value the record keeps: why the machine stopped where it did.
 The exit is internal; the trace and the tests read it, the result does not carry it.
 
@@ -89,7 +93,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 | Phase | One call | Next |
 |---|---|---|
-| `Prepare` (`prepare`) | The early exits; the statistics window; the cadence (the change test's `prepare()` for the peek; Lookback's threshold from the options); the stability rule's `prepare()`; Initialize's criteria (`initialize_criteria`); the variogram; the cursor at `(0, MEOW_SIZE)` | Initialize, EndCatch or Done |
+| `Prepare` (`prepare`) | The early exits; the statistics window; the cadence (the change test's `prepare()` for the peek; Lookback's threshold from the options); the stability rule's `prepare()`; Initialize's criteria (`initialize_criteria`); the variogram; the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
 | `Initialize` (`initialize`) | One candidate start window: `ccd::initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
 | `Lookback` (`lookback`) | One observation before the window: `lookback_step` returns a `LookbackOutcome` | itself while `window.start > prev_break`; then StartCatch, Extend or EndCatch |
 | `StartCatch` (`start_catch`) | The first segment's leading observations as a Start segment (curve_qa 14) | Extend or EndCatch |
@@ -99,10 +103,11 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 The guards inside one call, in the order they are tested:
 
-- **Initialize** (`initialize_step`, `src/ccd/procedure/kernels.cpp`): no candidate left
-  (`Exhausted`); a span under `DAY_DELTA` (`ShortSpan`, grow); the window screen (Tmask) flags
-  every observation (`AllOutliers`, grow); it flags some and the shortened window is too short
-  or too sparse
+- **Initialize** (`initialize_step`, `src/ccd/procedure/kernels.cpp`): the start search finds
+  no candidate left (`Exhausted`) or a span too short (`ShortSpan`, grow; pyccd: under
+  `DAY_DELTA`); the window screen (Tmask) flags
+  every observation (`AllOutliers`, grow); it flags some and the shortened window is not a
+  candidate (the search's `usable()`)
   (`RejectedOutliers`, grow, nothing dropped); then the detection bands are fitted by the
   stability fit and judged by the stability rule (`Stable`, or `Unstable` and a shift). When Tmask's outliers are dropped, the
   same call fits the shortened window, as pyccd does in one pass of its loop; those steps report
@@ -136,7 +141,7 @@ The routing between phases is a set of named predicates and routers, so a guard 
 and `peek_guard`. Every route into EndCatch records its `Exit`.
 
 The transitions assert the invariants the algorithm relies on: Initialize's window holds at
-least `MEOW_SIZE` observations; Lookback runs only while `window.start > prev_break`; Extend runs
+least the start search's `min_window()` observations; Lookback runs only while `window.start > prev_break`; Extend runs
 only when a full peek fits.
 
 ## 3. The per-pixel record and the context
@@ -192,6 +197,7 @@ rows, `config::bands({1, 4})`).
 
 | Stage | Decides | Strategies |
 |---|---|---|
+| `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `meow_size` observations needing `meow_size` more after them, spanning `day_delta` days |
 | `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
 | `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`) | `lasso`: the monitoring model's Lasso, `COEFFICIENT_MIN` coefficients |
 | `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's peek size) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is |
@@ -205,6 +211,7 @@ A run's configuration is the one its options describe
 
 | Strategy | Parameter | From |
 |---|---|---|
+| `pyccd` (start search) | `meow_size`, `day_delta` | `MEOW_SIZE`, `DAY_DELTA` |
 | `tmask` | `bands`, `t_const` | `TMASK_BANDS`, `T_CONST` |
 | `lasso` (both stages) | `max_iter`, `alpha`, `tolerance`, `coef_floor` | `LassoOptions`' fields of those names |
 | `pyccd` (stability rule) | `peek_size`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
@@ -260,6 +267,7 @@ using namespace ccd;
 
 // The configuration a run under the defaults uses, and its strategies.
 config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{});
+// tree["start_search"] is {"pyccd", {{"meow_size", 12}, {"day_delta", 365}}}
 // tree["window_screen"] is {"tmask", {{"bands", {1, 4}}, {"t_const", 4.89}}}
 // tree["stability_fit"] and tree["model"] are {"lasso", {{"max_iter", 1000}, {"alpha", 1.0},
 //                                           {"tolerance", 1e-4}, {"coef_floor", 1.0}}}
@@ -271,6 +279,10 @@ config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{}
 //                                  {"model_rmse_up_to", 24}, {"seasonal_count", 24},
 //                                  {"seasonal_divisor", 4.0}}}
 // tree["outlier"] is {"floored", {{"threshold", 35.8882}}}
+
+// Start windows of 18 observations spanning two years.
+tree["start_search"].params["meow_size"] = config::integer(18);
+tree["start_search"].params["day_delta"] = config::integer(730);
 
 // Tmask over green, red and swir1, and a looser outlier cut.
 tree["window_screen"].params["bands"] = config::bands({1, 2, 4});

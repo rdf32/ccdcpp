@@ -190,12 +190,13 @@ InitializeOutcome initialize_step(
     const InitializeStages& stages
 )
 {
-    assert(window.size() >= criteria.meow_size);
+    const StartSearch& search = stages.search;
+    assert(window.size() >= search.min_window());
 
     //--------------------------------------------------------------------------
     // No candidate left before the end of the series
     //--------------------------------------------------------------------------
-    if (!(window.stop + criteria.meow_size < series.size()))
+    if (search.exhausted(window, series.size()))
     {
         LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
         return InitializeOutcome::Exhausted;
@@ -210,7 +211,7 @@ InitializeOutcome initialize_step(
     //--------------------------------------------------------------------------
     // Check minimum time span
     //--------------------------------------------------------------------------
-    if (!enough_time(dates, criteria.day_delta))
+    if (search.short_span(dates))
     {
         window.grow();
         return InitializeOutcome::ShortSpan;
@@ -250,10 +251,9 @@ InitializeOutcome initialize_step(
         dropped = series.drop_outliers_if(
             outliers,
             window,
-            [&criteria](ArrayView<const std::int64_t, 1> shortened)
+            [&search](ArrayView<const std::int64_t, 1> shortened)
             {
-                return enough_time(shortened, criteria.day_delta) &&
-                    enough_samples(shortened, criteria.meow_size);
+                return search.usable(shortened);
             }
         );
 

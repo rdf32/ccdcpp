@@ -16,6 +16,7 @@ namespace ccd
 {
 
 class Model;           // strategies/model.hpp
+struct StartSearch;    // strategies/stages.hpp
 struct WindowScreen;   // strategies/stages.hpp
 struct StabilityRule;  // strategies/stages.hpp
 class Scratch;         // strategies/per_thread.hpp
@@ -141,25 +142,24 @@ void change_magnitude(
 // Initialize
 //------------------------------------------------------------------------------
 
-// What the start-window search tests a window against, besides the series
-// and its variogram. A procedure fills it from its options and its own
-// derived values; nothing here is read from the options directly. Values
-// throughout (a BandList is a small fixed-capacity array), so a criteria
-// object never refers to the options it was filled from.
+// What Initialize fits a candidate window with, besides its strategies. A
+// procedure fills it from its options; nothing here is read from the
+// options directly. Values throughout (a BandList is a small fixed-capacity
+// array), so a criteria object never refers to the options it was filled
+// from.
 struct InitializeCriteria
 {
-    index_t meow_size;          // fewest observations in a window
-    std::int64_t day_delta;     // shortest span, days
     BandList detection_bands;   // the bands fitted and tested for stability
     index_t num_coefficients;   // of the stability fits
     index_t max_coefficients;   // the widest model's: their peek basis width
 };
 
-// The strategies one Initialize step runs, of the run's stages: the window
-// screen, the stability fit (its Model, which holds the fits) and the
-// stability rule with its scratch, prepared for the pixel.
+// The strategies one Initialize step runs, of the run's stages: the start
+// search, the window screen, the stability fit (its Model, which holds the
+// fits) and the stability rule with its scratch, prepared for the pixel.
 struct InitializeStages
 {
+    const StartSearch& search;
     const WindowScreen& screen;
     Model& fit;
     const StabilityRule& rule;
@@ -175,9 +175,9 @@ struct InitializeStages
 // one pass of its loop. Their routing is Unstable's and Stable's.
 enum class InitializeOutcome : std::uint8_t
 {
-    Exhausted,            // window.stop + meow_size reached the series size:
-                          // no candidate left, nothing tested or changed
-    ShortSpan,            // the window spans fewer than day_delta days: grown
+    Exhausted,            // the start search has no candidate left:
+                          // nothing tested or changed
+    ShortSpan,            // the window spans too few days: grown
     AllOutliers,          // Tmask flags every observation in it: grown
     RejectedOutliers,     // what Tmask's outliers leave is too short or too
                           // few: grown, nothing dropped
@@ -190,19 +190,19 @@ enum class InitializeOutcome : std::uint8_t
 const char* to_string(InitializeOutcome outcome);
 
 // One step of the search for a stable start window: one candidate window.
-// `window` holds at least criteria.meow_size observations.
+// `window` holds at least the search's min_window() observations.
 //
 // In this order:
 //
-//   * window.stop + meow_size < series.size() fails: Exhausted;
-//   * the window spans fewer than day_delta days: it grows by one;
+//   * the start search finds no candidate left: Exhausted;
+//   * it finds the window spans too few days: the window grows by one;
 //   * the window screen flags every observation of the window: it grows by
 //     one (AllOutliers);
 //   * it flags some: they are dropped from `series` if what is left of
-//     the window still spans day_delta days and holds meow_size
-//     observations (MaskedSeries::drop_outliers_if(), which shortens the
-//     window), and the step goes on; otherwise the window grows by one with
-//     nothing dropped (RejectedOutliers);
+//     the window is still a candidate (the search's usable();
+//     MaskedSeries::drop_outliers_if(), which shortens the window), and the
+//     step goes on; otherwise the window grows by one with nothing dropped
+//     (RejectedOutliers);
 //   * the detection bands are fitted over the window by the stability fit
 //     (residuals kept): Stable (DroppedThenStable after a drop) when the
 //     stability rule finds the fit stable, with `window` the stable window

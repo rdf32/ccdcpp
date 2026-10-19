@@ -33,6 +33,8 @@ class Model;   // strategies/model.hpp
 //
 // The stages so far (the others are still decided inside the machine):
 //
+//   start_search     where the search for a stable start window begins, and
+//                    when it has no candidate left
 //   window_screen    the outliers of a candidate start window, dropped before
 //                    it is fitted
 //   stability_fit    the fit Initialize judges a candidate start window on,
@@ -55,6 +57,38 @@ class Model;   // strategies/model.hpp
 // (strategies/per_thread.hpp).
 //
 //==============================================================================
+
+//------------------------------------------------------------------------------
+// start_search: the search for a stable start window. Its decisions, in the
+// order the machine asks them:
+//
+//   too_few(n)        a series of n observations has no start: the pixel
+//                     ends without segments
+//   first(at)         the first candidate window at observation `at` (the
+//                     series start, or a segment's end)
+//   room(w, n)        whether candidate w fits in n observations: Initialize
+//                     may begin; otherwise the series ends
+//   exhausted(w, n)   at an Initialize step, whether no candidate is left
+//   short_span(d)     whether a candidate with dates d spans too few days:
+//                     it grows
+//   usable(d)         whether a candidate shortened by the window screen's
+//                     drops, with dates d, is still one; otherwise it grows
+//                     with nothing dropped
+//   min_window()      the fewest observations a candidate holds
+//------------------------------------------------------------------------------
+struct StartSearch
+{
+    static constexpr const char* stage = "start_search";
+
+    virtual ~StartSearch() = default;
+    virtual bool too_few(index_t observations) const = 0;
+    virtual Window first(index_t at) const = 0;
+    virtual bool room(const Window& window, index_t observations) const = 0;
+    virtual bool exhausted(const Window& window, index_t observations) const = 0;
+    virtual bool short_span(ArrayView<const std::int64_t, 1> dates) const = 0;
+    virtual bool usable(ArrayView<const std::int64_t, 1> dates) const = 0;
+    virtual index_t min_window() const = 0;
+};
 
 //------------------------------------------------------------------------------
 // window_screen: the observations of a candidate start window that are
@@ -224,6 +258,7 @@ struct OutlierRule
 // One call's strategies, one per stage, built from its configuration.
 struct Strategies
 {
+    std::shared_ptr<const StartSearch> start_search;
     std::shared_ptr<const WindowScreen> window_screen;
     std::shared_ptr<const StabilityFit> stability_fit;
     std::shared_ptr<const StabilityRule> stability_rule;

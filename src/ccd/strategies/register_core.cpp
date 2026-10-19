@@ -8,6 +8,7 @@
 #include "ccd/strategies/outlier/floored.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
 #include "ccd/strategies/stability_rule/pyccd.hpp"
+#include "ccd/strategies/start_search/pyccd.hpp"
 #include "ccd/strategies/window_screen/tmask.hpp"
 
 namespace ccd
@@ -17,6 +18,7 @@ namespace strategies
 
 void register_core_strategies(config::Registry& registry)
 {
+    registry.add<StartSearch, PyccdSearch>("pyccd");
     registry.add<WindowScreen, Tmask>("tmask");
     registry.add<StabilityFit, Lasso>("lasso");
     registry.add<StabilityRule, PyccdStability>("pyccd");
@@ -54,6 +56,7 @@ const config::StageConfig& stage_of(const config::ConfigTree& config, const char
 Strategies build_strategies(const config::Registry& registry, const config::ConfigTree& config)
 {
     Strategies s;
+    s.start_search = registry.make<StartSearch>(stage_of(config, StartSearch::stage));
     s.window_screen = registry.make<WindowScreen>(stage_of(config, WindowScreen::stage));
     s.stability_fit = registry.make<StabilityFit>(stage_of(config, StabilityFit::stage));
     s.stability_rule = registry.make<StabilityRule>(stage_of(config, StabilityRule::stage));

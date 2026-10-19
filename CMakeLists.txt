@@ -146,6 +146,7 @@ add_library(
     src/ccd/strategies/register_core.cpp
     src/ccd/strategies/refit/span_factor.cpp
     src/ccd/strategies/stability_rule/pyccd.cpp
+    src/ccd/strategies/start_search/pyccd.cpp
     src/ccd/strategies/window_screen/tmask.cpp
     src/ccd/qa_table.cpp
 )

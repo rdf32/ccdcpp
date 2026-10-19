@@ -4,10 +4,10 @@
 
 ### Changed
 
-- A run refuses a NaN `CHANGE_THRESHOLD` or `OUTLIER_THRESHOLD`, and Lasso options that are
-  negative or NaN (`alpha`, `tolerance`, `coef_floor`), when it is built, with
-  `std::invalid_argument` naming the parameter ("model 'lasso' parameter 'alpha' is -1; it must
-  be at least 0"); they used to run.
+- A run refuses a `MEOW_SIZE` of 0, a NaN `CHANGE_THRESHOLD` or `OUTLIER_THRESHOLD`, and Lasso
+  options that are negative or NaN (`alpha`, `tolerance`, `coef_floor`), when it is built,
+  with `std::invalid_argument` naming the parameter ("model 'lasso' parameter 'alpha' is -1;
+  it must be at least 0"); they used to run.
 - **The C++ entry points are `ccd::run_pixel` and `ccd::run_cube`** (`include/ccd/run/run.hpp`),
   replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
   overloads. What a call runs is one `ccd::RunSpec` (the options, the QA table, the plan,
@@ -86,6 +86,11 @@
   `std::vector<std::int64_t>`). `ccd::initialize_step` takes its strategies as one
   `ccd::InitializeStages`; `InitializeCriteria` no longer holds `tmask_bands` and `t_const`.
   Outputs unchanged.
+- **The `start_search` stage**: where the start-window search begins and ends,
+  `ccd::StartSearch` (`too_few`, `first`, `room`, `exhausted`, `short_span`, `usable`,
+  `min_window`), with its strategy `pyccd` (`meow_size` from `MEOW_SIZE`, `day_delta` from
+  `DAY_DELTA`). Prepare, Restart, Initialize and the resume record check ask it;
+  `InitializeCriteria` no longer holds `meow_size` and `day_delta`. Outputs unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

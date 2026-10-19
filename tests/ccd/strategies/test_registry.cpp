@@ -10,6 +10,8 @@
 //     uses, and the refit schedule decides as Extend's inline test did;
 //   * the lasso monitoring model fits, predicts and scores as the shared
 //     kernels do, bit for bit, with the solver options it was configured with;
+//   * the pyccd start search's decisions are pyccd's comparisons with
+//     meow_size and day_delta;
 //   * a band list parameter takes indices 0 to CCD_MAX_BANDS - 1, and the
 //     tmask window screen is tmask() of its bands and t_const;
 //   * the pyccd stability rule is pyccd's check of the stability fit, against
@@ -64,6 +66,8 @@ void expect_refused(F make, const std::string& fragment)
 TEST(Registry, ListsTheCoreStrategies)
 {
     const auto names = ccd::strategies::core_registry().names();
+    ASSERT_EQ(names.count("start_search"), 1u);
+    EXPECT_EQ(names.at("start_search"), (std::vector<std::string>{"pyccd"}));
     ASSERT_EQ(names.count("window_screen"), 1u);
     EXPECT_EQ(names.at("window_screen"), (std::vector<std::string>{"tmask"}));
     ASSERT_EQ(names.count("stability_fit"), 1u);
@@ -168,7 +172,7 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
-        "the configuration has no 'window_screen' stage");
+        "the configuration has no 'start_search' stage");
 }
 
 TEST(MonitoringModel, TheLassoIsTheKernelsFit)
@@ -531,4 +535,48 @@ TEST(WindowScreen, TmaskIsTmaskOfItsBands)
         EXPECT_EQ(got[i], want[i]) << i;
     EXPECT_TRUE(got[7]);
     EXPECT_TRUE(got[19]);
+}
+
+TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
+{
+    ccd::HarmonicOptions h;
+    h.MEOW_SIZE = 10;
+    h.DAY_DELTA = 200;
+    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    EXPECT_EQ(tree.at("start_search").strategy, "pyccd");
+    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const ccd::StartSearch& search = *s.start_search;
+
+    EXPECT_TRUE(search.too_few(10));
+    EXPECT_FALSE(search.too_few(11));
+    EXPECT_EQ(search.first(7).start, 7u);
+    EXPECT_EQ(search.first(7).stop, 17u);
+    EXPECT_EQ(search.min_window(), 10u);
+
+    // room: stop + 10 <= n; exhausted unless stop + 10 < n.
+    const ccd::Window w(5, 15);
+    EXPECT_TRUE(search.room(w, 25));
+    EXPECT_FALSE(search.room(w, 24));
+    EXPECT_TRUE(search.exhausted(w, 25));
+    EXPECT_FALSE(search.exhausted(w, 26));
+    // Fewer observations than meow_size: no room, exhausted (no unsigned wrap).
+    EXPECT_FALSE(search.room(ccd::Window(0, 10), 5));
+    EXPECT_TRUE(search.exhausted(ccd::Window(0, 10), 5));
+
+    // short_span: under 200 days; usable: 200 days and 10 observations.
+    std::vector<std::int64_t> days(10);
+    for (std::size_t i = 0; i < days.size(); ++i)
+        days[i] = 730000 + 22 * static_cast<std::int64_t>(i);   // spans 198 days
+    const auto d = [&](std::size_t n)
+    { return ccd::ArrayView<const std::int64_t, 1>::contiguous(days.data(), {n}); };
+    EXPECT_TRUE(search.short_span(d(10)));
+    EXPECT_FALSE(search.usable(d(10)));
+    days[9] = 730200;
+    EXPECT_FALSE(search.short_span(d(10)));
+    EXPECT_TRUE(search.usable(d(10)));
+    EXPECT_FALSE(search.usable(d(9)));   // 9 observations
+
+    h.MEOW_SIZE = 0;
+    expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
+                   "start_search 'pyccd' parameter 'meow_size' is 0; it must be at least 1");
 }

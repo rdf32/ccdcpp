@@ -37,6 +37,9 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
                           {"alpha", real(loptions.alpha)},
                           {"tolerance", real(loptions.tolerance)},
                           {"coef_floor", real(loptions.coef_floor)}};
+    tree[StartSearch::stage] = {
+        "pyccd",
+        {{"meow_size", count(hoptions.MEOW_SIZE)}, {"day_delta", integer(hoptions.DAY_DELTA)}}};
     tree[WindowScreen::stage] = {
         "tmask", {{"bands", bands(hoptions.TMASK_BANDS)}, {"t_const", real(hoptions.T_CONST)}}};
     tree[StabilityFit::stage] = {"lasso", lasso};

@@ -20,8 +20,6 @@ namespace standard
 InitializeCriteria initialize_criteria(const HarmonicOptions& options)
 {
     return InitializeCriteria{
-        options.MEOW_SIZE,
-        options.DAY_DELTA,
         options.DETECTION_BANDS,
         options.COEFFICIENT_MIN,
         options.COEFFICIENT_MAX
@@ -214,10 +212,7 @@ Phase end_catch_because(State& state, Exit why)
 
 bool room_to_initialize(const Context& context, const State& state)
 {
-    // window.stop <= observations - MEOW_SIZE, written without the
-    // subtraction: index_t is unsigned, and observations < MEOW_SIZE would
-    // wrap it to a huge bound.
-    return state.cursor.window.stop + context.options.MEOW_SIZE <= state.series.size();
+    return context.strategies.start_search->room(state.cursor.window, state.series.size());
 }
 
 bool peek_fits(const State& state)
@@ -276,7 +271,7 @@ Phase prepare(const Context& context, State& state)
     //----------------------------------------------------------
     // Not enough observations
     //----------------------------------------------------------
-    if (series.size() <= options.MEOW_SIZE)
+    if (context.strategies.start_search->too_few(series.size()))
     {
         LOG_DEBUG("Processing Mask: " << series.mask().data());
         LOG_DEBUG("mask count < meow size" << series.size());
@@ -333,7 +328,7 @@ Phase prepare(const Context& context, State& state)
     }
     LOG_DEBUG("Variogram values: " << state.variogram.bands);
 
-    state.cursor = Cursor{Window(0, options.MEOW_SIZE), 0};
+    state.cursor = Cursor{context.strategies.start_search->first(0), 0};
 
     if (room_to_initialize(context, state))
         return Phase::Initialize;
@@ -350,7 +345,8 @@ InitializeOutcome initialize_outcome(const Context& context, State& state)
         state.cursor.window,
         state.initialize_criteria,
         state.variogram,
-        InitializeStages{*context.strategies.window_screen, stability_fit(context, state),
+        InitializeStages{*context.strategies.start_search, *context.strategies.window_screen,
+                         stability_fit(context, state),
                          *context.strategies.stability_rule, stability_scratch(context, state)}
     );
     LOG_DEBUG("Initialize: " << to_string(outcome));
@@ -791,7 +787,7 @@ void move_past_segment(const Context& context, State& state)
     Cursor& cursor = state.cursor;
 
     cursor.prev_break = cursor.window.stop;
-    cursor.window = Window(cursor.window.stop, cursor.window.stop + context.options.MEOW_SIZE);
+    cursor.window = context.strategies.start_search->first(cursor.window.stop);
 }
 
 Phase restart(const Context& context, State& state)
@@ -866,7 +862,7 @@ namespace
 void check_fits(const Context& context, const State& state, const Suspended& from)
 {
     const index_t size = state.series.size();
-    const index_t meow = context.options.MEOW_SIZE;
+    const index_t meow = context.strategies.start_search->min_window();
     const Window& w = from.window;
     const auto refuse = [&](const std::string& what)
     {
