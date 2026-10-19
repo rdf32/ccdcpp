@@ -40,6 +40,8 @@ class Model;   // strategies/model.hpp
 //   stability_fit    the fit Initialize judges a candidate start window on,
 //                    which Lookback tests against
 //   stability_rule   whether that candidate is stable
+//   lookback         whether the observation before a stable start window
+//                    joins it, is dropped, or is a change
 //   model            the fit Extend tests each peek against
 //   refit            when Extend refits it
 //   change_test      the pixel's peek, whether a peek is a change, and the
@@ -144,6 +146,49 @@ struct StabilityRule
     virtual bool stable(const Model& fit, ArrayView<const std::int64_t, 1> dates,
                         const Variogram& variogram, const BandList& bands,
                         const Scratch& scratch) const = 0;
+};
+
+//------------------------------------------------------------------------------
+// lookback: one Lookback step, after a stable start: tests the observations
+// before the window against the stability fit and judges the one just before
+// it. prepare() is called once per pixel with the change test's peek size
+// and the detection band count, and keeps what it derives in the thread's
+// scratch. judge() reads:
+//
+//   fit                the stability fit of the start window
+//   dates, spectral    the masked series (spectral is (B, n))
+//   window, prev_break the start window, which starts after prev_break
+//
+// and returns its verdict with the observation it is about (a position in
+// the masked series): Change (the window stays), Drop (that observation
+// leaves the series) or Include (the window starts there).
+//------------------------------------------------------------------------------
+
+enum class LookbackVerdict : std::uint8_t
+{
+    Change,
+    Drop,
+    Include
+};
+
+struct LookbackJudgement
+{
+    LookbackVerdict verdict;
+    index_t observation;   // for Drop and Include
+};
+
+struct Lookback
+{
+    static constexpr const char* stage = "lookback";
+
+    virtual ~Lookback() = default;
+    virtual Capabilities needs() const = 0;
+    virtual std::unique_ptr<Scratch> make_scratch() const = 0;
+    virtual void prepare(index_t peek, index_t detection_bands, Scratch& scratch) const = 0;
+    virtual LookbackJudgement judge(Model& fit, ArrayView<const std::int64_t, 1> dates,
+                                    ArrayView<const scalar_t, 2> spectral, const Window& window,
+                                    index_t prev_break, const Variogram& variogram,
+                                    const BandList& bands, Scratch& scratch) const = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -262,6 +307,7 @@ struct Strategies
     std::shared_ptr<const WindowScreen> window_screen;
     std::shared_ptr<const StabilityFit> stability_fit;
     std::shared_ptr<const StabilityRule> stability_rule;
+    std::shared_ptr<const Lookback> lookback;
     std::shared_ptr<const MonitoringModel> model;
     std::shared_ptr<const RefitSchedule> refit;
     std::shared_ptr<const ChangeTest> change_test;

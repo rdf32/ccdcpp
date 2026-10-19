@@ -38,6 +38,12 @@ Scratch& stability_scratch(const Context& context, State& state)
                                [](const StabilityRule& r) { return r.make_scratch(); });
 }
 
+Scratch& lookback_scratch(const Context& context, State& state)
+{
+    return state.lookback.get(context.strategies.lookback,
+                              [](const Lookback& l) { return l.make_scratch(); });
+}
+
 namespace
 {
 
@@ -302,15 +308,13 @@ Phase prepare(const Context& context, State& state)
     const index_t detection_bands = options.DETECTION_BANDS.size();
     state.cadence.peek = context.strategies.change_test->prepare(
         stat_dates, detection_bands, test_scratch(context, state.extension));
-    state.cadence.change_threshold = state.thresholds(
-        state.cadence.peek, options.PEEK_SIZE, options.CHANGE_THRESHOLD, detection_bands,
-        options.CHANGE_PROBABILITY);
     context.strategies.stability_rule->prepare(
         state.cadence.peek, detection_bands, stability_scratch(context, state));
+    context.strategies.lookback->prepare(
+        state.cadence.peek, detection_bands, lookback_scratch(context, state));
     state.initialize_criteria = initialize_criteria(options);
 
     LOG_DEBUG("Peek size: " << state.cadence.peek);
-    LOG_DEBUG("Chng thresh: " << state.cadence.change_threshold);
 
     state.variogram.bands =
         adjusted_variogram(
@@ -376,136 +380,30 @@ Phase initialize(const Context& context, State& state)
     return Phase::Initialize;
 }
 
-ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek)
-{
-    assert(window_start > prev_break);
-
-    const auto start = static_cast<std::ptrdiff_t>(window_start) - 1;
-
-    // `peek` observations, start - 1 down to start - peek, all above
-    // prev_break.
-    if ((window_start - prev_break) > peek)
-        return ReversePeek{start, static_cast<std::ptrdiff_t>(window_start) -
-                                  static_cast<std::ptrdiff_t>(peek) - 1};
-
-    // Near the break: start - 1 down to prev_break, never below it.
-    return ReversePeek{start, static_cast<std::ptrdiff_t>(prev_break) - 1};
-}
-
 LookbackOutcome lookback_step(const Context& context, State& state)
 {
-    const auto& options = context.options;
     MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
-    const index_t prev_break = state.cursor.prev_break;
     assert(state.init_model);   // a stable Initialize made it
-    Model& model = *state.init_model;
-    const Cadence& cadence = state.cadence;
 
-    const BandList& detection_bands = options.DETECTION_BANDS;
+    const LookbackJudgement judged = context.strategies.lookback->judge(
+        *state.init_model, series.dates(), series.spectral(), window, state.cursor.prev_break,
+        state.variogram, context.options.DETECTION_BANDS, lookback_scratch(context, state));
 
-    std::vector<std::int64_t>& peek_dates = state.lookback.peek_dates;
-    std::vector<scalar_t>& peek_spectral = state.lookback.peek_spectral;
-
-    // Indexed by band; only the detection bands' are written.
-    std::vector<std::vector<scalar_t>>& residuals = state.lookback.residuals;
-    residuals.resize(series.spectral().extent(0));
-    // Indexed by position in DETECTION_BANDS.
-    std::vector<scalar_t>& comp_rmses = state.lookback.comp_rmse;
-    comp_rmses.resize(detection_bands.size());
-    std::vector<scalar_t>& magnitude = state.lookback.magnitude;
-
-    assert(window.start > prev_break);
-
-    const auto masked_dates = series.dates();
-    const auto masked_spectral = series.spectral();
-
-    const ReversePeek peek_window =
-        lookback_peek(window.start, prev_break, cadence.peek);
-
-    peek_dates.clear();
-    peek_dates.reserve(cadence.peek);
-    for (std::ptrdiff_t i = peek_window.start; i > peek_window.stop; --i)
+    switch (judged.verdict)
     {
-        peek_dates.push_back(masked_dates[i]);
+        case LookbackVerdict::Change:
+            return LookbackOutcome::Change;
+        case LookbackVerdict::Drop:
+            // The window moves down one position with the observations after
+            // the dropped one.
+            series.drop(judged.observation, window);
+            return LookbackOutcome::Dropped;
+        case LookbackVerdict::Include:
+            window.start = judged.observation;
+            return LookbackOutcome::Included;
     }
-
-    auto masked_dates_window =
-        ArrayView<const std::int64_t, 1>::contiguous(
-            peek_dates.data(),
-            {peek_dates.size()}
-        );
-
-    const index_t bands   = masked_spectral.extent(0);
-    const index_t samples = peek_dates.size();
-
-    peek_spectral.resize(bands * samples);
-    for (index_t band = 0; band < bands; ++band)
-    {
-        for (index_t j = 0; j < samples; ++j)
-        {
-            std::ptrdiff_t source =
-                peek_window.start - static_cast<std::ptrdiff_t>(j);
-
-            assert(source >= 0);
-            assert(source < static_cast<std::ptrdiff_t>(masked_spectral.extent(1)));
-
-            peek_spectral[band * samples + j] =
-                masked_spectral(band, static_cast<index_t>(source));
-        }
-    }
-    auto masked_spectral_window =
-        ArrayView<const scalar_t, 2>::contiguous(
-            peek_spectral.data(),
-            {bands, samples}
-        );
-
-    model.peek_residuals(
-        masked_dates_window,
-        masked_spectral_window,
-        detection_bands,
-        residuals
-    );
-
-    // The comparison RMSE is the stable start window's: nothing is refitted
-    // while the window grows backward (Zhu's TrendSeasonalFit, pyccd).
-    for (index_t i = 0; i < detection_bands.size(); ++i)
-    {
-        comp_rmses[i] = model.rmse(detection_bands[i]);
-    }
-
-    change_magnitude(
-        residuals,
-        detection_bands,
-        state.variogram,
-        comp_rmses,
-        magnitude
-    );
-
-    //--------------------------------------------------------------------------
-    // Change detected: the window stays where it is
-    //--------------------------------------------------------------------------
-    if (detect_change(magnitude, cadence.change_threshold))
-    {
-        LOG_DEBUG("Change before " << window.start);
-        return LookbackOutcome::Change;
-    }
-    //--------------------------------------------------------------------------
-    // Outlier detected: drop the observation immediately before the window;
-    // the window moves down one position with the observations after it
-    //--------------------------------------------------------------------------
-    else if (detect_outlier(magnitude[0], options.OUTLIER_THRESHOLD))
-    {
-        LOG_DEBUG("Outlier dropped at " << peek_window.start);
-        series.drop(static_cast<index_t>(peek_window.start), window);
-        return LookbackOutcome::Dropped;
-    }
-    //--------------------------------------------------------------------------
-    // Otherwise include it
-    //--------------------------------------------------------------------------
-    LOG_DEBUG("Included " << peek_window.start);
-    window.start = static_cast<index_t>(peek_window.start);
-    return LookbackOutcome::Included;
+    return LookbackOutcome::Change;
 }
 
 Phase lookback(const Context& context, State& state)

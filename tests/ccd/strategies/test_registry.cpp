@@ -36,6 +36,7 @@
 #include "ccd/harmonic/harmonic.hpp"
 #include "ccd/procedure/kernels.hpp"
 #include "ccd/strategies/model.hpp"
+#include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
 #include "ccd/config/from_options.hpp"
@@ -74,6 +75,8 @@ TEST(Registry, ListsTheCoreStrategies)
     EXPECT_EQ(names.at("stability_fit"), (std::vector<std::string>{"lasso"}));
     ASSERT_EQ(names.count("stability_rule"), 1u);
     EXPECT_EQ(names.at("stability_rule"), (std::vector<std::string>{"pyccd"}));
+    ASSERT_EQ(names.count("lookback"), 1u);
+    EXPECT_EQ(names.at("lookback"), (std::vector<std::string>{"pyccd"}));
     ASSERT_EQ(names.count("model"), 1u);
     EXPECT_EQ(names.at("model"), (std::vector<std::string>{"lasso"}));
     ASSERT_EQ(names.count("refit"), 1u);
@@ -320,6 +323,26 @@ struct OpaqueFit final : ccd::StabilityFit
     std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
 };
 
+// A stability fit with residuals and RMSE but no peek residuals: enough for
+// the stability rule, not for Lookback.
+struct NoPeekFit final : ccd::StabilityFit
+{
+    struct Params
+    {
+    };
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        static const std::vector<ccd::config::Field<Params>> s;
+        return s;
+    }
+    explicit NoPeekFit(const Params&) {}
+    ccd::Capabilities provides() const override
+    {
+        return ccd::Capability::ModelRmse | ccd::Capability::InWindowResiduals;
+    }
+    std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
+};
+
 struct Silent final : ccd::ChangeTest
 {
     struct Params
@@ -377,6 +400,12 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
                    "stability_rule 'pyccd' needs model_rmse, in_window_residuals, which "
                    "stability_fit 'opaque' does not provide");
 
+    r.add<ccd::StabilityFit, NoPeekFit>("no-peek");
+    tree["stability_fit"] = {"no-peek", {}};
+    expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
+                   "lookback 'pyccd' needs peek_residuals, which stability_fit 'no-peek' does not "
+                   "provide");
+
     // A configuration without an outlier stage.
     tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
     tree.erase("outlier");
@@ -407,9 +436,13 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
     result.statistic = {10.5, 0.0};
     EXPECT_EQ(s.outlier->judge(peek, result), ccd::OutlierOutcome::Drop);
 
-    h.OUTLIER_THRESHOLD = NAN;
-    expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
-                   "outlier 'floored' parameter 'threshold' is nan");
+    expect_refused(
+        [&]
+        {
+            ccd::strategies::core_registry().make<ccd::OutlierRule>(
+                {"floored", {{"threshold", ccd::config::real(NAN)}}});
+        },
+        "outlier 'floored' parameter 'threshold' is nan");
 }
 
 TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
@@ -579,4 +612,84 @@ TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
     h.MEOW_SIZE = 0;
     expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
                    "start_search 'pyccd' parameter 'meow_size' is 0; it must be at least 1");
+}
+
+TEST(Lookback, PyccdTakesItsParametersFromTheOptions)
+{
+    ccd::HarmonicOptions h;
+    h.OUTLIER_THRESHOLD = 20.0;
+    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    const auto& lookback = tree.at("lookback");
+    EXPECT_EQ(lookback.strategy, "pyccd");
+    EXPECT_EQ(std::get<std::int64_t>(lookback.params.at("peek_size")), 6);
+    EXPECT_EQ(std::get<double>(lookback.params.at("change_threshold")), h.CHANGE_THRESHOLD);
+    EXPECT_EQ(std::get<double>(lookback.params.at("change_probability")), h.CHANGE_PROBABILITY);
+    EXPECT_EQ(std::get<double>(lookback.params.at("outlier_threshold")), 20.0);
+
+    h.OUTLIER_THRESHOLD = NAN;
+    expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
+                   "lookback 'pyccd' parameter 'outlier_threshold' is nan");
+}
+
+TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
+{
+    // A window 15 observations after the break, so a peek of 10 is far from
+    // it: one statistic, between the default threshold of a 6-observation
+    // peek and the lower one of a 10-observation peek, is a change only for
+    // the longer peek.
+    const ccd::strategies::PyccdLookback::Params p;
+    const ccd::strategies::PyccdLookback lookback(p);
+    const auto scratch = lookback.make_scratch();
+    ccd::ChangeThresholdMemo memo;
+    const double at6 = memo(6, p.peek_size, p.change_threshold, 5, p.change_probability);
+    const double at10 = memo(10, p.peek_size, p.change_threshold, 5, p.change_probability);
+    EXPECT_EQ(at6, p.change_threshold);
+    EXPECT_LT(at10, at6);
+
+    // A stability fit of 0.0 everywhere and residuals of 3.5 per band against
+    // an RMSE of 1 give every statistic 5 * 3.5^2 = 61.25 over 5 bands; with
+    // an RMSE of sqrt(61.25 / t) each statistic is t.
+    class Flat final : public ccd::Model
+    {
+    public:
+        explicit Flat(double rmse) : rmse_(rmse) {}
+        void fit(ccd::ArrayView<const std::int64_t, 1>, ccd::ArrayView<const double, 2>,
+                 ccd::index_t, ccd::index_t, const ccd::BandList&, ccd::KeepResiduals) override {}
+        void peek_residuals(ccd::ArrayView<const std::int64_t, 1> dates,
+                            ccd::ArrayView<const double, 2>, const ccd::BandList& bands,
+                            std::vector<std::vector<double>>& residuals) override
+        {
+            for (const ccd::index_t b : bands)
+                residuals[b].assign(dates.size(), 3.5);
+        }
+        double rmse(ccd::index_t) const override { return rmse_; }
+        const std::vector<double>& residuals(ccd::index_t) const override { return none_; }
+        ccd::BandFit band_fit(ccd::index_t) const override { return {}; }
+
+    private:
+        double rmse_;
+        std::vector<double> none_;
+    };
+
+    const ccd::index_t n = 30, bands = 5;
+    std::vector<std::int64_t> dates(n);
+    for (ccd::index_t t = 0; t < n; ++t)
+        dates[t] = 730000 + 16 * static_cast<std::int64_t>(t);
+    std::vector<double> spectral(bands * n, 0.0);
+    const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
+    const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
+    const ccd::Variogram variogram{std::vector<double>(bands, 0.0)};
+    const ccd::BandList detection{0, 1, 2, 3, 4};
+    const double statistic = (at6 + at10) / 2;   // between the two thresholds
+    Flat fit(std::sqrt(61.25 / statistic));
+    const ccd::Window window(15, 27);
+
+    lookback.prepare(6, bands, *scratch);
+    // Below 15.09 and below the outlier threshold: the observation joins.
+    EXPECT_EQ(lookback.judge(fit, d, x, window, 0, variogram, detection, *scratch).verdict,
+              ccd::LookbackVerdict::Include);
+    lookback.prepare(10, bands, *scratch);
+    const auto judged = lookback.judge(fit, d, x, window, 0, variogram, detection, *scratch);
+    EXPECT_EQ(judged.verdict, ccd::LookbackVerdict::Change);
+    EXPECT_EQ(judged.observation, 14u);
 }

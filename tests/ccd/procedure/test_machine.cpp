@@ -46,6 +46,7 @@
 #include "ccd/procedure/standard.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/config/from_options.hpp"
+#include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 #include "../golden/characterisation.hpp"
@@ -103,7 +104,7 @@ struct Record
     void at(index_t start, index_t stop, index_t prev_break, index_t peek = 6)
     {
         state.cursor = ccd::Cursor{ccd::Window(start, stop), prev_break};
-        state.cadence = ccd::standard::Cadence{peek, options.CHANGE_THRESHOLD};
+        state.cadence = ccd::standard::Cadence{peek};
         state.initialize_criteria = ccd::standard::initialize_criteria(options);
 
         // The change test as Prepare leaves it on a series at the reference
@@ -118,6 +119,14 @@ struct Record
         // PEEK_SIZE), whatever peek the record has.
         strategies.stability_rule->prepare(
             options.PEEK_SIZE, options.DETECTION_BANDS.size(), stability_scratch());
+        // Lookback over `peek` observations against CHANGE_THRESHOLD: pyccd's
+        // with its peek_size the record's, so its threshold is unadjusted.
+        strategies.lookback = std::make_shared<const ccd::strategies::PyccdLookback>(
+            ccd::strategies::PyccdLookback::Params{peek, options.CHANGE_THRESHOLD,
+                                                   options.CHANGE_PROBABILITY,
+                                                   options.OUTLIER_THRESHOLD});
+        strategies.lookback->prepare(peek, options.DETECTION_BANDS.size(),
+                                     ccd::standard::lookback_scratch(context, state));
     }
 
     // A segment already written, as Extend or StartCatch leaves one.
@@ -370,9 +379,8 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     EXPECT_EQ(r.state.cursor.window.stop, 12u);
     EXPECT_EQ(r.state.cursor.prev_break, 0u);
 
-    // 16-day cadence: the caller's peek and threshold.
+    // 16-day cadence: the caller's peek.
     EXPECT_EQ(r.state.cadence.peek, r.options.PEEK_SIZE);
-    EXPECT_EQ(r.state.cadence.change_threshold, r.options.CHANGE_THRESHOLD);
 
     // Initialize's criteria, once for the pixel: the options' (COEFFICIENT_MIN
     // coefficients in a COEFFICIENT_MAX-wide basis among them).
@@ -584,7 +592,7 @@ TEST(StandardInitialize, AnUnstableWindowShifts)
 
 TEST(StandardLookback, ThePeekWindowNeverReadsBelowTheBreak)
 {
-    using ccd::standard::lookback_peek;
+    using ccd::strategies::lookback_peek;
 
     // Far from the break: start - 1 down to start - peek, the adjusted peek
     // of observations.

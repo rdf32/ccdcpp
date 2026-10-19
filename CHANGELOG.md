@@ -91,6 +91,14 @@
   `min_window`), with its strategy `pyccd` (`meow_size` from `MEOW_SIZE`, `day_delta` from
   `DAY_DELTA`). Prepare, Restart, Initialize and the resume record check ask it;
   `InitializeCriteria` no longer holds `meow_size` and `day_delta`. Outputs unchanged.
+- **The `lookback` stage**: Lookback's verdict on the observation before a stable start,
+  `ccd::Lookback` (`prepare()`, `judge()` -> `LookbackJudgement` {Change, Drop, Include and the
+  observation}), with its strategy `pyccd` (parameters from `PEEK_SIZE`, `CHANGE_THRESHOLD`,
+  `CHANGE_PROBABILITY` and `OUTLIER_THRESHOLD`); `lookback_step` applies it. `lookback_peek` and
+  `ReversePeek` moved to `ccd::strategies` (`strategies/lookback/pyccd.hpp`);
+  `standard::Cadence` holds only the peek (its `change_threshold` was Lookback's), and
+  `State::lookback` is the lookback's scratch (`standard::lookback_scratch()`). Outputs
+  unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "ccd/strategies/change_test/chi2.hpp"
+#include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/outlier/floored.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
@@ -22,6 +23,7 @@ void register_core_strategies(config::Registry& registry)
     registry.add<WindowScreen, Tmask>("tmask");
     registry.add<StabilityFit, Lasso>("lasso");
     registry.add<StabilityRule, PyccdStability>("pyccd");
+    registry.add<Lookback, PyccdLookback>("pyccd");
     registry.add<MonitoringModel, Lasso>("lasso");
     registry.add<RefitSchedule, SpanFactor>("span-factor");
     registry.add<ChangeTest, Chi2>("chi2");
@@ -60,6 +62,7 @@ Strategies build_strategies(const config::Registry& registry, const config::Conf
     s.window_screen = registry.make<WindowScreen>(stage_of(config, WindowScreen::stage));
     s.stability_fit = registry.make<StabilityFit>(stage_of(config, StabilityFit::stage));
     s.stability_rule = registry.make<StabilityRule>(stage_of(config, StabilityRule::stage));
+    s.lookback = registry.make<Lookback>(stage_of(config, Lookback::stage));
     s.model = registry.make<MonitoringModel>(stage_of(config, MonitoringModel::stage));
     s.refit = registry.make<RefitSchedule>(stage_of(config, RefitSchedule::stage));
     s.change_test = registry.make<ChangeTest>(stage_of(config, ChangeTest::stage));
@@ -78,10 +81,8 @@ Strategies build_strategies(const config::Registry& registry, const config::Conf
     };
     require(s.stability_rule->needs(), s.stability_fit->provides(), named(StabilityRule::stage),
             named(StabilityFit::stage));
-    // Lookback tests its peeks against the stability fit (until it is a
-    // stage with needs of its own).
-    require(Capability::PeekResiduals | Capability::ModelRmse, s.stability_fit->provides(),
-            "Lookback", named(StabilityFit::stage));
+    require(s.lookback->needs(), s.stability_fit->provides(), named(Lookback::stage),
+            named(StabilityFit::stage));
     const Capabilities model = s.model->provides();
     require(s.change_test->needs(), model, named(ChangeTest::stage), named(MonitoringModel::stage));
     require(s.outlier->needs(), model | s.change_test->provides(), named(OutlierRule::stage),

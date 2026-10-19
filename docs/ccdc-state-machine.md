@@ -93,7 +93,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 | Phase | One call | Next |
 |---|---|---|
-| `Prepare` (`prepare`) | The early exits; the statistics window; the cadence (the change test's `prepare()` for the peek; Lookback's threshold from the options); the stability rule's `prepare()`; Initialize's criteria (`initialize_criteria`); the variogram; the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
+| `Prepare` (`prepare`) | The early exits; the statistics window; the cadence (the change test's `prepare()`, the pixel's peek); the stability rule's and the lookback's `prepare()`; Initialize's criteria (`initialize_criteria`); the variogram; the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
 | `Initialize` (`initialize`) | One candidate start window: `ccd::initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
 | `Lookback` (`lookback`) | One observation before the window: `lookback_step` returns a `LookbackOutcome` | itself while `window.start > prev_break`; then StartCatch, Extend or EndCatch |
 | `StartCatch` (`start_catch`) | The first segment's leading observations as a Start segment (curve_qa 14) | Extend or EndCatch |
@@ -112,10 +112,11 @@ The guards inside one call, in the order they are tested:
   stability fit and judged by the stability rule (`Stable`, or `Unstable` and a shift). When Tmask's outliers are dropped, the
   same call fits the shortened window, as pyccd does in one pass of its loop; those steps report
   `DroppedThenStable` and `DroppedThenUnstable`.
-- **Lookback** (`lookback_step`): every peek magnitude above the change threshold (`Change`, the
-  window stays); the first magnitude above `OUTLIER_THRESHOLD` (`Dropped`, the observation
-  before the window leaves the series); otherwise `Included` (`window.start - 1`). The peek
-  window is `lookback_peek`'s: far from the previous break, the adjusted peek of observations
+- **Lookback** (`lookback_step`): the lookback strategy's verdict on the observation before the
+  window, which the machine applies: `Change` (the window stays), `Drop` (`Dropped`, the
+  observation leaves the series) or `Include` (`Included`, `window.start - 1`). pyccd's: every
+  peek statistic above the threshold is a change, the first above `OUTLIER_THRESHOLD` an
+  outlier. Its peek window is `lookback_peek`'s: far from the previous break, the adjusted peek of observations
   before the window; near it, down to the previous break and never below. The comparison RMSE
   is the stable start window's: nothing is refitted while the window grows backward, as in
   Zhu's TrendSeasonalFit.
@@ -166,12 +167,11 @@ the stability fit. A direct caller of `standard::Procedure` builds all of them f
 | `cursor` (`Cursor`, `include/ccd/procedure/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
-| `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), and the threshold Lookback compares against (pyccd's, from the options, until Lookback is a stage) | Standard's |
+| `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | Standard's |
 | `variogram` (`Variogram`, `include/ccd/procedure/fit.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
-| `init_model`, `stability` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against) and the stability rule's per-pixel scratch, each a `PerThread` of its strategy | Standard's |
+| `init_model`, `stability`, `lookback` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's and the lookback's per-pixel scratch, each a `PerThread` of its strategy | Standard's |
 | `extension` (`Extension`) | what Extend carries from one peek test to the next | Standard's |
-| `lookback` | scratch buffers, kept for their capacity | Standard's |
 
 `MaskedSeries` is the only writer of the mask. Its two drops, `drop` (Lookback, Extend) and
 `drop_outliers_if` (Initialize's tentative Tmask removal), move the caller's window with the
@@ -201,6 +201,7 @@ rows, `config::bands({1, 4})`).
 | `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
 | `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`) | `lasso`: the monitoring model's Lasso, `COEFFICIENT_MIN` coefficients |
 | `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's peek size) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is |
+| `lookback` | after a stable start, whether the observation before the window joins it, is dropped or is a change, testing the observations before the window against the stability fit (`prepare()` for the pixel's peek; `judge()` per step) | `pyccd`: `lookback_peek()`'s observations, the statistic against the stability fit's RMSE, a change above the threshold (adjusted for the peek), an outlier above `outlier_threshold` |
 | `model` | the fits Extend tests each peek against: each band's fit on the model window, its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
 | `refit` | whether Extend refits the model before a peek test (after the first) | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
 | `change_test` | the pixel's peek size and anything else it derives per pixel (`prepare()`), whether an Extend peek is a change (`test()`, writing the peek's comparison RMSE and each observation's statistic into the `PeekResult`, which the outlier rule reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
@@ -218,15 +219,16 @@ A run's configuration is the one its options describe
 | `span-factor` | `min_obs`, `factor` | `RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR` |
 | `chi2` | `peek_size`, `peek_reference_days`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `PEEK_REFERENCE_DAYS`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
 | `chi2` | `model_rmse_up_to`, `seasonal_count`, `seasonal_divisor` | `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT`, `SEASONAL_RMSE_DIVISOR` |
-| `floored` | `threshold` | `OUTLIER_THRESHOLD` (Extend's; Lookback's outlier test reads the option until Lookback is a stage) |
+| `floored` | `threshold` | `OUTLIER_THRESHOLD` |
+| `pyccd` (lookback) | `peek_size`, `change_threshold`, `change_probability`, `outlier_threshold` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, `OUTLIER_THRESHOLD` |
 
 `RETRAIN_MIN_OBS` sets two parameters, the refit's and the test's, as pyccd's one constant does;
 a configuration may set them apart. The mapping lives in one file (`include/ccd/config/from_options.hpp`).
 The machine's other decisions are made inside its phases. The peek size the change test chooses
-is also what the machine's guards, Lookback and the stability rule's `prepare()` read. Each
-of the change test and the stability rule has its own `change_threshold` and
-`change_probability`, and Lookback compares against pyccd's threshold computed from the options,
-so a configuration may set Extend's test and Initialize's apart.
+is also what the machine's guards and the stability rule's and lookback's `prepare()` read.
+Each of the change test, the stability rule and the lookback has its own `change_threshold` and
+`change_probability`, and each of the outlier rule and the lookback its own outlier threshold, so
+a configuration may set Extend's tests, Initialize's and Lookback's apart.
 
 At an Extend peek every stage reads one `Peek` (the model, the windows, the peek's residuals,
 the variogram and the detection bands), and the change test writes what it found into a
@@ -268,6 +270,8 @@ using namespace ccd;
 // The configuration a run under the defaults uses, and its strategies.
 config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{});
 // tree["start_search"] is {"pyccd", {{"meow_size", 12}, {"day_delta", 365}}}
+// tree["lookback"] is {"pyccd", {{"peek_size", 6}, {"change_threshold", 15.0863},
+//                                {"change_probability", 0.99}, {"outlier_threshold", 35.8882}}}
 // tree["window_screen"] is {"tmask", {{"bands", {1, 4}}, {"t_const", 4.89}}}
 // tree["stability_fit"] and tree["model"] are {"lasso", {{"max_iter", 1000}, {"alpha", 1.0},
 //                                           {"tolerance", 1e-4}, {"coef_floor", 1.0}}}
@@ -305,9 +309,10 @@ tree["refit"].params["factor"] = config::real(2.0);
 // apart from the refit schedule's 24.
 tree["change_test"].params["model_rmse_up_to"] = config::integer(40);
 
-// Extend drops fewer observations as outliers: chi2(5) at 0.99999 instead of pyccd's
-// 0.999999 (Lookback's outlier test still reads OUTLIER_THRESHOLD).
+// Extend and Lookback drop fewer observations as outliers: chi2(5) at 0.99999 instead of
+// pyccd's 0.999999.
 tree["outlier"].params["threshold"] = config::real(30.856);
+tree["lookback"].params["outlier_threshold"] = config::real(30.856);
 
 Strategies s = strategies::build_strategies(strategies::core_registry(), tree);
 s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_span=*/100.0);  // false
@@ -334,8 +339,8 @@ record:
 | `Variogram`, `adjusted_variogram`, `tmask`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/procedure/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
-(`include/ccd/procedure/standard.hpp`): `initialize_criteria`, `lookback_peek`,
-`coefficient_count`, the phases, the
+(`include/ccd/procedure/standard.hpp`): `initialize_criteria`, `coefficient_count`, the phases,
+the
 transitions and the routing. A function moves to the shared list once a second machine or a
 strategy uses it.
 
@@ -453,9 +458,9 @@ is that function and its test (the numbers are those of the tests and the CHANGE
 
 | Rule | Where it is |
 |---|---|
-| 1. Far from the previous break, Lookback peeks the adjusted peek of observations | `lookback_peek`, first case |
-| 2. Near it, Lookback peeks down to the previous break, never below | `lookback_peek`, second case |
-| 3. Lookback compares against the stable start window's RMSE | `lookback_step` |
+| 1. Far from the previous break, Lookback peeks the adjusted peek of observations | `strategies::lookback_peek`, first case |
+| 2. Near it, Lookback peeks down to the previous break, never below | `strategies::lookback_peek`, second case |
+| 3. Lookback compares against the stable start window's RMSE | the `pyccd` lookback's `judge()` |
 | 4. Initialize fits `COEFFICIENT_MIN` coefficients; both peek bases are `COEFFICIENT_MAX` wide | `initialize_criteria` (`max_coefficients`, the stability fit's `max_coef`, which Lookback's peek reads), and Extend's monitoring model (`COEFFICIENT_MAX` as its fits' `max_coef`) |
 | 5. Every exit, the early ones too, returns the processing mask | `State::take_result`; `fit_whole_series` |
 | 6. A curve ends once its peek reaches the last observation, and is the last curve | `extend_step`'s `SeriesEnd`; `extend` |

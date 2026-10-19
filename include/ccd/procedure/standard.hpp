@@ -29,18 +29,14 @@ namespace standard
 //
 // The Standard procedure's per-pixel cadence, set in Prepare: the peek size
 // the run's change test chose for the pixel (ChangeTest::prepare()), which
-// Extend, Lookback and the machine's guards read, and the threshold Lookback
-// compares against. That threshold is pyccd's, from the options
-// (adjust_change_threshold() of PEEK_SIZE, CHANGE_THRESHOLD, the detection
-// band count and CHANGE_PROBABILITY for the peek), until Lookback is a stage
-// with its own.
+// Extend and the machine's guards read, and the stability rule and Lookback
+// are prepared with.
 //
 //==============================================================================
 
 struct Cadence
 {
-    index_t peek;                // observations a peek holds
-    scalar_t change_threshold;   // Lookback's
+    index_t peek;   // observations a peek holds
 };
 
 // What Initialize fits a candidate window with: the options' DETECTION_BANDS,
@@ -169,44 +165,16 @@ struct Suspended
     index_t final_segments = 0;
 };
 
-// Lookback's peek, read backward from the observation before the window:
-// positions start, start - 1, ..., stop + 1 (stop is exclusive and may be -1).
-struct ReversePeek
-{
-    std::ptrdiff_t start;
-    std::ptrdiff_t stop;
-};
-
-// Two cases, for a window starting at `window_start` > prev_break; neither
-// reads below prev_break, into the previous segment:
-//
-//   * window_start - prev_break > peek: start - 1 down to start - peek, the
-//     adjusted peek (Cadence::peek) of observations, as Extend's;
-//   * else: start - 1 down to prev_break (stop is -1 when prev_break is 0).
-ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek);
-
-// What one Lookback step did, in the order it tests them.
+// What one Lookback step did: the lookback's verdict, applied.
 enum class LookbackOutcome : std::uint8_t
 {
-    Change,    // every peek magnitude above the change threshold: the window
-               // stays
+    Change,    // the lookback's Change: the window stays
     Dropped,   // the observation before the window is an outlier: dropped,
                // the window moving down one with the series
     Included   // it fits: window.start - 1
 };
 
 const char* to_string(LookbackOutcome outcome);
-
-// Lookback's buffers, kept for their capacity; every one is rewritten
-// before it is read.
-struct LookbackScratch
-{
-    std::vector<std::int64_t> peek_dates;
-    std::vector<scalar_t> peek_spectral;
-    std::vector<std::vector<scalar_t>> residuals;   // by band; detection bands written
-    std::vector<scalar_t> comp_rmse;                // by position in DETECTION_BANDS
-    std::vector<scalar_t> magnitude;
-};
 
 // What Extend carries from one peek test to the next, within one segment.
 // The buffers keep their capacity across segments and pixels.
@@ -287,7 +255,6 @@ struct State
 
     // Standard's own: set in Prepare, read by every later phase.
     Cadence cadence{};
-    ChangeThresholdMemo thresholds;             // the cadence's threshold
     Variogram variogram;
     InitializeCriteria initialize_criteria{};
 
@@ -296,12 +263,10 @@ struct State
     // against. The stability rule's per-pixel state.
     PerThread<StabilityFit, Model> init_model;
     PerThread<StabilityRule, Scratch> stability;
+    PerThread<Lookback, Scratch> lookback;   // the lookback's per-pixel state
 
     // Extend's carried state.
     Extension extension;
-
-    // Scratch.
-    LookbackScratch lookback;
 
     // Where the segment loop stopped (set with every Exit).
     Suspended suspended;
@@ -342,6 +307,9 @@ struct Context
 Model& stability_fit(const Context& context, State& state);
 Scratch& stability_scratch(const Context& context, State& state);
 
+// The state's lookback scratch, of the run's lookback strategy.
+Scratch& lookback_scratch(const Context& context, State& state);
+
 //------------------------------------------------------------------------------
 // Transitions: one per phase but Done. Each makes one decision and returns
 // the next phase; a route into EndCatch sets state.exit to why.
@@ -373,17 +341,14 @@ void write_end_segment(const Context& context, State& state);
 // when stable; EndCatch (InitializeExhausted) when no candidate is left.
 Phase initialize(const Context& context, State& state);
 
-// One Lookback step: tests the observations of lookback_peek() against
-// init_model, whose RMSE is the comparison RMSE, and makes the
-// decision on the record. Pre: window.start > prev_break. In order:
+// One Lookback step: the run's lookback judges the observation before the
+// window against init_model, and the step applies its verdict on the
+// record. Pre: window.start > prev_break.
 //
-//   * every peek magnitude above the cadence's threshold: Change, the window
-//     stays;
-//   * the first above OUTLIER_THRESHOLD: Dropped, the observation before the
-//     window dropped from the series and the window moved down with it;
-//   * otherwise Included: window.start - 1.
-//
-// Lookback's tests are pyccd's, from the options, until Lookback is a stage.
+//   * Change: the window stays;
+//   * Drop (Dropped): that observation leaves the series and the window
+//     moves down with it;
+//   * Include (Included): window.start moves to it.
 LookbackOutcome lookback_step(const Context& context, State& state);
 
 // lookback_step(), then the route: after a drop or an include, Lookback
