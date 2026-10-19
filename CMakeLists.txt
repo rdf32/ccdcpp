@@ -76,6 +76,12 @@ option(
 set(CCD_EXTENSIONS "" CACHE STRING "Strategy extension directories to build into the library")
 
 option(
+    CCD_OBSERVE
+    "Compile in the diagnostics hooks (results/diagnostics.hpp); OFF removes them"
+    ON
+)
+
+option(
     CCD_BUILD_GOLDEN_DRIVER
     "Build golden_driver, the golden check's dump driver (tools/linux-compare)"
     OFF
@@ -195,10 +201,18 @@ add_library(
     src/ccd/strategies/start_search/pyccd.cpp
     src/ccd/strategies/window_screen/tmask.cpp
     src/ccd/qa_table.cpp
+    src/ccd/results/diagnostics.cpp
     ${PROJECT_BINARY_DIR}/generated/register_extensions.cpp
     ${CCD_EXTENSION_SOURCES}
 )
 
+
+target_compile_definitions(
+    ccd_core
+
+    PUBLIC
+        CCD_OBSERVE=$<BOOL:${CCD_OBSERVE}>
+)
 
 target_include_directories(
     ccd_core

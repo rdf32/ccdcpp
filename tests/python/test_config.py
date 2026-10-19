@@ -171,6 +171,27 @@ class Runs(unittest.TestCase):
                 np.testing.assert_array_equal(a[key], b[key], err_msg=key)
         self.assertEqual(len(ccdcpp.detect_cube(d, cube, qc, h, l, threads=1, config=cfg)), 4)
 
+    def test_a_trace_records_the_run(self):
+        d, s, q = pixel()
+        h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        plain = ccdcpp.detect(d, s, q, h, l)
+        traced = ccdcpp.detect(d, s, q, h, l, trace=True)
+        self.assertEqual(plain["models"], traced["models"])
+        rows = traced["trace"]
+        if not rows:
+            self.skipTest("built with CCD_OBSERVE=OFF")
+        self.assertEqual(rows[0]["kind"], "transition")
+        self.assertEqual(rows[0]["phase"], "Prepare")
+        self.assertEqual(rows[-1]["kind"], "exit")
+        self.assertEqual(sum(r["kind"] == "segment" for r in rows), len(plain["models"]))
+        tests = [r for r in rows if r["kind"] == "test"]
+        self.assertTrue(any(r["outcome"] == "change" for r in tests))
+        cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
+        qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
+        out = ccdcpp.detect_cube_columns(d, cube, qc, h, l, threads=2, trace_pixels=[(1, 0)])
+        self.assertEqual(list(out["traces"]), [(1, 0)])
+        self.assertEqual(out["traces"][(1, 0)], rows)
+
     def test_a_bad_configuration_is_refused_before_any_pixel(self):
         d, s, q = pixel()
         h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()

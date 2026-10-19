@@ -778,9 +778,10 @@ class Unprofiled(unittest.TestCase):
         cube = pixel + ["threads"]
         common = ["qa_table", "preprocess", "profile", "band_names"]
         for name, positional, keywords in (
-            ("detect", pixel, common + ["resume_record", "method", "config"]),
+            ("detect", pixel, common + ["resume_record", "method", "config", "trace"]),
             ("detect_cube", cube, common + ["method", "config"]),
-            ("detect_cube_columns", cube, common + ["resume_record", "method", "config"]),
+            ("detect_cube_columns", cube,
+             common + ["resume_record", "method", "config", "trace_pixels"]),
             ("resume", pixel,
              ["resume", "resume_header", "models"] + common + ["method", "config"]),
             ("resume_cube_columns", cube,

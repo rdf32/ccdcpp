@@ -301,7 +301,13 @@ struct Context
     LassoSolver& solver;
     // The run's strategies, one per stage (strategies/stages.hpp).
     const Strategies& strategies;
+    // Where the pixel reports what it does (results/diagnostics.hpp).
+    Observe observe{};
 };
+
+// The state's cursor and series length, as an observer's transition reports
+// them.
+ObserverEvent observed(const State& state);
 
 // The state's stability fit and stability-rule scratch, of the run's
 // strategies (made when the state's are another run's).
@@ -484,7 +490,8 @@ public:
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver,
-        const Strategies& strategies
+        const Strategies& strategies,
+        Observe observe = {}
     );
 
     // run() from where a stored run stopped (standard::resume()).
@@ -495,7 +502,8 @@ public:
         LassoSolver& solver,
         const Strategies& strategies,
         const Suspended& from,
-        const std::vector<std::int64_t>& excluded_days
+        const std::vector<std::int64_t>& excluded_days,
+        Observe observe = {}
     );
 
     // Where the last run() stopped.
@@ -537,7 +545,8 @@ public:
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver,
-        const Strategies& strategies
+        const Strategies& strategies,
+        Observe observe = {}
     );
 
     // The Standard machine from where a stored run stopped (Procedure::
@@ -549,7 +558,8 @@ public:
         LassoSolver& solver,
         const Strategies& strategies,
         const Suspended& from,
-        const std::vector<std::int64_t>& excluded_days
+        const std::vector<std::int64_t>& excluded_days,
+        Observe observe = {}
     );
 
     // Where the last Standard fit() stopped; stale after a whole-series fit,

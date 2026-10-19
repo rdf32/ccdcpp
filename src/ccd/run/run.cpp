@@ -360,7 +360,8 @@ FitResult run_steps(
     standard::Detector& detector = worker.standard;
 
     if (!request.record && !request.continue_from)
-        return detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies);
+        return detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies,
+                            worker.observe);
 
     const ProcessingMask filtered = mask;
     const bool continues =
@@ -369,8 +370,10 @@ FitResult run_steps(
 
     FitResult result = continues
         ? detector.resume(pixel, std::move(mask), worker.lasso, solver, strategies,
-                          request.continue_from->standard, request.continue_from->excluded_days)
-        : detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies);
+                          request.continue_from->standard, request.continue_from->excluded_days,
+                          worker.observe)
+        : detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies,
+                       worker.observe);
     continued = continues;
 
     if (request.record)
@@ -447,6 +450,16 @@ Run::Run(
     }
     else
         strategies_ = config::strategies_for(options_, spec_.loptions);
+}
+
+Observe Run::observed(index_t at) const
+{
+    if (!spec_.observer)
+        return Observe{};
+    const auto& list = spec_.observe;
+    if (!list.empty() && std::find(list.begin(), list.end(), at) == list.end())
+        return Observe{};
+    return Observe{spec_.observer.get(), at};
 }
 
 template<typename Value, typename Qa>
@@ -579,6 +592,7 @@ PixelRun run_pixel(
     }
 
     Worker worker;
+    worker.observe = Observe{spec.observer.get(), 0};
     PixelOutcome outcome = run.pixel(spectral, qas, prior, worker);
 
     PixelRun out;
@@ -681,6 +695,7 @@ CubeResult cube_loop(
                     prior.segments = &resume->segments[at];
                 }
 
+                worker.observe = run.observed(at);
                 PixelOutcome outcome =
                     run.pixel_typed<Value, Qa>(spect_view, qa_view, prior, worker);
 

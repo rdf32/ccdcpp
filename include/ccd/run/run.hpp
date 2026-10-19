@@ -15,6 +15,7 @@
 #include "ccd/procedure/standard.hpp"
 #include "ccd/qa_table.hpp"
 #include "ccd/record.hpp"
+#include "ccd/results/diagnostics.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 namespace ccd
@@ -84,6 +85,11 @@ using CubeQa = std::variant<
 //                       call's header
 //   keep_masks          false drops each pixel's processing mask (T bytes
 //                       per pixel) once it is done; FitResult::mask is empty
+//   observer, observe   where the observed pixels report each step
+//                       (results/diagnostics.hpp): run_pixel's pixel, or
+//                       run_cube's pixels at the flat indices `observe`
+//                       (row * W + col; empty: every pixel). With
+//                       CCD_OBSERVE=OFF nothing is reported
 //   config              the algorithm's configuration, one strategy per stage
 //                       by name (config/registry.hpp), in the library's
 //                       registry with its extensions; null: the one hoptions
@@ -105,6 +111,8 @@ struct RunSpec
     bool record = false;
     bool keep_masks = true;
     std::shared_ptr<const config::ConfigTree> config = nullptr;
+    std::shared_ptr<Observer> observer = nullptr;
+    std::vector<index_t> observe;
 };
 
 // One pixel's stored run, for a resume: its record and its stored segments
@@ -207,6 +215,9 @@ struct Worker
 {
     LassoWorkspace lasso{0};
 
+    // Where the pixel being run reports (the run sets it per pixel).
+    Observe observe;
+
     // The run's change detector, with its per-pixel record.
     standard::Detector standard;
 
@@ -251,6 +262,10 @@ public:
     const ResumeHeader& header() const { return header_; }
 
     bool resuming() const { return resume_.has_value(); }
+
+    // Where the pixel at flat index `at` of a cube reports: the spec's
+    // observer when it observes that pixel.
+    Observe observed(index_t at) const;
 
     const RunSpec& spec() const { return spec_; }
 

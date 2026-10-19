@@ -1,3 +1,5 @@
+#include <map>
+#include <mutex>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
@@ -16,10 +18,63 @@
 #include "ccd/qa_table.hpp"
 #include "ccd/preprocess/preprocess.hpp"
 
+#include "ccd/results/diagnostics.hpp"
 #include "config.hpp"
 #include "resume.hpp"
 
 namespace py = pybind11;
+
+namespace
+{
+
+//------------------------------------------------------------------------------
+// The events of observed pixels, recorded for Python (trace=, trace_pixels=):
+// each a dict, ready for pandas.DataFrame.
+//------------------------------------------------------------------------------
+class RecordingObserver final : public ccd::Observer
+{
+public:
+    void event(ccd::index_t pixel, const ccd::ObserverEvent& e) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        events_[pixel].push_back(e);
+    }
+
+    py::list rows(ccd::index_t pixel) const
+    {
+        py::list out;
+        const auto it = events_.find(pixel);
+        if (it == events_.end())
+            return out;
+        for (const ccd::ObserverEvent& e : it->second)
+        {
+            py::dict d;
+            d["kind"] = ccd::to_string(e.kind);
+            d["machine"] = e.machine;
+            d["phase"] = e.phase;
+            d["next"] = e.next;
+            d["window_start"] = e.window_start;
+            d["window_stop"] = e.window_stop;
+            d["prev_break"] = e.prev_break;
+            d["observations"] = e.observations;
+            d["day"] = e.day;
+            d["day_to"] = e.day_to;
+            d["outcome"] = e.outcome;
+            py::list values;
+            for (const ccd::scalar_t v : e.values)
+                values.append(v);
+            d["values"] = values;
+            out.append(d);
+        }
+        return out;
+    }
+
+private:
+    std::mutex mutex_;
+    std::map<ccd::index_t, std::vector<ccd::ObserverEvent>> events_;
+};
+
+} // namespace
 
 //------------------------------------------------------------------------------
 // Array input, shared by every wrapper below.
@@ -190,7 +245,8 @@ static py::dict pixel_wrapper(
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
     bool record,
     const PixelResumeFrom* from,
-    ConfigPtr config
+    ConfigPtr config,
+    bool trace = false
 )
 {
     refuse_raw_without_table(qas_obj, qa_table != nullptr);
@@ -299,6 +355,8 @@ static py::dict pixel_wrapper(
     ccd::RunSpec spec{hoptions, loptions, qa_table, preprocess};
     spec.record = record;
     spec.config = config;
+    const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
+    spec.observer = recording;
 
     const auto run = [&](auto qa_view)
     {
@@ -405,6 +463,8 @@ static py::dict pixel_wrapper(
     }
     if (from)
         output["status"] = status == ccd::ResumeStatus::Resumed ? "resumed" : "rerun_input_changed";
+    if (recording)
+        output["trace"] = recording->rows(0);
 
     return output;
 }
@@ -418,11 +478,13 @@ py::dict detect_wrapper(
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
     bool resume_record,
-    py::object config
+    py::object config,
+    bool trace
 )
 {
     return pixel_wrapper(dates, spectral, qas_obj, hoptions, loptions, std::move(qa_table),
-                         preprocess_plan, resume_record, nullptr, config_from_python(config));
+                         preprocess_plan, resume_record, nullptr, config_from_python(config),
+                         trace);
 }
 
 py::dict resume_wrapper(
@@ -494,6 +556,8 @@ struct CubeInput
     ccd::index_t T = 0;
 
     ConfigPtr config;   // set by the caller after check_cube()
+    std::shared_ptr<ccd::Observer> observer;
+    std::vector<ccd::index_t> observe;
 };
 
 static CubeInput check_cube(
@@ -614,6 +678,8 @@ static ccd::CubeResult run_cube(
 
     ccd::RunSpec spec{hoptions, loptions, in.qa_table, in.preprocess};
     spec.config = in.config;
+    spec.observer = in.observer;
+    spec.observe = in.observe;
     spec.keep_masks = keep_masks;
     spec.record = record;
     return ccd::run_cube(spec, dates, spectral, qas, threads, from);
@@ -1028,12 +1094,35 @@ py::dict detect_cube_columns_wrapper(
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess,
     bool resume_record,
-    py::object config
+    py::object config,
+    py::object trace_pixels
 )
 {
     CubeInput views =
         check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
     views.config = config_from_python(config);
+    std::vector<std::pair<ccd::index_t, ccd::index_t>> traced;
+    std::shared_ptr<RecordingObserver> recording;
+    if (!trace_pixels.is_none())
+    {
+        for (const py::handle& rc : trace_pixels)
+        {
+            const auto pair = rc.cast<std::pair<std::int64_t, std::int64_t>>();
+            if (pair.first < 0 || pair.second < 0 ||
+                static_cast<ccd::index_t>(pair.first) >= views.H ||
+                static_cast<ccd::index_t>(pair.second) >= views.W)
+                throw py::value_error("trace_pixels: (" + std::to_string(pair.first) + ", " +
+                                      std::to_string(pair.second) + ") is not a pixel of the cube");
+            traced.emplace_back(pair.first, pair.second);
+            views.observe.push_back(static_cast<ccd::index_t>(pair.first) * views.W +
+                                    static_cast<ccd::index_t>(pair.second));
+        }
+        if (!traced.empty())
+        {
+            recording = std::make_shared<RecordingObserver>();
+            views.observer = recording;
+        }
+    }
 
     ccd::CubeResult cube;
     {
@@ -1049,6 +1138,13 @@ py::dict detect_cube_columns_wrapper(
     {
         output["resume"] = record_columns(cube, views.H, views.W, views.B, false);
         output["resume_header"] = header_to_python(cube.header);
+    }
+    if (recording)
+    {
+        py::dict traces;
+        for (const auto& [row, col] : traced)
+            traces[py::make_tuple(row, col)] = recording->rows(row * views.W + col);
+        output["traces"] = traces;
     }
     return output;
 }
@@ -1114,7 +1210,8 @@ void bind_detect(py::module_& m)
         py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none(),
         py::arg("resume_record") = false,
-        py::arg("config") = py::none()
+        py::arg("config") = py::none(),
+        py::arg("trace") = false
     );
     m.def(
         "resume",
@@ -1159,7 +1256,8 @@ void bind_detect(py::module_& m)
         py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none(),
         py::arg("resume_record") = false,
-        py::arg("config") = py::none()
+        py::arg("config") = py::none(),
+        py::arg("trace_pixels") = py::none()
     );
     m.def(
         "resume_cube_columns",

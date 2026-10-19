@@ -25,6 +25,10 @@
 //==============================================================================
 
 #include <algorithm>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <sstream>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -641,7 +645,8 @@ TEST(RunConfiguration, TheOptionsConfigurationRunsAsTheOptions)
         EXPECT_NE(a.header.options_digest, b.header.options_digest) << s.name;
     }
 
-    const Series& s = golden::synthetic_series().front();
+    const std::vector<Series> all = golden::synthetic_series();
+    const Series& s = all.front();
     ccd::RunSpec spec{s.h, s.l};
     auto tree = ccd::config::from_options(s.h, s.l);
     tree["window_screen"].params["bands"] = ccd::config::bands({1, 9});
@@ -662,4 +667,101 @@ TEST(RunConfiguration, TheOptionsConfigurationRunsAsTheOptions)
     spec.config = std::make_shared<const ccd::config::ConfigTree>(tree);
     EXPECT_THROW(ccd::run_pixel(spec, s.date_view(), s.spectral_view(), s.qa_view()),
                  std::invalid_argument);
+}
+
+// An observer (RunSpec::observer) is told every transition, test, drop,
+// segment and the exit, and changes nothing: the observed run's output is the
+// plain run's, bit for bit. A cube run reports the observed pixels only.
+namespace
+{
+
+struct Recording final : ccd::Observer
+{
+    std::mutex mutex;
+    std::vector<std::pair<ccd::index_t, ccd::ObserverEvent>> events;
+    void event(ccd::index_t pixel, const ccd::ObserverEvent& e) override
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        events.emplace_back(pixel, e);
+    }
+};
+
+} // namespace
+
+TEST(Diagnostics, AnObserverSeesTheRunAndChangesNothing)
+{
+    const std::vector<Series> all = golden::synthetic_series();
+    std::size_t with_segments = 0;
+    for (std::size_t i = 0; i < 20 && i < all.size(); ++i)
+    {
+        const Series& s = all[i];
+        const ccd::PixelRun plain =
+            ccd::run_pixel(ccd::RunSpec{s.h, s.l}, s.date_view(), s.spectral_view(), s.qa_view());
+        auto recording = std::make_shared<Recording>();
+        ccd::RunSpec spec{s.h, s.l};
+        spec.observer = recording;
+        const ccd::PixelRun observed =
+            ccd::run_pixel(spec, s.date_view(), s.spectral_view(), s.qa_view());
+        EXPECT_EQ(dump(plain.result), dump(observed.result)) << s.name;
+
+#if CCD_OBSERVE
+        const auto& ev = recording->events;
+        // The whole-series pixels (insufficient clear, snow) take no machine:
+        // nothing to observe.
+        if (plain.result.models.empty() ||
+            plain.result.models.front().curve_qa == ccd::CurveQA::InsufficientClear ||
+            plain.result.models.front().curve_qa == ccd::CurveQA::PersistentSnow)
+            continue;
+        ++with_segments;
+        ASSERT_FALSE(ev.empty()) << s.name;
+        EXPECT_EQ(ev.front().second.kind, ccd::ObserverEvent::Kind::Transition) << s.name;
+        EXPECT_STREQ(ev.front().second.phase, "Prepare") << s.name;
+        EXPECT_EQ(ev.back().second.kind, ccd::ObserverEvent::Kind::Exit) << s.name;
+        std::size_t segments = 0;
+        for (const auto& [pixel, e] : ev)
+        {
+            EXPECT_EQ(pixel, 0u);
+            if (e.kind == ccd::ObserverEvent::Kind::Segment)
+                ++segments;
+        }
+        EXPECT_EQ(segments, plain.result.models.size()) << s.name;
+#endif
+    }
+#if CCD_OBSERVE
+    EXPECT_GT(with_segments, 0u);
+#endif
+
+    // A cube of four pixels, two of them observed; the text observer's lines.
+    const Series& s = all.front();
+    const ccd::index_t T = s.size();
+    std::vector<double> cube(4 * 7 * T);
+    std::vector<std::uint8_t> qas(4 * T);
+    for (std::size_t p = 0; p < 4; ++p)
+    {
+        std::copy(s.spectral.begin(), s.spectral.end(), cube.begin() + p * 7 * T);
+        std::copy(s.qas.begin(), s.qas.end(), qas.begin() + p * T);
+    }
+    auto recording = std::make_shared<Recording>();
+    ccd::RunSpec spec{s.h, s.l};
+    spec.observer = recording;
+    spec.observe = {1, 3};
+    ccd::run_cube(spec, s.date_view(),
+                  ccd::ArrayView<const double, 4>::contiguous(cube.data(), {2, 2, 7, T}),
+                  ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {2, 2, T}), 2);
+    std::set<ccd::index_t> seen;
+    for (const auto& [pixel, e] : recording->events)
+        seen.insert(pixel);
+#if CCD_OBSERVE
+    EXPECT_EQ(seen, (std::set<ccd::index_t>{1, 3}));
+#else
+    EXPECT_TRUE(seen.empty());
+#endif
+
+    std::ostringstream text;
+    ccd::TextObserver printer(text);
+    for (const auto& [pixel, e] : recording->events)
+        printer.event(pixel, e);
+#if CCD_OBSERVE
+    EXPECT_NE(text.str().find("pixel 1: transition Prepare -> "), std::string::npos) << text.str();
+#endif
 }

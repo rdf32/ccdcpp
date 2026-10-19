@@ -31,6 +31,14 @@
 
 ### Added
 
+- **Diagnostics** (`include/ccd/results/diagnostics.hpp`, `docs/diagnostics.md`): a
+  `ccd::Observer` is told each step of the observed pixels (`RunSpec::observer`,
+  `RunSpec::observe`): every phase transition with the cursor, every Extend change test with its
+  outcome and statistics, every observation a test drops, every segment written, and the
+  pixel's exit. `ccd::TextObserver` prints them. In Python, `detect(trace=True)` returns
+  `"trace"` and `detect_cube_columns(trace_pixels=[(row, col), ...])` returns `"traces"`, one
+  dict per event, ready for `pandas.DataFrame`. The hooks compile out with CMake's
+  `CCD_OBSERVE=OFF` (ON by default); a pixel without an observer costs a pointer test per hook.
 - **The configuration from Python** (`docs/config.md`): `ccdcpp.Config` (immutable;
   `replace(stage__param=value, stage="strategy")`, `check(bands=)`, `hash()`, `to_toml()`,
   `Config.from_options(hoptions, loptions)`), `ccdcpp.config(name_or_path)` reading TOML presets

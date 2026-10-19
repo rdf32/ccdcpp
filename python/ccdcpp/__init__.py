@@ -118,7 +118,7 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
 
 def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
            qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-           band_names=None, resume_record=False, method=None, config=None):
+           band_names=None, resume_record=False, method=None, config=None, trace=False):
     """CCD on one pixel.
 
     dates
@@ -163,6 +163,12 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         None, the default, runs the configuration hoptions and loptions
         describe. Checked before the pixel runs (ValueError); a resume
         record of a configured run continues only under the same one.
+    trace
+        True to also return "trace": the pixel's run step by step, one dict
+        per event (kind: transition, test, drop, segment or exit; phase and
+        next, the window, prev_break, observations, day, day_to, outcome,
+        values), ready for pandas.DataFrame. Empty in a build with
+        CCD_OBSERVE=OFF.
     resume_record
         True to also return the run's resume record: "resume", the pixel's
         record (a dict; see resume_schema()), and "resume_header", the
@@ -178,7 +184,7 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         band_names, method)
     out = _extension.detect(
         dates, spectral, qas, hoptions, loptions, qa_table=qa_table,
-        preprocess=preprocess, resume_record=resume_record, config=config)
+        preprocess=preprocess, resume_record=resume_record, config=config, trace=trace)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -241,7 +247,7 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
 def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
                         threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
                         profile=None, band_names=None, resume_record=False,
-                        method=None, config=None):
+                        method=None, config=None, trace_pixels=None):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     Arguments as detect_cube. Returns a dict of arrays with one entry per
@@ -262,7 +268,8 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
         profile, band_names, method)
     out = _extension.detect_cube_columns(
         dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
-        preprocess=preprocess, resume_record=resume_record, config=config)
+        preprocess=preprocess, resume_record=resume_record, config=config,
+        trace_pixels=trace_pixels)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out

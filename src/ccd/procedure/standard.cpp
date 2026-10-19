@@ -53,6 +53,50 @@ Scratch& lookback_scratch(const Context& context, State& state)
 namespace
 {
 
+#if CCD_OBSERVE
+// The observer's event of a segment just written.
+ObserverEvent segment_event(const ChangeModel& m)
+{
+    ObserverEvent e{ObserverEvent::Kind::Segment};
+    e.day = m.start_day;
+    e.day_to = m.end_day;
+    e.observations = m.observation_count;
+    e.outcome = "curve_qa " + std::to_string(static_cast<int>(m.curve_qa)) + " break " +
+                std::to_string(m.break_day) + " change " + std::to_string(m.change_probability);
+    return e;
+}
+
+ObserverEvent day_event(ObserverEvent::Kind kind, std::int64_t day, std::string outcome)
+{
+    ObserverEvent e{kind};
+    e.day = day;
+    e.outcome = std::move(outcome);
+    return e;
+}
+#endif
+
+// The pixel's end, to the observer.
+void report_exit(const Context& context, const State& state)
+{
+#if CCD_OBSERVE
+    if (context.observe.observer)
+    {
+        ObserverEvent e{ObserverEvent::Kind::Exit};
+        e.outcome = to_string(state.exit);
+        e.observations = state.segments.size();
+        context.observe.observer->event(context.observe.pixel, e);
+    }
+#else
+    (void)context;
+    (void)state;
+#endif
+}
+
+} // namespace
+
+namespace
+{
+
 // The extension's change-test buffers, of the run's change-test strategy.
 Scratch& test_scratch(const Context& context, Extension& extension)
 {
@@ -177,6 +221,16 @@ FitResult State::take_result()
     result.models = std::move(segments);
     result.mask = series.take_mask();
     return result;
+}
+
+ObserverEvent observed(const State& state)
+{
+    ObserverEvent e{ObserverEvent::Kind::Transition};
+    e.window_start = state.cursor.window.start;
+    e.window_stop = state.cursor.window.stop;
+    e.prev_break = state.cursor.prev_break;
+    e.observations = state.series.size();
+    return e;
 }
 
 std::string summary(const State& state)
@@ -398,6 +452,9 @@ LookbackOutcome lookback_step(const Context& context, State& state)
         case LookbackVerdict::Drop:
             // The window moves down one position with the observations after
             // the dropped one.
+            CCD_OBSERVE_EVENT(context.observe,
+                              day_event(ObserverEvent::Kind::Drop,
+                                        series.dates()(judged.observation), "lookback outlier"));
             series.drop(judged.observation, window);
             return LookbackOutcome::Dropped;
         case LookbackVerdict::Include:
@@ -432,6 +489,7 @@ void write_start_segment(const Context& context, State& state)
         CurveQA::Start,
         edge_scratch(context, state)
     );
+    CCD_OBSERVE_EVENT(context.observe, segment_event(result));
     state.segments.push_back(std::move(result));
 }
 
@@ -526,6 +584,7 @@ void write_extended_segment(
         result.bands.push_back(fit);
     }
 
+    CCD_OBSERVE_EVENT(context.observe, segment_event(result));
     state.segments.push_back(std::move(result));
     extension.trained = false;
 }
@@ -607,6 +666,13 @@ ExtendOutcome extend_step(const Context& context, State& state)
     const TestOutcome outcome = context.strategies.change_test->test(
         peek, test_scratch(context, extension), extension.result);
 
+    CCD_OBSERVE_EVENT(context.observe, [&] {
+        ObserverEvent e = day_event(ObserverEvent::Kind::Test, masked_dates(peek_window.start),
+                                    outcome == TestOutcome::Change ? "change" : "no change");
+        e.values = extension.result.statistic;
+        return e;
+    }());
+
     //--------------------------------------------------------------------------
     // Change detected: the segment ends at the window
     //--------------------------------------------------------------------------
@@ -627,6 +693,8 @@ ExtendOutcome extend_step(const Context& context, State& state)
         // other bands are this test's, before the drop moves the peek.
         if (window.stop + cadence.peek > series.size() - 1)
             complete_models(context, state);
+        CCD_OBSERVE_EVENT(context.observe, day_event(ObserverEvent::Kind::Drop,
+                                                     masked_dates(peek_window.start), "outlier"));
         series.drop(peek_window.start, window);
         return ExtendOutcome::Dropped;
     }
@@ -708,6 +776,7 @@ void write_end_segment(const Context& context, State& state)
         CurveQA::End,
         edge_scratch(context, state)
     );
+    CCD_OBSERVE_EVENT(context.observe, segment_event(result));
     state.segments.push_back(std::move(result));
 }
 
@@ -743,6 +812,7 @@ FitResult run(const Context& context, State& state, ProcessingMask mask)
 {
     state.reset(context.pixel, std::move(mask));
     drive<Machine>(context, state);
+    report_exit(context, state);
     return state.take_result();
 }
 
@@ -865,8 +935,23 @@ FitResult resume(
     // The statistics are the stored run's, and the series is no shorter, so
     // Prepare neither exits early nor computes other values: it reads the
     // series before any drop, as the stored run's did.
-    if (prepare(context, state) == Phase::Done)
+    const Phase prepared = prepare(context, state);
+#if CCD_OBSERVE
+    if (context.observe.observer)
+    {
+        ObserverEvent e = observed(state);
+        e.kind = ObserverEvent::Kind::Transition;
+        e.machine = Machine::name;
+        e.phase = to_string(Phase::Prepare);
+        e.next = to_string(prepared);
+        context.observe.observer->event(context.observe.pixel, e);
+    }
+#endif
+    if (prepared == Phase::Done)
+    {
+        report_exit(context, state);
         return state.take_result();
+    }
     state.exit = Exit::None;
     state.suspended = Suspended{};
 
@@ -912,6 +997,7 @@ FitResult resume(
     }
 
     drive<Machine>(context, state);
+    report_exit(context, state);
     return state.take_result();
 }
 
@@ -922,9 +1008,11 @@ FitResult Procedure::resume(
     LassoSolver& solver,
     const Strategies& strategies,
     const Suspended& from,
-    const std::vector<std::int64_t>& excluded_days
+    const std::vector<std::int64_t>& excluded_days,
+    Observe observe
 ) {
-    const Context context{hworkspace.options(), hworkspace, lworkspace, solver, strategies};
+    const Context context{hworkspace.options(), hworkspace, lworkspace, solver, strategies,
+                          observe};
     return standard::resume(context, state_, std::move(mask), from, excluded_days);
 }
 
@@ -935,11 +1023,12 @@ FitResult Detector::resume(
     LassoSolver& solver,
     const Strategies& strategies,
     const Suspended& from,
-    const std::vector<std::int64_t>& excluded_days
+    const std::vector<std::int64_t>& excluded_days,
+    Observe observe
 )
 {
     return procedure_.resume(hworkspace, std::move(mask), lworkspace, solver, strategies, from,
-                             excluded_days);
+                             excluded_days, observe);
 }
 
 FitResult Procedure::run(
@@ -947,14 +1036,16 @@ FitResult Procedure::run(
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver,
-    const Strategies& strategies
+    const Strategies& strategies,
+    Observe observe
 ) {
     const Context context{
         hworkspace.options(),
         hworkspace,
         lworkspace,
         solver,
-        strategies
+        strategies,
+        observe
     };
 
     return standard::run(context, state_, std::move(mask));
@@ -966,13 +1057,14 @@ FitResult Detector::fit(
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver,
-    const Strategies& strategies
+    const Strategies& strategies,
+    Observe observe
 )
 {
     if (procedure == PixelProcedure::Standard)
     {
         LOG_DEBUG("Standard");
-        return procedure_.run(hworkspace, std::move(mask), lworkspace, solver, strategies);
+        return procedure_.run(hworkspace, std::move(mask), lworkspace, solver, strategies, observe);
     }
 
     return strategies.edge_fit->whole_series(

@@ -4,6 +4,7 @@
 
 #include "ccd/types.hpp"
 #include "ccd/logger.hpp"
+#include "ccd/results/diagnostics.hpp"
 
 #include "ccd/procedure/fit.hpp"
 
@@ -75,6 +76,11 @@ struct Cursor
 //
 //     [DEBUG] <name>: <phase> -> <next phase> | <state summary>
 //
+// With CCD_OBSERVE, each transition is also reported to the Context's
+// `observe` (results/diagnostics.hpp): the Context has an `Observe observe`,
+// and the State's namespace an observed(const State&) -> ObserverEvent that
+// fills in the cursor, also found by argument-dependent lookup.
+//
 //------------------------------------------------------------------------------
 template<typename Machine>
 void drive(
@@ -87,6 +93,18 @@ void drive(
     while (state.phase != Phase::Done)
     {
         const Phase next = Machine::step(context, state);
+
+#if CCD_OBSERVE
+        if (context.observe.observer)
+        {
+            ObserverEvent e = observed(state);   // the machine's cursor, by ADL
+            e.kind = ObserverEvent::Kind::Transition;
+            e.machine = Machine::name;
+            e.phase = to_string(state.phase);
+            e.next = to_string(next);
+            context.observe.observer->event(context.observe.pixel, e);
+        }
+#endif
 
         LOG_DEBUG(
             Machine::name << ": "
