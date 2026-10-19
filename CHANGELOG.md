@@ -27,6 +27,16 @@
 
 ### Added
 
+- **Stages and strategies** (1.0 step 2, begun): `include/ccd/strategies/stages.hpp` (the
+  stage interfaces; `ccd::Strategies`, one per stage), `include/ccd/config/registry.hpp`
+  (`config::Registry`, `StageConfig`, `ConfigTree`) and `include/ccd/config/params.hpp` (each
+  strategy's parameter schema: `config::Field`, `Unit`, `Bounds`, `apply()`, `to_values()`).
+  The first stage is `refit`, whose strategy `span-factor` is Extend's refit test, unchanged
+  (`RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR`). The machine's `Context` carries the run's
+  strategies; `standard::Procedure::run`/`resume` and `standard::Detector::fit`/`resume` take
+  them (`ccd::strategies::strategies_for(options)` builds them for a direct caller). Outputs
+  unchanged.
+
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,
   `ccd::method_name()` / `method_from_name()`; in Python `method=` on

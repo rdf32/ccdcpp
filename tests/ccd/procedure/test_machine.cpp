@@ -45,6 +45,7 @@
 #include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/procedure/standard.hpp"
 #include "ccd/regression/lasso_solver.hpp"
+#include "ccd/strategies/register_core.hpp"
 
 #include "../golden/characterisation.hpp"
 
@@ -74,6 +75,7 @@ struct Record
     ccd::HarmonicWorkspace workspace;
     ccd::LassoWorkspace lasso{0};
     ccd::LassoSolver solver;
+    ccd::Strategies strategies;
     ccd::standard::Context context;
     ccd::standard::State state;
 
@@ -87,7 +89,8 @@ struct Record
               ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {n}),
               options),
           solver(lasso_options),
-          context{options, workspace, lasso, solver}
+          strategies(ccd::strategies::strategies_for(options)),
+          context{options, workspace, lasso, solver, strategies}
     {
         ccd::ProcessingMask mask(n);
         for (index_t i = 0; i < n; ++i)
@@ -912,7 +915,8 @@ MachineRun run_machine(const golden::CharPixel& p)
 
     ccd::LassoWorkspace lasso(0);
     ccd::LassoSolver solver(p.l);
-    const ccd::standard::Context context{p.h, workspace, lasso, solver};
+    const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h);
+    const ccd::standard::Context context{p.h, workspace, lasso, solver, strategies};
 
     ccd::standard::State state;
     MachineRun out;
@@ -1047,7 +1051,8 @@ TEST(StandardMachine, EachStepIsOneDecision)
 
         ccd::LassoWorkspace lasso(0);
         ccd::LassoSolver solver(p.l);
-        const ccd::standard::Context context{p.h, workspace, lasso, solver};
+        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h);
+        const ccd::standard::Context context{p.h, workspace, lasso, solver, strategies};
 
         ccd::standard::State driven;
         const ccd::FitResult want = ccd::standard::run(context, driven, mask);
@@ -1134,8 +1139,9 @@ TEST(StandardMachine, OneStateServesManyPixels)
         ccd::LassoWorkspace lasso(0);
         ccd::LassoSolver solver(p.l);
         ccd::standard::Procedure fresh;
-        const ccd::FitResult once = fresh.run(workspace, mask, lasso, solver);
-        const ccd::FitResult again = reused.run(workspace, mask, lasso, solver);
+        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h);
+        const ccd::FitResult once = fresh.run(workspace, mask, lasso, solver, strategies);
+        const ccd::FitResult again = reused.run(workspace, mask, lasso, solver, strategies);
         expect_same(again, once, p.name);
     }
 }
@@ -1183,15 +1189,16 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
     ccd::standard::Detector detector;
     ccd::standard::Procedure standard;
     expect_same(
-        detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.lasso, r.solver),
-        standard.run(r.workspace, mask, r.lasso, r.solver),
+        detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.lasso, r.solver,
+                     r.strategies),
+        standard.run(r.workspace, mask, r.lasso, r.solver, r.strategies),
         "standard");
 
     for (const auto procedure :
          {ccd::PixelProcedure::PermanentSnow, ccd::PixelProcedure::InsufficientClear})
     {
         const ccd::FitResult fit =
-            detector.fit(procedure, r.workspace, mask, r.lasso, r.solver);
+            detector.fit(procedure, r.workspace, mask, r.lasso, r.solver, r.strategies);
         expect_same(
             fit,
             ccd::fit_whole_series(procedure, r.workspace, mask, r.lasso, r.solver),

@@ -12,6 +12,7 @@
 #include "ccd/procedure/masked_series.hpp"
 #include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
+#include "ccd/strategies/stages.hpp"
 
 namespace ccd
 {
@@ -375,6 +376,8 @@ struct Context
     const HarmonicWorkspace& pixel;
     LassoWorkspace& lasso;
     LassoSolver& solver;
+    // The run's strategies, one per stage (strategies/stages.hpp).
+    const Strategies& strategies;
 };
 
 //------------------------------------------------------------------------------
@@ -552,7 +555,8 @@ public:
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
-        LassoSolver& solver
+        LassoSolver& solver,
+        const Strategies& strategies
     );
 
     // run() from where a stored run stopped (standard::resume()).
@@ -561,6 +565,7 @@ public:
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver,
+        const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days
     );
@@ -604,7 +609,8 @@ public:
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
-        LassoSolver& solver
+        LassoSolver& solver,
+        const Strategies& strategies
     );
 
     // The Standard machine from where a stored run stopped (Procedure::
@@ -614,6 +620,7 @@ public:
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
         LassoSolver& solver,
+        const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days
     );

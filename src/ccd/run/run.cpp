@@ -25,6 +25,7 @@ int omp_get_thread_num() { return 0; }
 #include "ccd/harmonic/quality.hpp"
 #include "ccd/logger.hpp"
 #include "ccd/procedure/pixel_procedure.hpp"
+#include "ccd/strategies/register_core.hpp"
 
 #include "../fnv.hpp"
 
@@ -329,6 +330,7 @@ FitResult run_steps(
     const preprocess::PreprocessPlan& plan,
     const HarmonicOptions& options,
     const LassoOptions& loptions,
+    const Strategies& strategies,
     Worker& worker,
     const PassRequest& request,
     bool& continued
@@ -356,7 +358,7 @@ FitResult run_steps(
     standard::Detector& detector = worker.standard;
 
     if (!request.record && !request.continue_from)
-        return detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver);
+        return detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies);
 
     const ProcessingMask filtered = mask;
     const bool continues =
@@ -364,9 +366,9 @@ FitResult run_steps(
         drops_unambiguous(request.continue_from->excluded_days, dates, mask);
 
     FitResult result = continues
-        ? detector.resume(pixel, std::move(mask), worker.lasso, solver,
+        ? detector.resume(pixel, std::move(mask), worker.lasso, solver, strategies,
                           request.continue_from->standard, request.continue_from->excluded_days)
-        : detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver);
+        : detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies);
     continued = continues;
 
     if (request.record)
@@ -425,6 +427,9 @@ Run::Run(
         options_ = spec_.hoptions;
         run_plan_ = plan_;
     }
+
+    // The run's strategies, from the configuration its options describe.
+    strategies_ = strategies::strategies_for(options_);
 }
 
 template<typename Value, typename Qa>
@@ -460,7 +465,7 @@ PixelOutcome Run::pixel_typed(
             request.through = header_.series_end;
         }
         out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, options_,
-                                          spec_.loptions, worker, request, continued);
+                                          spec_.loptions, strategies_, worker, request, continued);
         if (!spec_.keep_masks)
             out.result.mask = ProcessingMask();
         return out;
@@ -495,7 +500,7 @@ PixelOutcome Run::pixel_typed(
     request.through = dates_(dates_.size() - 1);
     request.continue_from = continues ? &from : nullptr;
     out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, options_,
-                                      spec_.loptions, worker, request, continued);
+                                      spec_.loptions, strategies_, worker, request, continued);
 
     // The machine may still not continue (a stored drop on a date the plan
     // keeps twice): then its result is a whole rerun, without the stored

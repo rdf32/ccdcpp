@@ -136,6 +136,10 @@ add_library(
 
     src/ccd/ccd.cpp
     src/ccd/run/run.cpp
+    src/ccd/config/params.cpp
+    src/ccd/config/registry.cpp
+    src/ccd/strategies/register_core.cpp
+    src/ccd/strategies/refit/span_factor.cpp
     src/ccd/qa_table.cpp
 )
 
@@ -490,6 +494,29 @@ if(CCD_BUILD_TESTS)
 
     target_compile_features(
         test_masked_series
+
+        PRIVATE
+            cxx_std_17
+    )
+
+    # The strategy registry and parameter schemas. See
+    # tests/ccd/strategies/test_registry.cpp.
+    add_executable(
+        test_registry
+
+        tests/ccd/strategies/test_registry.cpp
+    )
+
+    target_link_libraries(
+        test_registry
+
+        PRIVATE
+            ccd_core
+            GTest::gtest_main
+    )
+
+    target_compile_features(
+        test_registry
 
         PRIVATE
             cxx_std_17
@@ -900,6 +927,7 @@ if(CCD_BUILD_TESTS)
     gtest_discover_tests(test_validation)
     gtest_discover_tests(test_masked_series)
     gtest_discover_tests(test_kernels)
+    gtest_discover_tests(test_registry)
     gtest_discover_tests(test_machine)
     gtest_discover_tests(test_preprocess)
     gtest_discover_tests(test_golden)

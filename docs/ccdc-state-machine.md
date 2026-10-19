@@ -171,6 +171,49 @@ freeing anything. `standard::Procedure` owns one record, `standard::Detector` ow
 `standard::Procedure`, and a `Worker` (`include/ccd/run/run.hpp`) holds one `Detector` per
 OpenMP thread.
 
+### Stages and strategies
+
+The machine's phases and routes are fixed; what a phase decides is a **stage**, decided by the
+**strategy** the run's configuration names for it (`include/ccd/strategies/stages.hpp`). A
+strategy returns its decision and the machine routes on it; a strategy never steers the machine.
+The run builds its strategies once per call, through the registry
+(`include/ccd/config/registry.hpp`, `ccd::strategies::core_registry()`), from a configuration of
+one `{strategy, parameters}` per stage, and hands them to the machine in `Context::strategies`.
+Each strategy declares its parameters once, as a schema (`include/ccd/config/params.hpp`), which
+checks a configuration's values (unknown names, types, ranges) when the strategy is built.
+
+| Stage | Decides | Strategies |
+|---|---|---|
+| `refit` | whether Extend refits the model before a peek test (after the first) | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
+
+A run's configuration is the one its options describe
+(`ccd::strategies::config_from_options()`: `RETRAIN_MIN_OBS` and `RETRAIN_SPAN_FACTOR` are
+`span-factor`'s parameters). The machine's other decisions are made inside its phases.
+
+A configuration, its strategies, and a strategy's decision (`tests/ccd/strategies/test_registry.cpp`
+has more):
+
+```cpp
+#include "ccd/strategies/register_core.hpp"
+
+using namespace ccd;
+
+// The configuration a run under the defaults uses, and its strategies.
+config::ConfigTree tree = strategies::config_from_options(HarmonicOptions{});
+// tree["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
+
+// Refit less often: once the window spans twice the last fit's span.
+tree["refit"].params["factor"] = config::real(2.0);
+Strategies s = strategies::build_strategies(strategies::core_registry(), tree);
+s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_span=*/100.0);  // false
+s.refit->due(30, 200.0, 100.0);                                              // true
+
+// A value out of range is refused when the strategies are built:
+tree["refit"].params["factor"] = config::real(0.0);
+strategies::build_strategies(strategies::core_registry(), tree);
+// std::invalid_argument: refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
+```
+
 ## 4. Shared functions and Standard's own
 
 What any change-detection machine can use, each taking narrow arguments and never a machine's

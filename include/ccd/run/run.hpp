@@ -293,6 +293,9 @@ private:
 
     // The stored call's header, for a resume.
     std::optional<ResumeHeader> resume_;
+
+    // One strategy per stage, shared by every thread.
+    Strategies strategies_;
 };
 
 //------------------------------------------------------------------------------

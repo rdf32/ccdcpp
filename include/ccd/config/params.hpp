@@ -1,0 +1,199 @@
+#pragma once
+
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <variant>
+#include <vector>
+
+#include "ccd/types.hpp"
+
+namespace ccd
+{
+namespace config
+{
+
+//==============================================================================
+//
+// Strategy parameters
+//
+// Every strategy declares its parameters once, as a schema: each field's
+// name, the member it sets, its unit, its allowed range and a line of
+// documentation. From the schema come the strategy's construction from a
+// configuration (apply()) and the configuration of a strategy (to_values()):
+// nothing about a parameter is written twice.
+//
+// A schema is a plain vector of Field, written next to the strategy:
+//
+//     struct Params { index_t min_obs = 24; double factor = 1.33; };
+//     static const std::vector<config::Field<Params>>& schema()
+//     {
+//         static const std::vector<config::Field<Params>> s = {
+//             {"min_obs", &Params::min_obs, Unit::Observations, at_least(1), "..."},
+//             {"factor",  &Params::factor,  Unit::None, greater_than(0), "..."},
+//         };
+//         return s;
+//     }
+//
+//==============================================================================
+
+// What a parameter's value is measured in: dimensionless, a count of
+// observations, days, or the input's reflectance.
+enum class Unit : std::uint8_t
+{
+    None,
+    Observations,
+    Days,
+    Reflectance
+};
+
+// One parameter's value, as a configuration holds it.
+using Value = std::variant<bool, std::int64_t, double, std::string>;
+
+// A strategy's parameters, by name.
+using Values = std::map<std::string, Value>;
+
+// Values of each type, made explicitly: a double or an integer given to a
+// Value directly may convert to its bool.
+inline Value real(double v) { return Value(std::in_place_type<double>, v); }
+inline Value integer(std::int64_t v) { return Value(std::in_place_type<std::int64_t>, v); }
+inline Value flag(bool v) { return Value(std::in_place_type<bool>, v); }
+
+// The allowed values of a number: lo <(=) value <(=) hi. NaN never passes.
+struct Bounds
+{
+    double lo = -INFINITY;
+    double hi = INFINITY;
+    bool lo_inclusive = true;
+    bool hi_inclusive = true;
+
+    bool contains(double v) const
+    {
+        return (lo_inclusive ? v >= lo : v > lo) && (hi_inclusive ? v <= hi : v < hi);
+    }
+};
+
+inline Bounds any() { return {}; }
+inline Bounds at_least(double lo) { return {lo, INFINITY, true, true}; }
+inline Bounds greater_than(double lo) { return {lo, INFINITY, false, true}; }
+inline Bounds between(double lo, double hi) { return {lo, hi, true, true}; }
+inline Bounds open_interval(double lo, double hi) { return {lo, hi, false, false}; }
+
+// "at least 1", "greater than 0", "in [0, 1]", ...
+std::string describe(const Bounds& b);
+
+// A number as a message shows it: 1.33, 24, 1e-09.
+std::string number(double v);
+
+template<class P>
+struct Field
+{
+    using Member = std::variant<double P::*, index_t P::*, std::int64_t P::*, bool P::*>;
+
+    const char* name;
+    Member member;
+    Unit unit;
+    Bounds bounds;
+    const char* doc;
+};
+
+//------------------------------------------------------------------------------
+// The parameters `values` give `params`, starting from its defaults. Throws
+// std::invalid_argument, naming `where` (e.g. "refit 'span-factor'") and the
+// field, on a name the schema does not hold, a value of the wrong type
+// (an integer is accepted for a real), a whole number its member cannot
+// hold, and a value outside the field's bounds.
+//------------------------------------------------------------------------------
+template<class P>
+void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
+           const std::string& where)
+{
+    for (const auto& entry : values)
+    {
+        const std::string& name = entry.first;
+        const Value& value = entry.second;
+        const Field<P>* field = nullptr;
+        for (const auto& f : schema)
+            if (name == f.name)
+                field = &f;
+        if (!field)
+        {
+            std::string known;
+            for (const auto& f : schema)
+                known += std::string(known.empty() ? "" : ", ") + f.name;
+            throw std::invalid_argument(where + " has no parameter '" + name + "'" +
+                                        (known.empty() ? "" : "; it has " + known));
+        }
+
+        const std::string at = where + " parameter '" + name + "'";
+        std::visit(
+            [&](auto member)
+            {
+                using T = std::remove_cv_t<std::remove_reference_t<decltype(params.*member)>>;
+                if constexpr (std::is_same_v<T, bool>)
+                {
+                    if (!std::holds_alternative<bool>(value))
+                        throw std::invalid_argument(at + " is a flag (true or false)");
+                    params.*member = std::get<bool>(value);
+                }
+                else
+                {
+                    double v;
+                    if (std::holds_alternative<double>(value))
+                        v = std::get<double>(value);
+                    else if (std::holds_alternative<std::int64_t>(value))
+                        v = static_cast<double>(std::get<std::int64_t>(value));
+                    else
+                        throw std::invalid_argument(at + " is a number");
+                    if constexpr (!std::is_same_v<T, double>)
+                    {
+                        if (!std::holds_alternative<std::int64_t>(value))
+                            throw std::invalid_argument(at + " is a whole number");
+                        const std::int64_t i = std::get<std::int64_t>(value);
+                        if constexpr (std::is_unsigned_v<T>)
+                        {
+                            if (i < 0)
+                                throw std::invalid_argument(at + " is " + std::to_string(i) +
+                                                            "; it must be at least 0");
+                        }
+                    }
+                    if (!field->bounds.contains(v))
+                        throw std::invalid_argument(at + " is " + number(v) + "; it must be " +
+                                                    describe(field->bounds));
+                    if constexpr (std::is_same_v<T, double>)
+                        params.*member = v;
+                    else
+                        params.*member = static_cast<T>(std::get<std::int64_t>(value));
+                }
+            },
+            field->member);
+    }
+}
+
+// Every parameter of `params`, by name.
+template<class P>
+Values to_values(const std::vector<Field<P>>& schema, const P& params)
+{
+    Values out;
+    for (const auto& f : schema)
+        std::visit(
+            [&](auto member)
+            {
+                using T = std::remove_cv_t<std::remove_reference_t<decltype(params.*member)>>;
+                if constexpr (std::is_same_v<T, bool>)
+                    out[f.name] = flag(params.*member);
+                else if constexpr (std::is_same_v<T, double>)
+                    out[f.name] = real(params.*member);
+                else
+                    out[f.name] = integer(static_cast<std::int64_t>(params.*member));
+            },
+            f.member);
+    return out;
+}
+
+} // namespace config
+} // namespace ccd

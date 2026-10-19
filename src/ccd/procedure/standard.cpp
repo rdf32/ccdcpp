@@ -787,8 +787,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // The refit schedule
     //--------------------------------------------------------------------------
     if (!extension.trained ||
-        window.stop - window.start <= options.RETRAIN_MIN_OBS ||
-        model_span >= options.RETRAIN_SPAN_FACTOR * extension.fit_span)
+        context.strategies.refit->due(window.stop - window.start, model_span, extension.fit_span))
     {
         extension.trained = true;
         extension.fit_window = window;
@@ -1187,10 +1186,11 @@ FitResult Procedure::resume(
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver,
+    const Strategies& strategies,
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days
 ) {
-    const Context context{hworkspace.options(), hworkspace, lworkspace, solver};
+    const Context context{hworkspace.options(), hworkspace, lworkspace, solver, strategies};
     return standard::resume(context, state_, std::move(mask), from, excluded_days);
 }
 
@@ -1199,24 +1199,28 @@ FitResult Detector::resume(
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
     LassoSolver& solver,
+    const Strategies& strategies,
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days
 )
 {
-    return procedure_.resume(hworkspace, std::move(mask), lworkspace, solver, from, excluded_days);
+    return procedure_.resume(hworkspace, std::move(mask), lworkspace, solver, strategies, from,
+                             excluded_days);
 }
 
 FitResult Procedure::run(
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
-    LassoSolver& solver
+    LassoSolver& solver,
+    const Strategies& strategies
 ) {
     const Context context{
         hworkspace.options(),
         hworkspace,
         lworkspace,
-        solver
+        solver,
+        strategies
     };
 
     return standard::run(context, state_, std::move(mask));
@@ -1227,13 +1231,14 @@ FitResult Detector::fit(
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
     LassoWorkspace& lworkspace,
-    LassoSolver& solver
+    LassoSolver& solver,
+    const Strategies& strategies
 )
 {
     if (procedure == PixelProcedure::Standard)
     {
         LOG_DEBUG("Standard");
-        return procedure_.run(hworkspace, std::move(mask), lworkspace, solver);
+        return procedure_.run(hworkspace, std::move(mask), lworkspace, solver, strategies);
     }
 
     return fit_whole_series(procedure, hworkspace, std::move(mask), lworkspace, solver);
