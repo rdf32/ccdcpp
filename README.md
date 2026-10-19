@@ -1,51 +1,331 @@
 # ccdcpp
 
-A high-performance C++17 implementation of the Continuous Change Detection and Classification (CCD) algorithm with Python bindings via **pybind11**.
+ccdcpp is a C++17 implementation of the Continuous Change Detection and Classification (CCDC) algorithm, with Python bindings through pybind11. It reproduces the USGS LCMAP PyCCD algorithm and its outputs, doing what PyCCD's code intends where the code does otherwise (every such difference is listed under [Differences from pyccd](#differences-from-pyccd)), and runs one pixel about 200 times faster than PyCCD in about half the process memory. A run takes one pixel or a whole image cube, in parallel with OpenMP, and can be continued when new observations arrive instead of rerun.
 
-`ccdcpp` was developed as a native C++ implementation of the USGS PyCCD algorithm while preserving algorithm behavior and output compatibility. The library can be called directly from Python while benefiting from compiled C++ performance and efficient memory management.
+## Contents
 
-> **Performance**
->
-> One pixel at a time on one thread, `ccdcpp` is about **200× faster** than PyCCD (median of 404 pixels; against PyCCD with ccdcpp's corrections applied, the same segments on every one), and about 70× on PyCCD's own 443-observation reference pixel, in about half the process memory. With OpenMP a 500 × 500 Landsat cell (1984–2023) takes 23 s on 18 threads, 12.8× its one-thread time. See [Benchmarks](docs/benchmarks.md) for the measurements and how to repeat them.
-
----
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Configuring the algorithm](#configuring-the-algorithm)
+- [Diagnostics](#diagnostics)
+- [Resuming a run](#resuming-a-run)
+- [How it works](#how-it-works)
+- [Performance](#performance)
+- [Differences from pyccd](#differences-from-pyccd)
+- [Reference](#reference): [input](#input-arrays), [band layout](#band-layout), [input units](#input-unit-convention), [QA](#qa-input), [cadence](#cadence-parameters), [methods](#change-detection-methods), [sensor profiles](#sensor-profiles), [preprocessing](#preprocessing)
+- [Build and test](#build-and-test)
+- [License and Attribution](#license-and-attribution)
 
 # Features
 
-- Native C++17 implementation of the CCD algorithm
-- Python bindings through **pybind11**
-- Significant reductions in execution time and memory usage
-- OpenMP parallel processing for image cubes
-- Zero-copy NumPy interface
-- Raw QA input decoded through optional lookup tables (Landsat C1/C2; HLS and Sentinel-2 building blocks)
-- Sensor profiles: band roles, units and options in one object, with Landsat presets and HLS and Sentinel-2 presets validated on a real sample (`ccdcpp.presets`)
-- PyCCD's algorithm as it intends, every difference from its code listed ([Differences from pyccd](#differences-from-pyccd))
-- Resuming a stored run when new observations arrive, equal bit for bit to a full rerun ([Resuming a Run](#resuming-a-run))
-- Cross-platform CMake build system
+- **PyCCD's algorithm as it intends**, every difference from its code listed and checked against Zhu's MATLAB reference ([Differences from pyccd](#differences-from-pyccd)).
+- **Fast**: about 200 times PyCCD's speed per pixel in about half its process memory; a 500 x 500 Landsat cell over 40 years in 23 s on 18 threads ([Performance](#performance)).
+- **One pixel or a cube**: `detect` for a pixel, `detect_cube` and `detect_cube_columns` for an image cube in parallel (OpenMP, the GIL released), reading float64, float32 or uint16 cubes in any layout without copying them.
+- **Sensor profiles**: band roles, units, QA decoding and options in one object, with presets for Landsat Collection 1 and 2, HLS v2.0 and Sentinel-2 L2A (`ccdcpp.presets`).
+- **Raw QA input**: Landsat `QA_PIXEL` and `pixel_qa`, HLS `Fmask` and Sentinel-2 `SCL` decoded through lookup tables per pixel.
+- **A configurable algorithm**: one fixed state machine whose decisions are stages, each decided by a named strategy with parameters; configurations are immutable values, TOML presets and part of a run's record ([Configuring the algorithm](#configuring-the-algorithm)).
+- **Diagnostics**: every transition, change test, dropped observation and segment of the pixels you name, as rows for pandas, without changing the output ([Diagnostics](#diagnostics)).
+- **Resume**: a stored run continued on new observations, equal bit for bit to a full rerun, at about a third of its time ([Resuming a run](#resuming-a-run)).
+- **Custom preprocessing**: the filters that build the processing mask are a plan you can edit ([Preprocessing](#preprocessing)).
+- **A C++ API** of two calls, `ccd::run_pixel` and `ccd::run_cube`, and a CMake build.
 
----
+# Quick start
 
+## Install
 
-# Why ccdcpp?
+ccdcpp builds with CMake through scikit-build-core. It needs Python 3.11 or later, numpy, a C++17 compiler, Boost, Eigen 3 and pybind11; OpenMP is optional (without it a cube runs on one thread). `environment.yml` is the conda environment it is developed in (a Windows export; elsewhere install the same packages from conda-forge).
 
-Compared to the original Python implementation, `ccdcpp` is designed for production-scale processing of Landsat imagery.
+```bash
+conda env create -f environment.yml
+conda activate geo
+pip install .
+```
 
-Key advantages include:
+## One pixel
 
-- Native C++ execution for substantially lower runtime
-- Greatly reduced memory allocations through reusable workspaces
-- Zero-copy NumPy interoperability
-- Automatic multi-core execution with OpenMP
-- Easy integration into existing Python workflows
-- PyCCD's algorithm, with its evident bugs corrected and each correction listed
+`detect` runs one pixel. The arrays are `dates` (T,), proleptic Gregorian ordinals in non-decreasing order, `spectral` (bands, T) and `qas` (T,). A sensor profile says what the rows are and in which units; here `presets.landsat_c2()`, Landsat Collection 2 surface reflectance with its thermal band in degrees Celsius / 100 and the raw `QA_PIXEL` band. The pixel is synthetic: twenty years at a 16-day cadence with an annual cycle, noise, 15% of observations cloudy and a land-cover change in June 2012.
 
----
+```python
+from datetime import date
 
-# The Algorithm as a State Machine
+import numpy as np
+import ccdcpp
+from ccdcpp import presets
 
-Per pixel, CCDC is a small state machine, and ccdcpp's Standard procedure is written as one: a per-pixel record (`ccd::standard::State`), one transition per phase (Prepare, Initialize, Lookback, StartCatch, Extend, Restart, EndCatch), each making one decision and returning the next phase, and one generic loop (`ccd::drive`) with a DEBUG trace line per transition. The per-pixel procedure choice and the whole-series fit of snow and insufficient-clear pixels are shared functions (`include/ccd/machine/pixel_procedure.hpp`) that a second change-detection procedure can reuse.
+rng = np.random.default_rng(42)
+dates = np.arange(date(2000, 1, 1).toordinal(), date(2020, 1, 1).toordinal(), 16, dtype=np.int64)
+T = dates.size
+season = np.sin(2 * np.pi * dates / 365.25)
 
-The Standard machine; bracketed names are the exit reason the record keeps:
+# Rows: blue, green, red, nir, swir1, swir2 (reflectance 0..1), thermal (degrees C / 100).
+level = np.array([0.04, 0.07, 0.06, 0.30, 0.18, 0.09])
+spectral = np.empty((7, T))
+spectral[:6] = level[:, None] * (1 + 0.3 * season) + rng.normal(0, 0.005, (6, T))
+spectral[:6, dates >= date(2012, 6, 1).toordinal()] *= [[1.3], [1.4], [1.6], [0.6], [1.5], [1.7]]
+spectral[6] = 0.20 + 0.10 * season
+
+qas = np.full(T, 21824, dtype=np.uint16)   # QA_PIXEL clear
+qas[rng.random(T) < 0.15] = 22280          # QA_PIXEL cloud
+
+out = ccdcpp.detect(dates, spectral, qas, profile=presets.landsat_c2())
+
+for m in out["models"]:
+    print(date.fromordinal(m["start_day"]), date.fromordinal(m["end_day"]),
+          "break", date.fromordinal(m["break_day"]),
+          "change probability", m["change_probability"], "observations", m["observation_count"])
+print(out["band_names"])
+print(sorted(out["models"][0]["bands"][0]))
+```
+
+```text
+2000-01-17 2012-05-25 break 2012-06-10 change probability 1.0 observations 239
+2012-06-10 2019-07-16 break 2019-08-01 change probability 0.0 observations 131
+('blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'thermal')
+['coefficients', 'intercept', 'magnitude', 'rmse']
+```
+
+Two segments: the change on the first clear observation after 2012-06-01 (change probability 1), and the last curve, which ends at the series end (change probability 0). Each segment has one fit per row (`bands`): intercept, seven harmonic coefficients, RMSE and change magnitude. The result also holds the `processing_mask`, the observations the fit used. Without a profile, pass `hoptions` and `loptions` (a `ccdcpp.HarmonicOptions` and `ccdcpp.LassoOptions`) and pre-classified QA codes; the defaults are PyCCD's, for Collection 1 values in DN ([Input unit convention](#input-unit-convention)).
+
+The examples below continue from this one.
+
+## A cube
+
+`detect_cube_columns` runs every pixel of an (H, W, bands, T) cube in parallel and returns the segments as columns, one entry per segment; `detect_cube` returns one dict per pixel, as `detect` does.
+
+```python
+H, W = 3, 4
+cube = np.ascontiguousarray(np.broadcast_to(spectral, (H, W, 7, T)) + rng.normal(0, 0.002, (H, W, 7, T)))
+cube_qa = np.ascontiguousarray(np.broadcast_to(qas, (H, W, T)))
+
+cols = ccdcpp.detect_cube_columns(dates, cube, cube_qa, threads=4, profile=presets.landsat_c2())
+
+print(cols["pixels_total"], cols["pixels_with_segments"], len(cols["row"]), cols["failures"])
+print(cols["coefficients"].shape)
+print(sorted(k for k in cols if not k.startswith("pixels")))
+```
+
+```text
+12 12 24 []
+(24, 7, 7)
+['band_names', 'break_day', 'change_probability', 'coefficients', 'col', 'curve_qa', 'end_day', 'failures', 'intercept', 'magnitude', 'num_bands', 'observation_count', 'rmse', 'row', 'start_day', 'threads']
+```
+
+`threads=0` (the default) uses the OpenMP runtime's thread count. A pixel that raises does not stop the cube: it is listed in `failures` with its row, column and message.
+
+## From C++
+
+The C++ API is two calls in `include/ccd/run/run.hpp`, `ccd::run_pixel` and `ccd::run_cube`. What a call runs is a `ccd::RunSpec`: the options, and optionally a QA table, a preprocessing plan, a configuration, an observer and whether to return resume records. The arrays are `ccd::ArrayView`s over your memory (any strides; float64, float32 or uint16 values; uint8 or uint16 QA). Link the CMake target `ccd_core`.
+
+```cpp
+#include <cstdint>
+#include <iostream>
+#include <vector>
+
+#include "ccd/ccd.hpp"
+
+// One pixel: T dates, 7 rows of T values (row after row), T QA codes (0 clear).
+void one_pixel(const std::vector<std::int64_t>& dates,
+               const std::vector<double>& spectral,
+               const std::vector<std::uint8_t>& qas)
+{
+    const std::size_t T = dates.size();
+
+    ccd::RunSpec spec{ccd::HarmonicOptions{}, ccd::LassoOptions{}};
+    ccd::PixelRun run = ccd::run_pixel(spec,
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+        ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}));
+
+    for (const ccd::ChangeModel& m : run.result.models)
+        std::cout << m.start_day << " " << m.end_day << " " << m.break_day << " "
+                  << m.bands[3].rmse << "\n";
+}
+
+// A cube: (H, W, 7, T) values and (H, W, T) QA, on 8 threads.
+void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& cube,
+            const std::vector<std::uint8_t>& qas, std::size_t H, std::size_t W)
+{
+    const std::size_t T = dates.size();
+
+    ccd::CubeResult r = ccd::run_cube({ccd::HarmonicOptions{}, ccd::LassoOptions{}},
+        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+        ccd::ArrayView<const double, 4>::contiguous(cube.data(), {H, W, 7, T}),
+        ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
+        /*threads=*/8);
+
+    for (const ccd::PixelResult& p : r.pixels)
+        std::cout << p.row << "," << p.col << ": " << p.result.models.size() << " segments\n";
+    for (const ccd::CubeFailure& f : r.failures)
+        std::cerr << f.row << "," << f.col << ": " << f.message << "\n";
+}
+```
+
+`run_pixel` returns a `ccd::PixelRun` (`result`, and with `RunSpec::record` or a resume, `record`, `status` and `header`); `run_cube` a `ccd::CubeResult` (`pixels` in raster order, `failures`, `threads`, `header`). Both throw `std::invalid_argument` before any pixel runs on options, dates, a plan or a configuration they refuse.
+
+# Configuring the algorithm
+
+ccdcpp runs one fixed machine, the CCDC phases and routes, whose decisions are made by **stages**: the procedure a pixel takes, its noise floor, where the search for a stable start begins, the start window's outlier screen, fit and stability rule, Lookback, the monitoring model and when it is refitted, the change test, the outlier rule, and the fits a segment reports. Each stage is decided by a **strategy**, chosen by name, with parameters. A **configuration** names, for every stage, its strategy and that strategy's parameters.
+
+A run without a configuration uses the one its `HarmonicOptions` and `LassoOptions` describe, so the options alone run as they always have. The shipped preset `ccdc` is that configuration for the default options: PyCCD's algorithm with ccdcpp's corrections, for Collection 1 DN values.
+
+```python
+cfg = ccdcpp.config("ccdc")
+print(cfg)
+```
+
+```text
+Config(
+  change_test: chi2(change_probability=0.99, change_threshold=15.086272469388987, model_rmse_up_to=24, peek_reference_days=16.0, peek_size=6, seasonal_count=24, seasonal_divisor=4.0)
+  edge_fit: lasso(alpha=1.0, coef_floor=1.0, coefficients=4, max_iter=1000, min_observations=12, tolerance=0.0001)
+  lookback: pyccd(change_probability=0.99, change_threshold=15.086272469388987, outlier_threshold=35.88818687961042, peek_size=6)
+  mode: pyccd(clear_pct_threshold=0.25, snow_pct_threshold=0.75)
+  model: lasso(alpha=1.0, coef_floor=1.0, max_iter=1000, tolerance=0.0001)
+  noise_floor: variogram(min_lag_days=30)
+  outlier: floored(threshold=35.88818687961042)
+  refit: span-factor(factor=1.33, min_obs=24)
+  segment_fit: model-fit()
+  stability_fit: lasso(alpha=1.0, coef_floor=1.0, max_iter=1000, tolerance=0.0001)
+  stability_rule: pyccd(change_probability=0.99, change_threshold=15.086272469388987, peek_size=6)
+  start_search: pyccd(day_delta=365, meow_size=12)
+  window_screen: tmask(bands=[1, 4], t_const=4.89)
+)
+```
+
+A configuration's parameters are in the input's units, as the options' are: the Lasso's `alpha` and `coef_floor` are 1.0 for DN and 1e-4 for reflectance. So for a profile, start from the configuration of its options, `ccdcpp.Config.from_options(*profile.options())`. A `Config` is immutable; `replace(stage__parameter=value)` returns a changed copy, and `replace(stage="strategy")` swaps a stage's strategy, its parameters starting from the new strategy's defaults. Every entry point takes it as `config=`:
+
+```python
+c2 = presets.landsat_c2()
+base = ccdcpp.Config.from_options(*c2.options())
+print(base.params("model"))
+
+stricter = base.replace(change_test__change_probability=0.999, refit__factor=2.0)
+out2 = ccdcpp.detect(dates, spectral, qas, profile=c2, config=stricter)
+print(len(out2["models"]), base.hash() != stricter.hash())
+
+assert ccdcpp.detect(dates, spectral, qas, profile=c2, config=base)["models"] == out["models"]
+```
+
+```text
+{'alpha': 0.0001, 'coef_floor': 0.0001, 'max_iter': 1000, 'tolerance': 0.0001}
+2 True
+```
+
+Mistakes are refused by name, before any pixel runs:
+
+```python
+for bad in (lambda: base.replace(refit__fctor=2.0),
+            lambda: base.replace(refit__factor=0.0).check(),
+            lambda: base.replace(window_screen__bands=[1, 9]).check(bands=7)):
+    try:
+        bad()
+    except ValueError as e:
+        print(e)
+```
+
+```text
+refit 'span-factor' has no parameter 'fctor'; it has min_obs, factor
+refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
+window_screen 'tmask' parameter 'bands' holds band 9; the input has 7 bands
+```
+
+`ccdcpp.strategies()` lists every stage's strategies and their parameters, with unit, bounds, default and meaning:
+
+```python
+for p in ccdcpp.strategies()["refit"]["span-factor"]:
+    print(p["name"], "|", p["unit"], "|", p["bounds"], "|", p["default"], "|", p["doc"])
+```
+
+```text
+min_obs | observations | at least 1 | 24 | observations up to which every test refits
+factor | none | greater than 0 | 1.33 | refit once the window spans this many times the last fit's span
+```
+
+`cfg.hash()` is a digest equal for equal configurations on any platform, `cfg.to_toml()` writes the configuration as a preset file, and a `Config` pickles, so it can go to worker processes. A preset is a TOML file, one table per stage; `ccdcpp.config(path)` reads one, and a file may `extends = "ccdc"` and list only what differs. In C++ a configuration is a `config::ConfigTree` in `RunSpec::config`, and a new decision rule is a strategy class registered by name through a build extension (CMake's `CCD_EXTENSIONS`). The public library has one strategy per stage.
+
+[docs/config.md](docs/config.md) covers configurations from Python and C++, presets, experiments and writing a strategy; [docs/ccdc-state-machine.md](docs/ccdc-state-machine.md#stages-and-strategies) lists the stages, their strategies and which option sets which parameter.
+
+# Diagnostics
+
+`trace=True` on `detect`, or `trace_pixels=[(row, col), ...]` on `detect_cube_columns`, also returns the run step by step: every phase transition with the machine's cursor, every Extend change test with its outcome and statistics, every observation a test drops, every segment written and how the pixel ended, one dict per event, ready for `pandas.DataFrame`. The results are the untraced run's, bit for bit.
+
+```python
+import pandas as pd
+
+traced = ccdcpp.detect(dates, spectral, qas, profile=presets.landsat_c2(), trace=True)
+trace = pd.DataFrame(traced["trace"])
+print(trace.kind.value_counts().to_dict())
+print(trace[trace.kind == "segment"][["day", "day_to", "outcome", "observations"]].to_string())
+print(trace[trace.kind == "exit"]["outcome"].item())
+
+cube_traced = ccdcpp.detect_cube_columns(dates, cube, cube_qa, threads=4, profile=presets.landsat_c2(),
+                                         trace_pixels=[(1, 2)])
+print(len(cube_traced["traces"][(1, 2)]))
+```
+
+```text
+{'transition': 356, 'test': 327, 'segment': 2, 'exit': 1}
+        day  day_to                                  outcome  observations
+449  730136  734648  curve_qa 8 break 734664 change 1.000000           239
+682  734664  737256  curve_qa 8 break 737272 change 0.000000           131
+SeriesEnd
+686
+```
+
+In C++ an observer is `RunSpec::observer` (`ccd::TextObserver` prints the events), and `RunSpec::observe` names a cube's pixels. The hooks compile out with CMake's `-DCCD_OBSERVE=OFF`. See [docs/diagnostics.md](docs/diagnostics.md) for the event fields and the C++ side.
+
+# Resuming a run
+
+When new observations arrive, a stored run can be continued instead of rerun. The first run asks for a resume record (`resume_record=True`); the update passes the whole series again (the stored observations and the new ones), the record and the stored segments, and gets the complete result for the whole series:
+
+```python
+c2 = presets.landsat_c2()
+n = int(np.searchsorted(dates, date(2019, 1, 1).toordinal()))   # the first run: up to 2018
+
+first = ccdcpp.detect_cube_columns(dates[:n], cube[..., :n], cube_qa[..., :n],
+                                   threads=4, profile=c2, resume_record=True)
+# Store first's segment columns, first["resume"] (one entry per pixel) and first["resume_header"].
+
+SEGMENT_COLUMNS = ("row", "col", "start_day", "end_day", "break_day", "curve_qa",
+                   "observation_count", "change_probability", "intercept", "coefficients",
+                   "rmse", "magnitude")
+update = ccdcpp.resume_cube_columns(
+    dates, cube, cube_qa, threads=4, profile=c2,
+    resume=first["resume"], resume_header=first["resume_header"],
+    segments={k: first[k] for k in SEGMENT_COLUMNS})
+
+print(update["counts"])
+print(all(np.array_equal(update[k], cols[k]) for k in SEGMENT_COLUMNS))
+```
+
+```text
+{'resumed': 12, 'rerun_input_changed': 0, 'failed': 0}
+True
+```
+
+- **The result is the full run's, bit for bit**: `resume_cube_columns` gives what `detect_cube_columns` gives on the whole series with every statistics cutoff (`STAT_ORD`, and a `GreenMedian` step's date) capped at the first run's series end. With the Landsat presets' `STAT_ORD` (2017-12-31) and a first run past it, as here, that is the plain full rerun. The HLS and Sentinel-2 presets have no cutoff, so their statistics (the procedure choice, the cadence, the variogram) stay those of the first run until a full rerun re-baselines them.
+- **What it saves is compute**: each pixel the Standard machine was running continues from where its stored run stopped, its earlier segments kept as stored and its open segment refitted once. The pixels with nothing to continue (PermanentSnow, InsufficientClear and the early exits) are rerun whole and count as resumed, since their result is the rerun's. On a 500 x 500 Landsat cell the annual update takes 0.36 of a full run's time ([Performance](#performance)).
+- **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene) is rerun in full, and its status says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed). A scene the pixel's QA marks fill does not count as a change.
+- **A record that does not match the call is refused** (`ValueError`): another record format or results version (`ccdcpp.RESULTS_VERSION` changes whenever a release changes outputs), other options, preset, plan, QA table or configuration, a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
+- The record is plain columns (`ccdcpp.resume_schema()` gives their dtypes); the caller stores them beside its segments.
+- One pixel: `detect(..., resume_record=True)` and `resume(..., resume=, resume_header=, models=)`. C++: `ccd::run_pixel` and `ccd::run_cube` with `RunSpec::record`, and the stored run as their `resume` argument (a `ccd::PixelResume`, a `ccd::CubeResumeFrom`; `include/ccd/results/record.hpp`).
+
+```python
+n = int(np.searchsorted(dates, date(2019, 1, 1).toordinal()))
+stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], profile=c2, resume_record=True)
+more = ccdcpp.resume(dates, spectral, qas, profile=c2, resume=stored["resume"],
+                     resume_header=stored["resume_header"], models=stored["models"])
+print(more["status"], more["models"] == out["models"])
+```
+
+```text
+resumed True
+```
+
+# How it works
+
+Per pixel, a run decodes the QA, computes the QA statistics, chooses the pixel's procedure, builds the processing mask (the observations it fits) and fits them. A pixel with enough clear observations takes the **Standard** procedure, CCDC's change detection; a mostly snowy pixel (**PermanentSnow**) and one with too few clear observations (**InsufficientClear**) get one curve over the whole series.
+
+The Standard procedure is a small state machine: a per-pixel record, one transition function per phase, each making one decision and returning the next phase, and one loop that steps it. Bracketed names are why the machine stopped:
 
 ```
                               ┌─ size <= MEOW_SIZE ───────────────────────► Done  [TooFewObservations]
@@ -83,109 +363,39 @@ The Standard machine; bracketed names are the exit reason the record keeps:
                       EndCatch [NoRoomToInitialize] ── the End segment, if prev_break + peek < size ──► Done
 ```
 
-[CCDC as a state machine](docs/ccdc-state-machine.md) describes the states, transitions and guards, the record and the shared parts, and why the code is shaped this way. [Floating-point sums](docs/floating-point-sums.md) explains why the order of the Lasso solver's sums is part of the output, and how they are made fast.
+The phases and routes are fixed; what a phase decides is a stage, decided by the strategy the configuration names for it ([Configuring the algorithm](#configuring-the-algorithm)). Because the record holds everything that survives from one step to the next, a run can stop at a size guard and continue on a longer series ([Resuming a run](#resuming-a-run)), and an observer can report each step ([Diagnostics](#diagnostics)).
 
-# Performance Optimizations
+- [CCDC as a state machine](docs/ccdc-state-machine.md): the phases, guards and routes, the record, the stages and strategies, resuming, and why the code is shaped this way.
+- [Floating-point sums](docs/floating-point-sums.md): why the order of the Lasso solver's sums is part of the output, and how they are made fast.
 
-The mathematical algorithm remains equivalent to PyCCD, but the implementation was redesigned from the ground up to improve computational efficiency while maintaining output compatibility.
+# Performance
 
----
+Measured for ccdcpp 0.10.0 on an Apple M5 Max (18 cores: 6 performance, 12 efficiency; 64 GB; macOS 26.7), Release build, Python 3.11, numpy 1.26.4, default options (`presets.landsat_c2()` for the real cell), on a machine that was not otherwise idle. Memory is the peak resident set size of the process, including the interpreter and the input it holds. [docs/benchmarks.md](docs/benchmarks.md) has every table, the load during each run, and how to measure again.
 
-# Data Layout
+**Against PyCCD**, one pixel at a time on one thread, 404 pixels (the synthetic corpus and PyCCD's own test pixels), two rounds:
 
-For best performance, input arrays should be **C-contiguous** and use the expected memory layout. The library is designed around cache-friendly access patterns and avoids unnecessary data copies by operating directly on NumPy memory whenever possible.
+| | PyCCD with ccdcpp's corrections | PyCCD as released | ccdcpp |
+|---|---|---|---|
+| median per pixel | 54.6, 52.4 ms | 51.8, 52.5 ms | 0.27 ms |
+| total, 404 pixels | 27.4, 27.1 s | 26.7, 26.9 s | 0.15 s |
+| same segments as ccdcpp | 404 of 404 | 155 of 404 | |
+| peak memory (own process) | 243 MB | | 131 MB |
 
-`dates` are proleptic Gregorian ordinals in non-decreasing order. Every entry point raises `ValueError` (`std::invalid_argument` in C++, `ccd::validate_dates`) on a date earlier than the one before it, once per call and before any pixel runs; equal dates are allowed, and the filters keep the first observation of each date.
+About 200 times faster per pixel (median), 174-178 times on the total, and 68-73 times on PyCCD's 443-observation reference pixel (192-205 ms against 2.8 ms). Both memory figures are almost all the interpreter, the libraries and the loaded corpus: after the first pixel, the other 403 raise the peak by under 3 MB in either.
 
-Input arrays are never modified. `detect_cube` and `detect_cube_columns` read the spectral cube as `float64`, `float32` or `uint16` in any layout with non-negative strides, converting one pixel at a time inside each worker thread, so a `uint16` cube is never widened to `float64` as a whole; the results are those of the same values passed as `float64`. Other dtypes are converted to a C-contiguous `float64` array first, as long as numpy can do so safely.
+**A real cell**: a 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 250,000 pixels, 455,231 segments) through `detect_cube_columns` in strips of 50 rows:
 
-## Single Pixel
+| Threads | Detect | ms per pixel | Speed-up | Peak memory |
+|---|---|---|---|---|
+| 1 | 292.4 s | 1.170 | 1.00 | 17.6 GB |
+| 8 | 42.4 s | 0.169 | 6.90 | 19.8 GB |
+| 18 | 22.8 s | 0.091 | 12.8 | 19.9 GB |
 
-The `detect()` API expects a single pixel time series in the following layout:
+The memory is mostly the input as the bench holds it: the cell read whole (9.9 GB of uint16), plus each strip converted to float64 (3.5 GB); it barely moves with the thread count, and a caller that reads per strip needs less.
 
-| Array | Shape | Description |
-|-------|--------|-------------|
-| `dates` | `(timesteps,)` | Acquisition dates, non-decreasing |
-| `spectral` | `(bands, timesteps)` | Spectral observations for one pixel |
-| `qas` | `(timesteps,)` | QA codes, or raw QA with `qa_table=` (see [QA Input](#qa-input)) |
+**The annual update** of that cell (recorded to 2022-12-31, 89 dates of 2023 added, 8 threads, two rounds): `resume_cube_columns` 14.6 s and 13.9 s against a full run's 40.1 s and 38.7 s, 0.36 of the time, equal to the full run on all 250,000 pixels; 19.9 GB peak for the whole bench (stored run, update and full run in one process).
 
-For example:
-
-```python
-dates.shape      # (T,)
-spectral.shape   # (7, T)
-qas.shape        # (T,)
-```
-
-The spectral array stores each band as a contiguous time series, allowing the regression routines to efficiently access observations for each band with minimal cache misses.
-
----
-
-## Image Cubes
-
-The `detect_cube()` API expects image cubes in the following layout:
-
-| Array | Shape | Description |
-|-------|--------|-------------|
-| `dates` | `(timesteps,)` | Shared acquisition dates, non-decreasing |
-| `spectral` | `(height, width, bands, timesteps)` | Spectral observations |
-| `qas` | `(height, width, timesteps)` | QA codes, or raw QA with `qa_table=` (see [QA Input](#qa-input)) |
-
-For example:
-
-```python
-dates.shape      # (T,)
-spectral.shape   # (H, W, 7, T)
-qas.shape        # (H, W, T)
-```
-
-Each pixel's complete time series is stored contiguously in memory. This layout provides several advantages:
-
-- Improved CPU cache locality during time-series processing
-- Efficient sequential access by the CCD algorithm
-- Minimal pointer arithmetic and memory indirection
-- Zero-copy interoperability with NumPy
-- Efficient OpenMP parallelization across pixels
-
-Using C-contiguous arrays with these layouts maximizes performance and minimizes unnecessary memory copies.
-
----
-
-## Band Layout
-
-`HarmonicOptions` says which row of `spectral` plays which role. The defaults are the Landsat layout, seven bands in the order blue, green, red, nir, swir1, swir2, thermal:
-
-| Field | Default | Read by |
-|-------|---------|---------|
-| `NUM_BANDS` | `7` | every entry point: the band count `spectral` must have |
-| `DETECTION_BANDS` | `[1, 2, 3, 4, 5]` | change magnitude and the stability check, in list order |
-| `TMASK_BANDS` | `[1, 4]` | the Tmask outlier screen |
-| `SATURATION_BANDS` | `[0, 1, 2, 3, 4, 5]` | the saturation filter (`REFL_MIN`, `REFL_MAX`) |
-| `GREEN_IDX` | `1` | the InsufficientClear green median filter |
-| `THERMAL_IDX` | `6` | the thermal transform and filter; `ccdcpp.NO_BAND` for none |
-
-Every row is fitted and reported, so results have `NUM_BANDS` bands in row order: `detect` returns a `bands` list of that length per model and `num_bands`, and `detect_cube_columns` returns `[n, B]` and `[n, B, 7]` arrays. `CHANGE_THRESHOLD` and `OUTLIER_THRESHOLD` default to chi-squared quantiles with 5 degrees of freedom, the default detection band count; a layout with a different count sets them to match. `BLUE_IDX`, `RED_IDX`, `NIR_IDX`, `SWIR1_IDX`, `SWIR2_IDX` and `QA_IDX` are informational and not read. A layout that does not fit the input (wrong band count, an index off the band axis, a repeated index, an empty detection or Tmask list, no green band, thermal in the saturation list, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs.
-
-## Input Unit Convention
-
-The observation filters compare `spectral` against absolute thresholds, so each threshold is a statement about the unit of the input. The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is every one of them divided by 10000. See the input unit convention in `harmonic.hpp` for the measured equivalence. The filters' defaults are pyccd's, as pyccd intends them: its exclusive saturation and thermal bounds, and the green median filter scope its InsufficientClear filter computes (see [Differences from pyccd](#differences-from-pyccd) for where pyccd's code does not do what it intends).
-
-| Field | Default | Read by |
-|-------|---------|---------|
-| `THERMAL_SCALE`, `THERMAL_OFFSET` | `10.0`, `-27315.0` | the Standard procedure's thermal transform, `thermal * scale + offset` |
-| `REFL_MIN`, `REFL_MAX` | `0.0`, `10000.0` | the saturation filter, on `SATURATION_BANDS` |
-| `REFL_MIN_INCLUSIVE`, `REFL_MAX_INCLUSIVE` | `False`, `False` | whether a value equal to `REFL_MIN` / `REFL_MAX` is kept |
-| `THERM_MIN`, `THERM_MAX` | `-9320.0`, `7070.0` | the thermal filter, on `THERMAL_IDX`, after the transform |
-| `THERM_MIN_INCLUSIVE`, `THERM_MAX_INCLUSIVE` | `False`, `False` | whether a value equal to `THERM_MIN` / `THERM_MAX` is kept |
-| `MEDIAN_GREEN_FILTER` | `400.0` | the InsufficientClear green median filter's offset |
-
-The `*_INCLUSIVE` flags are not unit constants: a bound means the same in DN and in reflectance, so the preset leaves them as they are. The defaults are exclusive on both ends of both ranges, which is pyccd's form, `0 < v < 10000` for the saturation bound and `-9320 < v < 7070` for the thermal one: an observation with a saturation band at exactly `0` or `10000`, or NaN, is dropped. With either end exclusive NaN is rejected; with both ends of a range inclusive the test is `!(v < lo || v > hi)`, under which `0` and `10000` are kept and NaN passes. A NaN the filter keeps reaches the fit: on a synthetic pixel with one NaN in a saturation band, `detect` returns no segments and its processing mask, and `detect_cube_columns` reports no failure for it.
-
-**Green median filter scope.** The InsufficientClear procedure drops cloud-like observations by their green value: the threshold is the median green of the masked observations dated up to `STAT_ORD`, plus `MEDIAN_GREEN_FILTER`, and an observation at or above it is dropped. `GREEN_FILTER_SCOPE`, a `ccdcpp.GreenFilterScope`, says where: `StatWindow` (the default) drops it only up to `STAT_ORD`, which is the scope pyccd's `insufficient_clear_filter` computes its mask for, `All` at any date, and `Off` never. When no masked observation is dated up to `STAT_ORD` there is no median and nothing is dropped. It is not a unit constant. pyccd's own filter drops nothing (below): on an InsufficientClear pixel with an observation up to `STAT_ORD` at or above the threshold, the default gives what pyccd's filter computes and `Off` gives what pyccd's code does.
-
-**Inclusive bounds and the all-dates filter.** Set `REFL_MIN_INCLUSIVE` and `REFL_MAX_INCLUSIVE` to `True` to keep observations on a saturation bound (and NaN), and `GREEN_FILTER_SCOPE` to `All` to drop green outliers at every date.
-
-### Differences from pyccd
+# Differences from pyccd
 
 ccdcpp recreates pyccd. Where pyccd's code does not do what it evidently intends, ccdcpp does what it intends, so the two differ on the inputs that reach it:
 
@@ -204,11 +414,58 @@ The Standard procedure (`ccd/procedures.py`) is pyccd's with five such correctio
 - **The series end.** The check before Extend's grow (line 691) tests `>` where its comment, and pyccd's own `>=` before it changed its loop guard, mean the window to stop before the grow, so the check never holds and the last curve grows once more: its end day is its break day. ccdcpp stops at the last full peek, so a series-end segment ends one observation earlier, before its break day (as after an outlier drop). That curve is the last: pyccd restarts after it, and at peeks of 26 or more runs Initialize on the last observations and drops observations no segment uses; ccdcpp goes to the End segment's test, as TrendSeasonalFit ends.
 - **Refit at 24 observations.** Extend refits while the window holds fewer than 24 observations (line 632) but compares against the model RMSE while it holds at most 24 (line 646), so at exactly 24 it compares an older fit's RMSE; ccdcpp refits at most 24, as TrendSeasonalFit does with one `<=` for both.
 
+The measured agreement with PyCCD, as released and with exactly these corrections applied, is in [docs/benchmarks.md](docs/benchmarks.md#against-pyccd).
+
+# Reference
+
+## Input arrays
+
+| Entry point | `dates` | `spectral` | `qas` |
+|---|---|---|---|
+| `detect`, `resume` | `(T,)` int64 | `(B, T)` float64 | `(T,)` |
+| `detect_cube`, `detect_cube_columns`, `resume_cube_columns` | `(T,)` int64, shared | `(H, W, B, T)` float64, float32 or uint16 | `(H, W, T)` |
+
+`qas` is uint8 QA codes, or raw uint8 or uint16 QA with a QA table ([QA Input](#qa-input)). `dates` are proleptic Gregorian ordinals (`datetime.date.toordinal()`) in non-decreasing order: every entry point raises `ValueError` (`std::invalid_argument` in C++, `ccd::validate_dates`) on a date earlier than the one before it, once per call and before any pixel runs. Equal dates are allowed, and the filters keep the first observation of each date.
+
+Input arrays are never modified. The cube entry points read the spectral cube in any layout with non-negative strides, converting one pixel at a time inside each worker thread, so a uint16 cube is never widened to float64 as a whole; the results are those of the same values passed as float64. Other dtypes are converted to a C-contiguous float64 array first, as long as numpy can do so safely. C-contiguous arrays, each pixel's series contiguous, are the fastest.
+
+## Band Layout
+
+`HarmonicOptions` says which row of `spectral` plays which role. The defaults are the Landsat layout, seven bands in the order blue, green, red, nir, swir1, swir2, thermal:
+
+| Field | Default | Read by |
+|-------|---------|---------|
+| `NUM_BANDS` | `7` | every entry point: the band count `spectral` must have |
+| `DETECTION_BANDS` | `[1, 2, 3, 4, 5]` | change magnitude and the stability check, in list order |
+| `TMASK_BANDS` | `[1, 4]` | the Tmask outlier screen |
+| `SATURATION_BANDS` | `[0, 1, 2, 3, 4, 5]` | the saturation filter (`REFL_MIN`, `REFL_MAX`) |
+| `GREEN_IDX` | `1` | the InsufficientClear green median filter |
+| `THERMAL_IDX` | `6` | the thermal transform and filter; `ccdcpp.NO_BAND` for none |
+
+Every row is fitted and reported, so results have `NUM_BANDS` bands in row order. `CHANGE_THRESHOLD` and `OUTLIER_THRESHOLD` default to chi-squared quantiles with 5 degrees of freedom, the default detection band count; a layout with a different count sets them to match (a sensor profile does this itself). `BLUE_IDX`, `RED_IDX`, `NIR_IDX`, `SWIR1_IDX`, `SWIR2_IDX` and `QA_IDX` are informational and not read. A layout that does not fit the input (wrong band count, an index off the band axis, a repeated index, an empty detection or Tmask list, no green band, thermal in the saturation list, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs.
+
+## Input Unit Convention
+
+The observation filters compare `spectral` against absolute thresholds, so each threshold is a statement about the unit of the input. The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is every one of them divided by 10000 (the measured equivalence is in the input unit convention in `include/ccd/input/harmonic.hpp`). The defaults are pyccd's as pyccd intends them: exclusive saturation and thermal bounds, and the green median filter scope its InsufficientClear filter computes.
+
+| Field | Default | Read by |
+|-------|---------|---------|
+| `THERMAL_SCALE`, `THERMAL_OFFSET` | `10.0`, `-27315.0` | the Standard procedure's thermal transform, `thermal * scale + offset` |
+| `REFL_MIN`, `REFL_MAX` | `0.0`, `10000.0` | the saturation filter, on `SATURATION_BANDS` |
+| `REFL_MIN_INCLUSIVE`, `REFL_MAX_INCLUSIVE` | `False`, `False` | whether a value equal to `REFL_MIN` / `REFL_MAX` is kept |
+| `THERM_MIN`, `THERM_MAX` | `-9320.0`, `7070.0` | the thermal filter, on `THERMAL_IDX`, after the transform |
+| `THERM_MIN_INCLUSIVE`, `THERM_MAX_INCLUSIVE` | `False`, `False` | whether a value equal to `THERM_MIN` / `THERM_MAX` is kept |
+| `MEDIAN_GREEN_FILTER` | `400.0` | the InsufficientClear green median filter's offset |
+| `GREEN_FILTER_SCOPE` | `StatWindow` | where the green median filter drops observations |
+
+- **Bounds.** The defaults are exclusive at both ends of both ranges, pyccd's `0 < v < 10000` and `-9320 < v < 7070`: an observation with a saturation band at exactly `0` or `10000`, or NaN, is dropped. With both ends of a range inclusive the test is `!(v < lo || v > hi)`, under which the bounds are kept and NaN passes, reaching the fit (a pixel with a NaN kept this way returns no segments and its processing mask). The `*_INCLUSIVE` flags are not unit constants, so the physical preset leaves them as they are.
+- **Green median filter.** The InsufficientClear procedure drops cloud-like observations by their green value: the threshold is the median green of the masked observations dated up to `STAT_ORD`, plus `MEDIAN_GREEN_FILTER`, and an observation at or above it is dropped. `GREEN_FILTER_SCOPE` (a `ccdcpp.GreenFilterScope`) says where: `StatWindow` (the default, the scope pyccd's filter computes its mask for) only up to `STAT_ORD`, `All` at any date, `Off` never (what pyccd's code does; see [Differences from pyccd](#differences-from-pyccd)). With no masked observation up to `STAT_ORD` nothing is dropped.
+
 ## QA Input
 
 `qas` reaches the procedures as one class code per observation. It can be passed two ways.
 
-**Pre-classified codes (uint8).** `qas` already holds the codes, and is read as it is. The codes are the `HarmonicOptions` `QA_*` fields:
+**Pre-classified codes (uint8).** `qas` already holds the codes, the `HarmonicOptions` `QA_*` fields:
 
 | Field | Default | Read by |
 |-------|---------|---------|
@@ -222,13 +479,17 @@ The Standard procedure (`ccd/procedures.py`) is pyccd's with five such correctio
 
 Any code other than `QA_CLEAR` and `QA_WATER` keeps the observation out of the fit; a code that is none of the above counts only toward the total.
 
-**Raw QA plus a table (uint8 or uint16).** Pass the archive's own QA band and a `ccdcpp.QaTable` as `qa_table=`. Each pixel's values are decoded through the table, per thread, before the procedures run, so the run is exactly the run of the decoded codes passed as uint8, without a decoded copy of the cube. A uint16 `qas` without a table raises `TypeError`.
+**Raw QA plus a table (uint8 or uint16).** Pass the archive's own QA band and a `ccdcpp.QaTable` as `qa_table=` (a sensor profile supplies its own). Each pixel's values are decoded through the table, per thread, before the procedures run, so the run is exactly the run of the decoded codes passed as uint8, without a decoded copy of the cube. A uint16 `qas` without a table raises `TypeError`.
 
 ```python
-table = ccdcpp.qa_tables.landsat_c2_qa_pixel(hoptions)
+h, lo = c2.options()
+table = ccdcpp.qa_tables.landsat_c2_qa_pixel(h)
+explicit = ccdcpp.detect(dates, spectral, qas, h, lo, qa_table=table)
+print(explicit["models"] == out["models"])
+```
 
-columns = ccdcpp.detect_cube_columns(
-    dates, spectra, qa_pixel, hoptions, loptions, threads=8, qa_table=table)
+```text
+True
 ```
 
 | Builder | Product | Validated for production |
@@ -238,74 +499,64 @@ columns = ccdcpp.detect_cube_columns(
 | `hls_fmask(options, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | decode checked on real data: all 43 values present (38 in L30, 43 in S30) match the HLS v2.0 User Guide (T16SGC, 2020–2023) |
 | `sentinel2_scl(options)` | Sentinel-2 L2A `SCL` (uint8) | decode checked on real data: every class present (0, 2–11) matches SentiWiki (T16SGC, 2020–2023) |
 
-Each builder writes the `QA_*` codes of the `HarmonicOptions` it is given (default `HarmonicOptions()`), so build the table from the options the run uses. Each decodes most-excluding first: fill, then cloud, then shadow, then snow, then water, then clear.
+Each builder writes the `QA_*` codes of the `HarmonicOptions` it is given, so build the table from the options the run uses. Each decodes most-excluding first: fill, then cloud, then shadow, then snow, then water, then clear.
 
-- **Landsat C2 `QA_PIXEL`:** bit 0 fill; bits 3, 1, 2 (cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; bit 7 water; otherwise clear. Bit 6 (clear) and the confidence bits 8-15 are not read. This is the table the millworks nlcd plugin builds, entry for entry.
+- **Landsat C2 `QA_PIXEL`:** bit 0 fill; bits 3, 1, 2 (cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; bit 7 water; otherwise clear. Bit 6 (clear) and the confidence bits 8-15 are not read.
 - **Landsat C1 `pixel_qa`:** pyccd's `qabitval`: bit 0 fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 clear; bits 8 and 9 together, or bit 10, clear. A value pyccd rejects decodes to fill.
-- **HLS `Fmask`:** 255 fill; bits 1, 2, 0 (cloud, adjacent to cloud or shadow, reserved) cloud; bit 3 shadow; bit 4 snow; bit 5 water; otherwise clear. The aerosol level (bits 6-7) is ignored unless `exclude_high_aerosol=True`, which makes high aerosol cloud. Values above 255 are fill. The HLS v2.0 User Guide lists bit 0 as reserved and not used in v2.0 (Fmask folds cirrus into cloud), so it decodes to cloud only should it ever be set.
+- **HLS `Fmask`:** 255 fill; bits 1, 2, 0 (cloud, adjacent to cloud or shadow, reserved) cloud; bit 3 shadow; bit 4 snow; bit 5 water; otherwise clear. The aerosol level (bits 6-7) is ignored unless `exclude_high_aerosol=True`, which makes high aerosol cloud. Values above 255 are fill. Bit 0 is reserved and unused in v2.0, so it decodes to cloud only should it ever be set.
 - **Sentinel-2 `SCL`:** 0, 1 fill; 2, 3 (cast shadows, cloud shadows) shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud medium and high probability, thin cirrus) cloud; 11 snow; anything else fill.
 
-The HLS and Sentinel-2 tables follow the products' definitions, are tested, and were checked against that documentation on every value present in the real sample the presets were validated on, one cell of MGRS tile T16SGC, 2020–2023 (Fmask bit 0 was never set; SCL class 1 was absent). What the decode costs on that sample, Fmask over bright surfaces and SCL 7 over water, is under [Validation on real data](#validation-on-real-data). For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
+For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array whose entry `v` is the code of raw value `v`.
 
 ## Cadence Parameters
 
-The Standard procedure has constants that assume something about the revisit interval of the input or the false-alarm rate of the change test. They are `HarmonicOptions` fields. Each one defaults to pyccd's value, which was tuned for 16-day Landsat:
+The Standard procedure has constants that assume something about the revisit interval of the input or the false-alarm rate of the change test. They are `HarmonicOptions` fields, each defaulting to pyccd's value, tuned for 16-day Landsat (and each maps to a strategy parameter of the configuration):
 
 | Field | Default | Unit | Read by |
 |-------|---------|------|---------|
 | `PEEK_REFERENCE_DAYS` | `16.0` | days | the peek size: `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / median gap)`, never below `PEEK_SIZE` |
 | `VARIOGRAM_MIN_LAG_DAYS` | `30` | days | the variogram: the smallest lag whose most common separation exceeds this, over the pairs further apart than this |
-| `RETRAIN_MIN_OBS` | `24` | observations | Extend: refit while the window holds fewer than this; a window of at most this many compares against the model RMSE, a longer one against the seasonal RMSE |
+| `RETRAIN_MIN_OBS` | `24` | observations | Extend: refit while the window holds at most this many; such a window compares against the model RMSE, a longer one against the seasonal RMSE |
 | `RETRAIN_SPAN_FACTOR` | `1.33` | ratio | Extend: refit once the window spans at least this times the span of the last fit |
 | `SEASONAL_RMSE_COUNT` | `24` | observations | the seasonal RMSE: residuals of this many fit observations closest in day of year to the last peek observation |
 | `SEASONAL_RMSE_DIVISOR` | `4.0` | none | the seasonal RMSE: their norm divided by this. pyccd's 4 is `sqrt(24 - 8)`; it is not derived from `SEASONAL_RMSE_COUNT` |
 | `CHANGE_PROBABILITY` | `0.99` | probability | the change threshold of a peek window longer than the default: the chi-squared quantile at `1 - (1 - CHANGE_PROBABILITY) ** (PEEK_SIZE / peek)` |
 
-`ccdcpp.chi2_quantile(p, df)` is the chi-squared quantile the procedure computes, from the same boost call. `CHANGE_THRESHOLD` is `chi2_quantile(CHANGE_PROBABILITY, 5)` to the last bit, so a caller changing the probability or the detection band count sets the threshold to match:
+`ccdcpp.chi2_quantile(p, df)` is the chi-squared quantile the procedure computes. `CHANGE_THRESHOLD` is `chi2_quantile(CHANGE_PROBABILITY, 5)` to the last bit, so a caller changing the probability or the detection band count sets the threshold to match:
 
 ```python
+h = ccdcpp.HarmonicOptions()
+print(h.CHANGE_THRESHOLD == ccdcpp.chi2_quantile(h.CHANGE_PROBABILITY, 5))
 h.CHANGE_PROBABILITY = 0.995
 h.CHANGE_THRESHOLD = ccdcpp.chi2_quantile(h.CHANGE_PROBABILITY, len(h.DETECTION_BANDS))
+print(round(h.CHANGE_THRESHOLD, 4))
 ```
 
-A value that makes no sense raises `ValueError` before any pixel runs: zero or negative days, a count below 1, a probability outside (0, 1), a factor or divisor of zero or less, coefficient counts that are below 1, decrease from `COEFFICIENT_MIN` to `COEFFICIENT_MAX`, or exceed 8 (the harmonic basis's width), and a `PEEK_SIZE` below 2 (a change is `PEEK_SIZE` consecutive observations over the threshold, so 1 would make every outlier a change, and 0 would leave a peek empty).
+```text
+True
+16.7496
+```
 
-**Denser cadences.** The peek size follows the cadence through `PEEK_REFERENCE_DAYS`: it is `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / (median gap + 0.001))`, never below `PEEK_SIZE`, where the gap is between consecutive observations the processing mask keeps, up to `STAT_ORD`. At 8 days it is 12 and at 5 days 19 (`6 * 16 / 5 ≈ 19`). On the cell the HLS and Sentinel-2 presets were validated on (T16SGC, 2020–2023) `hls_s30()` and `sentinel2_l2a()` ran at a median gap of 5 days, peek 19, and the combined `hls()` at 4–5 days, peek 19–24 (`6 * 16 / 4 = 24`); `hls_l30()` at 16 days, keeping `PEEK_SIZE`. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: it is the chi-squared quantile, with one degree of freedom per detection band, at `1 - (1 - CHANGE_PROBABILITY) ** (PEEK_SIZE / peek)`. With the defaults that is 9.24 at a peek of 12 (8 days), 6.83 at 19 (5 days) and 5.90 at 24 (4 days). Both are computed per pixel from the `PEEK_SIZE` and `CHANGE_THRESHOLD` the caller passes, as pyccd's `adjustpeek` and `adjustchgthresh` do. A series whose median gap is about 14.8 days or more keeps `PEEK_SIZE` and `CHANGE_THRESHOLD` as given.
+A value that makes no sense raises `ValueError` before any pixel runs: zero or negative days, a count below 1, a probability outside (0, 1), a factor or divisor of zero or less, coefficient counts that are below 1, decrease from `COEFFICIENT_MIN` to `COEFFICIENT_MAX` or exceed 8 (the harmonic basis's width), a `PEEK_SIZE` below 2 or a `MEOW_SIZE` of 0, a NaN threshold, and negative or NaN Lasso options.
 
-`MEOW_SIZE` and the `RETRAIN_*` constants are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at the 4–5 day cadence of `hls()` on the validation cell, 12 observations are about 50–60 days and 24 about 100–120, where at 16 days they are about half a year and a year. A caller who wants them in time rather than in observations sets them from the cadence.
+**Denser cadences.** The peek size follows the cadence: it is `round(PEEK_SIZE * PEEK_REFERENCE_DAYS / (median gap + 0.001))`, never below `PEEK_SIZE`, where the gap is between consecutive observations the processing mask keeps, up to `STAT_ORD`; at 8 days it is 12, at 5 days 19, at 4 days 24. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: with the defaults it is 9.24 at a peek of 12, 6.83 at 19 and 5.90 at 24. Both are computed per pixel, as pyccd's `adjustpeek` and `adjustchgthresh` do; a series whose median gap is about 14.8 days or more keeps `PEEK_SIZE` and `CHANGE_THRESHOLD` as given. `MEOW_SIZE` and the `RETRAIN_*` constants are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 4–5 day cadence 12 observations are about 50–60 days, where at 16 days they are about half a year. A caller who wants them in time sets them from the cadence.
 
 ## Change Detection Methods
 
-A pixel that takes the Standard procedure runs the call's change detection method; the PermanentSnow and InsufficientClear procedures are the same for every method. `method=` on `detect`, `detect_cube`, `detect_cube_columns`, `resume` and `resume_cube_columns` picks it (`ccdcpp.METHODS`), applied to the call's options with `ccdcpp.with_method(hoptions, method)` before the QA table and the preprocessing plan are built: it sets `HarmonicOptions.METHOD` and the parameters the method fixes, and keeps the rest, so a sensor profile's unit constants carry through.
-
-| `method` | Change detection |
-|---|---|
-| `"ccdc"` (default) | The Standard machine: pyccd's procedure as pyccd intends it (see [Differences from pyccd](#differences-from-pyccd)) |
-
-Another method is another machine beside the Standard one (see [CCDC as a state machine](docs/ccdc-state-machine.md#another-procedure)).
-
-The method is part of the options a resume record is checked against.
+`method=` on every entry point picks the change detection a Standard pixel runs (`ccdcpp.METHODS`), applied to the call's options with `ccdcpp.with_method(hoptions, method)`, which sets `HarmonicOptions.METHOD` and the parameters the method fixes and keeps the rest. The public library has one method, `"ccdc"` (the default): the Standard machine, pyccd's procedure as pyccd intends it. The method is part of the options a resume record is checked against. Another method is another machine beside the Standard one ([docs/ccdc-state-machine.md](docs/ccdc-state-machine.md#another-procedure)).
 
 ## Sensor Profiles
 
-A `ccdcpp.SensorProfile` describes one sensor's input in one immutable object: the band names, the role each band plays, the detection, Tmask and saturation lists by role name, the unit-coupled thresholds, the Lasso constants, the cadence options, `STAT_ORD` and the QA table. `detect`, `detect_cube` and `detect_cube_columns` take one as `profile=`:
+A `ccdcpp.SensorProfile` describes one sensor's input in one immutable object: the band names, the role each band plays, the detection, Tmask and saturation lists by role name, the unit-coupled thresholds, the Lasso constants, the cadence options, `STAT_ORD`, the QA table and optionally a preprocessing plan. Every entry point takes one as `profile=`.
 
-```python
-from ccdcpp import presets
-
-columns = ccdcpp.detect_cube_columns(
-    dates, spectra, qa_pixel, threads=8, profile=presets.landsat_c2())
-```
-
-The profile supplies `hoptions`, `loptions`, `qa_table` and `preprocess` (see [Preprocessing](#preprocessing)). Any of them passed explicitly is used instead, whole: `hoptions=` replaces the profile's `HarmonicOptions` rather than being merged into it, `qa_table=None` reads `qas` as pre-classified codes, and `preprocess=None` runs the default plan. The profile's table and plan are built with the `HarmonicOptions` the run uses. `spectral` is checked against the profile's band count first (`ValueError`). Only the count: a stack with the right number of rows in another order runs as if it were in the profile's order. `band_names=`, keyword only and only with `profile=` (`TypeError` otherwise), names the rows as the caller holds them, a store's band list say; given, it must be the profile's `band_names` in the profile's order, and a misordered stack raises `ValueError` naming the first row that differs, before anything runs. A Sentinel-2 store that keeps B08 with the 10 m bands (`B02, B03, B04, B08, B05, ...`) is refused by `sentinel2_l2a()` this way rather than having B08 read as red edge 1. Without it the call is unchanged. The outputs of `detect` and `detect_cube_columns` gain `band_names`, a tuple in row order; `detect_cube`'s per-pixel dicts do not. Without `profile=`, `hoptions` and `loptions` are required and a call, positional or by keyword, is the call of the extension function of the same name (`ccdcpp.ccdcpp.detect`, ...), output included.
-
-`profile.options()` returns new `(HarmonicOptions, LassoOptions)`, `profile.qa_table()` the table (or `None` for pre-classified input), built by the `qa_tables` builder `qa_table_builder` names with the profile's `qa_table_options` as keyword arguments (`{"exclude_high_aerosol": True}` for `hls_fmask`; the builder's defaults where none is given), and `profile.check(spectral, band_names=None)` raises `ValueError` when the band axis (second from last) does not match, or the names given are not the profile's in its order. Profiles are hashable and picklable, where the option objects are not, so a profile can be sent to worker processes.
+- The profile supplies `hoptions`, `loptions`, `qa_table` and `preprocess`. Any of them passed explicitly is used instead, whole: `hoptions=` replaces the profile's `HarmonicOptions` rather than being merged into it, `qa_table=None` reads `qas` as pre-classified codes, `preprocess=None` runs the default plan.
+- `spectral` is checked against the profile's band count (`ValueError`), and only the count. `band_names=` (keyword only, only with `profile=`) names the rows as the caller holds them; a stack in another order then raises `ValueError` naming the first row that differs, before anything runs. A Sentinel-2 store that keeps B08 with the 10 m bands is refused by `sentinel2_l2a()` this way rather than having B08 read as red edge 1.
+- The outputs of `detect`, `resume`, `detect_cube_columns` and `resume_cube_columns` gain `band_names`; `detect_cube`'s per-pixel dicts do not.
+- `profile.options()` returns new `(HarmonicOptions, LassoOptions)`, `profile.qa_table()` the table (or `None`), `profile.check(spectral, band_names=None)` the band check. Profiles are hashable and picklable, so a profile can be sent to worker processes. Without `profile=`, `hoptions` and `loptions` are required and a call is the call of the extension function of the same name (`ccdcpp.ccdcpp.detect`, ...).
 
 ### Presets
 
-`ccdcpp.presets` holds the inputs ccdcpp is validated on, Landsat, and presets for HLS v2.0 and Sentinel-2 L2A. Their values follow the products' documentation, are tested on synthetic series, and were validated on a real sample: one cell of MGRS tile T16SGC near Atlanta, 2020–2023, four years (see [Validation on real data](#validation-on-real-data)).
-
-The three Landsat presets take seven bands in the order blue, green, red, nir, swir1, swir2, thermal (TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6; OLI/TIRS bands 2, 3, 4, 5, 6, 7, 10).
+`ccdcpp.presets` holds the inputs ccdcpp is validated on, Landsat, and presets for HLS v2.0 and Sentinel-2 L2A, which follow the products' documentation, are tested on synthetic series and were validated on a real sample: one cell of MGRS tile T16SGC near Atlanta, 2020–2023. The three Landsat presets take seven bands in the order blue, green, red, nir, swir1, swir2, thermal (TM/ETM+ bands 1, 2, 3, 4, 5, 7, 6; OLI/TIRS bands 2, 3, 4, 5, 6, 7, 10).
 
 | Preset | Optical input | Thermal input | QA input | Validated for production |
 |--------|---------------|---------------|----------|--------------------------|
@@ -317,9 +568,9 @@ The three Landsat presets take seven bands in the order blue, green, red, nir, s
 | `hls()` | reflectance 0..1 (`B* * 0.0001`), L30 and S30 | none | raw `Fmask` (uint8) | yes, with a caveat: Fmask over bright surfaces (T16SGC, 2020–2023) |
 | `sentinel2_l2a()` | reflectance 0..1 (`(DN + BOA_ADD_OFFSET) / 10000`) | none | raw `SCL` (uint8) | validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled |
 
-`landsat_c1_dn().options()` is `HarmonicOptions()` and `LassoOptions()`, field for field. `landsat_c1_physical()` is the physical-unit preset (see the input unit convention in `harmonic.hpp`): `REFL_MIN`/`REFL_MAX` 0 and 1, `THERM_MIN`/`THERM_MAX` -0.932 and 0.707, `MEDIAN_GREEN_FILTER` 0.04, `alpha` and `coef_floor` 1e-4, which is every absolute threshold and both Lasso constants of the DN preset divided by 10000, and the identity thermal transform. It is the same fit as the DN preset, with coefficients in the input's units. `landsat_c2()` has the same thresholds (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL` with `qa_tables.landsat_c2_qa_pixel`.
+`landsat_c1_dn().options()` is `HarmonicOptions()` and `LassoOptions()`, field for field. `landsat_c1_physical()` divides every absolute threshold and both Lasso constants (`alpha`, `coef_floor`) by 10000 and uses the identity thermal transform: the same fit, with coefficients in the input's units. `landsat_c2()` has the same thresholds (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL`.
 
-The HLS and Sentinel-2 presets have the thresholds and Lasso constants of `landsat_c1_physical()`, detect change on the five Landsat-equivalent bands green, red, nir, swir1 and swir2 with the default chi-squared(5) thresholds, use green and swir1 for Tmask, saturation-screen every optical row, have no statistics cutoff (`stat_ord=None`) and keep pyccd's cadence values (see [Cadence Parameters](#cadence-parameters)). The single-product presets name their rows by product band ID; `hls()` names them by role, since its rows mix two numberings.
+The HLS and Sentinel-2 presets have the thresholds and Lasso constants of `landsat_c1_physical()`, detect change on green, red, nir, swir1 and swir2 with the default chi-squared(5) thresholds, use green and swir1 for Tmask, saturation-screen every optical row, have no statistics cutoff (`stat_ord=None`) and keep pyccd's cadence values.
 
 | Preset | Rows (role) | Left out |
 |--------|-------------|----------|
@@ -328,40 +579,27 @@ The HLS and Sentinel-2 presets have the thresholds and Lasso constants of `lands
 | `hls()` | coastal, blue, green, red, nir (L30 B05, S30 B8A), swir1, swir2 | thermal, which S30 lacks |
 | `sentinel2_l2a()` | B02 (blue), B03 (green), B04 (red), B05, B06, B07 (red_edge_1..3), B08 (nir_broad), B8A (nir), B11 (swir1), B12 (swir2) | B01, B09 (60 m, atmospheric); L2A has no B10 |
 
-- **HLS scaling.** Every HLS layer is `int16` times 0.0001. For the reflective bands that is the product's scale factor; L30 B10 is brightness temperature in degrees Celsius with scale factor 0.01, so `B10 * 0.0001` is degrees Celsius / 100, `CELSIUS_HUNDREDTHS`, and one divisor serves every row. The fill, -9999, becomes -0.9999 and is dropped by the reflectance and thermal bounds.
-- **HLS QA.** `Fmask` decodes through `qa_tables.hls_fmask` with the aerosol level ignored; `dataclasses.replace(preset, qa_table_options={"exclude_high_aerosol": True})` treats high aerosol as cloud.
-- **S30 and Sentinel-2 bands.** The red edges and B08 are fitted, reported and saturation-screened but not detected on; HLS does not adjust them to the OLI bandpasses.
-- **Sentinel-2 offset.** From processing baseline 04.00 (25 January 2022) L2A stores `DN = reflectance * 10000 - BOA_ADD_OFFSET`, with a negative, band-dependent `BOA_ADD_OFFSET` in each product's metadata (0 before). The offset varies by scene and ccdcpp never sees the metadata, so the caller applies it; a series that mixes corrected and uncorrected scenes jumps at the baseline change and detects a false break. Some archives distribute corrected bands while their metadata still declares the offset (earth-search's `sentinel-2-l2a` COGs), and there it must not be applied a second time. DN 0 (no data) becomes 0 or negative and is dropped.
-- **Sentinel-2 QA.** `SCL` decodes through `qa_tables.sentinel2_scl`; class 7 (unclassified) is cloud, which costs water pixels (see [Validation on real data](#validation-on-real-data)). A caller who wants them passes `qa_table=ccdcpp.QaTable(codes)`, with `codes` the preset table's codes and entry 7 changed.
-- **L30 and S30 in one series.** An L30 and an S30 observation on one date are deduplicated like any other pair, and the first in array order is kept: put L30 before S30 on a shared date.
-- **Dense cadences.** The peek window follows the cadence (about 12 observations at 8 days, 19 at 5, 24 at 4; on the validation cell `hls()` ran at 4–5 days, peek 19–24), with the change threshold that goes with it. `MEOW_SIZE` and the `RETRAIN_*` counts stay pyccd's observation counts, as described under Denser cadences.
+- **HLS scaling.** Every HLS layer is `int16` times 0.0001; for L30 B10 (degrees Celsius, scale 0.01) that is degrees Celsius / 100, so one divisor serves every row. The fill, -9999, becomes -0.9999 and is dropped by the bounds.
+- **HLS QA.** `Fmask` decodes with the aerosol level ignored; `dataclasses.replace(preset, qa_table_options={"exclude_high_aerosol": True})` treats high aerosol as cloud.
+- **S30 and Sentinel-2 bands.** The red edges and B08 are fitted, reported and saturation-screened but not detected on.
+- **Sentinel-2 offset.** From processing baseline 04.00 (25 January 2022) L2A stores `DN = reflectance * 10000 - BOA_ADD_OFFSET`, with a band-dependent offset in each product's metadata. ccdcpp never sees the metadata, so the caller applies it; a series that mixes corrected and uncorrected scenes jumps at the baseline change and detects a false break. Some archives distribute corrected bands while their metadata still declares the offset (earth-search's `sentinel-2-l2a` COGs); there it must not be applied twice.
+- **Sentinel-2 QA.** `SCL` class 7 (unclassified) is cloud, which costs water pixels (below). A caller who wants them passes `qa_table=ccdcpp.QaTable(codes)` with entry 7 changed.
+- **L30 and S30 in one series.** An L30 and an S30 observation on one date are deduplicated like any other pair, the first in array order kept: put L30 before S30 on a shared date.
 
-### Validation on real data
+**Validation on real data.** The HLS and Sentinel-2 presets were run on Landsat ARD tile h024v013 chunk 00030008 near Atlanta, cut to MGRS tile T16SGC, 2020-01-01 to 2023-12-31, from Microsoft Planetary Computer (`hls2-l30`, `hls2-s30`, `sentinel-2-l2a` at 20 m), against Landsat Collection 2 ARD of the same cell run with `landsat_c2()` without its statistics cutoff. Four years of one cell is the whole record.
 
-The HLS and Sentinel-2 presets were run on one cell: Landsat ARD tile h024v013 chunk 00030008 near Atlanta, cut to MGRS tile T16SGC, 2020-01-01 to 2023-12-31, read from Microsoft Planetary Computer (`hls2-l30` and `hls2-s30`, which are LP DAAC's HLS v2.0, and `sentinel-2-l2a` at 20 m). The reference was Landsat Collection 2 ARD of the same cell and years run with `landsat_c2()` without its statistics cutoff. Four years of one cell is the whole record; nothing here was measured elsewhere. The quarry and SCL 7 counts are recomputed in the validation's `results/qa_costs.json` (`scripts/qa_costs.py`), kept with the validation outside this repository.
+| Preset | Pixels, dates | What was measured |
+|--------|---------------|-------------------|
+| `hls_l30()` | 300,288 at 30 m, 238 | Break agreement per pixel with Landsat 8+9 ARD kappa 0.44 (0.43 with Landsat 7 added); matched breaks a median 8 days apart, 85% within 96 days, no date bias; model levels within 0.004 reflectance. No break before the second half of 2021 (a thin 2020). |
+| `hls_s30()` | 300,288, 461 | 41% more break pixels than L30, a median 16 days earlier. Fmask on Sentinel-2 calls bright barren land cloud: over the 1,862 quarry pixels it flags 63% of observations as cloud and sends 1,145 of them to InsufficientClear. |
+| `hls()` | 300,288, 699 | Mostly follows S30 (kappa 0.71 with S30, 0.45 with L30); L30 first on a shared date worked on all 85 same-date pairs. 1,741 pixels go to InsufficientClear (S30: 2,101; L30: 2). |
+| `sentinel2_l2a()` | 675,648 at 20 m, 565 | With the per-scene offset the 2022 baseline change looks like any other window (0.34% of pixels break within 60 days of it; 92.3% without), apart from 24 water pixels. Against S30, levels about 0.01 higher and about twice the RMSE, kappa 0.48, fewer break pixels (2.35% against 3.62%). SCL 7 (2.13% of observations), with SCL 2 on small water bodies, sends 1,355 of the cell's 3,983 water pixels to InsufficientClear (2,545 decoded as fill, 587 as clear). |
 
-| Preset | Pixels, dates | Status | What was measured |
-|--------|---------------|--------|-------------------|
-| `hls_l30()` | 300,288 at 30 m, 238 | validated | Break agreement per pixel with Landsat 8+9 ARD kappa 0.44, where adding Landsat 7 to the ARD gives 0.43; matched breaks a median 8 days apart, 85% within 96 days, no date bias; model levels within 0.004 reflectance. With a thin 2020 (37 scenes, half partial) no break is detected before the second half of 2021. |
-| `hls_s30()` | 300,288, 461 | validated, with a caveat: Fmask over bright surfaces | 41% more break pixels than L30, a median 16 days earlier, in classes that change. Fmask on Sentinel-2 (no thermal band) calls bright barren land cloud: over all 1,862 quarry (land cover 31) pixels on the HLS grid it flags 63% of observations as cloud, and 1,145 of them go to InsufficientClear (68% cloud over those). 170 of ARD's 173 InsufficientClear pixels are quarries, and both of L30's 2. |
-| `hls()` | 300,288, 699 | validated, with a caveat: Fmask over bright surfaces | Mostly follows S30 (kappa 0.71 with S30, 0.45 with L30). L30 first on a shared date worked on all 85 same-date pairs (84 dates; on 2021-11-17 L30 has two granules). 1,741 pixels go to InsufficientClear (S30: 2,101; L30: 2). |
-| `sentinel2_l2a()` | 675,648 at 20 m, 565 | validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled | With the per-scene offset the 2022 baseline change looks like any other window (0.34% of pixels break within 60 days of it; 92.3% without), apart from 24 water pixels (0.60% of water pixels against a 0.08% baseline), a seasonal winter-to-spring step. Against S30, levels about 0.01 higher and about twice the RMSE (no BRDF or bandpass adjustment), kappa 0.48, fewer break pixels (2.35% against 3.62%). |
-
-- **SCL 7 stays cloud, at a cost in water pixels.** SCL 7 (unclassified) is 2.13% of the cell's non-fill observations. As cloud, together with SCL 2 (cast shadows) on small water bodies, it sends 1,355 of the cell's 3,983 water pixels, and 3,426 pixels in all, to the InsufficientClear procedure. Decoded as fill it would send 2,545, and as clear 587.
-- **QA decode.** `hls_fmask` matches the HLS v2.0 User Guide on all 43 values present (38 in L30, 43 in S30) and `sentinel2_scl` matches SentiWiki on every class present (0, 2–11). High aerosol is flagged on about half the observations; treating it as cloud would remove another 16.5% (L30) and 16.8% (S30) of what QA keeps, which is why the presets ignore it.
-- **Coastal B01.** Its saturation screen drops 0.1–0.8% of observations, all at or below 0, none at 1.0; without it 99.0% (L30) and 99.4% (S30) of breaks are unchanged. It stays in the screen.
-- **Band order.** Only the band count of a stack is checked unless `band_names=` is passed; the sample's Sentinel-2 store kept B08 with the 10 m bands, which `sentinel2_l2a()` would have read as red edge 1 without complaint (see [Sensor Profiles](#sensor-profiles)).
-- **Fixtures.** Four of the sample's pixels (an evergreen-forest pixel, open water, high-intensity developed and a pixel with a 2022 break) in all three products, and a fifth in the two HLS products whose result depends on the coastal low bound, are pinned in `tests/python/fixtures/t16sgc_2020_2023`, raw values and raw QA with each scene's Sentinel-2 offset, with every preset's output on them (`tests/python/test_real_fixtures.py`). The forest pixel, `481_393`, is named 1-based (column, row) as the production CCD table names it.
-
-### Roles and thresholds
-
-The roles are `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the Landsat near infrared, TM/ETM+ band 4 and OLI band 5 (865 nm), and on Sentinel-2 the 865 nm B8A; the broad 842 nm Sentinel-2 B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no list can name them. A role resolves to its band's position in `band_names`, and each list keeps the order the profile gives, which is the order the procedures accumulate in. So a profile whose bands are listed in another order, with `spectral` in that order, gives the same output with its band axis in that order.
-
-`change_threshold` and `outlier_threshold` default to `None`, which computes `chi2_quantile(CHANGE_PROBABILITY, n)` and `chi2_quantile(ccdcpp.OUTLIER_PROBABILITY, n)` for `n` detection bands; for five bands these are the `HarmonicOptions` defaults to the last bit. A profile whose detection count is not five but whose threshold is set to the chi2(5) default gets a `UserWarning` from `options()`.
+High aerosol is flagged on about half the HLS observations; treating it as cloud would remove another 16.5% (L30) and 16.8% (S30) of what QA keeps, which is why the presets ignore it. Five of the sample's pixels (four in all three products, a fifth in the two HLS products) are pinned with every preset's output in `tests/python/fixtures/t16sgc_2020_2023` (`tests/python/test_real_fixtures.py`).
 
 ### Adding a sensor
 
-A sensor is one `SensorProfile` call; `ccdcpp.presets` writes its profiles that way. **Not shipped:** the Landsat 8/9 Collection 2 profile below, with the coastal band, shows the shape; its values are not validated and it is not part of `ccdcpp.presets`.
+A sensor is one `SensorProfile` call; `python/ccdcpp/presets.py` writes its profiles that way. **Not shipped:** this Landsat 8/9 Collection 2 profile with the coastal band shows the shape; its values are not validated.
 
 ```python
 from ccdcpp import CELSIUS_HUNDREDTHS, REFLECTANCE, SensorProfile
@@ -381,13 +619,25 @@ def landsat_oli_c2():
         stat_ord=736694,  # 2017-12-31, the Landsat statistics cutoff
         qa_table_builder="landsat_c2_qa_pixel",
     )
+
+oli = landsat_oli_c2()
+h, lo = oli.options()
+print(h.NUM_BANDS, list(h.DETECTION_BANDS), list(h.TMASK_BANDS), h.THERMAL_IDX, lo.alpha)
 ```
 
-`units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`, and `refl_inclusive=(lo, hi)` for `REFL_MIN_INCLUSIVE`/`REFL_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE` are the two Landsat blocks), `thermal` a `ccdcpp.Thermal` (transform and bounds, and `inclusive=(lo, hi)` for `THERM_MIN_INCLUSIVE`/`THERM_MAX_INCLUSIVE`, default `(False, False)`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None` for an input without one, and `cadence` a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`). `green_filter_scope` is `"stat_window"` (the default), `"all"` or `"off"` (`ccdcpp.GREEN_FILTER_SCOPES`), for `GREEN_FILTER_SCOPE`. `qa_table_options` is a mapping of keyword arguments for the `qa_table_builder` (none by default), each a name and a value of exactly the type `ccdcpp.QA_TABLE_OPTIONS` lists for the builder (`exclude_high_aerosol` takes `True` or `False`, not `None` or `1`). The profile stores every argument its builder declares, the default written out where none is given, so the HLS presets hold `(("exclude_high_aerosol", False),)` and `()`, `{"exclude_high_aerosol": False}` and the preset are one profile; a profile without a builder stores none. Options without a builder, a repeated name, a name the builder does not take, a value of another type, or input that is not a mapping or `(name, value)` pairs raise `ValueError`. `alpha` and `coef_floor` have no default because both are statements about the input unit and a wrong value does not raise. A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, thermal band without `thermal=`) raises `ValueError` when it is constructed.
+```text
+8 [2, 3, 4, 5, 6] [2, 5] 7 0.0001
+```
+
+- **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no list can name them. Each list keeps the order the profile gives, which is the order the procedures accumulate in.
+- **Units and thermal**: `units` is a `ccdcpp.Units` (`REFL_MIN`, `REFL_MAX`, `MEDIAN_GREEN_FILTER`, `refl_inclusive`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (transform, bounds, `inclusive`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None`. `alpha` and `coef_floor` have no default, because both are statements about the input unit and a wrong value does not raise.
+- **Thresholds**: `change_threshold` and `outlier_threshold` default to `None`, which computes the chi-squared quantiles for the profile's detection band count (for five bands the `HarmonicOptions` defaults to the last bit).
+- **Other fields**: `cadence`, a mapping of the [Cadence Parameters](#cadence-parameters) and `MEOW_SIZE`/`PEEK_SIZE` (`ccdcpp.CADENCE_FIELDS`); `green_filter_scope`, `"stat_window"` (the default), `"all"` or `"off"`; `qa_table_options`, keyword arguments for the `qa_table_builder` of exactly the types `ccdcpp.QA_TABLE_OPTIONS` lists; `preprocess`, a `ccdcpp.Preprocess` ([Preprocessing](#preprocessing)).
+- A profile that breaks a layout rule (an unknown or repeated role, a list naming a role the profile lacks, no green band, thermal in the saturation list, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
 
 ## Preprocessing
 
-Before a procedure fits a pixel it builds the processing mask, the set of observations it fits: an optional transform of one band of the pixel's private copy, then a chain of filter steps run in order. A `PreprocessPlan` holds one such `ProcedurePlan` (transform and chain) per procedure, `standard`, `snow` (PermanentSnow) and `insufficient_clear`, and each pixel runs the one of the procedure it selects. The steps are:
+Before a procedure fits a pixel it builds the processing mask, the observations it fits: an optional transform of one band of the pixel's private copy, then a chain of filter steps run in order. A `PreprocessPlan` holds one such `ProcedurePlan` (transform and chain) per procedure, `standard`, `snow` (PermanentSnow) and `insufficient_clear`, and each pixel runs the one of the procedure it takes. The steps:
 
 | Step | Effect |
 |------|--------|
@@ -402,7 +652,7 @@ A range keeps `min < x < max`; an inclusive end also keeps a value equal to it, 
 
 ### The default plan
 
-Without a plan, `detect`, `detect_cube` and `detect_cube_columns` run `default_plan(hoptions)`, the plan the `HarmonicOptions` describe. For `HarmonicOptions()` it is (`ccdcpp.default_plan(ccdcpp.HarmonicOptions()).describe()`):
+Without a plan, a run uses `default_plan(hoptions)`, pyccd's preprocessing as pyccd intends it. For `HarmonicOptions()` it is (`print(ccdcpp.default_plan(ccdcpp.HarmonicOptions()))`):
 
 ```text
 standard
@@ -429,58 +679,35 @@ insufficient_clear
   5  Dedupe
 ```
 
-Every procedure keeps `QA_CLEAR` and `QA_WATER`, tests `THERMAL_IDX` against `THERM_MIN`/`THERM_MAX` (omitted when `THERMAL_IDX` is `NO_BAND`), tests `SATURATION_BANDS` against `REFL_MIN`/`REFL_MAX` and dedupes; `snow` then adds `QA_SNOW` back and dedupes, and `insufficient_clear` runs the green median filter (`GREEN_IDX`, `MEDIAN_GREEN_FILTER`, `STAT_ORD`, `GREEN_FILTER_SCOPE`) and dedupes. Only `standard` has a transform, `THERMAL_SCALE`/`THERMAL_OFFSET`, and none when that is the identity, so the other two test the thermal band in the caller's unit, as pyccd does. Passing the default plan explicitly gives the same output, to the bit, as passing none.
+Only `standard` has a transform (`THERMAL_SCALE`/`THERMAL_OFFSET`, none when that is the identity), so the other two test the thermal band in the caller's unit, as pyccd does. Passing the default plan explicitly gives the same output, to the bit, as passing none.
 
-### A custom plan in C++
+### A custom plan
 
-A plan is a value; edit the default or build chains from the named step constructors, and pass it as `RunSpec::plan` to `run_pixel` or `run_cube`, shared by every pixel and thread of the call:
-
-```cpp
-#include "ccd/ccd.hpp"
-
-namespace pp = ccd::preprocess;
-
-ccd::HarmonicOptions h;
-pp::PreprocessPlan plan = pp::default_plan(h);
-
-// The thermal transform on every procedure, not only Standard.
-plan.snow.transform = plan.standard.transform;
-plan.insufficient_clear.transform = plan.standard.transform;
-
-// Standard keeps snow observations too.
-plan.standard.chain = pp::Chain{
-    pp::Step::keep_qa(pp::qa_set({h.QA_CLEAR, h.QA_WATER, h.QA_SNOW})),
-    pp::Step::thermal_range(h.THERMAL_IDX, ccd::filter::thermal_range(h)),
-    pp::Step::band_range(h.SATURATION_BANDS, ccd::filter::reflectance_range(h)),
-    pp::Step::dedupe(),
-};
-
-const auto shared = std::make_shared<const pp::PreprocessPlan>(plan);
-ccd::RunSpec spec{h, l};
-spec.plan = shared;
-ccd::FitResult result = ccd::run_pixel(spec, dates, spectral, qas).result;
-```
-
-`pp::validate(plan, bands)` runs once per call, before any pixel, and throws `std::invalid_argument`, naming the procedure and the step, when a band is not below the band count, a `GreenMedian` has no band, a transformed band is also tested by a `BandRange` of its procedure, an `AddQa` is not followed by a `Dedupe`, or a chain is over capacity.
-
-### A custom plan in Python
-
-The same classes are bound: `ccdcpp.StepKind`, `Step` (with the constructors `keep_qa`, `add_qa`, `thermal_range`, `band_range`, `green_median`, `dedupe`), `Chain`, `Affine`, `ProcedurePlan`, `PreprocessPlan`, `default_plan(hoptions)` and `validate_plan(plan, bands)`. Plans compare with `==`, and `describe()` (also the `repr`) prints them as above. Each entry point takes one as `preprocess=`, keyword only, checks it against the band count (`ValueError`) and copies it before the GIL is released:
+A plan is a value: edit the default, or build chains from the step constructors (`ccdcpp.Step.keep_qa`, `add_qa`, `thermal_range`, `band_range`, `green_median`, `dedupe`). Every entry point takes one as `preprocess=` and checks it against the band count (`ValueError`); `ccdcpp.validate_plan(plan, bands)` checks one directly. Here the Standard procedure keeps snow observations too, on a DN pixel with pre-classified codes:
 
 ```python
-plan = ccdcpp.default_plan(hoptions)
-plan.standard.chain[0] = ccdcpp.Step.keep_qa([hoptions.QA_CLEAR, hoptions.QA_WATER, hoptions.QA_SNOW])
-out = ccdcpp.detect(dates, spectra, qas, hoptions, loptions, preprocess=plan)
+h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+plan = ccdcpp.default_plan(h)
+plan.standard.chain[0] = ccdcpp.Step.keep_qa([h.QA_CLEAR, h.QA_WATER, h.QA_SNOW])
+print(plan.standard.chain[0])
+
+dn = spectral * 10000                      # Collection 1 DN, as the default options expect
+dn[6] = (spectral[6] * 100 + 273.15) * 10  # Kelvin x 10
+codes = np.where(qas == 21824, h.QA_CLEAR, h.QA_CLOUD).astype(np.uint8)
+snowy = ccdcpp.detect(dates, dn, codes, h, lo, preprocess=plan)
+print(len(snowy["models"]))
 ```
 
-With a sensor profile, a plan is written by role and QA code name instead, as frozen dataclasses: `KeepQa(codes=("clear", "water"))`, `AddQa(codes=("snow",))`, `ThermalRange(min=, max=, inclusive=)`, `BandRange(roles=, min=, max=, inclusive=)`, `GreenMedian(offset=, scope=, max_date=, role="green")`, `Dedupe()` and `Transform(role, scale, offset)`, gathered per procedure as `ProcedureChain(steps=, transform=)` and per plan as `Preprocess(standard=, snow=, insufficient_clear=)`. A field left `None` takes the value the default plan would take from the run's options; a `ProcedureChain` with `steps=None` keeps that procedure's default steps, and its `transform` defaults to `ccdcpp.DEFAULT_TRANSFORM`, the procedure's default transform (`None` for none); a procedure left `None` keeps its default transform and steps, so `Preprocess()` is the default plan. Roles resolve to the profile's rows as its band lists do, and code names (`ccdcpp.QA_CODE_FIELDS`) to the run's `QA_*` codes. A profile holds it as `SensorProfile(preprocess=...)` and stays hashable and picklable; `profile.preprocess_plan(options)` builds the `PreprocessPlan`, and the entry points run it unless `preprocess=` is passed (`None` for the default plan, a `PreprocessPlan`, or another `Preprocess`).
+```text
+<Step KeepQa codes {0, 1, 3}>
+2
+```
 
-Landsat Collection 2 with its thermal band handed over as the raw `ST_B10` DN, converted to the degrees Celsius / 100 of `landsat_c2()`'s bounds on every procedure, `((DN * 0.00341802 + 149.0) - 273.15) / 100`:
+With a sensor profile a plan is written by role and QA code name instead, as frozen dataclasses: `KeepQa(codes=("clear", "water"))`, `AddQa`, `ThermalRange`, `BandRange(roles=...)`, `GreenMedian`, `Dedupe()` and `Transform(role, scale, offset)`, gathered per procedure as `ProcedureChain(steps=, transform=)` and per plan as `Preprocess(standard=, snow=, insufficient_clear=)`. A field or procedure left `None` takes what the default plan would, so `Preprocess()` is the default plan. A profile holds one as `SensorProfile(preprocess=...)`. Landsat Collection 2 with its thermal band as the raw `ST_B10` DN, converted on every procedure to the degrees Celsius / 100 of `landsat_c2()`'s bounds:
 
 ```python
 import dataclasses
-import ccdcpp
-from ccdcpp import Preprocess, ProcedureChain, Transform, presets
+from ccdcpp import Preprocess, ProcedureChain, Transform
 
 # ((DN * 0.00341802 + 149.0) - 273.15) / 100
 st_b10 = Transform("thermal", scale=3.41802e-5, offset=-1.2415)
@@ -494,95 +721,58 @@ c2_raw_thermal = dataclasses.replace(
     ),
 )
 
-columns = ccdcpp.detect_cube_columns(
-    dates, spectra, qa_pixel, threads=8, profile=c2_raw_thermal)
+raw = spectral.copy()
+raw[6] = (spectral[6] * 100 + 273.15 - 149.0) / 0.00341802   # ST_B10 DN
+from_raw = ccdcpp.detect(dates, raw, qas, profile=c2_raw_thermal)
+print([m["break_day"] for m in from_raw["models"]] == [m["break_day"] for m in out["models"]])
 ```
 
-A `Preprocess` that does not fit its profile raises `ValueError`: an unknown QA code name or scope when it is constructed, a role the profile lacks when the profile is, and the `validate_plan` checks when the plan is built.
+```text
+True
+```
 
-### Remaining differences from pyccd
+In C++ the same plan is a `ccd::preprocess::PreprocessPlan` in `RunSpec::plan`, shared by every pixel and thread of the call:
 
-The default plan is pyccd's preprocessing as pyccd intends it. What still differs is listed in [Differences from pyccd](#differences-from-pyccd): the RLM convergence test, the date order and the first observation of a date kept by `Dedupe`, and the green median filter, which ccdcpp applies (`StatWindow` scope) where pyccd's drops nothing (`GreenMedian(scope="off")` gives pyccd's code). An undefined raw QA value decodes to fill where pyccd raises. The PermanentSnow and InsufficientClear procedures keep pyccd's untransformed thermal test; a plan with the transform on every procedure, as above, changes it.
+```cpp
+#include "ccd/ccd.hpp"
 
-## Native C++ Implementation
+namespace pp = ccd::preprocess;
 
-The core CCD algorithm was translated into modern C++17 to eliminate the overhead associated with Python execution.
+ccd::RunSpec spec_with_snow(const ccd::HarmonicOptions& h, const ccd::LassoOptions& l)
+{
+    pp::PreprocessPlan plan = pp::default_plan(h);
 
-## Python Bindings
+    // The thermal transform on every procedure, not only Standard.
+    plan.snow.transform = plan.standard.transform;
+    plan.insufficient_clear.transform = plan.standard.transform;
 
-Python bindings were developed using **pybind11**, allowing existing Python workflows to utilize the C++ implementation with minimal code changes.
+    // Standard keeps snow observations too.
+    plan.standard.chain = pp::Chain{
+        pp::Step::keep_qa(pp::qa_set({h.QA_CLEAR, h.QA_WATER, h.QA_SNOW})),
+        pp::Step::thermal_range(h.THERMAL_IDX, ccd::filter::thermal_range(h)),
+        pp::Step::band_range(h.SATURATION_BANDS, ccd::filter::reflectance_range(h)),
+        pp::Step::dedupe(),
+    };
 
-## Reusable Workspace Buffers
+    ccd::RunSpec spec{h, l};
+    spec.plan = std::make_shared<const pp::PreprocessPlan>(plan);
+    return spec;
+}
+```
 
-One of the largest performance improvements comes from eliminating repeated memory allocations.
+`pp::validate(plan, bands)` runs once per call, before any pixel, and throws `std::invalid_argument`, naming the procedure and the step, when a band is not below the band count, a `GreenMedian` has no band, a transformed band is also tested by a `BandRange` of its procedure, an `AddQa` is not followed by a `Dedupe`, or a chain is over capacity. A `Preprocess` that does not fit its profile raises `ValueError`: an unknown QA code name or scope when it is constructed, a role the profile lacks when the profile is, and these checks when the plan is built.
 
-Instead of constructing temporary arrays during each stage of the algorithm, reusable workspace buffers are allocated once and reused throughout processing. This significantly reduces dynamic allocations, improves cache locality, and lowers memory overhead.
-
-## Reduced Redundant Computation
-
-Several portions of the original implementation repeatedly compute values that remain unchanged.
-
-`ccdcpp` caches and reuses these intermediate results whenever possible, including:
-
-- Harmonic basis matrices
-- Regression workspaces
-- LASSO solver buffers
-- Design matrices that would otherwise be rebuilt repeatedly
-
-Reducing redundant computation lowers overall runtime while preserving algorithm behavior.
-
-## Zero-Copy NumPy Interface
-
-Custom `ArrayView` classes provide lightweight views directly into NumPy memory.
-
-Rather than copying arrays into C++, the library operates directly on the existing NumPy buffers whenever possible, dramatically reducing memory traffic for large datasets.
-
-## Python GIL Release
-
-Long-running computations release Python's Global Interpreter Lock (GIL).
-
-This allows multiple OpenMP worker threads to execute concurrently while preventing Python from becoming a serialization bottleneck.
-
-## OpenMP Parallel Processing
-
-The `detect_cube()` API automatically parallelizes processing across CPU cores using OpenMP.
-
-Entire image chunks can therefore be processed efficiently without requiring Python multiprocessing or additional user code.
-
----
-
-# Installation
-
-The repository includes an `environment.yml` file containing the recommended build environment.
-
-## 1. Create the Conda Environment
+# Build and test
 
 ```bash
-conda env create -f environment.yml
-conda activate geo
+cmake -S . -B build                    # C++ library, tests and the Python module
+cmake --build build --config Release -j8
+pip install .                          # the Python package
 ```
 
-## 2. Configure the Project
+CMake options: `CCD_ENABLE_OPENMP` (ON), `CCD_BUILD_PYTHON` (ON), `CCD_BUILD_TESTS` (ON), `CCD_OBSERVE` (ON; the diagnostics hooks), `CCD_EXTENSIONS` (strategy extension directories; none by default) and `CCD_INSTALL_CPP` (OFF; installs `ccd_core` and the headers). On macOS with Apple clang, CMake finds Homebrew's libomp only when told where it is: add `-DOpenMP_CXX_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_LIB_NAMES=libomp -DOpenMP_CXX_INCLUDE_DIR=$(brew --prefix libomp)/include -DOpenMP_libomp_LIBRARY=$(brew --prefix libomp)/lib/libomp.dylib` to the configure line.
 
-```bash
-cmake -S . -B build
-```
-
-## 3. Build
-
-```bash
-cmake --build build --config Release
-```
-
-## 4. Install the Python Package
-
-```bash
-pip install .
-```
-
-## 5. Run the Tests
-
-Three tiers, from the cheapest:
+The tests run in three tiers, from the cheapest:
 
 | Tier | Command | What it runs | When |
 |---|---|---|---|
@@ -590,7 +780,7 @@ Three tiers, from the cheapest:
 | Full | `ctest --test-dir build -j8` | every test, every cut | before a change is merged, and after any change to the machine, the fits, the record or resume |
 | Release | the full tier on a sanitizer build, below, and on Linux (`tools/linux-compare`) | memory errors, undefined behaviour and asserts; another compiler's arithmetic | before a release, or a change that can behave differently by platform |
 
-The sanitizer build is Debug at `-O2` (asserts on; at `-O0` the sweeps run several hundred times slower than Release). On macOS with Apple clang, CMake finds Homebrew's libomp only when told where it is: add `-DOpenMP_CXX_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_LIB_NAMES=libomp -DOpenMP_CXX_INCLUDE_DIR=$(brew --prefix libomp)/include -DOpenMP_libomp_LIBRARY=$(brew --prefix libomp)/lib/libomp.dylib` to this and to the configure line of step 2.
+The sanitizer build is Debug at `-O2` (asserts on; at `-O0` the sweeps run several hundred times slower than Release):
 
 ```bash
 cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS_DEBUG="-O2 -g" \
@@ -602,116 +792,6 @@ ctest --test-dir build-asan -j8
 ```
 
 `Golden.BitIdenticalToFixture`, `Bands.BitIdenticalToFixture` and `Transitions.BitIdenticalToFixture` compare against fixtures written by a Release build on one platform (clang, arm64, macOS), so they fail on the sanitizer build and skip on Linux; every other test passes on both. The labels need CMake 3.22 or later; before it every test runs unlabelled.
-
----
-
-# Usage
-
-Benchmark notebook - tests/benchmark.ipynb
-
-## Single Pixel Detection
-
-`detect()` runs the CCD algorithm on a single pixel time series.
-
-```python
-import time
-import numpy as np
-import ccdcpp
-
-dates = np.asarray(dates.copy(), dtype=np.int64, order="C")
-qas = np.asarray(qas.copy(), dtype=np.uint8, order="C")
-
-spectra = np.asarray(
-    np.stack(
-        (
-            blues,
-            greens,
-            reds,
-            nirs,
-            swir1s,
-            swir2s,
-            thermals,
-        )
-    ),
-    dtype=np.float64,
-    order="C",
-)
-
-hoptions = ccdcpp.HarmonicOptions()
-loptions = ccdcpp.LassoOptions()
-
-hoptions.PEEK_SIZE = 6
-hoptions.MEOW_SIZE = 12
-
-loptions.max_iter = 1000
-loptions.alpha = 1.0
-loptions.tolerance = 1e-4
-loptions.fit_intercept = True
-
-start = time.perf_counter()
-
-results = ccdcpp.detect(
-    dates,
-    spectra,
-    qas,
-    hoptions,
-    loptions,
-)
-
-elapsed = time.perf_counter() - start
-
-print(f"CPP runtime: {elapsed:.4f} seconds")
-```
-
----
-
-## Image Cube Processing
-
-`detect_cube()` performs CCD on an entire image cube and automatically parallelizes computation using OpenMP.
-
-```python
-import time
-
-start = time.perf_counter()
-
-results = ccdcpp.detect_cube(
-    dates,
-    spectra,
-    qas,
-    hoptions,
-    loptions,
-)
-
-elapsed = time.perf_counter() - start
-
-print(f"CPP runtime: {elapsed:.4f} seconds")
-```
-
-No additional multiprocessing code is required—the library automatically distributes pixels across CPU cores.
-
-## Resuming a Run
-
-When a year of new observations arrives, a stored run can be continued instead of rerun. The first run asks for a resume record; the update passes the whole series again (the stored observations and the new ones), the record and the stored segments, and gets the complete result for the whole series:
-
-```python
-first = ccdcpp.detect_cube_columns(dates_1985_2023, spectral, qas, profile=p, resume_record=True)
-# store first's segment columns, first["resume"] (one entry per pixel) and first["resume_header"]
-
-update = ccdcpp.resume_cube_columns(
-    dates_1985_2024, spectral, qas, profile=p,
-    resume=first["resume"], resume_header=first["resume_header"],
-    segments={k: first[k] for k in ("row", "col", "start_day", "end_day", "break_day",
-                                    "curve_qa", "observation_count", "change_probability",
-                                    "intercept", "coefficients", "rmse", "magnitude")})
-# update: detect_cube_columns()'s dict for 1985-2024, plus the next update's record
-```
-
-- **The result is the full run's, bit for bit**: `resume_cube_columns` gives what `detect_cube_columns` gives on the whole series with every statistics cutoff (`STAT_ORD`, and a `GreenMedian` step's date) capped at the first run's series end. With the Landsat presets' `STAT_ORD` (2017-12-31) and a first run past it, that is the plain full rerun. The HLS and Sentinel-2 presets have no cutoff, so their statistics (the procedure choice, the cadence, the variogram) stay those of the first run until a full rerun re-baselines them.
-- **What it saves is compute**: each pixel the Standard machine was running continues from where its stored run stopped, its segments before that point kept as stored and its open segment refitted once, so an update costs the new observations' steps (the pixels with nothing to continue, PermanentSnow, InsufficientClear and the early exits, are rerun whole and come back as status 0, since their result is the rerun's). On a 500 x 500 Landsat cell, 1984-2022 stored and resumed to 2023, the update took about a third of a full run's time (14 s against 39 s at 8 threads), all 250,000 pixels equal to the full run. The series is read whole, as for a full run.
-- **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene that covers it) is rerun in full, the same way, and its `status` says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed; `update["counts"]`). A scene the pixel's QA marks fill does not count as a change.
-- **A record that does not match the call is refused** (`ValueError`): another record format or results version (`ccdcpp.RESULTS_VERSION` changes whenever a release changes outputs), other options, preset, plan or QA table, a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
-- The record is plain columns (`ccdcpp.resume_schema()`); the caller stores them, beside its segments. Stored segments may carry placeholders in fields the caller does not keep (a break day or magnitude where there is no break, the observation count); they come back as given.
-- One pixel: `detect(..., resume_record=True)` and `resume(..., resume=, resume_header=, models=)`. C++: `ccd::run_pixel` and `ccd::run_cube` with `RunSpec::record`, and with the stored run as their `resume` argument (a `PixelResume`, a `CubeResumeFrom`) (`include/ccd/run/run.hpp`, `include/ccd/results/record.hpp`).
 
 ---
 
