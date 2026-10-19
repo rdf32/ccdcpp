@@ -225,14 +225,6 @@ bool enough_samples(
     index_t meow_size
 );
 
-bool stable(
-    ArrayView<const std::int64_t, 1> dates_window,
-    const Variogram& variogram,
-    const std::vector<LassoResult>& results,
-    scalar_t change_threshold,
-    const BandList& detection_bands
-);
-
 // window models
 bool detect_change(
     const std::vector<scalar_t>& magnitudes,

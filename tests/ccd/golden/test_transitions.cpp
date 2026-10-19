@@ -95,7 +95,7 @@
 //     Tmask commit                       lookback_near_break,
 //                                        lookback_far_peek_decides
 //     shift: unstable                    start_catch, constant_detection_band
-//                                        (red constant: 0/0 in stable(), so
+//                                        (red constant: 0/0 in the stability rule, so
 //                                        never stable)
 //     stable                             every pixel with a segment from
 //                                        Extend

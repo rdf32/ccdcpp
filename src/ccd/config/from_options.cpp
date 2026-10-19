@@ -33,12 +33,17 @@ Strategies strategies_for(const HarmonicOptions& hoptions, const LassoOptions& l
 ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& loptions)
 {
     ConfigTree tree;
-    tree[MonitoringModel::stage] = {
-        "lasso",
-        {{"max_iter", count(loptions.max_iter)},
-         {"alpha", real(loptions.alpha)},
-         {"tolerance", real(loptions.tolerance)},
-         {"coef_floor", real(loptions.coef_floor)}}};
+    const Values lasso = {{"max_iter", count(loptions.max_iter)},
+                          {"alpha", real(loptions.alpha)},
+                          {"tolerance", real(loptions.tolerance)},
+                          {"coef_floor", real(loptions.coef_floor)}};
+    tree[StabilityFit::stage] = {"lasso", lasso};
+    tree[StabilityRule::stage] = {
+        "pyccd",
+        {{"peek_size", count(hoptions.PEEK_SIZE)},
+         {"change_threshold", real(hoptions.CHANGE_THRESHOLD)},
+         {"change_probability", real(hoptions.CHANGE_PROBABILITY)}}};
+    tree[MonitoringModel::stage] = {"lasso", lasso};
     tree[RefitSchedule::stage] = {
         "span-factor",
         {{"min_obs", count(hoptions.RETRAIN_MIN_OBS)},

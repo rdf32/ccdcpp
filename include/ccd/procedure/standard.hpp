@@ -29,29 +29,25 @@ namespace standard
 //
 // The Standard procedure's per-pixel cadence, set in Prepare: the peek size
 // the run's change test chose for the pixel (ChangeTest::prepare()), which
-// Extend, Lookback and the machine's guards read, and the threshold
-// Initialize's stability check and Lookback compare against. That threshold
-// is pyccd's, from the options (adjust_change_threshold() of PEEK_SIZE,
-// CHANGE_THRESHOLD, the detection band count and CHANGE_PROBABILITY for the
-// peek), until the stability rule and Lookback are stages with their own.
+// Extend, Lookback and the machine's guards read, and the threshold Lookback
+// compares against. That threshold is pyccd's, from the options
+// (adjust_change_threshold() of PEEK_SIZE, CHANGE_THRESHOLD, the detection
+// band count and CHANGE_PROBABILITY for the peek), until Lookback is a stage
+// with its own.
 //
 //==============================================================================
 
 struct Cadence
 {
     index_t peek;                // observations a peek holds
-    scalar_t change_threshold;   // the stability check's and Lookback's
+    scalar_t change_threshold;   // Lookback's
 };
 
-// What Initialize tests a candidate window against on a pixel of `cadence`:
-// the options' MEOW_SIZE, DAY_DELTA, TMASK_BANDS, T_CONST and
-// DETECTION_BANDS, stability fits of COEFFICIENT_MIN coefficients and the
-// cadence's change threshold. Built once per pixel, in
-// Prepare.
-InitializeCriteria initialize_criteria(
-    const HarmonicOptions& options,
-    const Cadence& cadence
-);
+// What Initialize tests a candidate window against: the options' MEOW_SIZE,
+// DAY_DELTA, TMASK_BANDS, T_CONST and DETECTION_BANDS, and stability fits of
+// COEFFICIENT_MIN coefficients in a basis COEFFICIENT_MAX wide. Built once
+// per pixel, in Prepare.
+InitializeCriteria initialize_criteria(const HarmonicOptions& options);
 
 //------------------------------------------------------------------------------
 // The Standard procedure's kernels
@@ -246,7 +242,7 @@ struct Extension
     std::vector<std::vector<scalar_t>> residuals;
 
     // The change test's buffers, made by the run's change-test strategy.
-    PerThread<ChangeTest, TestScratch> test;
+    PerThread<ChangeTest, Scratch> test;
 
     // What the change test found at the last peek, which the outlier rule
     // reads.
@@ -291,17 +287,18 @@ struct State
     Cadence cadence{};
     ChangeThresholdMemo thresholds;             // the cadence's threshold
     Variogram variogram;
-    InitializeCriteria initialize_criteria{};   // from the cadence
+    InitializeCriteria initialize_criteria{};
 
-    // Initialize's stable fits of the detection bands (indexed by band),
-    // which Lookback tests against.
-    std::vector<LassoResult> init_models;
+    // Initialize's fits of the detection bands, made by the run's
+    // stability-fit strategy: the stable window's, which Lookback tests
+    // against. The stability rule's per-pixel state.
+    PerThread<StabilityFit, Model> init_model;
+    PerThread<StabilityRule, Scratch> stability;
 
     // Extend's carried state.
     Extension extension;
 
     // Scratch.
-    HarmonicBasis peek_basis;
     LookbackScratch lookback;
 
     // Where the segment loop stopped (set with every Exit).
@@ -338,6 +335,11 @@ struct Context
     const Strategies& strategies;
 };
 
+// The state's stability fit and stability-rule scratch, of the run's
+// strategies (made when the state's are another run's).
+Model& stability_fit(const Context& context, State& state);
+Scratch& stability_scratch(const Context& context, State& state);
+
 //------------------------------------------------------------------------------
 // Transitions: one per phase but Done. Each makes one decision and returns
 // the next phase; a route into EndCatch sets state.exit to why.
@@ -364,13 +366,13 @@ void move_past_segment(const Context& context, State& state);
 void write_end_segment(const Context& context, State& state);
 
 // One ccd::initialize_step() on the window against the pixel's
-// initialize_criteria (COEFFICIENT_MIN-coefficient stability fits; the cadence's
-// change threshold), into init_models. Next: Initialize after a grow or a shift; after_stable_start()
+// initialize_criteria (COEFFICIENT_MIN-coefficient fits), with the run's
+// stability fit (into init_model) and stability rule. Next: Initialize after a grow or a shift; after_stable_start()
 // when stable; EndCatch (InitializeExhausted) when no candidate is left.
 Phase initialize(const Context& context, State& state);
 
 // One Lookback step: tests the observations of lookback_peek() against
-// init_models, whose RMSE is the comparison RMSE, and makes the
+// init_model, whose RMSE is the comparison RMSE, and makes the
 // decision on the record. Pre: window.start > prev_break. In order:
 //
 //   * every peek magnitude above the cadence's threshold: Change, the window

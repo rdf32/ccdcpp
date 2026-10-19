@@ -5,6 +5,14 @@
 namespace ccd
 {
 
+// A strategy's buffers and per-pixel values for one thread (a stage's
+// make_scratch()); each strategy's own derives from it.
+class Scratch
+{
+public:
+    virtual ~Scratch() = default;
+};
+
 //------------------------------------------------------------------------------
 // One thread's object made by a strategy, kept across pixels and made again
 // when the run's strategy is another (another run's): get() is the object of

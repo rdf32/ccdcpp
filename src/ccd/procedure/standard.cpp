@@ -17,10 +17,7 @@ namespace ccd
 namespace standard
 {
 
-InitializeCriteria initialize_criteria(
-    const HarmonicOptions& options,
-    const Cadence& cadence
-)
+InitializeCriteria initialize_criteria(const HarmonicOptions& options)
 {
     return InitializeCriteria{
         options.MEOW_SIZE,
@@ -29,15 +26,27 @@ InitializeCriteria initialize_criteria(
         options.T_CONST,
         options.DETECTION_BANDS,
         options.COEFFICIENT_MIN,
-        cadence.change_threshold
+        options.COEFFICIENT_MAX
     };
+}
+
+Model& stability_fit(const Context& context, State& state)
+{
+    return state.init_model.get(context.strategies.stability_fit,
+                                [](const StabilityFit& f) { return f.make_model(); });
+}
+
+Scratch& stability_scratch(const Context& context, State& state)
+{
+    return state.stability.get(context.strategies.stability_rule,
+                               [](const StabilityRule& r) { return r.make_scratch(); });
 }
 
 namespace
 {
 
 // The extension's change-test buffers, of the run's change-test strategy.
-TestScratch& test_scratch(const Context& context, Extension& extension)
+Scratch& test_scratch(const Context& context, Extension& extension)
 {
     return extension.test.get(context.strategies.change_test,
                               [](const ChangeTest& c) { return c.make_scratch(); });
@@ -303,7 +312,9 @@ Phase prepare(const Context& context, State& state)
     state.cadence.change_threshold = state.thresholds(
         state.cadence.peek, options.PEEK_SIZE, options.CHANGE_THRESHOLD, detection_bands,
         options.CHANGE_PROBABILITY);
-    state.initialize_criteria = initialize_criteria(options, state.cadence);
+    context.strategies.stability_rule->prepare(
+        state.cadence.peek, detection_bands, stability_scratch(context, state));
+    state.initialize_criteria = initialize_criteria(options);
 
     LOG_DEBUG("Peek size: " << state.cadence.peek);
     LOG_DEBUG("Chng thresh: " << state.cadence.change_threshold);
@@ -336,16 +347,14 @@ InitializeOutcome initialize_outcome(const Context& context, State& state)
 {
     LOG_DEBUG("Initialize for change model #: " << state.segments.size());
 
-    state.init_models.resize(state.series.spectral().extent(0));
-
     const InitializeOutcome outcome = initialize_step(
         state.series,
         state.cursor.window,
         state.initialize_criteria,
         state.variogram,
-        context.lasso,
-        context.solver,
-        state.init_models
+        stability_fit(context, state),
+        *context.strategies.stability_rule,
+        stability_scratch(context, state)
     );
     LOG_DEBUG("Initialize: " << to_string(outcome));
     return outcome;
@@ -396,9 +405,9 @@ LookbackOutcome lookback_step(const Context& context, State& state)
     MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
     const index_t prev_break = state.cursor.prev_break;
-    const std::vector<LassoResult>& models = state.init_models;
+    assert(state.init_model);   // a stable Initialize made it
+    Model& model = *state.init_model;
     const Cadence& cadence = state.cadence;
-    HarmonicBasis& peek_basis = state.peek_basis;
 
     const BandList& detection_bands = options.DETECTION_BANDS;
 
@@ -458,14 +467,9 @@ LookbackOutcome lookback_step(const Context& context, State& state)
             {bands, samples}
         );
 
-    // COEFFICIENT_MAX wide, the widest model's count: the models predict
-    // with zeros above their own.
-    peek_basis.build(masked_dates_window, options.COEFFICIENT_MAX);
-
-    peek_residuals(
-        peek_basis,
+    model.peek_residuals(
+        masked_dates_window,
         masked_spectral_window,
-        models,
         detection_bands,
         residuals
     );
@@ -474,7 +478,7 @@ LookbackOutcome lookback_step(const Context& context, State& state)
     // while the window grows backward (Zhu's TrendSeasonalFit, pyccd).
     for (index_t i = 0; i < detection_bands.size(); ++i)
     {
-        comp_rmses[i] = models[detection_bands[i]].score.rmse;
+        comp_rmses[i] = model.rmse(detection_bands[i]);
     }
 
     change_magnitude(

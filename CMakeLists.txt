@@ -145,6 +145,7 @@ add_library(
     src/ccd/strategies/outlier/floored.cpp
     src/ccd/strategies/register_core.cpp
     src/ccd/strategies/refit/span_factor.cpp
+    src/ccd/strategies/stability_rule/pyccd.cpp
     src/ccd/qa_table.cpp
 )
 

@@ -19,7 +19,7 @@ namespace
 // `seasonal` is the fit window's observations by phase in the year, built at
 // the first test that reads it after a refit (for refit number
 // `seasonal_fit`).
-class Chi2Scratch final : public TestScratch
+class Chi2Scratch final : public Scratch
 {
 public:
     scalar_t change_threshold = 0;
@@ -63,13 +63,13 @@ Capabilities Chi2::provides() const
     return Capability::ComparisonRmse | Capability::PeekStatistic;
 }
 
-std::unique_ptr<TestScratch> Chi2::make_scratch() const
+std::unique_ptr<Scratch> Chi2::make_scratch() const
 {
     return std::make_unique<Chi2Scratch>();
 }
 
 index_t Chi2::prepare(ArrayView<const std::int64_t, 1> statistics_dates,
-                      index_t detection_bands, TestScratch& scratch) const
+                      index_t detection_bands, Scratch& scratch) const
 {
     Chi2Scratch& s = static_cast<Chi2Scratch&>(scratch);
 
@@ -95,7 +95,7 @@ index_t Chi2::prepare(ArrayView<const std::int64_t, 1> statistics_dates,
     return peek;
 }
 
-TestOutcome Chi2::test(const Peek& peek, TestScratch& scratch, PeekResult& result) const
+TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) const
 {
     Chi2Scratch& s = static_cast<Chi2Scratch&>(scratch);
     const BandList& detection_bands = peek.bands;

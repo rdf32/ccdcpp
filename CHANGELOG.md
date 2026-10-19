@@ -68,6 +68,18 @@
   `include/ccd/strategies/capabilities.hpp`; `provides()`/`needs()` on the stage interfaces), and
   `build_strategies` refuses a configuration whose strategy needs what no earlier stage
   provides, naming both, and one without an `outlier` stage. Outputs unchanged.
+- **The `stability_fit` and `stability_rule` stages**: Initialize's fit of a candidate start
+  window (a `ccd::Model`, which Lookback also tests against; strategy `lasso`) and its stability
+  check (`ccd::StabilityRule`, strategy `pyccd`, parameters from `PEEK_SIZE`,
+  `CHANGE_THRESHOLD` and `CHANGE_PROBABILITY`; it derives its threshold for the pixel's peek in
+  `prepare()`). `ccd::stable()` is the `pyccd` rule; `ccd::initialize_step` takes the fit, the
+  rule and its scratch instead of the Lasso workspace, solver and `LassoResult`s;
+  `InitializeCriteria::change_threshold` is gone and `max_coefficients` (the fits' peek basis
+  width) is new; `standard::initialize_criteria()` takes only the options; `State::init_models` is
+  `init_model` (the stability fit's `Model`, whose own peek basis replaces `State::peek_basis`)
+  and `State::stability` is the rule's scratch; `standard::stability_fit()` and
+  `stability_scratch()` give both. The per-thread state base is `ccd::Scratch`
+  (`strategies/per_thread.hpp`; was `TestScratch`). Outputs unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

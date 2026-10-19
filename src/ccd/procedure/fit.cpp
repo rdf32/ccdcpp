@@ -287,47 +287,6 @@ bool enough_samples(
     return dates_window.size() >= meow_size;
 }
 
-bool stable(
-    ArrayView<const std::int64_t, 1> dates_window,
-    const Variogram& variogram,
-    const std::vector<LassoResult>& results,
-    scalar_t change_threshold,
-    const BandList& detection_bands
-) {
-    
-    scalar_t euclidean_norm = 0.0;
-    for (const auto idx: detection_bands) {
-
-        const auto& model = results[idx].model;
-        const auto& score = results[idx].score;
-
-         const scalar_t rmse_norm =
-            std::max(variogram[idx], score.rmse);
-
-        const scalar_t slope =
-            model.coefficients()[0] *
-            (dates_window(dates_window.size() - 1) - dates_window(0));
-
-        const scalar_t first_resid =
-            score.residuals[0];
-
-        const scalar_t last_resid =
-            score.residuals[
-                score.residuals.size() - 1
-            ];
-
-        const scalar_t check_val =
-            (std::abs(slope)
-            + std::abs(first_resid)
-            + std::abs(last_resid))
-            / rmse_norm;
-
-        euclidean_norm += (check_val * check_val); // sum of squares
-    }
-
-    return (euclidean_norm < change_threshold);
-}
-
 //----------------------------------------------------------------------
 // Returns true if every observation in the peek window exceeds the
 // change threshold.

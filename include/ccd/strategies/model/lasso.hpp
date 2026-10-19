@@ -13,13 +13,13 @@ namespace strategies
 {
 
 //------------------------------------------------------------------------------
-// model "lasso": pyccd's monitoring model. Each band is a Lasso regression on
+// model and stability_fit "lasso": pyccd's monitoring and stability fits. Each band is a Lasso regression on
 // the harmonic basis of the window's dates (regression/harmonic_basis.hpp),
 // solved by coordinate descent (regression/lasso_solver.hpp) with these
 // parameters; its RMSE has the model's coefficient count as its degrees of
 // freedom.
 //------------------------------------------------------------------------------
-struct Lasso final : MonitoringModel
+struct Lasso final : MonitoringModel, StabilityFit
 {
     struct Params
     {

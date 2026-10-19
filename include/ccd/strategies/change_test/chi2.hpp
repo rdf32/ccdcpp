@@ -50,10 +50,10 @@ struct Chi2 final : ChangeTest
 
     Capabilities needs() const override;
     Capabilities provides() const override;
-    std::unique_ptr<TestScratch> make_scratch() const override;
+    std::unique_ptr<Scratch> make_scratch() const override;
     index_t prepare(ArrayView<const std::int64_t, 1> statistics_dates, index_t detection_bands,
-                    TestScratch& scratch) const override;
-    TestOutcome test(const Peek& peek, TestScratch& scratch, PeekResult& result) const override;
+                    Scratch& scratch) const override;
+    TestOutcome test(const Peek& peek, Scratch& scratch, PeekResult& result) const override;
     index_t break_at(const Peek& peek) const override;
     scalar_t magnitude(const Peek& peek, index_t band) const override;
 

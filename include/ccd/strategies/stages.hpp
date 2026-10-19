@@ -10,6 +10,7 @@
 
 #include "ccd/procedure/fit.hpp"
 #include "ccd/strategies/capabilities.hpp"
+#include "ccd/strategies/per_thread.hpp"
 
 namespace ccd
 {
@@ -31,11 +32,14 @@ class Model;   // strategies/model.hpp
 //
 // The stages so far (the others are still decided inside the machine):
 //
-//   model         the fit Extend tests each peek against
-//   refit         when Extend refits it
-//   change_test   the pixel's peek, whether a peek is a change, and the
-//                 segment's break and magnitudes
-//   outlier       whether the first peek observation is an outlier
+//   stability_fit    the fit Initialize judges a candidate start window on,
+//                    which Lookback tests against
+//   stability_rule   whether that candidate is stable
+//   model            the fit Extend tests each peek against
+//   refit            when Extend refits it
+//   change_test      the pixel's peek, whether a peek is a change, and the
+//                    segment's break and magnitudes
+//   outlier          whether the first peek observation is an outlier
 //
 // At an Extend peek the stages read one Peek, and the change test's results
 // (PeekResult) are what the outlier rule reads; which stage provides what
@@ -48,6 +52,43 @@ class Model;   // strategies/model.hpp
 // (strategies/per_thread.hpp).
 //
 //==============================================================================
+
+//------------------------------------------------------------------------------
+// stability_fit: the fit of a candidate start window's detection bands
+// (strategies/model.hpp), which the stability rule judges and, once the
+// window is stable, Lookback tests against. make_model() makes one thread's
+// Model, which the thread keeps across pixels.
+//------------------------------------------------------------------------------
+struct StabilityFit
+{
+    static constexpr const char* stage = "stability_fit";
+
+    virtual ~StabilityFit() = default;
+    virtual Capabilities provides() const = 0;
+    virtual std::unique_ptr<Model> make_model() const = 0;
+};
+
+//------------------------------------------------------------------------------
+// stability_rule: whether a candidate start window, fitted by the stability
+// fit, is stable. prepare() is called once per pixel with the change test's
+// peek size and the detection band count, and keeps what it derives (pyccd's
+// threshold) in the thread's scratch; stable() judges one candidate:
+//
+//   fit       the stability fit of the window's detection bands
+//   dates     the window's dates
+//------------------------------------------------------------------------------
+struct StabilityRule
+{
+    static constexpr const char* stage = "stability_rule";
+
+    virtual ~StabilityRule() = default;
+    virtual Capabilities needs() const = 0;
+    virtual std::unique_ptr<Scratch> make_scratch() const = 0;
+    virtual void prepare(index_t peek, index_t detection_bands, Scratch& scratch) const = 0;
+    virtual bool stable(const Model& fit, ArrayView<const std::int64_t, 1> dates,
+                        const Variogram& variogram, const BandList& bands,
+                        const Scratch& scratch) const = 0;
+};
 
 //------------------------------------------------------------------------------
 // refit: whether Extend refits the model before this peek test. The first
@@ -122,14 +163,6 @@ struct PeekResult
     std::vector<scalar_t> statistic;         // by peek observation
 };
 
-// A change test's buffers and per-pixel values for one thread
-// (make_scratch()).
-class TestScratch
-{
-public:
-    virtual ~TestScratch() = default;
-};
-
 struct ChangeTest
 {
     static constexpr const char* stage = "change_test";
@@ -137,10 +170,10 @@ struct ChangeTest
     virtual ~ChangeTest() = default;
     virtual Capabilities needs() const = 0;
     virtual Capabilities provides() const = 0;
-    virtual std::unique_ptr<TestScratch> make_scratch() const = 0;
+    virtual std::unique_ptr<Scratch> make_scratch() const = 0;
     virtual index_t prepare(ArrayView<const std::int64_t, 1> statistics_dates,
-                            index_t detection_bands, TestScratch& scratch) const = 0;
-    virtual TestOutcome test(const Peek& peek, TestScratch& scratch,
+                            index_t detection_bands, Scratch& scratch) const = 0;
+    virtual TestOutcome test(const Peek& peek, Scratch& scratch,
                              PeekResult& result) const = 0;
     virtual index_t break_at(const Peek& peek) const = 0;
     virtual scalar_t magnitude(const Peek& peek, index_t band) const = 0;
@@ -169,6 +202,8 @@ struct OutlierRule
 // One call's strategies, one per stage, built from its configuration.
 struct Strategies
 {
+    std::shared_ptr<const StabilityFit> stability_fit;
+    std::shared_ptr<const StabilityRule> stability_rule;
     std::shared_ptr<const MonitoringModel> model;
     std::shared_ptr<const RefitSchedule> refit;
     std::shared_ptr<const ChangeTest> change_test;

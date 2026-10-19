@@ -15,6 +15,10 @@
 namespace ccd
 {
 
+class Model;           // strategies/model.hpp
+struct StabilityRule;  // strategies/stages.hpp
+class Scratch;         // strategies/per_thread.hpp
+
 //==============================================================================
 //
 // The procedures' shared kernels
@@ -32,7 +36,7 @@ namespace ccd
 //==============================================================================
 
 // Whether fit_bands() keeps each fit's residuals in LassoScore::residuals.
-// Initialize's stability check and Extend's seasonal RMSE read them; a
+// The stability rule and Extend's seasonal RMSE read them; a
 // returned segment's are never read.
 enum class KeepResiduals : bool
 {
@@ -149,7 +153,7 @@ struct InitializeCriteria
     scalar_t t_const;           // Tmask's residual threshold, in variograms
     BandList detection_bands;   // the bands fitted and tested for stability
     index_t num_coefficients;   // of the stability fits
-    scalar_t change_threshold;  // stable() below this
+    index_t max_coefficients;   // the widest model's: their peek basis width
 };
 
 // What one step of the start-window search did, in the order the step tests
@@ -188,22 +192,21 @@ const char* to_string(InitializeOutcome outcome);
 //     observations (MaskedSeries::drop_outliers_if(), which shortens the
 //     window), and the step goes on; otherwise the window grows by one with
 //     nothing dropped (RejectedOutliers);
-//   * the detection bands are fitted over the window (fit_bands(),
-//     residuals kept) into models[band]: Stable (DroppedThenStable after a
-//     drop) when stable() holds, with `window` the stable window and
-//     `models` its fits; otherwise the window shifts by one (Unstable,
-//     DroppedThenUnstable).
+//   * the detection bands are fitted over the window by `fit` (residuals
+//     kept): Stable (DroppedThenStable after a drop) when `rule` finds the
+//     fit stable, with `window` the stable window and `fit` its fits;
+//     otherwise the window shifts by one (Unstable, DroppedThenUnstable).
 //
-// Only the detection bands' entries of `models` are written, and only on
-// the four fitted outcomes.
+// Only the detection bands are fitted, and only on the four fitted
+// outcomes. `rule_scratch` is the rule's, prepared for the pixel.
 InitializeOutcome initialize_step(
     MaskedSeries& series,
     Window& window,
     const InitializeCriteria& criteria,
     const Variogram& variogram,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver,
-    std::vector<LassoResult>& models
+    Model& fit,
+    const StabilityRule& rule,
+    const Scratch& rule_scratch
 );
 
 } // namespace ccd

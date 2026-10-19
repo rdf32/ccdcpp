@@ -104,7 +104,7 @@ struct Record
     {
         state.cursor = ccd::Cursor{ccd::Window(start, stop), prev_break};
         state.cadence = ccd::standard::Cadence{peek, options.CHANGE_THRESHOLD};
-        state.initialize_criteria = ccd::standard::initialize_criteria(options, state.cadence);
+        state.initialize_criteria = ccd::standard::initialize_criteria(options);
 
         // The change test as Prepare leaves it on a series at the reference
         // cadence (16 days): its threshold CHANGE_THRESHOLD.
@@ -114,6 +114,10 @@ struct Record
             options.DETECTION_BANDS.size(),
             state.extension.test.get(strategies.change_test,
                                      [](const ccd::ChangeTest& c) { return c.make_scratch(); }));
+        // The stability rule's threshold, CHANGE_THRESHOLD (a peek of
+        // PEEK_SIZE), whatever peek the record has.
+        strategies.stability_rule->prepare(
+            options.PEEK_SIZE, options.DETECTION_BANDS.size(), stability_scratch());
     }
 
     // A segment already written, as Extend or StartCatch leaves one.
@@ -147,20 +151,21 @@ struct Record
     // Initialize's stable fits over (start, stop), as a Stable step leaves
     // them for Lookback: the detection bands, COEFFICIENT_MIN coefficients,
     // residuals kept.
-    void with_init_models(index_t start, index_t stop)
+    void with_stability_fit(index_t start, index_t stop)
     {
-        state.init_models.resize(7);
-        ccd::fit_bands(
+        stability_fit().fit(
             state.series.dates().slice(ccd::range(start, stop)),
             state.series.spectral().slice(ccd::all(), ccd::range(start, stop)),
             options.COEFFICIENT_MIN,
+            options.COEFFICIENT_MAX,
             options.DETECTION_BANDS,
-            ccd::KeepResiduals::Yes,
-            lasso,
-            solver,
-            state.init_models
+            ccd::KeepResiduals::Yes
         );
     }
+
+    // The record's stability fit and stability-rule scratch.
+    ccd::Model& stability_fit() { return ccd::standard::stability_fit(context, state); }
+    ccd::Scratch& stability_scratch() { return ccd::standard::stability_scratch(context, state); }
 
     // One transition of the record's phase, as drive() makes it.
     Phase step()
@@ -370,7 +375,7 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     EXPECT_EQ(r.state.cadence.change_threshold, r.options.CHANGE_THRESHOLD);
 
     // Initialize's criteria, once for the pixel: the options' (COEFFICIENT_MIN
-    // coefficients among them) and the cadence's threshold.
+    // coefficients in a COEFFICIENT_MAX-wide basis among them).
     const ccd::InitializeCriteria& c = r.state.initialize_criteria;
     EXPECT_EQ(c.meow_size, r.options.MEOW_SIZE);
     EXPECT_EQ(c.day_delta, r.options.DAY_DELTA);
@@ -378,7 +383,7 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     EXPECT_EQ(c.tmask_bands.size(), r.options.TMASK_BANDS.size());
     EXPECT_EQ(c.detection_bands.size(), r.options.DETECTION_BANDS.size());
     EXPECT_EQ(c.num_coefficients, r.options.COEFFICIENT_MIN);
-    EXPECT_EQ(c.change_threshold, r.state.cadence.change_threshold);
+    EXPECT_EQ(c.max_coefficients, r.options.COEFFICIENT_MAX);
     EXPECT_EQ(r.state.variogram.bands.size(), 7u);
 }
 
@@ -410,9 +415,9 @@ ccd::InitializeOutcome outcome_of(index_t n, Setup setup)
 {
     Record r(n);
     setup(r);
-    r.state.init_models.resize(7);
     return ccd::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
-                                r.state.variogram, r.lasso, r.solver, r.state.init_models);
+                                r.state.variogram, r.stability_fit(), *r.strategies.stability_rule,
+                                r.stability_scratch());
 }
 
 TEST(StandardInitialize, NoCandidateLeftIsExhausted)
@@ -508,8 +513,8 @@ TEST(StandardInitialize, AnAcceptedTmaskDropCommitsThenTests)
     EXPECT_FALSE(r.state.series.mask()[10]);
     EXPECT_EQ(r.state.cursor.window.start, 0u);
     EXPECT_EQ(r.state.cursor.window.stop, 23u);
-    EXPECT_EQ(r.state.init_models.size(), 7u);
-    EXPECT_FALSE(r.state.init_models[1].score.residuals.empty());   // a detection band
+    ASSERT_TRUE(r.state.init_model);
+    EXPECT_FALSE(r.state.init_model->residuals(1).empty());   // a detection band
 }
 
 TEST(StandardInitialize, AnAcceptedTmaskDropThenAnUnstableWindowShifts)
@@ -558,7 +563,7 @@ TEST(StandardInitialize, AStableWindowLeavesThroughTheRouting)
 
 TEST(StandardInitialize, AnUnstableWindowShifts)
 {
-    // A steep trend in detection bands Tmask does not read: stable() fails.
+    // A steep trend in detection bands Tmask does not read: the stability rule fails.
     const auto setup = [](Record& r)
     {
         r.edit([](index_t b, index_t i, double v) { return (b == 2 || b == 3 || b == 5) ? v + 40.0 * i : v; });
@@ -606,7 +611,7 @@ void in_lookback(Record& r, index_t start, index_t stop, index_t prev_break = 0)
 {
     r.with_variogram(kVariogram);
     r.at(start, stop, prev_break);
-    r.with_init_models(start, stop);
+    r.with_stability_fit(start, stop);
     r.state.phase = Phase::Lookback;
 }
 

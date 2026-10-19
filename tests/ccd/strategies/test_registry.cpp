@@ -10,6 +10,8 @@
 //     uses, and the refit schedule decides as Extend's inline test did;
 //   * the lasso monitoring model fits, predicts and scores as the shared
 //     kernels do, bit for bit, with the solver options it was configured with;
+//   * the pyccd stability rule is pyccd's check of the stability fit, against
+//     its threshold for the pixel's peek;
 //   * a configuration whose strategy needs what no earlier stage provides is
 //     refused, naming both; the floored outlier rule judges the change
 //     test's statistic against its threshold;
@@ -60,6 +62,10 @@ void expect_refused(F make, const std::string& fragment)
 TEST(Registry, ListsTheCoreStrategies)
 {
     const auto names = ccd::strategies::core_registry().names();
+    ASSERT_EQ(names.count("stability_fit"), 1u);
+    EXPECT_EQ(names.at("stability_fit"), (std::vector<std::string>{"lasso"}));
+    ASSERT_EQ(names.count("stability_rule"), 1u);
+    EXPECT_EQ(names.at("stability_rule"), (std::vector<std::string>{"pyccd"}));
     ASSERT_EQ(names.count("model"), 1u);
     EXPECT_EQ(names.at("model"), (std::vector<std::string>{"lasso"}));
     ASSERT_EQ(names.count("refit"), 1u);
@@ -158,7 +164,7 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
-        "the configuration has no 'model' stage");
+        "the configuration has no 'stability_fit' stage");
 }
 
 TEST(MonitoringModel, TheLassoIsTheKernelsFit)
@@ -224,7 +230,7 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     ccd::HarmonicOptions nan_threshold;
     nan_threshold.CHANGE_THRESHOLD = NAN;
     expect_refused([&] { ccd::config::strategies_for(nan_threshold, l); },
-                   "change_test 'chi2' parameter 'change_threshold' is nan");
+                   "stability_rule 'pyccd' parameter 'change_threshold' is nan");
     expect_refused(
         [&] { r.make<ccd::MonitoringModel>({"lasso", {{"alpha", ccd::config::real(-1)}}}); },
         "model 'lasso' parameter 'alpha' is -1; it must be at least 0");
@@ -273,8 +279,9 @@ TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
 namespace
 {
 
-// Test-only strategies: a monitoring model that provides nothing, and a
-// change test that provides nothing but needs no more than chi2.
+// Test-only strategies: a monitoring model and a stability fit that provide
+// nothing, and a change test that provides nothing but needs no more than
+// chi2.
 struct Opaque final : ccd::MonitoringModel
 {
     struct Params
@@ -286,6 +293,21 @@ struct Opaque final : ccd::MonitoringModel
         return s;
     }
     explicit Opaque(const Params&) {}
+    ccd::Capabilities provides() const override { return {}; }
+    std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
+};
+
+struct OpaqueFit final : ccd::StabilityFit
+{
+    struct Params
+    {
+    };
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        static const std::vector<ccd::config::Field<Params>> s;
+        return s;
+    }
+    explicit OpaqueFit(const Params&) {}
     ccd::Capabilities provides() const override { return {}; }
     std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
 };
@@ -303,13 +325,13 @@ struct Silent final : ccd::ChangeTest
     explicit Silent(const Params&) {}
     ccd::Capabilities needs() const override { return {}; }
     ccd::Capabilities provides() const override { return {}; }
-    std::unique_ptr<ccd::TestScratch> make_scratch() const override { return nullptr; }
+    std::unique_ptr<ccd::Scratch> make_scratch() const override { return nullptr; }
     ccd::index_t prepare(ccd::ArrayView<const std::int64_t, 1>, ccd::index_t,
-                         ccd::TestScratch&) const override
+                         ccd::Scratch&) const override
     {
         return 6;
     }
-    ccd::TestOutcome test(const ccd::Peek&, ccd::TestScratch&, ccd::PeekResult&) const override
+    ccd::TestOutcome test(const ccd::Peek&, ccd::Scratch&, ccd::PeekResult&) const override
     {
         return ccd::TestOutcome::NoChange;
     }
@@ -338,6 +360,14 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
                    "outlier 'floored' needs peek_statistic, which model 'lasso' with "
                    "change_test 'silent' does not provide");
+
+    // The stability rule's needs, from the stability fit; Lookback's too.
+    r.add<ccd::StabilityFit, OpaqueFit>("opaque");
+    tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    tree["stability_fit"] = {"opaque", {}};
+    expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
+                   "stability_rule 'pyccd' needs model_rmse, in_window_residuals, which "
+                   "stability_fit 'opaque' does not provide");
 
     // A configuration without an outlier stage.
     tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
@@ -372,4 +402,62 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
     h.OUTLIER_THRESHOLD = NAN;
     expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
                    "outlier 'floored' parameter 'threshold' is nan");
+}
+
+TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
+{
+    const ccd::HarmonicOptions h;
+    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    EXPECT_EQ(ccd::config::from_options(h, ccd::LassoOptions{}).at("stability_rule").strategy,
+              "pyccd");
+
+    // 24 observations, 16 days apart, of a flat series with noise: a fit
+    // whose check is well below the threshold, and one whose slope is not.
+    const ccd::index_t n = 24, bands = 7;
+    std::vector<std::int64_t> dates(n);
+    std::vector<double> flat(bands * n), steep(bands * n);
+    for (ccd::index_t t = 0; t < n; ++t)
+    {
+        dates[t] = 730000 + 16 * static_cast<std::int64_t>(t);
+        for (ccd::index_t b = 0; b < bands; ++b)
+        {
+            flat[b * n + t] = 1000.0 + 10.0 * ((t * 3 + b) % 4);
+            steep[b * n + t] = flat[b * n + t] + 40.0 * t;
+        }
+    }
+    const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
+    const ccd::Variogram variogram{std::vector<double>(bands, 20.0)};
+    const ccd::BandList detection = h.DETECTION_BANDS;
+
+    const auto scratch = s.stability_rule->make_scratch();
+    s.stability_rule->prepare(h.PEEK_SIZE, detection.size(), *scratch);
+    const auto fit = s.stability_fit->make_model();
+
+    // The check by hand, as pyccd computes it.
+    const auto check = [&](const ccd::Model& m)
+    {
+        double norm = 0;
+        for (const ccd::index_t b : detection)
+        {
+            const auto& r = m.residuals(b);
+            const double v = (std::abs(m.band_fit(b).coefficients[0] * (dates[n - 1] - dates[0])) +
+                              std::abs(r.front()) + std::abs(r.back())) /
+                             std::max(variogram[b], m.rmse(b));
+            norm += v * v;
+        }
+        return norm;
+    };
+    for (const auto* series : {&flat, &steep})
+    {
+        fit->fit(d, ccd::ArrayView<const double, 2>::contiguous(series->data(), {bands, n}),
+                 h.COEFFICIENT_MIN, h.COEFFICIENT_MAX, detection, ccd::KeepResiduals::Yes);
+        EXPECT_EQ(s.stability_rule->stable(*fit, d, variogram, detection, *scratch),
+                  check(*fit) < h.CHANGE_THRESHOLD);
+    }
+    fit->fit(d, ccd::ArrayView<const double, 2>::contiguous(flat.data(), {bands, n}),
+             h.COEFFICIENT_MIN, h.COEFFICIENT_MAX, detection, ccd::KeepResiduals::Yes);
+    EXPECT_TRUE(s.stability_rule->stable(*fit, d, variogram, detection, *scratch));
+    fit->fit(d, ccd::ArrayView<const double, 2>::contiguous(steep.data(), {bands, n}),
+             h.COEFFICIENT_MIN, h.COEFFICIENT_MAX, detection, ccd::KeepResiduals::Yes);
+    EXPECT_FALSE(s.stability_rule->stable(*fit, d, variogram, detection, *scratch));
 }

@@ -5,6 +5,8 @@
 #include <utility>
 
 #include "ccd/logger.hpp"
+#include "ccd/strategies/model.hpp"
+#include "ccd/strategies/stages.hpp"
 
 namespace ccd
 {
@@ -185,9 +187,9 @@ InitializeOutcome initialize_step(
     Window& window,
     const InitializeCriteria& criteria,
     const Variogram& variogram,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver,
-    std::vector<LassoResult>& models
+    Model& fit,
+    const StabilityRule& rule,
+    const Scratch& rule_scratch
 )
 {
     assert(window.size() >= criteria.meow_size);
@@ -285,29 +287,26 @@ InitializeOutcome initialize_step(
     //--------------------------------------------------------------------------
     // Fit the detection bands
     //
-    // Only these are read: stable() here and the caller after it. The
-    // magnitude of these models is never read.
+    // Only these are read: the stability rule here and Lookback after it.
     //--------------------------------------------------------------------------
-    fit_bands(
+    fit.fit(
         dates,
         spectral,
         criteria.num_coefficients,
+        criteria.max_coefficients,
         criteria.detection_bands,
-        KeepResiduals::Yes,
-        lworkspace,
-        solver,
-        models
+        KeepResiduals::Yes
     );
 
     //--------------------------------------------------------------------------
     // Stability check
     //--------------------------------------------------------------------------
-    if (stable(
+    if (rule.stable(
+            fit,
             dates,
             variogram,
-            models,
-            criteria.change_threshold,
-            criteria.detection_bands))
+            criteria.detection_bands,
+            rule_scratch))
     {
         LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
         return dropped ? InitializeOutcome::DroppedThenStable : InitializeOutcome::Stable;

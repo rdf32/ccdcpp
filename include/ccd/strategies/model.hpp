@@ -15,17 +15,18 @@ namespace ccd
 
 //==============================================================================
 //
-// The monitoring model
+// The model contract
 //
-// One pixel's fitted models, one per band, that Extend tests each peek
-// against: fitted on the model window when the refit schedule says so, then
-// asked for the peek's residuals, each band's RMSE and in-window residuals,
-// and the segment's coefficients when the segment is written.
+// One pixel's fitted models, one per band: the monitoring model's, which
+// Extend tests each peek against (fitted on the model window when the refit
+// schedule says so), and the stability fit's, which the stability rule
+// judges and Lookback tests against. Either is asked for a peek's residuals,
+// each band's RMSE and in-window residuals, and each band's coefficients.
 //
 // A Model holds one pixel's fits and the buffers its fits and predictions
-// reuse: one per thread, made by the run's monitoring-model strategy
-// (MonitoringModel::make_model(), strategies/stages.hpp) and kept across
-// pixels. A fit and a peek take every band they act on at once; a band's
+// reuse: one per thread, made by the run's strategy for its stage
+// (MonitoringModel::make_model(), StabilityFit::make_model(),
+// strategies/stages.hpp) and kept across pixels. A fit and a peek take every band they act on at once; a band's
 // RMSE, residuals and segment fit are one call each.
 //
 //==============================================================================
