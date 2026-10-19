@@ -83,74 +83,6 @@ index_t coefficient_count(
     }
 }
 
-namespace
-{
-
-// One band's peek residuals, in place: the prediction, then |y - prediction|.
-void peek_band_residuals(
-    const HarmonicBasis& peek_basis,
-    ArrayView<const scalar_t, 1> y,
-    const LassoModel& model,
-    std::vector<scalar_t>& residuals
-)
-{
-    residuals.resize(y.size());
-
-    model.predict(
-        peek_basis.X(),
-        residuals
-    );
-
-    for (index_t i = 0; i < y.size(); ++i)
-    {
-        residuals[i] =
-            std::abs(y(i) - residuals[i]);
-    }
-}
-
-} // namespace
-
-void peek_residuals(
-    const HarmonicBasis& peek_basis,
-    ArrayView<const scalar_t, 2> peek_spectral,
-    const std::vector<LassoResult>& models,
-    const BandList& bands,
-    std::vector<std::vector<scalar_t>>& residuals
-)
-{
-    assert(peek_basis.samples() == peek_spectral.extent(1));
-
-    for (const index_t band : bands)
-    {
-        peek_band_residuals(
-            peek_basis,
-            peek_spectral.slice(fixed(band), all()),
-            models[band].model,
-            residuals[band]
-        );
-    }
-}
-
-void peek_residuals(
-    const HarmonicBasis& peek_basis,
-    ArrayView<const scalar_t, 2> peek_spectral,
-    const std::vector<LassoResult>& models,
-    std::vector<std::vector<scalar_t>>& residuals
-)
-{
-    assert(peek_basis.samples() == peek_spectral.extent(1));
-
-    for (index_t band = 0; band < peek_spectral.extent(0); ++band)
-    {
-        peek_band_residuals(
-            peek_basis,
-            peek_spectral.slice(fixed(band), all()),
-            models[band].model,
-            residuals[band]
-        );
-    }
-}
-
 void change_magnitude(
     const std::vector<std::vector<scalar_t>>& residuals,
     const BandList& bands,
@@ -664,6 +596,18 @@ Phase start_catch(const Context& context, State& state)
 namespace
 {
 
+// The extension's model: one made by the run's monitoring-model strategy,
+// made again when the extension's is another strategy's.
+Model& monitoring_model(const Context& context, Extension& extension)
+{
+    if (extension.model_of != context.strategies.model)
+    {
+        extension.model = context.strategies.model->make_model();
+        extension.model_of = context.strategies.model;
+    }
+    return *extension.model;
+}
+
 // The bands no test reads (those not in DETECTION_BANDS), as the last test
 // would have had them: fitted on the last refit's window with its
 // coefficient count, their residuals over the last test's peek.
@@ -679,20 +623,18 @@ void complete_models(const Context& context, State& state)
             others.push_back(band);
 
     const Window& fit = extension.fit_window;
-    fit_bands(
+    const Window& peek = extension.peek;
+    extension.model->fit(
         masked_dates.slice(range(fit.start, fit.stop)),
         masked_spectral.slice(all(), range(fit.start, fit.stop)),
         coefficient_count(fit.size(), context.options),
+        context.options.COEFFICIENT_MAX,
         others,
-        KeepResiduals::No,
-        context.lasso,
-        context.solver,
-        extension.models
+        KeepResiduals::No
     );
-    peek_residuals(
-        state.peek_basis,
-        masked_spectral.slice(all(), range(extension.peek.start, extension.peek.stop)),
-        extension.models,
+    extension.model->peek_residuals(
+        masked_dates.slice(range(peek.start, peek.stop)),
+        masked_spectral.slice(all(), range(peek.start, peek.stop)),
         others,
         extension.residuals
     );
@@ -732,7 +674,7 @@ void write_extended_segment(
 
     result.bands.reserve(num_bands);
     for (index_t band = 0; band < num_bands; ++band) {
-        BandFit fit = band_fit(extension.models[band]);
+        BandFit fit = extension.model->band_fit(band);
         fit.magnitude = magnitude ? (*magnitude)[band] : median(extension.residuals[band]);
         result.bands.push_back(fit);
     }
@@ -750,9 +692,6 @@ ExtendOutcome extend_step(const Context& context, State& state)
     Window& window = state.cursor.window;
     const Cadence& cadence = state.cadence;
     const Variogram& variogram = state.variogram;
-    HarmonicBasis& peek_basis = state.peek_basis;
-    LassoWorkspace& lworkspace = context.lasso;
-    LassoSolver& solver = context.solver;
     Extension& extension = state.extension;
 
     const BandList& detection_bands = options.DETECTION_BANDS;
@@ -798,16 +737,13 @@ ExtendOutcome extend_step(const Context& context, State& state)
         // The detection bands: seasonal_rmse() reads their residuals; the
         // magnitude is set from the peek residuals when the segment is
         // written, which fits the other bands (complete_models()).
-        extension.models.resize(masked_spectral.extent(0));
-        fit_bands(
+        monitoring_model(context, extension).fit(
             masked_dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
             masked_spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
             extension.num_coef,
+            options.COEFFICIENT_MAX,
             detection_bands,
-            KeepResiduals::Yes,
-            lworkspace,
-            solver,
-            extension.models
+            KeepResiduals::Yes
         );
     }
     extension.complete = false;
@@ -816,17 +752,9 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // The peek's residuals, comparison RMSE and magnitudes
     //--------------------------------------------------------------------------
 
-    // COEFFICIENT_MAX wide, the widest model's count: the models predict
-    // with zeros above their own.
-    peek_basis.build(
+    extension.model->peek_residuals(
         masked_dates.slice(range(peek_window.start, peek_window.stop)),
-        options.COEFFICIENT_MAX
-    );
-
-    peek_residuals(
-        peek_basis,
         masked_spectral.slice(all(), range(peek_window.start, peek_window.stop)),
-        extension.models,
         detection_bands,
         extension.residuals
     );
@@ -836,7 +764,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
         LOG_DEBUG("normal residuals and rmse");
         for (index_t i = 0; i < detection_bands.size(); ++i)
         {
-            comp_rmses[i] = extension.models[detection_bands[i]].score.rmse;
+            comp_rmses[i] = extension.model->rmse(detection_bands[i]);
         }
     } else {
 
@@ -859,7 +787,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
 
         for (index_t i = 0; i < detection_bands.size(); ++i)
         {
-            comp_rmses[i] = seasonal_rmse(extension.models[detection_bands[i]], closest_indexes, options.SEASONAL_RMSE_DIVISOR);
+            comp_rmses[i] = seasonal_rmse(extension.model->residuals(detection_bands[i]), closest_indexes, options.SEASONAL_RMSE_DIVISOR);
         }
     }
 
@@ -1083,14 +1011,16 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     extension.fit_window = Window(window.start, from.fit_stop);
     extension.fit_span = span(dates, extension.fit_window);
     extension.seasonal_built = false;
-    fit_bands(
+    BandList bands;
+    for (index_t band = 0; band < spectral.extent(0); ++band)
+        bands.push_back(band);
+    monitoring_model(context, extension).fit(
         dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
         spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
         coefficient_count(extension.fit_window.size(), context.options),
-        KeepResiduals::Yes,
-        context.lasso,
-        context.solver,
-        extension.models
+        context.options.COEFFICIENT_MAX,
+        bands,
+        KeepResiduals::Yes
     );
     extension.complete = true;
 

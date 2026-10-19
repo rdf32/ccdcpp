@@ -89,7 +89,7 @@ struct Record
               ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {n}),
               options),
           solver(lasso_options),
-          strategies(ccd::strategies::strategies_for(options)),
+          strategies(ccd::strategies::strategies_for(options, lasso_options)),
           context{options, workspace, lasso, solver, strategies}
     {
         ccd::ProcessingMask mask(n);
@@ -721,7 +721,7 @@ TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
     EXPECT_TRUE(e.trained);
     EXPECT_EQ(e.fit_window.start, 0u);
     EXPECT_EQ(e.fit_window.stop, 24u);
-    EXPECT_EQ(e.models.size(), 7u);
+    ASSERT_NE(e.model, nullptr);
     EXPECT_EQ(e.peek.start, 24u);
     EXPECT_EQ(e.peek.stop, 30u);
     EXPECT_EQ(e.num_coef, ccd::standard::coefficient_count(24, r.options));
@@ -761,14 +761,15 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     const ccd::standard::Extension& e = r.state.extension;
     const auto& bands = r.options.DETECTION_BANDS;
     for (index_t i = 0; i < bands.size(); ++i)
-        EXPECT_EQ(e.comp_rmse[i], e.models[bands[i]].score.rmse);
+        EXPECT_EQ(e.comp_rmse[i], e.model->rmse(bands[i]));
 
     r.step();   // window (0, 25): seasonal
     const auto closest = ccd::find_closest_doy(
         r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.options.SEASONAL_RMSE_COUNT);
     for (index_t i = 0; i < bands.size(); ++i)
         EXPECT_EQ(e.comp_rmse[i],
-                  ccd::seasonal_rmse(e.models[bands[i]], closest, r.options.SEASONAL_RMSE_DIVISOR));
+                  ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
+                                    r.options.SEASONAL_RMSE_DIVISOR));
 }
 
 TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
@@ -915,7 +916,7 @@ MachineRun run_machine(const golden::CharPixel& p)
 
     ccd::LassoWorkspace lasso(0);
     ccd::LassoSolver solver(p.l);
-    const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h);
+    const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h, p.l);
     const ccd::standard::Context context{p.h, workspace, lasso, solver, strategies};
 
     ccd::standard::State state;
@@ -1051,7 +1052,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
 
         ccd::LassoWorkspace lasso(0);
         ccd::LassoSolver solver(p.l);
-        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h);
+        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h, p.l);
         const ccd::standard::Context context{p.h, workspace, lasso, solver, strategies};
 
         ccd::standard::State driven;
@@ -1139,7 +1140,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
         ccd::LassoWorkspace lasso(0);
         ccd::LassoSolver solver(p.l);
         ccd::standard::Procedure fresh;
-        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h);
+        const ccd::Strategies strategies = ccd::strategies::strategies_for(p.h, p.l);
         const ccd::FitResult once = fresh.run(workspace, mask, lasso, solver, strategies);
         const ccd::FitResult again = reused.run(workspace, mask, lasso, solver, strategies);
         expect_same(again, once, p.name);

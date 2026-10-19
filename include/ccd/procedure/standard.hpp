@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include "ccd/procedure/masked_series.hpp"
 #include "ccd/procedure/pixel_procedure.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
+#include "ccd/strategies/model.hpp"
 #include "ccd/strategies/stages.hpp"
 
 namespace ccd
@@ -75,27 +77,6 @@ InitializeCriteria initialize_criteria(
 index_t coefficient_count(
     index_t observations,
     const HarmonicOptions& options
-);
-
-// |y - prediction| of models[b] at each peek observation, for every b in
-// `bands`, into residuals[b] (resized to the peek's length; the other
-// entries are not touched). `peek_basis` is built over the peek's dates with
-// at least the models' coefficient count, and `peek_spectral` (B, peek
-// length) holds the peek's observations in the same order.
-void peek_residuals(
-    const HarmonicBasis& peek_basis,
-    ArrayView<const scalar_t, 2> peek_spectral,
-    const std::vector<LassoResult>& models,
-    const BandList& bands,
-    std::vector<std::vector<scalar_t>>& residuals
-);
-
-// peek_residuals() of every row of `peek_spectral`; residuals has B entries.
-void peek_residuals(
-    const HarmonicBasis& peek_basis,
-    ArrayView<const scalar_t, 2> peek_spectral,
-    const std::vector<LassoResult>& models,
-    std::vector<std::vector<scalar_t>>& residuals
 );
 
 // The change magnitude of each peek observation j, into `magnitude`:
@@ -258,7 +239,7 @@ struct LookbackScratch
 // The buffers keep their capacity across segments and pixels.
 struct Extension
 {
-    // Whether `models` are this segment's: false until the segment's first
+    // Whether `model`'s fits are this segment's: false until the segment's first
     // refit, and again once its segment is written (pyccd's `models is None`).
     bool trained = false;
 
@@ -268,15 +249,17 @@ struct Extension
     scalar_t fit_span = 0;
 
     // Of the last peek test; the segment reads both: num_coef is its
-    // curve_qa, which may not be the count `models` were fitted with, and
+    // curve_qa, which may not be the count `model` was fitted with, and
     // peek.start its break observation.
     index_t num_coef = 0;
     Window peek;
 
-    // Indexed by band. A refit fits the detection bands, all a test reads;
-    // the others are fitted on the same window when the segment is written
-    // (complete), which takes band_fit() of each.
-    std::vector<LassoResult> models;
+    // The fits, one per band, made by the run's monitoring-model strategy
+    // (model_of) and kept across pixels. A refit fits the detection bands,
+    // all a test reads; the others are fitted on the same window when the
+    // segment is written (complete), which takes band_fit() of each.
+    std::unique_ptr<Model> model;
+    std::shared_ptr<const MonitoringModel> model_of;
     bool complete = false;
 
     // Indexed by band: the residuals over the last peek, whose medians are

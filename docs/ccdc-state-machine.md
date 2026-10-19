@@ -127,7 +127,8 @@ The guards inside one call, in the order they are tested:
 
 Initialize fits `COEFFICIENT_MIN` coefficients, Extend's fits follow `coefficient_count`
 (`COEFFICIENT_MIN`, `_MID` or `_MAX` by window length), and both peek bases are `COEFFICIENT_MAX`
-wide: a model predicts with zeros above its own count.
+wide: a model predicts with zeros above its own count. Extend's fits are the monitoring model's
+(the `model` stage, below), which the extension holds.
 
 The routing between phases is a set of named predicates and routers, so a guard has one place:
 `room_to_initialize`, `peek_fits`, `start_catch_due`, `after_stable_start`, `after_lookback`
@@ -143,8 +144,11 @@ A transition is a function of two arguments, `(const Context&, State&)`. What it
 in the `State`. What it reads but never changes is in the `Context`.
 
 **`standard::Context`** holds the caller's `HarmonicOptions` (never written below
-`Run::pixel`), the pixel's `HarmonicWorkspace` (its dates, spectral and QA), and the Lasso
-solver with its workspace.
+`Run::pixel`), the pixel's `HarmonicWorkspace` (its dates, spectral and QA), the Lasso
+solver with its workspace, and the run's strategies. Initialize, Lookback and the catch segments
+fit with the context's solver; Extend fits with the monitoring model's own (the `model` stage's
+parameters), so a direct caller of `standard::Procedure` builds both from the same
+`LassoOptions` (`strategies_for(hoptions, loptions)` and `LassoSolver(loptions)`), as `Run` does.
 
 **`standard::State`** is one pixel's record:
 
@@ -184,11 +188,21 @@ checks a configuration's values (unknown names, types, ranges) when the strategy
 
 | Stage | Decides | Strategies |
 |---|---|---|
+| `model` | the fits Extend tests each peek against: each band's fit on the model window, its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
 | `refit` | whether Extend refits the model before a peek test (after the first) | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
 
 A run's configuration is the one its options describe
-(`ccd::strategies::config_from_options()`: `RETRAIN_MIN_OBS` and `RETRAIN_SPAN_FACTOR` are
-`span-factor`'s parameters). The machine's other decisions are made inside its phases.
+(`ccd::strategies::config_from_options()`: `LassoOptions`' `max_iter`, `alpha`, `tolerance` and
+`coef_floor` are `lasso`'s parameters; `RETRAIN_MIN_OBS` and `RETRAIN_SPAN_FACTOR` are
+`span-factor`'s). The machine's other decisions are made inside its phases.
+
+The monitoring model's contract is `ccd::Model` (`include/ccd/strategies/model.hpp`): one
+thread's fits of one pixel, which the strategy makes (`make_model()`) and the thread keeps across
+pixels. Extend asks it to `fit` the window's detection bands (the other bands when the segment is
+written), for the `peek_residuals` of each test, for each band's `rmse` and in-window `residuals`
+(the comparison RMSE), and for each band's `band_fit` when the segment is written. A fit and a peek take
+all the bands they act on and a band's RMSE, residuals and segment fit are one call each, so a
+step makes a virtual call per band at most, never one per value.
 
 A configuration, its strategies, and a strategy's decision (`tests/ccd/strategies/test_registry.cpp`
 has more):
@@ -199,8 +213,13 @@ has more):
 using namespace ccd;
 
 // The configuration a run under the defaults uses, and its strategies.
-config::ConfigTree tree = strategies::config_from_options(HarmonicOptions{});
+config::ConfigTree tree = strategies::config_from_options(HarmonicOptions{}, LassoOptions{});
+// tree["model"] is {"lasso", {{"max_iter", 1000}, {"alpha", 1.0}, {"tolerance", 1e-4},
+//                             {"coef_floor", 1.0}}}
 // tree["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
+
+// The monitoring model for reflectance input: a 10,000 times smaller penalty.
+tree["model"].params["alpha"] = config::real(1e-4);
 
 // Refit less often: once the window spans twice the last fit's span.
 tree["refit"].params["factor"] = config::real(2.0);
@@ -224,15 +243,15 @@ record:
 | `select_procedure`, `fit_whole_series`, `PixelProcedure` | `include/ccd/procedure/pixel_procedure.hpp` |
 | `MaskedSeries` | `include/ccd/procedure/masked_series.hpp` |
 | `Cursor`, `drive` | `include/ccd/procedure/machine.hpp` |
-| `fit_bands` (the one per-band fit loop), `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/procedure/kernels.hpp` |
+| `fit_bands` (the one per-band fit loop), `peek_residuals`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/procedure/kernels.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
 | `Variogram`, `adjusted_variogram`, `tmask`, `stable`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/procedure/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
 (`include/ccd/procedure/standard.hpp`): `Cadence` and `measure_cadence`, `initialize_criteria`,
-`lookback_peek`, `peek_residuals`, `change_magnitude`, `coefficient_count`, the phases, the
-transitions and the routing. A function moves to the shared list only once a second machine uses
-it.
+`lookback_peek`, `change_magnitude`, `coefficient_count`, the phases, the
+transitions and the routing. A function moves to the shared list once a second machine or a
+strategy uses it.
 
 ## 5. The driver and the trace
 
@@ -351,7 +370,7 @@ is that function and its test (the numbers are those of the tests and the CHANGE
 | 1. Far from the previous break, Lookback peeks the adjusted peek of observations | `lookback_peek`, first case |
 | 2. Near it, Lookback peeks down to the previous break, never below | `lookback_peek`, second case |
 | 3. Lookback compares against the stable start window's RMSE | `lookback_step` |
-| 4. Initialize fits `COEFFICIENT_MIN` coefficients; both peek bases are `COEFFICIENT_MAX` wide | `initialize_criteria`; the `peek_basis.build` calls in `lookback_step` and `extend_step` |
+| 4. Initialize fits `COEFFICIENT_MIN` coefficients; both peek bases are `COEFFICIENT_MAX` wide | `initialize_criteria`; the `peek_basis.build` call in `lookback_step`, and Extend's monitoring model (`COEFFICIENT_MAX` as its fits' `max_coef`) |
 | 5. Every exit, the early ones too, returns the processing mask | `State::take_result`; `fit_whole_series` |
 | 6. A curve ends once its peek reaches the last observation, and is the last curve | `extend_step`'s `SeriesEnd`; `extend` |
 | 7. Extend refits while the window holds at most `RETRAIN_MIN_OBS` observations | `extend_step`'s refit schedule |
@@ -379,8 +398,8 @@ initialization, is a machine of its own beside the Standard one:
 A segment reports each band's fit as a `BandFit` (`ChangeModel::bands`): intercept,
 coefficients, RMSE, magnitude and the solver's iteration count (0 for a fit in closed form), so
 a detector that fits by ordinary least squares writes the same record. Inside the Standard
-machine the fits stay `LassoResult`s, whose residuals the seasonal RMSE reads; `band_fit()`
-converts each when a segment is written.
+machine Extend's fits are the monitoring model's (`ccd::Model`), whose in-window residuals the
+seasonal RMSE reads and whose `band_fit()` gives each band's when a segment is written.
 
 ### A later batch on the CPU
 

@@ -317,4 +317,72 @@ InitializeOutcome initialize_step(
     return dropped ? InitializeOutcome::DroppedThenUnstable : InitializeOutcome::Unstable;
 }
 
+namespace
+{
+
+// One band's peek residuals, in place: the prediction, then |y - prediction|.
+void peek_band_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 1> y,
+    const LassoModel& model,
+    std::vector<scalar_t>& residuals
+)
+{
+    residuals.resize(y.size());
+
+    model.predict(
+        peek_basis.X(),
+        residuals
+    );
+
+    for (index_t i = 0; i < y.size(); ++i)
+    {
+        residuals[i] =
+            std::abs(y(i) - residuals[i]);
+    }
+}
+
+} // namespace
+
+void peek_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 2> peek_spectral,
+    const std::vector<LassoResult>& models,
+    const BandList& bands,
+    std::vector<std::vector<scalar_t>>& residuals
+)
+{
+    assert(peek_basis.samples() == peek_spectral.extent(1));
+
+    for (const index_t band : bands)
+    {
+        peek_band_residuals(
+            peek_basis,
+            peek_spectral.slice(fixed(band), all()),
+            models[band].model,
+            residuals[band]
+        );
+    }
+}
+
+void peek_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 2> peek_spectral,
+    const std::vector<LassoResult>& models,
+    std::vector<std::vector<scalar_t>>& residuals
+)
+{
+    assert(peek_basis.samples() == peek_spectral.extent(1));
+
+    for (index_t band = 0; band < peek_spectral.extent(0); ++band)
+    {
+        peek_band_residuals(
+            peek_basis,
+            peek_spectral.slice(fixed(band), all()),
+            models[band].model,
+            residuals[band]
+        );
+    }
+}
+
 } // namespace ccd

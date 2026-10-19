@@ -549,7 +549,7 @@ void SeasonalOrder::closest(std::int64_t target_day, index_t count, std::vector<
 }
 
 scalar_t seasonal_rmse(
-    const LassoResult& model,
+    const std::vector<scalar_t>& residuals,
     const std::vector<index_t>& indices,
     scalar_t divisor
 )
@@ -559,7 +559,7 @@ scalar_t seasonal_rmse(
     for(auto idx : indices)
     {   
         const scalar_t r =
-            model.score.residuals[idx];
+            residuals[idx];
         LOG_DEBUG("idx=" << idx << " residual=" << r);
         sum += r * r;
     }

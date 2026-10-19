@@ -4,6 +4,9 @@
 
 ### Changed
 
+- A run refuses Lasso options that are negative or NaN (`alpha`, `tolerance`, `coef_floor`)
+  when it is built, with `std::invalid_argument` naming the parameter ("model 'lasso'
+  parameter 'alpha' is -1; it must be at least 0"); they used to run.
 - **The C++ entry points are `ccd::run_pixel` and `ccd::run_cube`** (`include/ccd/run/run.hpp`),
   replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
   overloads. What a call runs is one `ccd::RunSpec` (the options, the QA table, the plan,
@@ -34,8 +37,15 @@
   The first stage is `refit`, whose strategy `span-factor` is Extend's refit test, unchanged
   (`RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR`). The machine's `Context` carries the run's
   strategies; `standard::Procedure::run`/`resume` and `standard::Detector::fit`/`resume` take
-  them (`ccd::strategies::strategies_for(options)` builds them for a direct caller). Outputs
-  unchanged.
+  them (`ccd::strategies::strategies_for(hoptions, loptions)` builds them for a direct
+  caller). Outputs unchanged.
+- **The `model` stage**: the monitoring model, `ccd::Model` (`include/ccd/strategies/model.hpp`),
+  made per thread by the stage's strategy, which Extend fits, tests each peek against and writes
+  each segment's coefficients from. Its strategy `lasso` is pyccd's Lasso with its own solver;
+  its parameters are `LassoOptions`' `max_iter`, `alpha`, `tolerance` and `coef_floor`.
+  `peek_residuals` moved from `ccd::standard` to the shared kernels (`ccd::peek_residuals`,
+  `procedure/kernels.hpp`); `seasonal_rmse` takes a fit's residuals instead of its
+  `LassoResult`. Outputs unchanged.
 
 - A change detection method option: `HarmonicOptions::METHOD`
   (`ccd::ChangeMethod`, `ccdc` today), `ccd::with_method()`,

@@ -2,6 +2,7 @@
 
 #include "ccd/config/registry.hpp"
 #include "ccd/harmonic/harmonic.hpp"
+#include "ccd/regression/lasso_solver.hpp"
 #include "ccd/strategies/stages.hpp"
 
 namespace ccd
@@ -20,13 +21,14 @@ const config::Registry& core_registry();
 // parameters the strategy refuses.
 Strategies build_strategies(const config::Registry& registry, const config::ConfigTree& config);
 
-// The configuration HarmonicOptions describe, stage by stage: every run's
+// The configuration the options describe, stage by stage: every run's
 // configuration is built from its options here.
-config::ConfigTree config_from_options(const HarmonicOptions& options);
+config::ConfigTree config_from_options(const HarmonicOptions& hoptions,
+                                       const LassoOptions& loptions);
 
-// build_strategies(core_registry(), config_from_options(options)): the
-// strategies a run under `options` uses.
-Strategies strategies_for(const HarmonicOptions& options);
+// build_strategies(core_registry(), config_from_options(hoptions, loptions)):
+// the strategies a run under these options uses.
+Strategies strategies_for(const HarmonicOptions& hoptions, const LassoOptions& loptions);
 
 } // namespace strategies
 } // namespace ccd

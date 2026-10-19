@@ -429,7 +429,7 @@ Run::Run(
     }
 
     // The run's strategies, from the configuration its options describe.
-    strategies_ = strategies::strategies_for(options_);
+    strategies_ = strategies::strategies_for(options_, spec_.loptions);
 }
 
 template<typename Value, typename Qa>

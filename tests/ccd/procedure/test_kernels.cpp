@@ -8,7 +8,7 @@
 //   * fit_bands(): build the window's basis, then per band fit, predict,
 //     rmse(), residuals kept or not; on Initialize's band subset and on every
 //     band, and with the whole-series fit's reset before each band.
-//   * standard::peek_residuals(): an 8-coefficient basis over the peek,
+//   * peek_residuals(): an 8-coefficient basis over the peek,
 //     predict, |y - prediction|; on a forward peek (Extend) and a reversed
 //     one (Lookback).
 //   * standard::change_magnitude(): the per-detection-band sum over copies
@@ -550,7 +550,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
                 peek_loop(pd, ps, models, all_bands, lworkspace, expected);
 
                 peek_basis.build(pd, 8);
-                ccd::standard::peek_residuals(peek_basis, ps, models, got);
+                ccd::peek_residuals(peek_basis, ps, models, got);
                 for (index_t b = 0; b < B; ++b)
                     EXPECT_TRUE(same_bits(got[b], expected[b]));
             }
@@ -572,7 +572,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
                 peek_loop(pd, ps, models, detection_bands, lworkspace, expected);
 
                 peek_basis.build(pd, 8);
-                ccd::standard::peek_residuals(peek_basis, ps, models, detection, got);
+                ccd::peek_residuals(peek_basis, ps, models, detection, got);
                 for (index_t b = 0; b < B; ++b)
                     EXPECT_TRUE(same_bits(got[b], expected[b]));
 

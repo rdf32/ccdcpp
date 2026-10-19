@@ -9,6 +9,7 @@
 
 #include "ccd/procedure/fit.hpp"
 #include "ccd/procedure/masked_series.hpp"
+#include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 namespace ccd
@@ -19,8 +20,9 @@ namespace ccd
 // The procedures' shared kernels
 //
 // Plain functions that a procedure composes: the per-band Lasso fit of a
-// window, the catch segment written from it, and one step of the
-// start-window search (Initialize). Each takes what it reads as arguments,
+// window, its residuals over a peek, the catch segment written from it, and
+// one step of the start-window search (Initialize). Each takes what it reads
+// as arguments,
 // never a procedure's state, and none fixes a coefficient count or a
 // threshold of its own: the caller passes them.
 //
@@ -92,6 +94,27 @@ ChangeModel catch_segment(
     CurveQA curve_qa,
     LassoWorkspace& lworkspace,
     LassoSolver& solver
+);
+
+// |y - prediction| of models[b] at each peek observation, for every b in
+// `bands`, into residuals[b] (resized to the peek's length; the other
+// entries are not touched). `peek_basis` is built over the peek's dates with
+// at least the models' coefficient count, and `peek_spectral` (B, peek
+// length) holds the peek's observations in the same order.
+void peek_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 2> peek_spectral,
+    const std::vector<LassoResult>& models,
+    const BandList& bands,
+    std::vector<std::vector<scalar_t>>& residuals
+);
+
+// peek_residuals() of every row of `peek_spectral`; residuals has B entries.
+void peek_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 2> peek_spectral,
+    const std::vector<LassoResult>& models,
+    std::vector<std::vector<scalar_t>>& residuals
 );
 
 //------------------------------------------------------------------------------

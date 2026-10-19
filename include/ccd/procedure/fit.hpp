@@ -271,10 +271,10 @@ private:
     mutable std::vector<index_t> group_;
 };
 
-// The norm of model's residuals at `indices`, over `divisor`
+// The norm of a fit's in-window `residuals` at `indices`, over `divisor`
 // (HarmonicOptions::SEASONAL_RMSE_DIVISOR).
 scalar_t seasonal_rmse(
-    const LassoResult& model,
+    const std::vector<scalar_t>& residuals,
     const std::vector<index_t>& indices,
     scalar_t divisor
 );

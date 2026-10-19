@@ -365,7 +365,7 @@ TEST(CCD, DetectStandard)
         ccd::filter::standard(hworkspace),
         lworkspace,
         solver,
-        ccd::strategies::strategies_for(hoptions)
+        ccd::strategies::strategies_for(hoptions, loptions)
     );
 
     ::print_change_models(result.models);

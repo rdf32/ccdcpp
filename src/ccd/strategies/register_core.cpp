@@ -4,6 +4,7 @@
 #include <limits>
 #include <stdexcept>
 
+#include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
 
 namespace ccd
@@ -13,6 +14,7 @@ namespace strategies
 
 void register_core_strategies(config::Registry& registry)
 {
+    registry.add<MonitoringModel, Lasso>("lasso");
     registry.add<RefitSchedule, SpanFactor>("span-factor");
 }
 
@@ -39,30 +41,43 @@ const config::StageConfig& stage_of(const config::ConfigTree& config, const char
     return it->second;
 }
 
+// A count as a configuration holds it. Past INT64_MAX it is INT64_MAX: no
+// window and no solver counts that far, so the two mean the same.
+config::Value count(index_t n)
+{
+    return config::integer(static_cast<std::int64_t>(
+        std::min<index_t>(n, std::numeric_limits<std::int64_t>::max())));
+}
+
 } // namespace
 
 Strategies build_strategies(const config::Registry& registry, const config::ConfigTree& config)
 {
     Strategies s;
+    s.model = registry.make<MonitoringModel>(stage_of(config, MonitoringModel::stage));
     s.refit = registry.make<RefitSchedule>(stage_of(config, RefitSchedule::stage));
     return s;
 }
 
-Strategies strategies_for(const HarmonicOptions& options)
+Strategies strategies_for(const HarmonicOptions& hoptions, const LassoOptions& loptions)
 {
-    return build_strategies(core_registry(), config_from_options(options));
+    return build_strategies(core_registry(), config_from_options(hoptions, loptions));
 }
 
-config::ConfigTree config_from_options(const HarmonicOptions& options)
+config::ConfigTree config_from_options(const HarmonicOptions& hoptions,
+                                       const LassoOptions& loptions)
 {
     config::ConfigTree tree;
+    tree[MonitoringModel::stage] = {
+        "lasso",
+        {{"max_iter", count(loptions.max_iter)},
+         {"alpha", config::real(loptions.alpha)},
+         {"tolerance", config::real(loptions.tolerance)},
+         {"coef_floor", config::real(loptions.coef_floor)}}};
     tree[RefitSchedule::stage] = {
         "span-factor",
-        // A window never holds more than INT64_MAX observations, so a larger
-        // RETRAIN_MIN_OBS refits at every step, as INT64_MAX does.
-        {{"min_obs", config::integer(static_cast<std::int64_t>(std::min<index_t>(
-                         options.RETRAIN_MIN_OBS, std::numeric_limits<std::int64_t>::max())))},
-         {"factor", config::real(options.RETRAIN_SPAN_FACTOR)}}};
+        {{"min_obs", count(hoptions.RETRAIN_MIN_OBS)},
+         {"factor", config::real(hoptions.RETRAIN_SPAN_FACTOR)}}};
     return tree;
 }
 

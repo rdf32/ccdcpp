@@ -7,6 +7,8 @@
 namespace ccd
 {
 
+class Model;   // strategies/model.hpp
+
 //==============================================================================
 //
 // The stages of the algorithm
@@ -22,7 +24,8 @@ namespace ccd
 //
 // The stages so far (the others are still decided inside the machine):
 //
-//   refit   when Extend refits the monitoring model
+//   model   the fit Extend tests each peek against
+//   refit   when Extend refits it
 //
 //==============================================================================
 
@@ -42,9 +45,23 @@ struct RefitSchedule
     virtual bool due(index_t window_size, scalar_t window_span, scalar_t fit_span) const = 0;
 };
 
+//------------------------------------------------------------------------------
+// model: the monitoring model, one pixel's fits that Extend tests each peek
+// against (strategies/model.hpp). make_model() makes one thread's Model,
+// which the thread keeps across pixels.
+//------------------------------------------------------------------------------
+struct MonitoringModel
+{
+    static constexpr const char* stage = "model";
+
+    virtual ~MonitoringModel() = default;
+    virtual std::unique_ptr<Model> make_model() const = 0;
+};
+
 // One call's strategies, one per stage, built from its configuration.
 struct Strategies
 {
+    std::shared_ptr<const MonitoringModel> model;
     std::shared_ptr<const RefitSchedule> refit;
 };
 
