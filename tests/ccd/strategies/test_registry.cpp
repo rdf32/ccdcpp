@@ -34,8 +34,8 @@
 #include <gtest/gtest.h>
 
 #include "ccd/config/registry.hpp"
-#include "ccd/harmonic/harmonic.hpp"
-#include "ccd/procedure/kernels.hpp"
+#include "ccd/input/harmonic.hpp"
+#include "ccd/machine/kernels.hpp"
 #include "ccd/strategies/model.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"

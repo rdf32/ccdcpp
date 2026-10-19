@@ -2,9 +2,9 @@
 
 #include <cassert>
 
-#include "ccd/logger.hpp"
-#include "ccd/maths.hpp"
-#include "ccd/procedure/kernels.hpp"
+#include "ccd/core/logger.hpp"
+#include "ccd/core/maths.hpp"
+#include "ccd/machine/kernels.hpp"
 #include "ccd/strategies/model.hpp"
 
 namespace ccd

@@ -1,7 +1,7 @@
-#include "ccd/types.hpp"
-#include "ccd/array_view.hpp"
-#include "ccd/array_print.hpp"
-#include "ccd/procedure/fit.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/core/array_view.hpp"
+#include "ccd/core/array_print.hpp"
+#include "ccd/machine/fit.hpp"
 
 #include <vector>
 #include <iostream>

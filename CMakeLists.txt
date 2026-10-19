@@ -170,16 +170,16 @@ add_library(
     src/ccd/regression/robust_solver.cpp
     src/ccd/regression/harmonic_basis.cpp
 
-    src/ccd/harmonic/filter.cpp
-    src/ccd/harmonic/harmonic.cpp
+    src/ccd/input/mask/filter.cpp
+    src/ccd/input/harmonic.cpp
 
-    src/ccd/preprocess/preprocess.cpp
+    src/ccd/input/mask/preprocess.cpp
 
-    src/ccd/procedure/fit.cpp
-    src/ccd/procedure/kernels.cpp
-    src/ccd/procedure/masked_series.cpp
-    src/ccd/procedure/pixel_procedure.cpp
-    src/ccd/procedure/standard.cpp
+    src/ccd/machine/fit.cpp
+    src/ccd/machine/kernels.cpp
+    src/ccd/input/masked_series.cpp
+    src/ccd/machine/pixel_procedure.cpp
+    src/ccd/machine/standard.cpp
 
     src/ccd/ccd.cpp
     src/ccd/run/run.cpp
@@ -200,7 +200,7 @@ add_library(
     src/ccd/strategies/stability_rule/pyccd.cpp
     src/ccd/strategies/start_search/pyccd.cpp
     src/ccd/strategies/window_screen/tmask.cpp
-    src/ccd/qa_table.cpp
+    src/ccd/input/qa_table.cpp
     src/ccd/results/diagnostics.cpp
     ${PROJECT_BINARY_DIR}/generated/register_extensions.cpp
     ${CCD_EXTENSION_SOURCES}
@@ -375,7 +375,7 @@ if(CCD_BUILD_TESTS)
     add_executable(
         test_clear
 
-        tests/ccd/procedure/test_clear.cpp
+        tests/ccd/machine/test_clear.cpp
     )
 
 
@@ -402,7 +402,7 @@ if(CCD_BUILD_TESTS)
     add_executable(
         test_snow
 
-        tests/ccd/procedure/test_snow.cpp
+        tests/ccd/machine/test_snow.cpp
     )
 
 
@@ -426,7 +426,7 @@ if(CCD_BUILD_TESTS)
     add_executable(
         test_standard
 
-        tests/ccd/procedure/test_standard.cpp
+        tests/ccd/machine/test_standard.cpp
     )
 
 
@@ -451,7 +451,7 @@ if(CCD_BUILD_TESTS)
     add_executable(
         test_units
 
-        tests/ccd/procedure/test_units.cpp
+        tests/ccd/machine/test_units.cpp
     )
 
 
@@ -476,7 +476,7 @@ if(CCD_BUILD_TESTS)
     add_executable(
         test_filters
 
-        tests/ccd/procedure/test_filters.cpp
+        tests/ccd/machine/test_filters.cpp
     )
 
 
@@ -498,11 +498,11 @@ if(CCD_BUILD_TESTS)
 
     # The preprocessing plan: default_plan() against the hand-written
     # chains, custom plans through run_pixel(), plan validation, and a
-    # microbenchmark of apply(). See tests/ccd/procedure/test_preprocess.cpp.
+    # microbenchmark of apply(). See tests/ccd/machine/test_preprocess.cpp.
     add_executable(
         test_preprocess
 
-        tests/ccd/procedure/test_preprocess.cpp
+        tests/ccd/machine/test_preprocess.cpp
     )
 
 
@@ -526,7 +526,7 @@ if(CCD_BUILD_TESTS)
     add_executable(
         test_validation
 
-        tests/ccd/procedure/test_validation.cpp
+        tests/ccd/machine/test_validation.cpp
     )
 
 
@@ -550,7 +550,7 @@ if(CCD_BUILD_TESTS)
     add_executable(
         test_masked_series
 
-        tests/ccd/procedure/test_masked_series.cpp
+        tests/ccd/machine/test_masked_series.cpp
     )
 
 
@@ -594,11 +594,11 @@ if(CCD_BUILD_TESTS)
     )
 
     # The shared kernels against the per-site loops they stand for, bit for
-    # bit. See tests/ccd/procedure/test_kernels.cpp.
+    # bit. See tests/ccd/machine/test_kernels.cpp.
     add_executable(
         test_kernels
 
-        tests/ccd/procedure/test_kernels.cpp
+        tests/ccd/machine/test_kernels.cpp
     )
 
 
@@ -622,16 +622,16 @@ if(CCD_BUILD_TESTS)
         test_kernels
 
         PRIVATE
-            CCD_PYCCD_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test_3657_3610_observations.csv"
-            CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv"
+            CCD_PYCCD_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_3657_3610_observations.csv"
+            CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test002_c2.csv"
     )
 
     # The Standard machine's routing from hand-built records, and its exit
-    # reasons on whole pixels. See tests/ccd/procedure/test_machine.cpp.
+    # reasons on whole pixels. See tests/ccd/machine/test_machine.cpp.
     add_executable(
         test_machine
 
-        tests/ccd/procedure/test_machine.cpp
+        tests/ccd/machine/test_machine.cpp
     )
 
 
@@ -744,15 +744,15 @@ if(CCD_BUILD_TESTS)
         test_resume
 
         PRIVATE
-            CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/procedure"
+            CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
     )
 
     # The resume record: what run_pixel() with RunSpec::record writes. See
-    # tests/ccd/procedure/test_record.cpp.
+    # tests/ccd/machine/test_record.cpp.
     add_executable(
         test_record
 
-        tests/ccd/procedure/test_record.cpp
+        tests/ccd/machine/test_record.cpp
     )
 
 
@@ -810,7 +810,7 @@ if(CCD_BUILD_TESTS)
         test_prefix
 
         PRIVATE
-            CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/procedure"
+            CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
     )
 
     # Band layouts other than Landsat's: a second fixture of synthetic
@@ -897,7 +897,7 @@ if(CCD_BUILD_TESTS)
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test002_c2.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/test002_c2.csv
         ${PROJECT_BINARY_DIR}/test002_c2.csv
         COPYONLY
     )
@@ -917,49 +917,49 @@ if(CCD_BUILD_TESTS)
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test_3657_3610_observations.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_3657_3610_observations.csv
         ${PROJECT_BINARY_DIR}/test_3657_3610_observations.csv
         COPYONLY
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/test_atlanta_024013_00030008_481_393.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_atlanta_024013_00030008_481_393.csv
         ${PROJECT_BINARY_DIR}/test_atlanta_024013_00030008_481_393.csv
         COPYONLY
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/clear_reference.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/clear_reference.csv
         ${PROJECT_BINARY_DIR}/clear_reference.csv
         COPYONLY
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/clear_mask_reference.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/clear_mask_reference.csv
         ${PROJECT_BINARY_DIR}/clear_mask_reference.csv
         COPYONLY
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/snow_reference.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/snow_reference.csv
         ${PROJECT_BINARY_DIR}/snow_reference.csv
         COPYONLY
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/snow_mask_reference.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/snow_mask_reference.csv
         ${PROJECT_BINARY_DIR}/snow_mask_reference.csv
         COPYONLY
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/standard_reference.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/standard_reference.csv
         ${PROJECT_BINARY_DIR}/standard_reference.csv
         COPYONLY
     )
 
     configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/procedure/standard_mask_reference.csv
+        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/standard_mask_reference.csv
         ${PROJECT_BINARY_DIR}/standard_mask_reference.csv
         COPYONLY
     )
@@ -1090,7 +1090,7 @@ endif()
 add_executable(
     test_ccd
 
-    tests/ccd/procedure/test_ccd.cpp
+    tests/ccd/machine/test_ccd.cpp
 )
 
 

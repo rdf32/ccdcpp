@@ -94,7 +94,7 @@ def without(out, *keys):
 
 def reference_pixel():
     """pyccd's reference pixel: (dates, spectral (7, T) DN, qas)."""
-    path = os.path.join(SOURCE_DIR, "tests", "ccd", "procedure", "test_3657_3610_observations.csv")
+    path = os.path.join(SOURCE_DIR, "tests", "ccd", "machine", "test_3657_3610_observations.csv")
     data = np.loadtxt(path, delimiter=",", dtype=np.int64)
     return (data[:, 0].copy(), np.ascontiguousarray(data[:, 1:8].T, dtype=np.float64),
             data[:, 8].astype(np.uint8))

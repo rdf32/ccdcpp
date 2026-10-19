@@ -2,7 +2,7 @@
 
 #include <utility>
 
-#include "ccd/procedure/kernels.hpp"
+#include "ccd/machine/kernels.hpp"
 
 namespace ccd
 {

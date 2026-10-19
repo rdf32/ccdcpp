@@ -2,8 +2,8 @@
 
 #include <cassert>
 
-#include "ccd/logger.hpp"
-#include "ccd/procedure/kernels.hpp"
+#include "ccd/core/logger.hpp"
+#include "ccd/machine/kernels.hpp"
 #include "ccd/strategies/model.hpp"
 
 namespace ccd

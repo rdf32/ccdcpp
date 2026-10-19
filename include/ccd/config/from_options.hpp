@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ccd/config/registry.hpp"
-#include "ccd/harmonic/harmonic.hpp"
+#include "ccd/input/harmonic.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/strategies/stages.hpp"
 

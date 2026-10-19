@@ -9,14 +9,14 @@
 #include <string>
 #include <tuple>
 
-#include "ccd/types.hpp"
-#include "ccd/array_view.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/core/array_view.hpp"
 #include "ccd/ccd.hpp"
-#include "ccd/harmonic/harmonic.hpp"
+#include "ccd/input/harmonic.hpp"
 #include "ccd/regression/lasso_solver.hpp"
-#include "ccd/procedure/fit.hpp"
-#include "ccd/qa_table.hpp"
-#include "ccd/preprocess/preprocess.hpp"
+#include "ccd/machine/fit.hpp"
+#include "ccd/input/qa_table.hpp"
+#include "ccd/input/mask/preprocess.hpp"
 
 #include "ccd/results/diagnostics.hpp"
 #include "config.hpp"

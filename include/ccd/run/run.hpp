@@ -7,14 +7,14 @@
 #include <variant>
 #include <vector>
 
-#include "ccd/array_view.hpp"
+#include "ccd/core/array_view.hpp"
 #include "ccd/config/registry.hpp"
-#include "ccd/harmonic/harmonic.hpp"
-#include "ccd/preprocess/preprocess.hpp"
-#include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/standard.hpp"
-#include "ccd/qa_table.hpp"
-#include "ccd/record.hpp"
+#include "ccd/input/harmonic.hpp"
+#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/machine/fit.hpp"
+#include "ccd/machine/standard.hpp"
+#include "ccd/input/qa_table.hpp"
+#include "ccd/results/record.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 

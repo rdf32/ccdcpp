@@ -4,8 +4,8 @@
 #include <vector>
 #include <Eigen/Dense>
 
-#include "ccd/maths.hpp"
-#include "ccd/constants.hpp"
+#include "ccd/core/maths.hpp"
+#include "ccd/core/constants.hpp"
 
 
 namespace ccd

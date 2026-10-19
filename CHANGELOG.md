@@ -4,6 +4,17 @@
 
 ### Changed
 
+- **The source layout** (headers under `include/ccd/`, sources under `src/ccd/`, tests under
+  `tests/ccd/` mirror each other): `core/` (types, array views, band lists, constants, maths,
+  the logger), `input/` (the QA table, the processing mask, `harmonic.hpp` with the options and
+  the pixel workspace, QA statistics, the masked series, and `input/mask/` with the filters and
+  the preprocessing plan), `regression/`, `config/`, `strategies/` (one directory per stage),
+  `machine/` (the driver, the Standard machine, its kernels, the shared fit types, the
+  per-pixel procedure), `results/` (the resume record, diagnostics) and `run/`. Files moved
+  whole; `#include "ccd/..."` paths change accordingly (e.g. `ccd/types.hpp` is
+  `ccd/core/types.hpp`, `ccd/procedure/standard.hpp` is `ccd/machine/standard.hpp`,
+  `ccd/record.hpp` is `ccd/results/record.hpp`); `ccd/ccd.hpp` includes them as before. Tests
+  under `tests/ccd/procedure/` are under `tests/ccd/machine/`.
 - A run refuses a `MEOW_SIZE` of 0, a NaN `CHANGE_THRESHOLD` or `OUTLIER_THRESHOLD`, and Lasso
   options that are negative or NaN (`alpha`, `tolerance`, `coef_floor`), when it is built,
   with `std::invalid_argument` naming the parameter ("model 'lasso' parameter 'alpha' is -1;
@@ -240,7 +251,7 @@ the full run (`tools/bench/bench_resume.py`).
 
 ### Added (C++)
 
-- The resume record (`include/ccd/record.hpp`): `ccd::detect_recorded()`
+- The resume record (`include/ccd/results/record.hpp`): `ccd::detect_recorded()`
   returns `detect()`'s result, bit for bit, with a `ResumeHeader` (the record
   format, `RESULTS_VERSION`, `options_digest()` of the options, plan and QA
   table, the series end and the statistics end) and a `PixelRecord`: the
@@ -407,7 +418,7 @@ targets it). The tests that failed on Linux pass there.
 
 ### Changed (C++ API; outputs bit for bit)
 
-- A segment's per-band fit is a `ccd::BandFit` (`include/ccd/procedure/fit.hpp`):
+- A segment's per-band fit is a `ccd::BandFit` (`include/ccd/machine/fit.hpp`):
   `intercept`, `coefficients`, `rmse`, `magnitude` and the solver's
   `iterations`, in place of a `LassoResult`. `ChangeModel::bands` is a
   `std::vector<BandFit>`; `ccd::band_fit()` converts a Lasso fit. Inside the
@@ -456,7 +467,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
 
 - The Standard procedure keeps its per-pixel state in records instead of
   hand-kept pairs and the options. `ccd::MaskedSeries`
-  (`include/ccd/procedure/masked_series.hpp`) owns the processing mask and the
+  (`include/ccd/input/masked_series.hpp`) owns the processing mask and the
   observations it keeps, and is the only way to drop one: `drop(position,
   window)` and Initialise's tentative Tmask removal `drop_outliers_if`,
   each moving the caller's window by one rule. `ccd::standard::Cadence`
@@ -472,7 +483,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   the harmonic design with its column order documented; `LassoWorkspace`
   builds its basis through it, and the peek predictions use one directly
   (without the centring only a fit reads). `ccd::fit_bands`
-  (`include/ccd/procedure/kernels.hpp`) is the one per-band fit loop of
+  (`include/ccd/machine/kernels.hpp`) is the one per-band fit loop of
   Initialise, Extend's refit, both catches and the whole-series fits, the
   latter without its redundant workspace reset; `ccd::catch_segment` writes
   the start and end catches; `ccd::initialize_step`, one candidate window
@@ -488,13 +499,13 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   `Variogram` directly. The 8-coefficient peek bases stay at Standard's
   call sites.
 - The Standard procedure is a per-pixel state machine,
-  `ccd::standard::Machine` (`include/ccd/procedure/standard.hpp`): a
+  `ccd::standard::Machine` (`include/ccd/machine/standard.hpp`): a
   `State` record (phase, exit reason, `MaskedSeries`, `Cursor`, segments,
   `Cadence`, `Variogram`, the stable fits, Extend's `Extension`), a
   read-only `Context`, one transition per phase (`prepare`, `initialize`,
   `lookback`, `start_catch`, `extend`, `restart`, `end_catch`) and named
   routing between them (`after_stable_start`, `after_lookback`,
-  `peek_guard`). `ccd::drive` (`include/ccd/procedure/machine.hpp`) is the
+  `peek_guard`). `ccd::drive` (`include/ccd/machine/machine.hpp`) is the
   one loop, for this machine and any later one, and logs one DEBUG line per
   transition. Each transition makes one decision: `initialize` tests one
   candidate window, `lookback` one observation before the window (its peek
@@ -520,7 +531,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   every candidate window. `InitializeCriteria` holds its band lists by
   value.
 - The per-pixel procedure is shared, for any change detector:
-  `include/ccd/procedure/pixel_procedure.hpp` declares `PixelProcedure`
+  `include/ccd/machine/pixel_procedure.hpp` declares `PixelProcedure`
   (moved from `procedure/fit.hpp`), `ccd::select_procedure` (pyccd's
   clear-then-snow choice; `detect_pixel` calls it) and
   `ccd::fit_whole_series` (the PermanentSnow / InsufficientClear fit, one
@@ -570,12 +581,12 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   of `lookback_below_break_decides`; the per-band RMSE of
   `lookback_peek_minus_one_decides` and `coefficient_min_6`), so fixes 2, 4
   and 7 move a pin off the fixture platform too.
-- `tests/ccd/procedure/test_kernels.cpp` (ctest `HarmonicBasis.*`,
+- `tests/ccd/machine/test_kernels.cpp` (ctest `HarmonicBasis.*`,
   `FitBands.*`, `PeekResiduals.*`, `ChangeMagnitude.*`, `CatchSegment.*`):
   each shared kernel against the per-site loop it stands for, bit for bit,
   on the masked series of the pyccd reference pixel and the Collection 2
   pixel.
-- `tests/ccd/procedure/test_machine.cpp` (ctest `StandardRouting.*`,
+- `tests/ccd/machine/test_machine.cpp` (ctest `StandardRouting.*`,
   `StandardPrepare.*`, `StandardInitialize.*`, `StandardLookback.*`,
   `StandardExtend.*`, `StandardExit.*`, `StandardMachine.*`,
   `StandardDetector.*`): the machine's guards and routing from hand-built
@@ -588,7 +599,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
   call the step function and check the outcome it reports.
   `SelectProcedure.*`: the procedure choice at both thresholds;
   `StandardDetector.*`: the detector's fit of each procedure.
-- `tests/ccd/procedure/test_masked_series.cpp` (ctest `MaskedSeries.*`,
+- `tests/ccd/machine/test_masked_series.cpp` (ctest `MaskedSeries.*`,
   `Variogram.*`, `StandardCadence.*`, `HarmonicWorkspace.*`): the records'
   contracts.
 - `tools/bench/`: the refactor's timing harness under version control: the
@@ -812,7 +823,7 @@ options describe. API only; outputs are those of 0.4.0, bit for bit.
 
 ### Added (C++ API)
 
-- `ccd/preprocess/preprocess.hpp`: preprocessing plans. A `PreprocessPlan`
+- `ccd/input/mask/preprocess.hpp`: preprocessing plans. A `PreprocessPlan`
   holds one `ProcedurePlan` per procedure (`standard`, `snow`,
   `insufficient_clear`): an optional `Affine` transform of one band, applied
   to the per-pixel copy, and a `Chain` of up to 8 `Step`s (`KeepQa`, `AddQa`,

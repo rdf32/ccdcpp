@@ -80,3 +80,6 @@ __pycache__/
 .vs/
 *.vcxproj.user
 *.suo
+
+# A private extension tree (CCD_EXTENSIONS) is never part of this repository.
+/private/

@@ -26,7 +26,7 @@ All numbers are for ccdcpp 0.10.0 on one machine:
 ## Against PyCCD
 
 One pixel at a time, one thread each: 402 pixels spread over the synthetic corpus and the two
-PyCCD-format pixels in `tests/ccd/procedure/` (PyCCD's reference pixel `test_3657_3610` and one
+PyCCD-format pixels in `tests/ccd/machine/` (PyCCD's reference pixel `test_3657_3610` and one
 Atlanta pixel), 404 in all (`bench_pyccd.py`; PyCCD is lcmap-pyccd 2021.7.19 on numpy 1.26.4,
 scipy 1.10.1, scikit-learn 1.9.1). Two rounds, alternating, load 8-12 (other software running):
 

@@ -5,7 +5,7 @@
 //   golden_driver gen <corpus_dir>
 //   golden_driver run <corpus_dir> <csv_dir> <out_dir> [bench]
 //
-// <csv_dir> is a tree's tests/ccd/procedure. Build it against a tree's
+// <csv_dir> is a tree's tests/ccd/machine. Build it against a tree's
 // include/, tests/ccd/golden/ and libccd_core.a. Every tree's dumps compare
 // file for file with every other's: v0.6.1 to v0.10.0 ran it through their
 // detect() and detect_cube() (this driver as of v0.10.0), 1.0 on through

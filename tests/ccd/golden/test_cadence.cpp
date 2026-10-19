@@ -30,7 +30,7 @@
 #include <gtest/gtest.h>
 
 #include "ccd/ccd.hpp"
-#include "ccd/procedure/fit.hpp"
+#include "ccd/machine/fit.hpp"
 
 #include "golden.hpp"
 #include "synthetic.hpp"

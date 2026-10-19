@@ -3,12 +3,12 @@
 #include <cstdint>
 #include <vector>
 
-#include "ccd/array_view.hpp"
-#include "ccd/band_list.hpp"
-#include "ccd/types.hpp"
+#include "ccd/core/array_view.hpp"
+#include "ccd/core/band_list.hpp"
+#include "ccd/core/types.hpp"
 
-#include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/kernels.hpp"
+#include "ccd/machine/fit.hpp"
+#include "ccd/machine/kernels.hpp"
 
 namespace ccd
 {

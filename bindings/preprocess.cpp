@@ -11,9 +11,9 @@
 #include <utility>
 #include <vector>
 
-#include "ccd/constants.hpp"
-#include "ccd/harmonic/harmonic.hpp"
-#include "ccd/preprocess/preprocess.hpp"
+#include "ccd/core/constants.hpp"
+#include "ccd/input/harmonic.hpp"
+#include "ccd/input/mask/preprocess.hpp"
 
 namespace py = pybind11;
 namespace pp = ccd::preprocess;

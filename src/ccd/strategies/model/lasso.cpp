@@ -1,6 +1,6 @@
 #include "ccd/strategies/model/lasso.hpp"
 
-#include "ccd/procedure/kernels.hpp"
+#include "ccd/machine/kernels.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/strategies/model.hpp"
 

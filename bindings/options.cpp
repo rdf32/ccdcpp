@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "ccd/constants.hpp"
-#include "ccd/harmonic/harmonic.hpp"
-#include "ccd/procedure/fit.hpp"
+#include "ccd/core/constants.hpp"
+#include "ccd/input/harmonic.hpp"
+#include "ccd/machine/fit.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 namespace py = pybind11;

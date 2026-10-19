@@ -4,7 +4,7 @@
 #include <string>
 #include <type_traits>
 
-#include "../fnv.hpp"
+#include "../core/fnv.hpp"
 
 namespace ccd
 {

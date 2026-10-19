@@ -1,7 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "ccd/pmask.hpp"
+#include "ccd/input/pmask.hpp"
 
 namespace py = pybind11;
 

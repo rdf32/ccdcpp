@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <vector>
 
-#include "ccd/types.hpp"
-#include "ccd/constants.hpp"
-#include "ccd/array_view.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/core/constants.hpp"
+#include "ccd/core/array_view.hpp"
 
 namespace ccd
 {

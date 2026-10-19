@@ -10,8 +10,8 @@
 #include <variant>
 #include <vector>
 
-#include "ccd/band_list.hpp"
-#include "ccd/types.hpp"
+#include "ccd/core/band_list.hpp"
+#include "ccd/core/types.hpp"
 
 namespace ccd
 {

@@ -51,8 +51,8 @@ c++ -std=c++17 -O2 -I <repo>/tests/ccd/golden <repo>/tools/bench/make_corpus.cpp
 
    ```
    <python> -I -W ignore tools/bench/bench_pyccd.py <package dir> <pyccd dir> c16.bin 402 \
-       tests/ccd/procedure/test_3657_3610_observations.csv \
-       tests/ccd/procedure/test_atlanta_024013_00030008_481_393.csv
+       tests/ccd/machine/test_3657_3610_observations.csv \
+       tests/ccd/machine/test_atlanta_024013_00030008_481_393.csv
    ```
 
    Run it twice and report the medians, totals and ratios of the last lines. For the same

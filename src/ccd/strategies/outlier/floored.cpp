@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-#include "ccd/logger.hpp"
+#include "ccd/core/logger.hpp"
 
 namespace ccd
 {

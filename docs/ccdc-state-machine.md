@@ -20,13 +20,13 @@ detector it reuses from pixel to pixel. The steps of one pixel:
 
 1. decode the QA (through a `QaTable` when one is given);
 2. compute the QA statistics of the observations dated up to `STAT_ORD`
-   (`Quality::compute_until`, `include/ccd/harmonic/quality.hpp`);
+   (`Quality::compute_until`, `include/ccd/input/quality.hpp`);
 3. choose the pixel's procedure: the run's `mode` stage (`ModeRule::choose`,
    `include/ccd/strategies/stages.hpp`);
 4. apply that procedure's transform to the pixel's private copy and run its filter chain to
-   build the processing mask (`include/ccd/preprocess/preprocess.hpp`);
+   build the processing mask (`include/ccd/input/mask/preprocess.hpp`);
 5. fit the mask with the run's change detector, `standard::Detector::fit`
-   (`include/ccd/procedure/standard.hpp`).
+   (`include/ccd/machine/standard.hpp`).
 
 The procedure choice:
 
@@ -88,8 +88,8 @@ The exit is internal; the trace and the tests read it, the result does not carry
 
 ### Phases and their guards
 
-Each row is one transition function in `src/ccd/procedure/standard.cpp`, declared in
-`include/ccd/procedure/standard.hpp`. The three phases that repeat themselves do one thing per
+Each row is one transition function in `src/ccd/machine/standard.cpp`, declared in
+`include/ccd/machine/standard.hpp`. The three phases that repeat themselves do one thing per
 call and say what they did as an outcome value, so the trace and the tests see every decision.
 
 | Phase | One call | Next |
@@ -104,7 +104,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 The guards inside one call, in the order they are tested:
 
-- **Initialize** (`initialize_step`, `src/ccd/procedure/kernels.cpp`): the start search finds
+- **Initialize** (`initialize_step`, `src/ccd/machine/kernels.cpp`): the start search finds
   no candidate left (`Exhausted`) or a span too short (`ShortSpan`, grow; pyccd: under
   `DAY_DELTA`); the window screen (Tmask) flags
   every observation (`AllOutliers`, grow); it flags some and the shortened window is not a
@@ -164,12 +164,12 @@ the stability fit. A direct caller of `standard::Procedure` builds all of them f
 | Field | What it is | Shared or Standard's |
 |---|---|---|
 | `phase`, `exit` | where the machine is, and why it stopped | each machine has its own enums |
-| `series` (`MaskedSeries`, `include/ccd/procedure/masked_series.hpp`) | the processing mask and the observations it keeps, always in step | shared |
-| `cursor` (`Cursor`, `include/ccd/procedure/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
+| `series` (`MaskedSeries`, `include/ccd/input/masked_series.hpp`) | the processing mask and the observations it keeps, always in step | shared |
+| `cursor` (`Cursor`, `include/ccd/machine/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
 | `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | Standard's |
-| `variogram` (`Variogram`, `include/ccd/procedure/fit.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
+| `variogram` (`Variogram`, `include/ccd/machine/fit.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
 | `init_model`, `stability`, `lookback` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's and the lookback's per-pixel scratch, each a `PerThread` of its strategy | Standard's |
 | `extension` (`Extension`) | what Extend carries from one peek test to the next | Standard's |
@@ -356,22 +356,22 @@ record:
 
 | Function or type | File |
 |---|---|
-| `fit_whole_series`, `PixelProcedure` | `include/ccd/procedure/pixel_procedure.hpp` |
-| `MaskedSeries` | `include/ccd/procedure/masked_series.hpp` |
-| `Cursor`, `drive` | `include/ccd/procedure/machine.hpp` |
-| `fit_bands` (the one per-band fit loop), `peek_residuals`, `change_magnitude`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/procedure/kernels.hpp` |
+| `fit_whole_series`, `PixelProcedure` | `include/ccd/machine/pixel_procedure.hpp` |
+| `MaskedSeries` | `include/ccd/input/masked_series.hpp` |
+| `Cursor`, `drive` | `include/ccd/machine/machine.hpp` |
+| `fit_bands` (the one per-band fit loop), `peek_residuals`, `change_magnitude`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/machine/kernels.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
-| `Variogram`, `adjusted_variogram`, `tmask`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/procedure/fit.hpp` |
+| `Variogram`, `adjusted_variogram`, `tmask`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/machine/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
-(`include/ccd/procedure/standard.hpp`): `initialize_criteria`, `coefficient_count`, the phases,
+(`include/ccd/machine/standard.hpp`): `initialize_criteria`, `coefficient_count`, the phases,
 the
 transitions and the routing. A function moves to the shared list once a second machine or a
 strategy uses it.
 
 ## 5. The driver and the trace
 
-`ccd::drive<Machine>` (`include/ccd/procedure/machine.hpp`) is the only loop:
+`ccd::drive<Machine>` (`include/ccd/machine/machine.hpp`) is the only loop:
 
 ```cpp
 while (state.phase != Phase::Done)
@@ -417,7 +417,7 @@ every route into EndCatch and by the early exits, before anything after the guar
 holds the exit, the cursor, the fit window's end, a pending grow, the last peek test's
 coefficient count and magnitudes, and the final segment count. `ccd::run_pixel()` with `RunSpec::record`
 returns it inside a `PixelRecord`, with the pixel's input fingerprint and the days the machine dropped
-(`include/ccd/record.hpp`).
+(`include/ccd/results/record.hpp`).
 
 `standard::resume()` continues from it on the longer series:
 
@@ -466,7 +466,7 @@ rule; the result is taken from the record once the machine is done.
 
 A test builds a `State` by hand (a short synthetic series, a chosen cursor, models from
 `fit_bands`), calls one transition or one step function, and checks the outcome, the next phase
-and the record. `tests/ccd/procedure/test_machine.cpp` does that for every row of the guard
+and the record. `tests/ccd/machine/test_machine.cpp` does that for every row of the guard
 lists above (`StandardInitialize.*`, `StandardLookback.*`, `StandardExtend.*`), for the routing
 (`StandardRouting.*`, `StandardPrepare.*`) and for every `Exit` (`StandardExit.*`).
 `StandardMachine.EachStepIsOneDecision` steps whole pixels by hand and checks that every

@@ -4,8 +4,8 @@
 #include <Eigen/Dense>
 #include <gtest/gtest.h>
 
-#include "ccd/types.hpp"
-#include "ccd/array_view.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/core/array_view.hpp"
 #include "ccd/regression/robust_solver.hpp"
 
 

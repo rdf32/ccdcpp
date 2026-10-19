@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "ccd/types.hpp"
+#include "ccd/core/types.hpp"
 
 // CMake sets CCD_OBSERVE for every target of the library; a translation unit
 // built without it gets the default, the hooks compiled in.

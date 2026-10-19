@@ -5,8 +5,8 @@
 #include <vector>
 #include <algorithm>
 
-#include "ccd/maths.hpp"
-#include "ccd/constants.hpp"
+#include "ccd/core/maths.hpp"
+#include "ccd/core/constants.hpp"
 
 
 

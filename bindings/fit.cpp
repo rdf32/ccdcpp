@@ -1,7 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "ccd/procedure/fit.hpp"
+#include "ccd/machine/fit.hpp"
 
 namespace py = pybind11;
 

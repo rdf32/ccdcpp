@@ -4,15 +4,15 @@
 #include <memory>
 #include <vector>
 
-#include "ccd/array_view.hpp"
-#include "ccd/band_list.hpp"
-#include "ccd/pmask.hpp"
-#include "ccd/types.hpp"
+#include "ccd/core/array_view.hpp"
+#include "ccd/core/band_list.hpp"
+#include "ccd/input/pmask.hpp"
+#include "ccd/core/types.hpp"
 
-#include "ccd/harmonic/harmonic.hpp"
-#include "ccd/harmonic/quality.hpp"
-#include "ccd/procedure/fit.hpp"
-#include "ccd/procedure/pixel_procedure.hpp"
+#include "ccd/input/harmonic.hpp"
+#include "ccd/input/quality.hpp"
+#include "ccd/machine/fit.hpp"
+#include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/strategies/capabilities.hpp"
 #include "ccd/strategies/per_thread.hpp"
 

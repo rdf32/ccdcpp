@@ -25,7 +25,7 @@
 #include <gtest/gtest.h>
 
 #include "ccd/ccd.hpp"
-#include "ccd/qa_table.hpp"
+#include "ccd/input/qa_table.hpp"
 
 #include "golden.hpp"
 #include "synthetic.hpp"

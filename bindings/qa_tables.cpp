@@ -5,8 +5,8 @@
 #include <memory>
 #include <string>
 
-#include "ccd/harmonic/harmonic.hpp"
-#include "ccd/qa_table.hpp"
+#include "ccd/input/harmonic.hpp"
+#include "ccd/input/qa_table.hpp"
 
 namespace py = pybind11;
 

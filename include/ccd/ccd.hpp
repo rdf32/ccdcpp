@@ -6,14 +6,14 @@
 
 #include <cstdint>
 
-#include "ccd/types.hpp"
-#include "ccd/array_view.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/core/array_view.hpp"
 
-#include "ccd/harmonic/harmonic.hpp"
-#include "ccd/procedure/fit.hpp"
-#include "ccd/qa_table.hpp"
-#include "ccd/record.hpp"
-#include "ccd/preprocess/preprocess.hpp"
+#include "ccd/input/harmonic.hpp"
+#include "ccd/machine/fit.hpp"
+#include "ccd/input/qa_table.hpp"
+#include "ccd/results/record.hpp"
+#include "ccd/input/mask/preprocess.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/run/run.hpp"
 

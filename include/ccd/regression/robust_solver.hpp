@@ -4,8 +4,8 @@
 #include <vector>
 #include <Eigen/Dense>
 
-#include "ccd/types.hpp"
-#include "ccd/array_view.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/core/array_view.hpp"
 
 namespace ccd
 {

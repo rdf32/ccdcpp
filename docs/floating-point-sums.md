@@ -129,7 +129,7 @@ differ by up to the solver's tolerance, about 1e-4 relative. That never happened
 above (nearly 640,000 band fits).
 
 Because the order is part of the output, changing it is a results version (`RESULTS_VERSION`
-in `include/ccd/record.hpp`): a stored resume record from another order is refused, and the
+in `include/ccd/results/record.hpp`): a stored resume record from another order is refused, and the
 first run after upgrading is a full one.
 
 ## 4. Why four

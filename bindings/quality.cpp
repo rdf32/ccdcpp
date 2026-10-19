@@ -1,6 +1,6 @@
 #include <pybind11/pybind11.h>
 
-#include "ccd/harmonic/quality.hpp"
+#include "ccd/input/quality.hpp"
 
 namespace py = pybind11;
 

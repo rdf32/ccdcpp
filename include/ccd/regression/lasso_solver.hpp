@@ -4,9 +4,9 @@
 #include <vector>
 #include <algorithm>
 
-#include "ccd/types.hpp"
-#include "ccd/constants.hpp"
-#include "ccd/array_view.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/core/constants.hpp"
+#include "ccd/core/array_view.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 
 namespace ccd

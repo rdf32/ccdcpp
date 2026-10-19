@@ -66,7 +66,7 @@ for t in "${labels[@]}"; do
   "$CXX" -std=c++17 -O3 -DNDEBUG -I"/work-$t/include" -I"$G" -I/opt/env/include \
     -I/opt/env/include/eigen3 -fopenmp /tool/golden_driver.cpp "/b-$t/libccd_core.a" \
     -o "/b-$t/golden_driver"
-  "/b-$t/golden_driver" run /corpus "/work-$t/tests/ccd/procedure" "$O/golden" 2> "$O/driver.log"
+  "/b-$t/golden_driver" run /corpus "/work-$t/tests/ccd/machine" "$O/golden" 2> "$O/driver.log"
   # Each fixture test in write mode rewrites its fixture in the tree copy, then skips.
   write_fixture golden GOLDEN Golden golden_fixture.txt
   write_fixture bands BANDS Bands bands_fixture.txt

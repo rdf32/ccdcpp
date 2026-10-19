@@ -43,7 +43,7 @@ Key advantages include:
 
 # The Algorithm as a State Machine
 
-Per pixel, CCDC is a small state machine, and ccdcpp's Standard procedure is written as one: a per-pixel record (`ccd::standard::State`), one transition per phase (Prepare, Initialize, Lookback, StartCatch, Extend, Restart, EndCatch), each making one decision and returning the next phase, and one generic loop (`ccd::drive`) with a DEBUG trace line per transition. The per-pixel procedure choice and the whole-series fit of snow and insufficient-clear pixels are shared functions (`include/ccd/procedure/pixel_procedure.hpp`) that a second change-detection procedure can reuse.
+Per pixel, CCDC is a small state machine, and ccdcpp's Standard procedure is written as one: a per-pixel record (`ccd::standard::State`), one transition per phase (Prepare, Initialize, Lookback, StartCatch, Extend, Restart, EndCatch), each making one decision and returning the next phase, and one generic loop (`ccd::drive`) with a DEBUG trace line per transition. The per-pixel procedure choice and the whole-series fit of snow and insufficient-clear pixels are shared functions (`include/ccd/machine/pixel_procedure.hpp`) that a second change-detection procedure can reuse.
 
 The Standard machine; bracketed names are the exit reason the record keeps:
 
@@ -711,7 +711,7 @@ update = ccdcpp.resume_cube_columns(
 - **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene that covers it) is rerun in full, the same way, and its `status` says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed; `update["counts"]`). A scene the pixel's QA marks fill does not count as a change.
 - **A record that does not match the call is refused** (`ValueError`): another record format or results version (`ccdcpp.RESULTS_VERSION` changes whenever a release changes outputs), other options, preset, plan or QA table, a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
 - The record is plain columns (`ccdcpp.resume_schema()`); the caller stores them, beside its segments. Stored segments may carry placeholders in fields the caller does not keep (a break day or magnitude where there is no break, the observation count); they come back as given.
-- One pixel: `detect(..., resume_record=True)` and `resume(..., resume=, resume_header=, models=)`. C++: `ccd::run_pixel` and `ccd::run_cube` with `RunSpec::record`, and with the stored run as their `resume` argument (a `PixelResume`, a `CubeResumeFrom`) (`include/ccd/run/run.hpp`, `include/ccd/record.hpp`).
+- One pixel: `detect(..., resume_record=True)` and `resume(..., resume=, resume_header=, models=)`. C++: `ccd::run_pixel` and `ccd::run_cube` with `RunSpec::record`, and with the stored run as their `resume` argument (a `PixelResume`, a `CubeResumeFrom`) (`include/ccd/run/run.hpp`, `include/ccd/results/record.hpp`).
 
 ---
 
