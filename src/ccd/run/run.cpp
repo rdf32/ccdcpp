@@ -101,7 +101,7 @@ void check_resume(
             std::to_string(RESULTS_VERSION) + ": rerun in full");
     if (from.options_digest != digest)
         throw std::invalid_argument(
-            "the resume record was made with other options, plan or QA table");
+            "the resume record was made with other options, configuration, plan or QA table");
     if (dates.size() == 0 || dates(dates.size() - 1) < from.series_end)
         throw std::invalid_argument(
             "the series ends before the resume record's, on " +

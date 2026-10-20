@@ -57,7 +57,7 @@ nothing. A resumed pixel reports from its Prepare on, then from where the stored
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/run/run.hpp"
 
-ccd::RunSpec spec{hoptions, loptions};
+ccd::RunSpec spec{hoptions};
 spec.observer = std::make_shared<ccd::TextObserver>(std::cerr);
 ccd::run_pixel(spec, dates, spectral, qas);
 // pixel 0: transition Prepare -> Initialize window (0, 12) prev_break 0 n 302

@@ -7,17 +7,18 @@ monitoring model and when it is refitted, the change test, the outlier rule, and
 segment reports. Each stage is decided by a **strategy** chosen by name, with parameters. A
 **configuration** names, for every stage, its strategy and that strategy's parameters.
 
-A run without a configuration uses the one its `HarmonicOptions` and `LassoOptions` describe,
-so code written before configurations existed runs as it always has. The stages, their
-strategies and how each option maps to a parameter are in
-[docs/ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies).
+The options (`HarmonicOptions`) describe the input: its bands, units, QA codes and statistics
+window. The configuration is the algorithm. A run without one uses the `ccdc` preset (each
+strategy at its defaults, pyccd's values, Collection-1 DN); a run with `profile=` and no
+`config=` uses `profile.config()`, that preset written for the profile's input. The stages and
+their strategies are in [docs/ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies).
 
 ## From Python
 
 ```python
 import ccdcpp
 
-cfg = ccdcpp.config("ccdc")          # the preset: the default options' configuration
+cfg = ccdcpp.config("ccdc")          # the preset: pyccd's algorithm, Collection-1 DN
 print(cfg)                           # every stage and parameter
 # Config(
 #   change_test: chi2(change_probability=0.99, change_threshold=15.086272469388987, ...)
@@ -63,31 +64,40 @@ for p in table["refit"]["span-factor"]:
 `cfg.hash()` is a digest equal for equal configurations on any platform; `cfg.to_toml()` writes
 the configuration as a preset file; a `Config` pickles, so it can go to worker processes.
 
-### The configuration the options describe
+### The configuration of a profile
 
 ```python
-h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
-cfg = ccdcpp.Config.from_options(h, l)
-assert cfg == ccdcpp.config("ccdc")
+p = ccdcpp.presets.landsat_c2()
+cfg = p.config()                     # "ccdc" for the profile's input
+print(cfg.params("model")["alpha"], cfg.params("window_screen")["bands"])
+# 0.0001 [1, 4]
+assert ccdcpp.presets.landsat_c1_dn().config() == ccdcpp.config("ccdc")
 # The same run, with and without it:
-assert ccdcpp.detect(d, s, q, h, l)["models"] == ccdcpp.detect(d, s, q, h, l, config=cfg)["models"]
+assert ccdcpp.detect(d, s, q, profile=p)["models"] == ccdcpp.detect(d, s, q, profile=p, config=cfg)["models"]
+# Without a profile, the options and the "ccdc" preset:
+out = ccdcpp.detect(d, s_dn, codes, ccdcpp.HarmonicOptions())
 ```
 
-With a profile, the configuration replaces the algorithm's choices; the profile still supplies
-the band layout, the QA table, the preprocessing plan and the options the machine itself reads
-(detection bands, the statistics window, the coefficient counts).
+`profile.config(base="ccdc")` writes `base` (any `ccdcpp.config()` source) for the profile: its
+`cadence` (`stage__parameter` keys, applied with `Config.replace()`), its `alpha` and
+`coef_floor` in `model`, `stability_fit` and `edge_fit`, its Tmask roles as `window_screen`'s
+`bands`, and the change and outlier thresholds of its detection band count in `change_test`,
+`stability_rule`, `lookback` and `outlier`. A `config=` given with a profile replaces
+`profile.config()` whole, so start from it (`p.config().replace(refit__factor=2.0)`) to keep
+the profile's units. The profile still supplies the band layout, the QA table, the preprocessing
+plan and the options the machine itself reads (detection bands, the statistics window).
 
 ### Units
 
 A configuration's parameters are in the input's units, as the options' are: the Lasso's
 `alpha` and `coef_floor` (in the `stability_fit`, `model` and `edge_fit` stages) are 1.0 for
-Collection-1 DN and 1e-4 for reflectance. `Config.from_options()` of a profile's options
-(`profile.options()`) carries the profile's values.
+Collection-1 DN and 1e-4 for reflectance. `profile.config()` carries the profile's values.
 
 ## Presets
 
 A preset is a TOML file, one table per stage. `ccdcpp.config(name)` reads
-`ccdcpp/configs/<name>.toml`; `ccdcpp.config(path)` reads any file. A file may extend another and
+`ccdcpp/configs/<name>.toml`, or else the library registry's preset of that name (an
+extension's, `Registry::add_preset()`); `ccdcpp.config(path)` reads any file. A file may extend another and
 list only what differs:
 
 ```toml
@@ -117,21 +127,22 @@ is the extending file's directory's. The shipped preset is `ccdc`
 ## From C++
 
 ```cpp
-#include "ccd/config/from_options.hpp"
 #include "ccd/run/run.hpp"
 
 using namespace ccd;
 
-config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{});
+config::ConfigTree tree = strategies::library_registry().preset("ccdc");
 tree["change_test"].params["change_probability"] = config::real(0.95);
 tree["refit"].params["factor"] = config::real(2.0);
 
-RunSpec spec{HarmonicOptions{}, LassoOptions{}};
-spec.config = std::make_shared<const config::ConfigTree>(tree);
+RunSpec spec{HarmonicOptions{}};     // spec.config is the "ccdc" preset
+spec.config = tree;
 PixelRun run = run_pixel(spec, dates, spectral, qas);
 ```
 
-`strategies::library_registry().names()` lists the strategies; `.schemas()` their parameters.
+`strategies::library_registry().names()` lists the strategies, `.schemas()` their parameters
+and `.presets()` the named configurations (`ccdc`, and any an extension registers with
+`Registry::add_preset()`).
 
 ## Experiments
 
@@ -183,6 +194,6 @@ extension directory (CMake's `CCD_EXTENSIONS`; see
 
 ## Resume records
 
-A record written by a configured run carries the configuration's digest: it continues only under
-the same configuration. Records of runs without one are unchanged, so records written by 0.10.0
-stay valid.
+A record carries the digest of the options and the configuration (`options_digest()`): it
+continues only under the same ones, and a resume under another configuration raises
+`ValueError` before any pixel runs.

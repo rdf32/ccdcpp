@@ -7,8 +7,8 @@ All numbers are for ccdcpp 0.10.0 on one machine:
 
 - Apple M5 Max, 18 cores (6 performance, 12 efficiency), 64 GB, macOS 26.7.
 - Release build (`-O3`, Apple clang 21, libomp), Python 3.11, numpy 1.26.4.
-- Default options (`HarmonicOptions()`, `LassoOptions()`), or `presets.landsat_c2()` for the
-  real cell.
+- Default options and configuration (`HarmonicOptions()` and the `ccdc` preset), or
+  `presets.landsat_c2()` (its options and its `config()`) for the real cell.
 - The machine was not otherwise idle: the 1-minute load is given with each table. A
   comparison is only made between runs of the same session.
 - Memory is the peak resident set size of the process (`/usr/bin/time -l`), which includes the
