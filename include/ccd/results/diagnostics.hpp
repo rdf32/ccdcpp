@@ -40,6 +40,7 @@ struct ObserverEvent
     {
         Transition,   // phase -> next; window, prev_break, observations
         Test,         // an Extend change test: day (the peek's first), outcome, values
+                      // (the change test's first statistic, chi2's change_magnitude)
         Drop,         // an observation dropped: day, outcome (why)
         Segment,      // a segment written: day and day_to (its first and last
                       // day), outcome (its curve_qa, break day and change

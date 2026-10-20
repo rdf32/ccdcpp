@@ -545,6 +545,14 @@ Strategies Registry::build(const ConfigTree& config) const
     require(s.change_test->needs(), model, named(ChangeTest::stage), named(MonitoringModel::stage));
     require(s.outlier->needs(), model | s.change_test->provides(), named(OutlierRule::stage),
             named(MonitoringModel::stage) + " with " + named(ChangeTest::stage));
+    const std::vector<std::string> provided = s.change_test->statistics();
+    for (const std::string& statistic : s.outlier->statistics())
+        if (std::find(provided.begin(), provided.end(), statistic) == provided.end())
+            throw std::invalid_argument(named(OutlierRule::stage) + " reads the statistic '" +
+                                        statistic + "', which " + named(ChangeTest::stage) +
+                                        " does not provide" +
+                                        (provided.empty() ? std::string()
+                                                          : "; it provides " + listed(provided)));
     return s;
 }
 

@@ -23,10 +23,10 @@ namespace strategies
 // test's first peek observation, each band's magnitude the median of that
 // test's peek residuals.
 //
-// It provides the peek's comparison RMSE and each observation's statistic.
-// Each peek observation's statistic is the sum over the detection bands of
-// (residual / max(variogram, comparison RMSE))^2 (change_magnitude()); the
-// peek is a change when every statistic is above the threshold. The
+// It provides the peek's comparison RMSE and one statistic per observation,
+// "change_magnitude": the sum over the detection bands of (residual /
+// max(variogram, comparison RMSE))^2 (change_magnitude()); the peek is a
+// change when every observation's is above the threshold. The
 // comparison RMSE is the model's own while the window holds at most
 // model_rmse_up_to observations, then the seasonal RMSE: the norm of the
 // model's residuals at the seasonal_count fit-window observations nearest the
@@ -51,6 +51,7 @@ struct Chi2 final : ChangeTest
 
     Capabilities needs() const override;
     Capabilities provides() const override;
+    std::vector<std::string> statistics() const override;
     std::unique_ptr<Scratch> make_scratch() const override;
     PeekPlan prepare(ArrayView<const std::int64_t, 1> statistics_dates, index_t detection_bands,
                      Scratch& scratch) const override;

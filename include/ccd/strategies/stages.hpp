@@ -358,12 +358,43 @@ struct Peek
     const BandList& bands;                                 // the detection bands
 };
 
-// What the change test found at a peek, for the outlier rule (by
-// Capability: ComparisonRmse, PeekStatistic). Rewritten by every test.
+// A per-observation statistic of a peek: the name the change test gives it
+// (chi2's "change_magnitude") and an outlier rule selects it by, and its
+// values by peek observation.
+struct PeekStatistic
+{
+    std::string name;
+    std::vector<scalar_t> values;
+};
+
+// What the change test found at a peek, for the outlier rule: the comparison
+// RMSE (Capability::ComparisonRmse) and the statistics it provides
+// (ChangeTest::statistics()). Rewritten by every test.
 struct PeekResult
 {
     std::vector<scalar_t> comparison_rmse;   // by position in the detection bands
-    std::vector<scalar_t> statistic;         // by peek observation
+    std::vector<PeekStatistic> statistics;   // the change test's, by name
+
+    // The values of statistic `name`, for a change test to write: its slot is
+    // made on first use and kept, with its storage, after.
+    std::vector<scalar_t>& provide(const std::string& name)
+    {
+        for (PeekStatistic& s : statistics)
+            if (s.name == name)
+                return s.values;
+        statistics.push_back({name, {}});
+        return statistics.back().values;
+    }
+
+    // The values of statistic `name`, or null when the change test provides
+    // none of that name.
+    const std::vector<scalar_t>* find(const std::string& name) const
+    {
+        for (const PeekStatistic& s : statistics)
+            if (s.name == name)
+                return &s.values;
+        return nullptr;
+    }
 };
 
 struct ChangeTest
@@ -373,6 +404,9 @@ struct ChangeTest
     virtual ~ChangeTest() = default;
     virtual Capabilities needs() const = 0;
     virtual Capabilities provides() const = 0;
+    // The names of the per-observation statistics test() writes into the
+    // PeekResult (PeekResult::provide()).
+    virtual std::vector<std::string> statistics() const { return {}; }
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
     virtual PeekPlan prepare(ArrayView<const std::int64_t, 1> statistics_dates,
                              index_t detection_bands, Scratch& scratch) const = 0;
@@ -402,6 +436,9 @@ struct OutlierRule
 
     virtual ~OutlierRule() = default;
     virtual Capabilities needs() const = 0;
+    // The names of the change test's statistics judge() reads; the registry
+    // refuses a configuration whose change test does not provide them.
+    virtual std::vector<std::string> statistics() const { return {}; }
     virtual OutlierOutcome judge(const Peek& peek, const PeekResult& result) const = 0;
 };
 

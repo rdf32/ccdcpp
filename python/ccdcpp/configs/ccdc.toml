@@ -55,6 +55,8 @@ min_lag_days = 30
 
 [outlier]
 strategy = "floored"
+[outlier.params]
+statistic = "change_magnitude"
 
 [refit]
 strategy = "span-factor"

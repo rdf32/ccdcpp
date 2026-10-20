@@ -815,7 +815,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     for (index_t i = 0; i < bands.size(); ++i)
         rmse[i] = e.model->rmse(bands[i]);
     EXPECT_EQ(e.result.comparison_rmse, rmse);
-    EXPECT_EQ(e.result.statistic, magnitude_with(rmse));
+    EXPECT_EQ(*e.result.find("change_magnitude"), magnitude_with(rmse));
 
     r.step();   // window (0, 25): seasonal
     const auto closest = ccd::find_closest_doy(
@@ -824,7 +824,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
         rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
                                      r.real("change_test", "seasonal_divisor"));
     EXPECT_EQ(e.result.comparison_rmse, rmse);
-    EXPECT_EQ(e.result.statistic, magnitude_with(rmse));
+    EXPECT_EQ(*e.result.find("change_magnitude"), magnitude_with(rmse));
 }
 
 TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
@@ -851,7 +851,7 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     std::vector<double> want;
     ccd::change_magnitude(e.residuals, bands, r.state.variogram, rmse, want);
     EXPECT_EQ(e.result.comparison_rmse, rmse);
-    EXPECT_EQ(e.result.statistic, want);
+    EXPECT_EQ(*e.result.find("change_magnitude"), want);
 }
 
 TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
@@ -984,6 +984,7 @@ struct HookTest final : ccd::ChangeTest
 
     ccd::Capabilities needs() const override { return chi2->needs(); }
     ccd::Capabilities provides() const override { return chi2->provides(); }
+    std::vector<std::string> statistics() const override { return chi2->statistics(); }
     std::unique_ptr<ccd::Scratch> make_scratch() const override { return chi2->make_scratch(); }
     ccd::PeekPlan prepare(ccd::ArrayView<const std::int64_t, 1> dates, index_t bands,
                           ccd::Scratch& scratch) const override

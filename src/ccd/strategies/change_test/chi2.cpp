@@ -15,6 +15,14 @@ namespace strategies
 namespace
 {
 
+// The name of chi2's per-observation statistic.
+const char* const CHANGE_MAGNITUDE = "change_magnitude";
+
+} // namespace
+
+namespace
+{
+
 // One thread's chi2 state: the pixel's threshold (prepare()), and buffers.
 // `seasonal` is the fit window's observations by phase in the year, built at
 // the first test that reads it after a refit (for refit number
@@ -61,7 +69,12 @@ Capabilities Chi2::needs() const
 
 Capabilities Chi2::provides() const
 {
-    return Capability::ComparisonRmse | Capability::PeekStatistic;
+    return Capability::ComparisonRmse;
+}
+
+std::vector<std::string> Chi2::statistics() const
+{
+    return {CHANGE_MAGNITUDE};
 }
 
 std::unique_ptr<Scratch> Chi2::make_scratch() const
@@ -138,16 +151,17 @@ TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) c
         }
     }
 
+    std::vector<scalar_t>& magnitudes = result.provide(CHANGE_MAGNITUDE);
     change_magnitude(
         peek.residuals,
         detection_bands,
         peek.variogram,
         comp_rmses,
-        result.statistic
+        magnitudes
     );
 
-    return detect_change(result.statistic, s.change_threshold) ? TestOutcome::Change
-                                                        : TestOutcome::NoChange;
+    return detect_change(magnitudes, s.change_threshold) ? TestOutcome::Change
+                                                         : TestOutcome::NoChange;
 }
 
 index_t Chi2::break_at(const Peek& peek, const Scratch&) const

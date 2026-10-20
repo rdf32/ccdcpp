@@ -13,9 +13,10 @@ namespace ccd
 // What one stage's strategy gives the stages after it at an Extend peek, and
 // what a strategy needs from the ones before it. The model provides its
 // fits' residuals and RMSE; the change test provides the peek's comparison
-// RMSE and per-observation statistic (PeekResult); the outlier rule reads
-// them. Registry::build() refuses a configuration in which a strategy needs
-// what no earlier stage's strategy provides, naming both.
+// RMSE (PeekResult). Registry::build() refuses a configuration in which a
+// strategy needs what no earlier stage's strategy provides, naming both. The
+// per-observation statistics a change test provides and an outlier rule
+// reads go by name (ChangeTest::statistics(), OutlierRule::statistics()).
 //
 //==============================================================================
 
@@ -25,8 +26,7 @@ enum class Capability : std::uint8_t
     ModelRmse = 1 << 1,           // Model::rmse()
     InWindowResiduals = 1 << 2,   // Model::residuals()
     ComparisonRmse = 1 << 3,      // PeekResult::comparison_rmse
-    PeekStatistic = 1 << 4,       // PeekResult::statistic
-    PredictionCovariance = 1 << 5 // the model is a least-squares fit whose
+    PredictionCovariance = 1 << 4 // the model is a least-squares fit whose
                                   // factor gives its predictions' covariance
                                   // (a test reading it downcasts to it)
 };

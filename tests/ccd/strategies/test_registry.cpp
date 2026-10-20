@@ -247,7 +247,8 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
                              {"num_obs_factor", integer(3)},
                              {"tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
         {"noise_floor", {"variogram", {{"min_lag_days", integer(30)}}}},
-        {"outlier", {"floored", {{"threshold", real(0x1.1f1b01b9054dfp+5)}}}},
+        {"outlier", {"floored", {{"statistic", ccd::config::Value(std::string("change_magnitude"))},
+                                 {"threshold", real(0x1.1f1b01b9054dfp+5)}}}},
         {"refit", {"span-factor", {{"factor", real(0x1.547ae147ae148p+0)},
                                    {"min_obs", integer(24)}}}},
         {"segment_fit", {"model-fit", {}}},
@@ -695,13 +696,18 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
                    "change_test 'chi2' needs peek_residuals, model_rmse, in_window_residuals, "
                    "which model 'opaque' does not provide");
 
-    // The outlier rule's needs, from the model and the change test together.
+    // The outlier rule's statistic, by name, from the change test.
     r.add<ccd::ChangeTest, Silent>("silent");
     tree.stages["model"] = {"lasso", {}};
     tree.stages["change_test"] = {"silent", {}};
     expect_refused([&] { r.check(tree); },
-                   "outlier 'floored' needs peek_statistic, which model 'lasso' with "
+                   "outlier 'floored' reads the statistic 'change_magnitude', which "
                    "change_test 'silent' does not provide");
+    tree = golden::ccdc();
+    tree.stages["outlier"].params["statistic"] = ccd::config::Value(std::string("other"));
+    expect_refused([&] { r.check(tree); },
+                   "outlier 'floored' reads the statistic 'other', which change_test 'chi2' "
+                   "does not provide; it provides change_magnitude");
 
     // The stability rule's needs, from the stability fit; Lookback's too.
     r.add<ccd::StabilityFit, OpaqueFit>("opaque");
@@ -741,10 +747,14 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
     const ccd::Peek peek{*model, ccd::ArrayView<const std::int64_t, 1>::contiguous(&day, {1}),
                          ccd::ArrayView<const double, 2>::contiguous(&value, {1, 1}),
                          {}, {}, 0, {}, residuals, variogram, bands};
+    // It reads its statistic by name, whatever else the result holds.
     ccd::PeekResult result;
-    result.statistic = {10.0, 99.0};
+    result.provide("other") = {99.0, 99.0};
+    result.provide("change_magnitude") = {10.0, 99.0};
+    EXPECT_EQ(outlier->statistics(), std::vector<std::string>{"change_magnitude"});
     EXPECT_EQ(outlier->judge(peek, result), ccd::OutlierOutcome::Keep);
-    result.statistic = {10.5, 0.0};
+    result.provide("change_magnitude") = {10.5, 0.0};
+    EXPECT_EQ(result.statistics.size(), 2u);
     EXPECT_EQ(outlier->judge(peek, result), ccd::OutlierOutcome::Drop);
 
     expect_refused(

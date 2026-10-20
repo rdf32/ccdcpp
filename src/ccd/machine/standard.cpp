@@ -773,7 +773,8 @@ ExtendOutcome extend_step(const Context& context, State& state)
     CCD_OBSERVE_EVENT(context.observe, [&] {
         ObserverEvent e = day_event(ObserverEvent::Kind::Test, masked_dates(peek_window.start),
                                     to_string(outcome));
-        e.values = extension.result.statistic;
+        if (!extension.result.statistics.empty())
+            e.values = extension.result.statistics.front().values;
         return e;
     }());
 

@@ -398,6 +398,10 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
     {
         for (const auto& [name, value] : sc.params)
         {
+            // The outlier rule's statistic has no other value: chi2 provides
+            // one statistic only.
+            if (stage == "outlier" && name == "statistic")
+                continue;
             const ccd::config::Value moved = std::visit(
                 [](auto v) -> ccd::config::Value
                 {
