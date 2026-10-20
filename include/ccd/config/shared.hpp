@@ -1,0 +1,125 @@
+#pragma once
+
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ccd/config/params.hpp"
+
+namespace ccd
+{
+
+//==============================================================================
+//
+// GreenFilterScope
+//
+// Which observations the InsufficientClear procedure's green median filter
+// drops. The threshold is the same in each: the median green of the masked
+// observations dated <= stat_ord, plus the green filter. A masked
+// observation whose green is >= the threshold is dropped
+//
+//   All          at any date;
+//   StatWindow   only when dated <= stat_ord, which is the scope pyccd's
+//                insufficient_clear_filter computes the mask for (the
+//                default);
+//   Off          never: the filter does not run.
+//
+// When no masked observation is dated <= stat_ord there is no median and
+// nothing is dropped. The configuration names them "all", "stat_window" and
+// "off".
+//
+//==============================================================================
+
+enum class GreenFilterScope : std::uint8_t
+{
+    All,
+    StatWindow,
+    Off
+};
+
+// "all", "stat_window", "off".
+const char* name(GreenFilterScope scope);
+
+// The scope of that name, or none.
+std::optional<GreenFilterScope> green_filter_scope(const std::string& name);
+
+namespace config
+{
+
+// The shared stat_ord that puts every date inside the statistics window: the
+// largest ordinal. A configuration writes "no cutoff" as this number (TOML
+// and Python carry it as the integer 9223372036854775807).
+constexpr std::int64_t NO_STAT_CUTOFF = std::numeric_limits<std::int64_t>::max();
+
+//==============================================================================
+//
+// Shared
+//
+// The values of a configuration that several stages read: written once, in
+// the configuration's `shared` section, and read by every strategy whose
+// schema names them (Source::Shared, Source::Chi2), by the machine and by the
+// default plan. No stage holds a copy.
+//
+//   detection_bands      bands (roles)  the change magnitude's bands, in the
+//                                       order it sums them; their count is
+//                                       the chi-squared degrees of freedom of
+//                                       the derived thresholds
+//   change_probability   none           change_test, stability_rule and
+//                                       lookback: their change_probability,
+//                                       and their change_threshold, its
+//                                       chi-squared quantile
+//   outlier_probability  none           outlier's threshold and lookback's
+//                                       outlier_threshold, its quantile
+//   alpha, coef_floor    reflectance    the Lasso's (model, stability_fit,
+//   max_iter, tolerance  none           edge_fit)
+//   coefficient_min/_mid/_max,          the coefficient rule of model and
+//   num_obs_factor       none           stability_fit; edge_fit's
+//                                       coefficients is coefficient_min
+//   stat_ord             ordinal day    the statistics cutoff: the procedure
+//                                       choice, the cadence, the variogram
+//                                       and the green median read only the
+//                                       observations dated <= stat_ord;
+//                                       NO_STAT_CUTOFF for none
+//   green_filter         reflectance    the offset of InsufficientClear's
+//                                       green median cloud screen
+//   green_filter_scope   name           which observations it drops
+//                                       (GreenFilterScope)
+//
+// A Shared holds them resolved against an input: in its units, the bands as
+// its rows. Its member defaults are the "ccdc" values on the default Input
+// (Collection-1 DN, the Landsat rows); the configuration's defaults are the
+// physical ones, shared_schema()'s.
+//
+//==============================================================================
+
+struct Shared
+{
+    BandList detection_bands = {1, 2, 3, 4, 5};
+    double change_probability = 0.99;
+    double outlier_probability = 1.0 - 1e-6;
+    double alpha = 1.0;
+    double coef_floor = 1.0;
+    index_t max_iter = 1000;
+    double tolerance = 1e-4;
+    index_t coefficient_min = 4;
+    index_t coefficient_mid = 6;
+    index_t coefficient_max = 8;
+    index_t num_obs_factor = 3;
+    std::int64_t stat_ord = 736694;
+    double green_filter = 400.0;
+    std::string green_filter_scope = "stat_window";
+};
+
+bool operator==(const Shared& a, const Shared& b);
+inline bool operator!=(const Shared& a, const Shared& b) { return !(a == b); }
+
+// The shared values' schema, with their physical defaults ("ccdc"'s).
+const std::vector<Field<Shared>>& shared_schema();
+
+// Every shared value at its physical default, by name.
+Values shared_defaults();
+
+} // namespace config
+} // namespace ccd

@@ -27,8 +27,9 @@ single-product presets name their rows by product band ID (``B01``, ``B8A``,
 ...); :func:`hls`, whose rows mix two numberings, names them by role.
 
 Every preset leaves ``preprocess`` None, so it runs the default plan of its
-options (``ccdcpp.default_plan``); ``dataclasses.replace(preset(),
-preprocess=ccdcpp.Preprocess(...))`` runs another.
+input and configuration (``ccdcpp.default_plan``);
+``dataclasses.replace(preset(), preprocess=ccdcpp.Preprocess(...))`` runs
+another.
 
 A profile for another sensor is a :class:`ccdcpp.SensorProfile` call; the
 module docstring of ``ccdcpp.profiles`` has an example.
@@ -69,11 +70,11 @@ def landsat_c1_dn():
 
     Input: optical surface reflectance x 10000 (0..10000), thermal brightness
     temperature in Kelvin x 10. QA: pre-classified uint8 codes (the
-    ``HarmonicOptions`` ``QA_*`` fields); for raw ``pixel_qa`` pass
+    ``ccdcpp.Input`` ``qa_*`` fields); for raw ``pixel_qa`` pass
     ``qa_table=ccdcpp.qa_tables.landsat_c1_pixel_qa()``.
 
-    ``options()`` is ``HarmonicOptions()``, field for field, and
-    ``config()`` the "ccdc" preset.
+    ``input()`` is ``ccdcpp.Input()``, field for field, and ``config()``
+    runs as the "ccdc" preset.
     """
     return SensorProfile(
         name="landsat_c1_dn",

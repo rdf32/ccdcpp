@@ -13,8 +13,8 @@ namespace ccd
 // Capacity of a BandList, and the largest band count the entry points accept.
 constexpr index_t CCD_MAX_BANDS = 32;
 
-// A band index that names no band: HarmonicOptions::THERMAL_IDX when the
-// input has no thermal band.
+// A band index that names no band: Input::index() of a role the input does
+// not have.
 constexpr index_t NO_BAND = static_cast<index_t>(-1);
 
 // constant harmonic basis size

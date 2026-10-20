@@ -14,7 +14,7 @@ namespace ccd
 // what a strategy needs from the ones before it. The model provides its
 // fits' residuals and RMSE; the change test provides the peek's comparison
 // RMSE and per-observation statistic (PeekResult); the outlier rule reads
-// them. build_strategies() refuses a configuration in which a strategy needs
+// them. Registry::build() refuses a configuration in which a strategy needs
 // what no earlier stage's strategy provides, naming both.
 //
 //==============================================================================

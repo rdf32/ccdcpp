@@ -350,12 +350,14 @@ TEST(CCD, DetectSnow)
         {data.dates.size()}
     );
 
-    ccd::HarmonicOptions hoptions;
+    const ccd::Input hoptions;
+    const ccd::config::Shared hshared;
     ccd::HarmonicWorkspace hworkspace(
         dates,
         spectral,
         qas,
-        hoptions
+        hoptions,
+        hshared
     );
 
     ccd::LassoOptions solver_options;
@@ -367,9 +369,9 @@ TEST(CCD, DetectSnow)
         hworkspace,
         ccd::filter::snow(hworkspace),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "min_observations")),
+            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "coefficients")),
+            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "coefficients")),
         lworkspace,
         solver
     );

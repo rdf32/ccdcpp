@@ -239,12 +239,12 @@ static py::dict pixel_wrapper(
 
     py::object qas_obj,
 
-    ccd::HarmonicOptions hoptions,
+    ccd::Input input,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
     bool record,
     const PixelResumeFrom* from,
-    ConfigPtr config,
+    ccd::AlgorithmPtr algorithm,
     bool trace = false
 )
 {
@@ -299,7 +299,7 @@ static py::dict pixel_wrapper(
 
     // ValueError, raised here, before the GIL is released.
     ccd::validate(
-        hoptions,
+        input,
         static_cast<ccd::index_t>(spectral_buf.shape[0])
     );
 
@@ -352,11 +352,11 @@ static py::dict pixel_wrapper(
     ccd::ResumeStatus status = ccd::ResumeStatus::Resumed;
 
     ccd::RunSpec spec;
-    spec.hoptions = hoptions;
+    spec.input = input;
     spec.qa_table = qa_table;
     spec.plan = preprocess;
     spec.record = record;
-    spec.config = *config;
+    spec.algorithm = algorithm;
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
     spec.observer = recording;
 
@@ -475,7 +475,7 @@ py::dict detect_wrapper(
     py::array_t<std::int64_t, py::array::c_style> dates,
     py::array_t<ccd::scalar_t, py::array::c_style> spectral,
     py::object qas_obj,
-    ccd::HarmonicOptions hoptions,
+    ccd::Input input,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
     bool resume_record,
@@ -483,8 +483,8 @@ py::dict detect_wrapper(
     bool trace
 )
 {
-    return pixel_wrapper(dates, spectral, qas_obj, hoptions, std::move(qa_table),
-                         preprocess_plan, resume_record, nullptr, config_from_python(config),
+    return pixel_wrapper(dates, spectral, qas_obj, input, std::move(qa_table),
+                         preprocess_plan, resume_record, nullptr, algorithm_from_python(config),
                          trace);
 }
 
@@ -492,7 +492,7 @@ py::dict resume_wrapper(
     py::array_t<std::int64_t, py::array::c_style> dates,
     py::array_t<ccd::scalar_t, py::array::c_style> spectral,
     py::object qas_obj,
-    ccd::HarmonicOptions hoptions,
+    ccd::Input input,
     py::dict resume,
     py::dict resume_header,
     py::list models,
@@ -505,8 +505,8 @@ py::dict resume_wrapper(
         header_from_python(resume_header),
         record_from_python(resume),
         segments_from_python(models)};
-    return pixel_wrapper(dates, spectral, qas_obj, hoptions, std::move(qa_table),
-                         preprocess_plan, true, &from, config_from_python(config));
+    return pixel_wrapper(dates, spectral, qas_obj, input, std::move(qa_table),
+                         preprocess_plan, true, &from, algorithm_from_python(config));
 }
 
 //------------------------------------------------------------------------------
@@ -555,7 +555,7 @@ struct CubeInput
     ccd::index_t B = 0;
     ccd::index_t T = 0;
 
-    ConfigPtr config;   // set by the caller after check_cube()
+    ccd::AlgorithmPtr algorithm;   // set by the caller after check_cube()
     std::shared_ptr<ccd::Observer> observer;
     std::vector<ccd::index_t> observe;
 };
@@ -564,7 +564,7 @@ static CubeInput check_cube(
     py::array_t<std::int64_t, py::array::c_style> dates,
     const py::object& spectral_obj,
     const py::object& qas_obj,
-    const ccd::HarmonicOptions& hoptions,
+    const ccd::Input& input,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan
 )
@@ -617,7 +617,7 @@ static CubeInput check_cube(
     }
 
     // ValueError, raised here, before the GIL is released.
-    ccd::validate(hoptions, B);
+    ccd::validate(input, B);
     ccd::validate_dates(
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}));
     ccd::PreprocessPlanPtr preprocess = take_plan(preprocess_plan, B);
@@ -651,7 +651,7 @@ static CubeInput check_cube(
 
 static ccd::CubeResult run_cube(
     const CubeInput& in,
-    const ccd::HarmonicOptions& hoptions,
+    const ccd::Input& input,
     int threads,
     bool keep_masks,
     bool record = false,
@@ -676,10 +676,10 @@ static ccd::CubeResult run_cube(
         : ccd::CubeQa(strided_view<std::uint8_t, 3>(in.qas));
 
     ccd::RunSpec spec;
-    spec.hoptions = hoptions;
+    spec.input = input;
     spec.qa_table = in.qa_table;
     spec.plan = in.preprocess;
-    spec.config = *in.config;
+    spec.algorithm = in.algorithm;
     spec.observer = in.observer;
     spec.observe = in.observe;
     spec.keep_masks = keep_masks;
@@ -722,7 +722,7 @@ py::list detect_cube_wrapper(
 
     py::object qas,
 
-    ccd::HarmonicOptions hoptions,
+    ccd::Input input,
     int threads,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess,
@@ -730,8 +730,8 @@ py::list detect_cube_wrapper(
 )
 {
     CubeInput views =
-        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
-    views.config = config_from_python(config);
+        check_cube(dates, spectral, qas, input, std::move(qa_table), preprocess);
+    views.algorithm = algorithm_from_python(config);
 
     //----------------------------------------------------------------------
     // Run CCD
@@ -745,7 +745,7 @@ py::list detect_cube_wrapper(
         cube =
             run_cube(
                 views,
-                hoptions,
+                input,
                 threads,
                 true
             );
@@ -921,7 +921,7 @@ py::list detect_cube_wrapper(
 // legacy change-detection parquet does -- must compare these two numbers, and
 // nothing else in this dict would have told it.
 //
-// Band order is the input's row order, B = HarmonicOptions.NUM_BANDS rows;
+// Band order is the input's row order, B = Input.bands() rows;
 // under the default layout that is blue, green, red, nir, swir1, swir2,
 // thermal. Coefficient order is HarmonicBasis's column order -- slope, cos1,
 // sin1, cos2, sin2, cos3, sin3 -- and the intercept is NOT among them, which
@@ -1088,7 +1088,7 @@ py::dict detect_cube_columns_wrapper(
 
     py::object qas,
 
-    ccd::HarmonicOptions hoptions,
+    ccd::Input input,
     int threads,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess,
@@ -1098,8 +1098,8 @@ py::dict detect_cube_columns_wrapper(
 )
 {
     CubeInput views =
-        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
-    views.config = config_from_python(config);
+        check_cube(dates, spectral, qas, input, std::move(qa_table), preprocess);
+    views.algorithm = algorithm_from_python(config);
     std::vector<std::pair<ccd::index_t, ccd::index_t>> traced;
     std::shared_ptr<RecordingObserver> recording;
     if (!trace_pixels.is_none())
@@ -1127,7 +1127,7 @@ py::dict detect_cube_columns_wrapper(
     {
         py::gil_scoped_release release;
 
-        cube = run_cube(views, hoptions, threads,
+        cube = run_cube(views, input, threads,
                         false,   // no column holds the mask
                         resume_record);
     }
@@ -1152,7 +1152,7 @@ py::dict resume_cube_columns_wrapper(
     py::array_t<std::int64_t, py::array::c_style> dates,
     py::object spectral,
     py::object qas,
-    ccd::HarmonicOptions hoptions,
+    ccd::Input input,
     int threads,
     py::dict resume,
     py::dict resume_header,
@@ -1163,8 +1163,8 @@ py::dict resume_cube_columns_wrapper(
 )
 {
     CubeInput views =
-        check_cube(dates, spectral, qas, hoptions, std::move(qa_table), preprocess);
-    views.config = config_from_python(config);
+        check_cube(dates, spectral, qas, input, std::move(qa_table), preprocess);
+    views.algorithm = algorithm_from_python(config);
     const ccd::CubeResumeFrom from =
         cube_from_python(resume_header, resume, segments, views.H, views.W, views.B);
 
@@ -1172,7 +1172,7 @@ py::dict resume_cube_columns_wrapper(
     {
         py::gil_scoped_release release;
 
-        cube = run_cube(views, hoptions, threads, false, true, &from);
+        cube = run_cube(views, input, threads, false, true, &from);
     }
 
     py::dict output = cube_columns(cube, views);
@@ -1202,7 +1202,7 @@ void bind_detect(py::module_& m)
         py::arg("dates"),
         py::arg("spectral"),
         py::arg("qas"),
-        py::arg("hoptions"),
+        py::arg("input"),
         py::kw_only(),
         py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none(),
@@ -1216,7 +1216,7 @@ void bind_detect(py::module_& m)
         py::arg("dates"),
         py::arg("spectral"),
         py::arg("qas"),
-        py::arg("hoptions"),
+        py::arg("input"),
         py::kw_only(),
         py::arg("resume"),
         py::arg("resume_header"),
@@ -1231,7 +1231,7 @@ void bind_detect(py::module_& m)
         py::arg("dates"),
         py::arg("spectral"),
         py::arg("qas"),
-        py::arg("hoptions"),
+        py::arg("input"),
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("qa_table") = py::none(),
@@ -1244,7 +1244,7 @@ void bind_detect(py::module_& m)
         py::arg("dates"),
         py::arg("spectral"),
         py::arg("qas"),
-        py::arg("hoptions"),
+        py::arg("input"),
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("qa_table") = py::none(),
@@ -1259,7 +1259,7 @@ void bind_detect(py::module_& m)
         py::arg("dates"),
         py::arg("spectral"),
         py::arg("qas"),
-        py::arg("hoptions"),
+        py::arg("input"),
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("resume"),

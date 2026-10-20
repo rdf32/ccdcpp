@@ -2,6 +2,20 @@
 
 ccdcpp is a C++17 implementation of the Continuous Change Detection and Classification (CCDC) algorithm, with Python bindings through pybind11. It reproduces the USGS LCMAP PyCCD algorithm and its outputs, doing what PyCCD's code intends where the code does otherwise (every such difference is listed under [Differences from pyccd](#differences-from-pyccd)), and runs one pixel about 200 times faster than PyCCD in about half the process memory. A run takes one pixel or a whole image cube, in parallel with OpenMP, and can be continued when new observations arrive instead of rerun.
 
+> **Step 5 state.** The description of the data is `ccdcpp.Input` (C++ `ccd::Input`): the QA
+> codes, a role per row (`roles`), `saturation_bands`, `reflectance_unit` (Collection-1 DN 10000,
+> reflectance 1) and the bounds and thermal transform, in snake_case. `HarmonicOptions` is gone,
+> and the entry points take `input=` where they took `hoptions=`; `profile.input()` replaces
+> `profile.options()`. A configuration is `{"shared": ..., "stages": ...}` in physical terms
+> (`ccdcpp.Config`, C++ `config::Config`): the values several stages read are written once in
+> `shared` (`detection_bands` by role, `change_probability`, `outlier_probability`, the Lasso's
+> `alpha`, `coef_floor`, `max_iter`, `tolerance`, the coefficient rule, `stat_ord`,
+> `green_filter` and `green_filter_scope`), reflectance values are multiplied by the input's
+> `reflectance_unit`, and the change and outlier thresholds are the chi-squared quantiles of the
+> probabilities for the detection-band count, all when a run resolves the configuration against
+> its input (C++ `ccd::Algorithm`, which caches the resolution per input). Some examples below
+> still use the earlier names; the full documentation comes with the two-call API.
+
 ## Contents
 
 - [Features](#features)

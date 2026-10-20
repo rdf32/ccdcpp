@@ -342,16 +342,18 @@ TEST(CCD, DetectStandard)
         {data.dates.size()}
     );
 
-    ccd::HarmonicOptions hoptions;
+    const ccd::Input hoptions;
+    const ccd::config::Shared hshared;
     ccd::HarmonicWorkspace hworkspace(
         dates,
         spectral,
         qas,
-        hoptions
+        hoptions,
+        hshared
     );
 
     const ccd::index_t T = dates.size();
-    const ccd::index_t thermal_idx = hoptions.THERMAL_IDX;
+    const ccd::index_t thermal_idx = hoptions.index("thermal");
     for (ccd::index_t t = 0; t < T; ++t) {
         spectral(thermal_idx, t) = 
             spectral(thermal_idx, t) * 10.0 - 27315.0;
@@ -492,7 +494,7 @@ TEST(CCD, DetectStandardHalfDayMedianGap)
     auto spectral = ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(data.spectra_storage.data(), {7, T});
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(data.qas.data(), {T});
 
-    const ccd::HarmonicOptions hoptions;
+    const ccd::Input hoptions;
 
     const auto result = ccd::run_pixel(
         golden::spec_of(hoptions),

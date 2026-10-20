@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -24,27 +25,37 @@ namespace config
 //
 // Every strategy declares its parameters once, as a schema: each field's
 // name, the member it sets, its unit, its allowed range and a line of
-// documentation. From the schema come the strategy's construction from a
-// configuration (apply()) and the configuration of a strategy (to_values()):
-// nothing about a parameter is written twice.
+// documentation, and where its value comes from. From the schema come the
+// strategy's construction from a configuration (apply()) and the
+// configuration of a strategy (to_values()): nothing about a parameter is
+// written twice.
 //
 // A schema is a plain vector of Field, written next to the strategy:
 //
-//     struct Params { index_t min_obs = 24; double factor = 1.33; };
+//     struct Params { index_t min_obs = 24; double factor = 1.33; double alpha = 1.0; };
 //     static const std::vector<config::Field<Params>>& schema()
 //     {
 //         static const std::vector<config::Field<Params>> s = {
 //             {"min_obs", &Params::min_obs, Unit::Observations, at_least(1), "..."},
 //             {"factor",  &Params::factor,  Unit::None, greater_than(0), "..."},
+//             {"alpha",   &Params::alpha,   Unit::Reflectance, at_least(0), "...",
+//              Source::Shared, "alpha"},
 //         };
 //         return s;
 //     }
 //
+// A member's default is its value on the default Input (Collection-1 DN, the
+// Landsat rows), which is what a strategy built directly from Params{} runs
+// with. The configuration's own default for a field is the member's, or the
+// field's default_value where the member cannot say it in physical terms (a
+// band list by role).
+//
 //==============================================================================
 
 // What a parameter's value is measured in: dimensionless, a count of
-// observations, days, the input's reflectance, or rows of the spectral array
-// (a band list).
+// observations, days, reflectance (multiplied by Input::reflectance_unit when
+// a configuration is resolved), or bands (roles, or rows of the spectral
+// array).
 enum class Unit : std::uint8_t
 {
     None,
@@ -55,8 +66,10 @@ enum class Unit : std::uint8_t
 };
 
 // One parameter's value, as a configuration holds it: a flag, a whole
-// number, a real, a name, or a list of band indices.
-using Value = std::variant<bool, std::int64_t, double, std::string, std::vector<std::int64_t>>;
+// number, a real, a name, a list of band indices, or a list of band roles. A
+// resolved configuration holds no roles: they are rows of its input.
+using Value = std::variant<bool, std::int64_t, double, std::string, std::vector<std::int64_t>,
+                           std::vector<std::string>>;
 
 // A strategy's parameters, by name.
 using Values = std::map<std::string, Value>;
@@ -69,6 +82,10 @@ inline Value flag(bool v) { return Value(std::in_place_type<bool>, v); }
 inline Value bands(const BandList& v)
 {
     return Value(std::in_place_type<std::vector<std::int64_t>>, v.begin(), v.end());
+}
+inline Value roles(std::vector<std::string> v)
+{
+    return Value(std::in_place_type<std::vector<std::string>>, std::move(v));
 }
 
 // The allowed values of a number: lo <(=) value <(=) hi. NaN never passes.
@@ -97,26 +114,50 @@ std::string describe(const Bounds& b);
 // A number as a message shows it: 1.33, 24, 1e-09.
 std::string number(double v);
 
+// Where a field's value comes from:
+//
+//   Own      the stage's parameters (or the configuration's default);
+//   Shared   the configuration's shared value named `from` (config/shared.hpp),
+//            in the input's units and rows;
+//   Chi2     chi2_quantile(shared value `from`, the number of detection
+//            bands): a threshold for the detection bands' change statistic.
+//
+// A Shared or Chi2 field is not a parameter of its stage: a stage that sets
+// one is refused, naming the shared value to set instead.
+enum class Source : std::uint8_t
+{
+    Own,
+    Shared,
+    Chi2
+};
+
 template<class P>
 struct Field
 {
-    using Member =
-        std::variant<double P::*, index_t P::*, std::int64_t P::*, bool P::*, BandList P::*>;
+    using Member = std::variant<double P::*, index_t P::*, std::int64_t P::*, bool P::*,
+                                BandList P::*, std::string P::*>;
 
     const char* name;
     Member member;
     Unit unit;
     Bounds bounds;
     const char* doc;
+    Source source = Source::Own;
+    const char* from = nullptr;
+    std::optional<Value> default_value = std::nullopt;
 };
+
+// "own", "shared 'alpha'", "chi2 of shared 'change_probability'".
+std::string describe(Source source, const char* from);
 
 //------------------------------------------------------------------------------
 // The parameters `values` give `params`, starting from its defaults. Throws
 // std::invalid_argument, naming `where` (e.g. "refit 'span-factor'") and the
 // field, on a name the schema does not hold, a value of the wrong type
 // (an integer is accepted for a real), a whole number its member cannot
-// hold, a value outside the field's bounds, and a band list with an index
-// below 0 or not below CCD_MAX_BANDS, or longer than CCD_MAX_BANDS.
+// hold, a value outside the field's bounds, a band list with an index below 0
+// or not below CCD_MAX_BANDS, or longer than CCD_MAX_BANDS, and a band list
+// by role (Registry::resolve() maps roles to rows first).
 //------------------------------------------------------------------------------
 template<class P>
 void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
@@ -150,10 +191,16 @@ void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
                         throw std::invalid_argument(at + " is a flag (true or false)");
                     params.*member = std::get<bool>(value);
                 }
+                else if constexpr (std::is_same_v<T, std::string>)
+                {
+                    if (!std::holds_alternative<std::string>(value))
+                        throw std::invalid_argument(at + " is a name");
+                    params.*member = std::get<std::string>(value);
+                }
                 else if constexpr (std::is_same_v<T, BandList>)
                 {
                     if (!std::holds_alternative<std::vector<std::int64_t>>(value))
-                        throw std::invalid_argument(at + " is a list of band indices");
+                        throw std::invalid_argument(at + " is a list of band roles or indices");
                     BandList list;
                     for (const std::int64_t band : std::get<std::vector<std::int64_t>>(value))
                     {
@@ -220,6 +267,8 @@ Values to_values(const std::vector<Field<P>>& schema, const P& params)
                     out[f.name] = flag(params.*member);
                 else if constexpr (std::is_same_v<T, BandList>)
                     out[f.name] = bands(params.*member);
+                else if constexpr (std::is_same_v<T, std::string>)
+                    out[f.name] = Value(params.*member);
                 else if constexpr (std::is_same_v<T, double>)
                     out[f.name] = real(params.*member);
                 else

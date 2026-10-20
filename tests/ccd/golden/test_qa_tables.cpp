@@ -35,7 +35,7 @@
 namespace
 {
 
-using ccd::HarmonicOptions;
+using ccd::Input;
 using ccd::QaTablePtr;
 
 //------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ using ccd::QaTablePtr;
 struct Scheme
 {
     const char* name;
-    std::function<QaTablePtr(const HarmonicOptions&)> build;
+    std::function<QaTablePtr(const Input&)> build;
 
     std::vector<std::uint16_t> fill;
     std::vector<std::uint16_t> clear;
@@ -63,7 +63,7 @@ std::vector<Scheme> schemes()
     return {
         {
             "landsat_c2_qa_pixel",
-            [](const HarmonicOptions& o) { return ccd::qa_tables::landsat_c2_qa_pixel(o); },
+            [](const Input& o) { return ccd::qa_tables::landsat_c2_qa_pixel(o); },
             {1, 1 | 8, 0xFFFF},
             {21824, 64, 0},
             {21952, 128},
@@ -74,7 +74,7 @@ std::vector<Scheme> schemes()
         },
         {
             "landsat_c1_pixel_qa",
-            [](const HarmonicOptions& o) { return ccd::qa_tables::landsat_c1_pixel_qa(o); },
+            [](const Input& o) { return ccd::qa_tables::landsat_c1_pixel_qa(o); },
             {1, 1 | 32, 0xFFFF},
             {2, 2 | 64, 322, 0x300, 0x400, 0x300 | 64},
             {4, 4 | 2, 324},
@@ -85,7 +85,7 @@ std::vector<Scheme> schemes()
         },
         {
             "hls_fmask",
-            [](const HarmonicOptions& o) { return ccd::qa_tables::hls_fmask(o); },
+            [](const Input& o) { return ccd::qa_tables::hls_fmask(o); },
             {255},
             {0, 0x40, 0x80, 0xC0},
             {32, 32 | 0x40},
@@ -96,7 +96,7 @@ std::vector<Scheme> schemes()
         },
         {
             "sentinel2_scl",
-            [](const HarmonicOptions& o) { return ccd::qa_tables::sentinel2_scl(o); },
+            [](const Input& o) { return ccd::qa_tables::sentinel2_scl(o); },
             {0, 1},
             {4, 5},
             {6},
@@ -109,17 +109,17 @@ std::vector<Scheme> schemes()
 }
 
 // The class a corpus code is read as; see the header.
-std::uint8_t read_as(std::uint8_t code, const HarmonicOptions& o)
+std::uint8_t read_as(std::uint8_t code, const Input& o)
 {
     switch (code)
     {
-        case 255: return o.QA_FILL;
-        case 0:   return o.QA_CLEAR;
-        case 1:   return o.QA_WATER;
-        case 2:   return o.QA_SHADOW;
-        case 3:   return o.QA_SNOW;
-        case 4:   return o.QA_CLOUD;
-        case 8:   return o.QA_SHADOW;
+        case 255: return o.qa_fill;
+        case 0:   return o.qa_clear;
+        case 1:   return o.qa_water;
+        case 2:   return o.qa_shadow;
+        case 3:   return o.qa_snow;
+        case 4:   return o.qa_cloud;
+        case 8:   return o.qa_shadow;
     }
     throw std::logic_error("corpus code " + std::to_string(code));
 }
@@ -163,7 +163,7 @@ template<typename Qa>
 std::string run_cube(
     const golden::Cube& c,
     const std::vector<Qa>& qas,
-    const HarmonicOptions& h,
+    const Input& h,
     int threads,
     const QaTablePtr& table
 )
@@ -194,15 +194,15 @@ const CubeSpec CUBES[] = {
     {"medium", 15, golden::Regime::Medium,     3, 4},
 };
 
-HarmonicOptions renumbered()
+Input renumbered()
 {
-    HarmonicOptions h;
-    h.QA_FILL   = 200;
-    h.QA_CLEAR  = 10;
-    h.QA_WATER  = 11;
-    h.QA_SHADOW = 12;
-    h.QA_SNOW   = 13;
-    h.QA_CLOUD  = 14;
+    Input h;
+    h.qa_fill   = 200;
+    h.qa_clear  = 10;
+    h.qa_water  = 11;
+    h.qa_shadow = 12;
+    h.qa_snow   = 13;
+    h.qa_cloud  = 14;
     return h;
 }
 
@@ -215,7 +215,7 @@ HarmonicOptions renumbered()
 
 TEST(QaTables, DecodedEqualsPreDecoded)
 {
-    const HarmonicOptions h;
+    const Input h;
 
     for (const auto& spec : CUBES)
     {
@@ -265,7 +265,7 @@ TEST(QaTables, DetectDecodes)
     const golden::Cube c =
         golden::make_cube(11, golden::Regime::Cadence16, 2, 4);
     const std::size_t T = c.T;
-    const HarmonicOptions h;
+    const Input h;
     const auto dates =
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});
 
@@ -320,8 +320,8 @@ TEST(QaTables, HonourTheOptionsCodes)
 {
     const golden::Cube c =
         golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
-    const HarmonicOptions defaults;
-    const HarmonicOptions h = renumbered();
+    const Input defaults;
+    const Input h = renumbered();
 
     const std::string reference = run_cube(c, c.qas, defaults, 2, nullptr);
 
@@ -345,8 +345,8 @@ TEST(QaTables, HonourTheOptionsCodes)
         {
             const std::uint8_t code = table->code[v];
             ASSERT_TRUE(
-                code == h.QA_FILL || code == h.QA_CLEAR || code == h.QA_WATER ||
-                code == h.QA_SHADOW || code == h.QA_SNOW || code == h.QA_CLOUD)
+                code == h.qa_fill || code == h.qa_clear || code == h.qa_water ||
+                code == h.qa_shadow || code == h.qa_snow || code == h.qa_cloud)
                 << s.name << " entry " << v << " is " << int(code);
         }
     }
@@ -361,7 +361,7 @@ TEST(QaTables, StridedRawQa)
     const golden::Cube c =
         golden::make_cube(21, golden::Regime::Cadence16, 3, 5);
     const std::size_t H = c.H, W = c.W, T = c.T;
-    const HarmonicOptions h;
+    const Input h;
     const Scheme s = schemes()[0];
     const QaTablePtr table = s.build(h);
 
@@ -387,9 +387,9 @@ TEST(QaTables, StridedRawQa)
 
 TEST(QaTables, Definitions)
 {
-    const HarmonicOptions o;
-    const auto FILL = o.QA_FILL, CLEAR = o.QA_CLEAR, WATER = o.QA_WATER,
-               SHADOW = o.QA_SHADOW, SNOW = o.QA_SNOW, CLOUD = o.QA_CLOUD;
+    const Input o;
+    const auto FILL = o.qa_fill, CLEAR = o.qa_clear, WATER = o.qa_water,
+               SHADOW = o.qa_shadow, SNOW = o.qa_snow, CLOUD = o.qa_cloud;
 
     {
         const auto t = ccd::qa_tables::landsat_c2_qa_pixel(o);
@@ -472,7 +472,7 @@ TEST(QaTables, Uint16NeedsATable)
         golden::make_cube(11, golden::Regime::Cadence16, 1, 2);
     const std::size_t T = c.T;
     const std::vector<std::uint16_t> raw(c.qas.begin(), c.qas.end());
-    const HarmonicOptions h;
+    const Input h;
 
     const auto dates =
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});

@@ -14,7 +14,8 @@ const std::vector<config::Field<Floored::Params>>& Floored::schema()
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
         {"threshold", &Params::threshold, Unit::None, config::any(),
-         "a first peek observation whose statistic is above this is an outlier"},
+         "a first peek observation whose statistic is above this is an outlier", config::Source::Chi2,
+         "outlier_probability"},
     };
     return s;
 }

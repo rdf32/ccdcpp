@@ -172,6 +172,7 @@ add_library(
 
     src/ccd/input/mask/filter.cpp
     src/ccd/input/harmonic.cpp
+    src/ccd/input/input.cpp
 
     src/ccd/input/mask/preprocess.cpp
 
@@ -182,9 +183,11 @@ add_library(
     src/ccd/machine/standard.cpp
 
     src/ccd/ccd.cpp
+    src/ccd/run/algorithm.cpp
     src/ccd/run/run.cpp
     src/ccd/config/params.cpp
     src/ccd/config/registry.cpp
+    src/ccd/config/shared.cpp
     src/ccd/strategies/change_test/chi2.cpp
     src/ccd/strategies/capabilities.cpp
     src/ccd/strategies/edge_fit/lasso.cpp
@@ -1125,7 +1128,7 @@ if(CCD_BUILD_PYTHON)
 
         bindings/module.cpp
         bindings/config.cpp
-        bindings/options.cpp
+        bindings/input.cpp
         bindings/regression.cpp
         bindings/fit.cpp
         bindings/pmask.cpp

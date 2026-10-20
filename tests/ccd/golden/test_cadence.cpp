@@ -106,10 +106,10 @@ Pixel make_pixel(
     return p;
 }
 
-ccd::FitResult run(const Pixel& p, const ccd::config::ConfigTree& config)
+ccd::FitResult run(const Pixel& p, const ccd::config::Config& config)
 {
     return ccd::run_pixel(
-        golden::spec_of(ccd::HarmonicOptions{}, config),
+        golden::spec_of(ccd::Input{}, config),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
@@ -131,27 +131,25 @@ std::int64_t first_break(const ccd::FitResult& r)
 }
 
 // Every parameter of this file set to its default value by hand.
-ccd::config::ConfigTree spelled_out(ccd::config::ConfigTree c)
+ccd::config::Config spelled_out(ccd::config::Config c)
 {
     using ccd::config::integer;
     using ccd::config::real;
-    c["change_test"].params["peek_reference_days"] = real(16.0);
-    c["noise_floor"].params["min_lag_days"] = integer(30);
-    c["refit"].params["min_obs"] = integer(24);
-    c["change_test"].params["model_rmse_up_to"] = integer(24);
-    c["refit"].params["factor"] = real(1.33);
-    c["change_test"].params["seasonal_count"] = integer(24);
-    c["change_test"].params["seasonal_divisor"] = real(4.0);
-    c["change_test"].params["change_probability"] = real(0.99);
-    c["stability_rule"].params["change_probability"] = real(0.99);
-    c["lookback"].params["change_probability"] = real(0.99);
+    c.stages["change_test"].params["peek_reference_days"] = real(16.0);
+    c.stages["noise_floor"].params["min_lag_days"] = integer(30);
+    c.stages["refit"].params["min_obs"] = integer(24);
+    c.stages["change_test"].params["model_rmse_up_to"] = integer(24);
+    c.stages["refit"].params["factor"] = real(1.33);
+    c.stages["change_test"].params["seasonal_count"] = integer(24);
+    c.stages["change_test"].params["seasonal_divisor"] = real(4.0);
+    c.shared["change_probability"] = real(0.99);
     return c;
 }
 
 std::string dump_cube(
     golden::Cube c,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config,
+    const ccd::Input& h,
+    const ccd::config::Config& config,
     bool physical
 )
 {
@@ -180,7 +178,7 @@ std::string dump_cube(
 TEST(Cadence, Defaults)
 {
     using golden::parameter;
-    const ccd::config::ConfigTree c = golden::ccdc();
+    const ccd::config::ConfigTree c = golden::resolved().stages;
     EXPECT_EQ(parameter<double>(c, "change_test", "peek_reference_days"), 16.0);
     EXPECT_EQ(parameter<std::int64_t>(c, "noise_floor", "min_lag_days"), 30);
     EXPECT_EQ(parameter<std::int64_t>(c, "refit", "min_obs"), 24);
@@ -189,7 +187,7 @@ TEST(Cadence, Defaults)
     EXPECT_EQ(parameter<std::int64_t>(c, "change_test", "seasonal_count"), 24);
     EXPECT_EQ(parameter<double>(c, "change_test", "seasonal_divisor"), 4.0);
 
-    // Each change threshold is the chi2(5) quantile at its stage's change
+    // Each change threshold is the chi2(5) quantile at the shared change
     // probability, 0.99, to the last bit.
     for (const char* stage : {"change_test", "stability_rule", "lookback"})
     {
@@ -216,12 +214,12 @@ TEST(Cadence, DefaultsSpelledOutEqualDefault)
         const auto cube = golden::make_cube(c.seed, c.regime, c.H, c.W);
 
         EXPECT_EQ(
-            dump_cube(cube, ccd::HarmonicOptions{}, spelled_out(golden::ccdc()), false),
-            dump_cube(cube, ccd::HarmonicOptions{}, golden::ccdc(), false));
+            dump_cube(cube, ccd::Input{}, spelled_out(golden::ccdc()), false),
+            dump_cube(cube, ccd::Input{}, golden::ccdc(), false));
 
         EXPECT_EQ(
-            dump_cube(cube, golden::physical_harmonic(), spelled_out(golden::physical_config()), true),
-            dump_cube(cube, golden::physical_harmonic(), golden::physical_config(), true));
+            dump_cube(cube, golden::physical_input(), spelled_out(golden::ccdc()), true),
+            dump_cube(cube, golden::physical_input(), golden::ccdc(), true));
     }
 }
 
@@ -257,7 +255,7 @@ TEST(Cadence, PeekReferenceDays)
     const auto d85 = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates85.data(), {101});
     EXPECT_EQ(ccd::adjust_peek(d85, 6, 16.0), 11u);
 
-    const ccd::config::ConfigTree longer =
+    const ccd::config::Config longer =
         golden::with(golden::ccdc(), "change_test", "peek_reference_days", ccd::config::real(32.0));
 
     // Eight disturbed observations fill a peek window of 6, not one of 12.
@@ -301,9 +299,9 @@ TEST(Cadence, VariogramMinLagDays)
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 40)[0], 30.0);  // lag 3, 48 days
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 60)[0], 40.0);  // lag 4, 64 days
 
-    const ccd::config::ConfigTree shorter =
+    const ccd::config::Config shorter =
         golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(10));
-    const ccd::config::ConfigTree longer =
+    const ccd::config::Config longer =
         golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(60));
 
     const auto small = make_pixel(300.0, 0.0, {{250, T, 150.0}});
@@ -326,7 +324,7 @@ TEST(Cadence, RetrainSpanFactor)
 {
     const auto drifting = make_pixel(0.0, 0.5, {});
 
-    const ccd::config::ConfigTree often =
+    const ccd::config::Config often =
         golden::with(golden::ccdc(), "refit", "factor", ccd::config::real(1.2));
     EXPECT_EQ(breaks(run(drifting, often)), 0);
 
@@ -353,10 +351,10 @@ TEST(Cadence, RetrainMinObs)
     std::size_t segments = 0;
     for (const std::int64_t count : {24, 48, 96, 200})
     {
-        ccd::config::ConfigTree c = golden::ccdc();
-        c["refit"].params["factor"] = ccd::config::real(1e6);
-        c["refit"].params["min_obs"] = ccd::config::integer(count);
-        c["change_test"].params["model_rmse_up_to"] = ccd::config::integer(count);
+        ccd::config::Config c = golden::ccdc();
+        c.stages["refit"].params["factor"] = ccd::config::real(1e6);
+        c.stages["refit"].params["min_obs"] = ccd::config::integer(count);
+        c.stages["change_test"].params["model_rmse_up_to"] = ccd::config::integer(count);
         const auto r = run(drifting, c);
         ASSERT_GE(breaks(r), 1) << "count " << count;
         if (previous != 0)
@@ -379,9 +377,9 @@ TEST(Cadence, RetrainMinObs)
 
 TEST(Cadence, SeasonalRmseDivisor)
 {
-    const ccd::config::ConfigTree larger =
+    const ccd::config::Config larger =
         golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(8.0));
-    const ccd::config::ConfigTree smaller =
+    const ccd::config::Config smaller =
         golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(2.0));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
@@ -395,9 +393,9 @@ TEST(Cadence, SeasonalRmseDivisor)
 
 TEST(Cadence, SeasonalRmseCount)
 {
-    const ccd::config::ConfigTree fewer =
+    const ccd::config::Config fewer =
         golden::with(golden::ccdc(), "change_test", "seasonal_count", ccd::config::integer(6));
-    const ccd::config::ConfigTree more =
+    const ccd::config::Config more =
         golden::with(golden::ccdc(), "change_test", "seasonal_count", ccd::config::integer(96));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
@@ -445,10 +443,8 @@ TEST(Cadence, ChangeProbability)
 // clears the first and not the second; a step of 65 clears both.
 TEST(Cadence, ChangeProbabilityThroughDetect)
 {
-    ccd::config::ConfigTree higher = golden::ccdc();
-    higher["change_test"].params["change_probability"] = ccd::config::real(0.999);
-    higher["stability_rule"].params["change_probability"] = ccd::config::real(0.999);
-    higher["lookback"].params["change_probability"] = ccd::config::real(0.999);
+    const ccd::config::Config higher =
+        golden::with_shared(golden::ccdc(), "change_probability", ccd::config::real(0.999));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
     const auto at99 = run(small, golden::ccdc());
@@ -488,24 +484,27 @@ TEST(PeekThreshold, AdjustChangeThreshold)
 // An 8-day series runs with a peek window of 12 and the threshold of that
 // window, so it gives the same output as a configuration that fixes both:
 // change_test's peek_size 12 with a peek_reference_days that leaves it at 12,
-// and the change threshold at the adjusted value. Holding the threshold at
+// and the change probability whose quantile is the adjusted threshold (a
+// peek no longer than peek_size is not adjusted). Holding the threshold at
 // its default instead misses a step the adjusted one finds.
 TEST(PeekThreshold, DenseSeriesUsesAdjustedThreshold)
 {
-    const double threshold = golden::parameter<double>(golden::ccdc(), "change_test", "change_threshold");
-    const auto with_threshold = [](ccd::config::ConfigTree c, double value)
-    {
-        for (const char* stage : {"change_test", "stability_rule", "lookback"})
-            c[stage].params["change_threshold"] = ccd::config::real(value);
-        return c;
-    };
+    const double threshold =
+        golden::parameter<double>(golden::resolved().stages, "change_test", "change_threshold");
+    const auto with_probability = [](ccd::config::Config c, double value)
+    { return golden::with_shared(std::move(c), "change_probability", ccd::config::real(value)); };
 
-    ccd::config::ConfigTree fixed = golden::ccdc();
-    fixed["change_test"].params["peek_size"] = ccd::config::integer(12);
-    fixed["change_test"].params["peek_reference_days"] = ccd::config::real(8.0);
-    fixed = with_threshold(fixed, ccd::adjust_change_threshold(12, 6, threshold, 5, 0.99));
+    ccd::config::Config fixed = golden::ccdc();
+    fixed.stages["change_test"].params["peek_size"] = ccd::config::integer(12);
+    fixed.stages["change_test"].params["peek_reference_days"] = ccd::config::real(8.0);
+    // adjust_change_threshold(12, 6, ...)'s probability, as it computes it.
+    const double probability = 1.0 - std::pow(1.0 - 0.99, static_cast<double>(6) / 12);
+    fixed = with_probability(fixed, probability);
+    ASSERT_EQ(golden::parameter<double>(golden::resolved(fixed).stages, "change_test",
+                                        "change_threshold"),
+              ccd::adjust_change_threshold(12, 6, threshold, 5, 0.99));
 
-    const ccd::config::ConfigTree unadjusted = with_threshold(fixed, threshold);
+    const ccd::config::Config unadjusted = with_probability(fixed, 0.99);
 
     const auto step = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
 
@@ -531,12 +530,14 @@ TEST(PeekThreshold, EachPixelStartsFromTheCallerConfiguration)
     std::string alone;
     golden::dump_pixel(alone, "sparse", run(sparse, golden::ccdc()));
 
-    const ccd::config::ConfigTree config = golden::ccdc();
+    const ccd::config::Config config = golden::ccdc();
     run(dense, config);
     std::string after;
     golden::dump_pixel(after, "sparse", run(sparse, config));
     EXPECT_EQ(alone, after);
-    EXPECT_EQ(golden::parameter<std::int64_t>(config, "change_test", "peek_size"), 6);
+    EXPECT_EQ(golden::parameter<std::int64_t>(golden::resolved(config).stages, "change_test",
+                                              "peek_size"),
+              6);
     EXPECT_EQ(config, golden::ccdc());
 }
 

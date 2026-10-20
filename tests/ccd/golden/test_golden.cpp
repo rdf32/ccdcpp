@@ -111,8 +111,8 @@ ccd::FitResult run_detect(
     const std::vector<std::int64_t>& dates,
     const double* spectral,
     const std::uint8_t* qas,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config
+    const ccd::Input& h,
+    const ccd::config::Config& config
 )
 {
     const std::size_t T = dates.size();
@@ -130,16 +130,16 @@ ccd::FitResult run_detect(
 struct Options
 {
     const char* name;
-    ccd::HarmonicOptions h;
-    ccd::config::ConfigTree config;
+    ccd::Input h;
+    ccd::config::Config config;
     bool physical;
 };
 
 std::vector<Options> option_sets()
 {
     return {
-        {"dn", ccd::HarmonicOptions{}, golden::ccdc(), false},
-        {"phys", golden::physical_harmonic(), golden::physical_config(), true},
+        {"dn", ccd::Input{}, golden::ccdc(), false},
+        {"phys", golden::physical_input(), golden::ccdc(), true},
     };
 }
 
@@ -183,13 +183,13 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "pyccd:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::HarmonicOptions{}, golden::ccdc()));
+                ccd::Input{}, golden::ccdc()));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
         golden::dump_pixel(dump, "pyccd:phys",
             run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_harmonic(), golden::physical_config()));
+                golden::physical_input(), golden::ccdc()));
     }
     {
         // The reference pixel with saturation-band values on the bounds and a
@@ -200,19 +200,19 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "bounds:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::HarmonicOptions{}, golden::ccdc()));
+                ccd::Input{}, golden::ccdc()));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
         golden::dump_pixel(dump, "bounds:phys",
             run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_harmonic(), golden::physical_config()));
+                golden::physical_input(), golden::ccdc()));
     }
     {
         const Pixel p = read_csv("test002_c2.csv");
         golden::dump_pixel(dump, "c2:c2",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                golden::c2_harmonic(), golden::ccdc()));
+                golden::c2_input(), golden::ccdc()));
     }
 
     //--------------------------------------------------------------------------
@@ -407,8 +407,8 @@ TEST(Golden, CubeDtypesAndLayouts)
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});
     const auto qas =
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {H, W, T});
-    const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree config = golden::ccdc();
+    const ccd::Input h;
+    const ccd::config::Config config = golden::ccdc();
 
 
     const std::string reference = cube_dump(ccd::run_cube(
@@ -470,13 +470,13 @@ TEST(Golden, DetectDoesNotWriteItsInput)
 
     std::string first, second;
     golden::dump_pixel(first, "", ccd::run_pixel(
-        golden::spec_of(ccd::HarmonicOptions{}),
+        golden::spec_of(ccd::Input{}),
         dates,
         view,
         qas).result);
     EXPECT_EQ(buffer, p.spectral);
     golden::dump_pixel(second, "", ccd::run_pixel(
-        golden::spec_of(ccd::HarmonicOptions{}),
+        golden::spec_of(ccd::Input{}),
         dates,
         view,
         qas).result);

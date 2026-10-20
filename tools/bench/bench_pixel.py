@@ -3,9 +3,9 @@
 The per-pixel timing of one build: the first `pixels` pixels of the corpus of make_corpus.cpp,
 one ccdcpp.detect call each, single-threaded, best of `reps` passes, in three forms:
 
-  hoptions   detect(d, s, q, h): the call's options, the "ccdc" configuration by default
-  profile    detect(d, s, q, profile=landsat_c1_dn()): the profile's options and configuration
-  config     detect(d, s, q, h, config=cfg), cfg = ccdcpp.config("ccdc") built once
+  input      detect(d, s, q, h): the call's input, the "ccdc" configuration by default
+  profile    detect(d, s, q, profile=landsat_c1_dn()): the profile's input and configuration
+  config     detect(d, s, q, h, config=cfg), cfg = ccdcpp.config("ccdc") taken once
 
 The first two are the default paths, what a caller writes without thinking about the
 configuration; the third is the floor they should reach. Prints, per form, the best pass's
@@ -40,11 +40,11 @@ px = [(np.ascontiguousarray(spec[i]), np.ascontiguousarray(qas[i]))
       for i in range(min(pixels, H * W))]
 del spec
 
-h = ccdcpp.HarmonicOptions()
+h = ccdcpp.Input()
 profile = presets.landsat_c1_dn()
 cfg = ccdcpp.config("ccdc")
 forms = {
-    "hoptions": lambda s, q: ccdcpp.detect(dates, s, q, h),
+    "input": lambda s, q: ccdcpp.detect(dates, s, q, h),
     "profile": lambda s, q: ccdcpp.detect(dates, s, q, profile=profile),
     "config": lambda s, q: ccdcpp.detect(dates, s, q, h, config=cfg),
 }

@@ -103,9 +103,9 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Counts& counts
         const std::int64_t T = s.dates[last];
         const std::string at = s.name + " cut after " + std::to_string(T);
 
-        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.h.STAT_ORD);
+        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.stat_ord());
         const ccd::PixelRun resumed = resume_on(s, stored);
-        const ccd::PixelRun full = golden::recorded_at(s, std::min(s.h.STAT_ORD, T));
+        const ccd::PixelRun full = golden::recorded_at(s, std::min(s.stat_ord(), T));
         ++counts.splits;
 
         EXPECT_EQ(resumed.status, ccd::ResumeStatus::Resumed) << at;
@@ -197,11 +197,11 @@ TEST(ResumeEqualsTheFullRun, AChainOfResumes)
             const std::string at = s.name + " cut after " + std::to_string(T1) +
                                    " and " + std::to_string(s.dates[b]);
 
-            const ccd::PixelRun first = golden::recorded_at(s.prefix(a + 1), s.h.STAT_ORD);
+            const ccd::PixelRun first = golden::recorded_at(s.prefix(a + 1), s.stat_ord());
             const ccd::PixelRun second = resume_on(s.prefix(b + 1), first);
             const ccd::PixelRun third = resume_on(s, second);
 
-            const std::int64_t capped = std::min(s.h.STAT_ORD, T1);
+            const std::int64_t capped = std::min(s.stat_ord(), T1);
             const ccd::PixelRun middle = golden::recorded_at(s.prefix(b + 1), capped);
             const ccd::PixelRun full = golden::recorded_at(s, capped);
 
@@ -246,7 +246,7 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
     for (const auto& s : pixels)
     {
         auto plan = std::make_shared<ccd::preprocess::PreprocessPlan>(
-            ccd::preprocess::default_plan(s.h));
+            ccd::preprocess::default_plan(s.h, golden::shared_of(s.config, s.h)));
         ccd::preprocess::Chain chain;
         for (ccd::index_t i = 0; i < plan->standard.chain.size(); ++i)
             if (plan->standard.chain.steps[i].kind != ccd::preprocess::StepKind::Dedupe)
@@ -274,10 +274,10 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
                 s.qa_view(),
                 ccd::PixelResume{stored.header, stored.record, stored.result.models});
 
-            // Every statistics cutoff capped at T: STAT_ORD and the plan's
-            // own GreenMedian dates.
-            ccd::HarmonicOptions capped = s.h;
-            capped.STAT_ORD = std::min(s.h.STAT_ORD, T);
+            // Every statistics cutoff capped at T: the shared stat_ord and the
+            // plan's own GreenMedian dates.
+            const ccd::config::Config capped = golden::with_shared(
+                s.config, "stat_ord", ccd::config::integer(std::min(s.stat_ord(), T)));
             auto capped_plan = std::make_shared<ccd::preprocess::PreprocessPlan>(*plan);
             for (auto* procedure : {&capped_plan->standard, &capped_plan->snow,
                                     &capped_plan->insufficient_clear})
@@ -286,7 +286,7 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
                         procedure->chain.steps[i].max_date =
                             std::min(procedure->chain.steps[i].max_date, T);
             const ccd::FitResult full = ccd::run_pixel(
-                golden::spec_of(capped, s.config, nullptr, capped_plan),
+                golden::spec_of(s.h, capped, nullptr, capped_plan),
                 s.date_view(),
                 s.spectral_view(),
                 s.qa_view()).result;
@@ -314,14 +314,14 @@ TEST(ResumeOfChangedInput, AReprocessedObservationIsRerun)
         const Series& s = named(all, name);
         const std::size_t last = 2 * s.size() / 3;
         const std::int64_t T = s.dates[last];
-        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.h.STAT_ORD);
+        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.stat_ord());
 
         // One value of one observation before T, reprocessed.
         Series changed = s;
         changed.spectral[3 * s.size() + last / 2] += 1.0;
 
         const ccd::PixelRun resumed = resume_on(changed, stored);
-        const ccd::PixelRun full = golden::recorded_at(changed, std::min(s.h.STAT_ORD, T));
+        const ccd::PixelRun full = golden::recorded_at(changed, std::min(s.stat_ord(), T));
 
         EXPECT_EQ(resumed.status, ccd::ResumeStatus::RerunInputChanged) << name;
         EXPECT_EQ(dump(resumed.result), dump(full.result)) << name;
@@ -335,7 +335,7 @@ TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
     const Series& s = named(all, "start_catch");
     const std::size_t last = 2 * s.size() / 3;
     const std::int64_t T = s.dates[last];
-    const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.h.STAT_ORD);
+    const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.stat_ord());
 
     // A scene back-filled between two observations, fill for this pixel.
     const std::size_t at = last / 2;
@@ -349,7 +349,7 @@ TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
         if (t == at)
         {
             filled.dates.push_back(s.dates[t - 1] + 1);
-            filled.qas.push_back(s.h.QA_FILL);
+            filled.qas.push_back(s.h.qa_fill);
         }
         filled.dates.push_back(s.dates[t]);
         filled.qas.push_back(s.qas[t]);
@@ -360,7 +360,7 @@ TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
             filled.spectral[b * (N + 1) + t] = t == at ? 0.0 : s.spectral[b * N + u++];
 
     const ccd::PixelRun resumed = resume_on(filled, stored);
-    const ccd::PixelRun full = golden::recorded_at(filled, std::min(s.h.STAT_ORD, T));
+    const ccd::PixelRun full = golden::recorded_at(filled, std::min(s.stat_ord(), T));
 
     EXPECT_EQ(resumed.status, ccd::ResumeStatus::Resumed);
     EXPECT_EQ(dump(resumed.result), dump(full.result));
@@ -386,18 +386,18 @@ TEST(ResumeWithNothingNew, TheStoredOutputAgain)
                 continue;
             const Series cut = s.prefix(last + 1);
             const std::int64_t T = cut.dates.back();
-            const ccd::PixelRun stored = golden::recorded_at(cut, s.h.STAT_ORD);
+            const ccd::PixelRun stored = golden::recorded_at(cut, s.stat_ord());
             const std::string at = s.name + " cut after " + std::to_string(T);
 
             const ccd::PixelRun again = resume_on(cut, stored);
-            EXPECT_EQ(dump(again.result), dump(golden::detect_at(cut, std::min(s.h.STAT_ORD, T)))) << at;
+            EXPECT_EQ(dump(again.result), dump(golden::detect_at(cut, std::min(s.stat_ord(), T)))) << at;
 
             Series cloudy = s.prefix(std::min(s.size(), last + 1 + 10));
             for (std::size_t t = last + 1; t < cloudy.size(); ++t)
-                cloudy.qas[t] = s.h.QA_CLOUD;
+                cloudy.qas[t] = s.h.qa_cloud;
             const ccd::PixelRun more = resume_on(cloudy, stored);
             EXPECT_EQ(dump(more.result),
-                      dump(golden::detect_at(cloudy, std::min(s.h.STAT_ORD, T)))) << at;
+                      dump(golden::detect_at(cloudy, std::min(s.stat_ord(), T)))) << at;
 
             if (stored.record.standard.exit == ccd::standard::Exit::SeriesEnd)
                 ++seen_series_end;
@@ -415,11 +415,11 @@ TEST(ResumeRefuses, WhatItCannotContinue)
     const auto all = golden::characterization_series();
     const Series& s = named(all, "start_catch");
     const Series cut = s.prefix(2 * s.size() / 3);
-    const ccd::PixelRun stored = golden::recorded_at(cut, s.h.STAT_ORD);
+    const ccd::PixelRun stored = golden::recorded_at(cut, s.stat_ord());
     ASSERT_GT(stored.record.standard.final_segments, 0u);
 
     const auto refuse = [&](ccd::ResumeHeader header, const Series& input,
-                            const ccd::HarmonicOptions& h, std::size_t segments)
+                            const ccd::Input& h, std::size_t segments)
     {
         const std::vector<ccd::ChangeModel> given(
             stored.result.models.begin(), stored.result.models.begin() + segments);
@@ -443,8 +443,7 @@ TEST(ResumeRefuses, WhatItCannotContinue)
     refuse(h, s, s.h, all_segments);
 
     Series other = s;   // another configuration
-    other.config["change_test"].params["change_threshold"] = ccd::config::real(
-        golden::parameter<double>(s.config, "change_test", "change_threshold") + 1.0);
+    other.config = golden::with_shared(s.config, "change_probability", ccd::config::real(0.95));
     refuse(stored.header, other, s.h, all_segments);
 
     refuse(stored.header, cut.prefix(cut.size() - 1), s.h, all_segments);
@@ -510,7 +509,7 @@ struct CutCube
 TEST(ResumeCube, EachPixelAsResumeAlone)
 {
     const golden::Cube c = golden::make_cube(12, golden::Regime::Cadence8, 6, 8);
-    const ccd::HarmonicOptions h;
+    const ccd::Input h;
     const std::size_t N = c.H * c.W;
 
     for (const std::size_t count : {c.T / 3, c.T / 2, (3 * c.T) / 4})
@@ -561,7 +560,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
                 s.spectral.assign(c.spectral.begin() + p * 7 * c.T, c.spectral.begin() + (p + 1) * 7 * c.T);
                 s.qas.assign(c.qas.begin() + p * c.T, c.qas.begin() + (p + 1) * c.T);
 
-                const ccd::PixelRun alone = golden::recorded_at(s.prefix(count), h.STAT_ORD);
+                const ccd::PixelRun alone = golden::recorded_at(s.prefix(count), s.stat_ord());
                 expect_same_record(stored.pixels[p].record, alone.record, at + " stored");
 
                 const ccd::PixelRun one = resume_on(s, alone);
@@ -580,7 +579,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     const CutCube cut(c, c.T / 2);
     const CutCube whole(c, c.T);
     const ccd::CubeResult stored = ccd::run_cube(
-        golden::spec_of(ccd::HarmonicOptions{}, golden::ccdc(), nullptr, nullptr, true),
+        golden::spec_of(ccd::Input{}, golden::ccdc(), nullptr, nullptr, true),
         cut.dates(),
         cut.block(),
         cut.qa(),
@@ -603,7 +602,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     from.segments[victim].clear();
 
     const ccd::CubeResult resumed = ccd::run_cube(
-        golden::spec_of(ccd::HarmonicOptions{}),
+        golden::spec_of(ccd::Input{}),
         whole.dates(),
         whole.block(),
         whole.qa(),
@@ -616,7 +615,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     // The call itself refuses records that do not cover the cube.
     from.pixels.pop_back();
     EXPECT_THROW(ccd::run_cube(
-        golden::spec_of(ccd::HarmonicOptions{}),
+        golden::spec_of(ccd::Input{}),
         whole.dates(),
         whole.block(),
         whole.qa(),
@@ -638,15 +637,20 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
     {
         if (++pixels > 40)
             break;
-        ccd::RunSpec spelled_out = golden::spec_of(s.h, s.config, nullptr, nullptr, true);
-        ccd::RunSpec left_out = spelled_out;
-        for (auto& [stage, sc] : left_out.config)
+        const ccd::config::Config spelled = s.config;
+        ccd::config::Config left = spelled;
+        for (auto& [stage, sc] : left.stages)
         {
             const ccd::config::Values defaults = registry.defaults(stage, sc.strategy);
             for (auto it = sc.params.begin(); it != sc.params.end();)
                 it = defaults.at(it->first) == it->second ? sc.params.erase(it) : std::next(it);
         }
-        ASSERT_NE(left_out.config, spelled_out.config) << s.name;
+        const ccd::config::Values shared = ccd::config::shared_defaults();
+        for (auto it = left.shared.begin(); it != left.shared.end();)
+            it = shared.at(it->first) == it->second ? left.shared.erase(it) : std::next(it);
+        ASSERT_NE(left, spelled) << s.name;
+        const ccd::RunSpec spelled_out = golden::spec_of(s.h, spelled, nullptr, nullptr, true);
+        const ccd::RunSpec left_out = golden::spec_of(s.h, left, nullptr, nullptr, true);
         const ccd::PixelRun a =
             ccd::run_pixel(spelled_out, s.date_view(), s.spectral_view(), s.qa_view());
         const ccd::PixelRun b =
@@ -660,8 +664,8 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
     const Series& s = all.front();
     ccd::RunSpec spec = golden::spec_of(s.h, s.config);
     auto tree = s.config;
-    tree["window_screen"].params["bands"] = ccd::config::bands({1, 9});
-    spec.config = tree;
+    tree.stages["window_screen"].params["bands"] = ccd::config::bands({1, 9});
+    spec.algorithm = golden::algorithm(tree);
     try
     {
         ccd::run_pixel(spec, s.date_view(), s.spectral_view(), s.qa_view());
@@ -674,8 +678,8 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
                   std::string::npos)
             << e.what();
     }
-    tree["window_screen"].params["bands"] = ccd::config::bands({1, 1});
-    spec.config = tree;
+    tree.stages["window_screen"].params["bands"] = ccd::config::bands({1, 1});
+    spec.algorithm = golden::algorithm(tree);
     EXPECT_THROW(ccd::run_pixel(spec, s.date_view(), s.spectral_view(), s.qa_view()),
                  std::invalid_argument);
 }

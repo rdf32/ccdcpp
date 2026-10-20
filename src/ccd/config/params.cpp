@@ -27,5 +27,16 @@ std::string describe(const Bounds& b)
     return "a number";
 }
 
+std::string describe(Source source, const char* from)
+{
+    switch (source)
+    {
+        case Source::Own:    return "own";
+        case Source::Shared: return std::string("shared '") + from + "'";
+        case Source::Chi2:   return std::string("chi2 of shared '") + from + "'";
+    }
+    return "?";
+}
+
 } // namespace config
 } // namespace ccd

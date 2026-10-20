@@ -126,7 +126,7 @@ int main() {
     );
 
     const auto t0 = std::chrono::steady_clock::now();
-    ccd::HarmonicOptions hoptions;
+    const ccd::Input hoptions;
 
     auto results = ccd::run_pixel(golden::spec_of(hoptions), dates, spectral, qas).result;
 

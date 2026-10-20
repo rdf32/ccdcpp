@@ -11,7 +11,9 @@
 #include "ccd/strategies/register_core.hpp"
 #include "ccd/config/registry.hpp"
 #include "ccd/input/harmonic.hpp"
+#include "ccd/input/input.hpp"
 #include "ccd/input/mask/preprocess.hpp"
+#include "ccd/run/algorithm.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/standard.hpp"
 #include "ccd/input/qa_table.hpp"
@@ -29,11 +31,12 @@ namespace ccd
 // Every call goes through three objects:
 //
 //   Run      built once per call from a RunSpec, the dates and the input's
-//            layout: everything checked (the options against the band count,
+//            layout: everything checked (the input against the band count,
 //            the dates, the plan, a QA table for raw QA, a resume header
-//            against this run), and everything every pixel shares (the plan,
-//            the resume header and its capped options). Immutable: one Run
-//            serves every thread.
+//            against this run), and everything every pixel shares (the
+//            algorithm resolved for the input, the plan, the resume header
+//            and its capped shared values). Immutable: one Run serves every
+//            thread.
 //   Worker   one per thread: the buffers and the change detector a pixel
 //            needs, reused from pixel to pixel.
 //   Run::pixel(input, worker)
@@ -78,17 +81,15 @@ using CubeQa = std::variant<
 //
 // What a call runs.
 //
-//   hoptions            the input's description (validate() checks it)
-//   config              the algorithm: one strategy per stage by name, with
-//                       its parameters (config/registry.hpp), in the
-//                       library's registry with its extensions; the "ccdc"
-//                       preset by default (Registry::preset()). It is checked
-//                       when the run is built (names, parameters,
-//                       capabilities, band lists against the input's bands)
-//                       and is part of the resume digest
+//   input               the input's description (validate() checks it)
+//   algorithm           the algorithm (run/algorithm.hpp): a configuration
+//                       checked when the Algorithm was built, resolved
+//                       against `input` once per Algorithm and input; the
+//                       "ccdc" preset's by default. Part of the resume digest
 //   qa_table            decodes raw QA; null: `qas` are the codes. Required
 //                       for uint16 QA.
-//   plan                the preprocessing plan; null: default_plan(hoptions)
+//   plan                the preprocessing plan; null: default_plan(input,
+//                       the resolved shared values)
 //   record              also return each pixel's resume record and the
 //                       call's header
 //   keep_masks          false drops each pixel's processing mask (T bytes
@@ -105,8 +106,8 @@ using CubeQa = std::variant<
 //------------------------------------------------------------------------------
 struct RunSpec
 {
-    HarmonicOptions hoptions;
-    config::ConfigTree config = strategies::library_registry().preset("ccdc");
+    Input input;
+    AlgorithmPtr algorithm = Algorithm::preset("ccdc");
     QaTablePtr qa_table = nullptr;
     PreprocessPlanPtr plan = nullptr;
     bool record = false;
@@ -232,12 +233,13 @@ struct Worker
 // One call's run.
 //
 // The constructor checks, before any pixel, and throws std::invalid_argument,
-// in this order, on: options that fail validate() for `bands`; `dates` or the
-// QA without `timesteps` entries; dates that fail validate_dates(); raw
-// (uint16) QA without a QA table; a plan that fails preprocess::validate();
-// and for a resume (`resume` not null), a header of another record format or
-// results version, made with other options, plan or QA table (by
-// options_digest()), or for a series that ends before the stored one.
+// in this order, on: an input that fails validate() for `bands`; `dates` or
+// the QA without `timesteps` entries; dates that fail validate_dates(); raw
+// (uint16) QA without a QA table; a configuration the input does not fit
+// (Algorithm::for_input()); a plan that fails preprocess::validate(); and
+// for a resume (`resume` not null), a header of another record format or
+// results version, made with another input, configuration, plan or QA table
+// (by options_digest()), or for a series that ends before the stored one.
 //
 // pixel() throws std::invalid_argument for a resume on a prior with fewer
 // stored segments than its record's final ones.
@@ -303,21 +305,22 @@ private:
     index_t timesteps_;
     bool raw_qa_;
 
-    // The plan the call runs: spec.plan, or default_plan(hoptions).
+    // The algorithm resolved for the input: its stages, shared values and
+    // strategies, shared by every thread.
+    std::shared_ptr<const config::Resolved> resolved_;
+
+    // The plan the call runs: spec.plan, or default_plan(input, shared).
     preprocess::PreprocessPlan plan_;
 
-    // What the pixels run: the options and plan, with every statistics
-    // cutoff capped at header_.statistics_end for a resume.
-    HarmonicOptions options_;
+    // What the pixels run: the shared values and plan, with every
+    // statistics cutoff capped at header_.statistics_end for a resume.
+    config::Shared shared_;
     preprocess::PreprocessPlan run_plan_;
 
     ResumeHeader header_;
 
     // The stored call's header, for a resume.
     std::optional<ResumeHeader> resume_;
-
-    // One strategy per stage, shared by every thread.
-    Strategies strategies_;
 };
 
 //------------------------------------------------------------------------------
@@ -325,8 +328,8 @@ private:
 // CCD on one pixel: `spectral` (B, T), `qas` (T), `dates` (T).
 //
 // `spectral` is read, never written: the plan's transform (by default the
-// Standard procedure's thermal transform, HarmonicOptions::THERMAL_SCALE/
-// THERMAL_OFFSET) is applied to a private copy. Any strides. The QA is the
+// Standard procedure's thermal transform, Input::thermal_scale/
+// thermal_offset) is applied to a private copy. Any strides. The QA is the
 // codes (uint8) or raw values decoded through RunSpec::qa_table (uint8 or
 // uint16). Throws what Run and Run::pixel throw.
 //

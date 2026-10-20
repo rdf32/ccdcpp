@@ -114,7 +114,7 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
             continue;
 
         const std::int64_t split_day = s.dates[last];
-        const std::int64_t stat_ord = std::min(s.h.STAT_ORD, split_day);
+        const std::int64_t stat_ord = std::min(s.stat_ord(), split_day);
         const ccd::PixelRun recorded = golden::recorded_at(s.prefix(last + 1), stat_ord);
         const ccd::FitResult& shorter = recorded.result;
         const ccd::FitResult& longer = full_at(stat_ord);

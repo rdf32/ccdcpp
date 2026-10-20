@@ -1,18 +1,19 @@
 // python/
 //     module.cpp          // PYBIND11_MODULE + detect wrapper
-//     options.cpp         // HarmonicOptions
+//     input.cpp           // Input, GreenFilterScope
 //     regression.cpp      // LassoModel, LassoScore, LassoResult
 //     fit.cpp             // ChangeModel, FitResult, CurveQA
 //     pmask.cpp           // ProcessingMask
 //     quality.cpp         // Quality::Statistics
 //     qa_tables.cpp       // QaTable, ccdcpp.qa_tables
 //     preprocess.cpp      // PreprocessPlan, default_plan, validate_plan
+//     config.cpp          // Algorithm, the configuration helpers
 
 #include <pybind11/pybind11.h>
 
 namespace py = pybind11;
 
-void bind_options(py::module_& m);
+void bind_input(py::module_& m);
 // void bind_regression(py::module_& m);
 // void bind_fit(py::module_& m);
 // void bind_processing_mask(py::module_& m);
@@ -28,7 +29,7 @@ PYBIND11_MODULE(ccdcpp, m)
     m.doc() = "CCD change detection C++ implementation";
     m.attr("__version__") = CCD_VERSION;
 
-    bind_options(m);
+    bind_input(m);
     // bind_regression(m);
     // bind_fit(m);
     // bind_processing_mask(m);

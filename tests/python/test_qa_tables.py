@@ -121,7 +121,7 @@ def synthetic(H=3, W=4, seed=7):
 
 
 def options():
-    return ccdcpp.HarmonicOptions()
+    return ccdcpp.Input()
 
 
 def assert_same(test, a, b, where="out"):
@@ -188,9 +188,9 @@ class Tables(unittest.TestCase):
         self.assertEqual(table.codes[4], CLEAR)
 
     def test_renumbered_options(self):
-        h = ccdcpp.HarmonicOptions()
-        h.QA_FILL, h.QA_CLEAR, h.QA_WATER = 200, 10, 11
-        h.QA_SHADOW, h.QA_SNOW, h.QA_CLOUD = 12, 13, 14
+        h = ccdcpp.Input()
+        h.qa_fill, h.qa_clear, h.qa_water = 200, 10, 11
+        h.qa_shadow, h.qa_snow, h.qa_cloud = 12, 13, 14
         renumber = {FILL: 200, CLEAR: 10, WATER: 11, SHADOW: 12, SNOW: 13, CLOUD: 14}
         for name in SCHEMES:
             with self.subTest(name=name):
@@ -269,9 +269,9 @@ class Precedence(unittest.TestCase):
 class DecodedEqualsCodes(unittest.TestCase):
     """Raw QA plus a table is the run of the decoded codes passed as uint8.
 
-    The codes include 8 (QA_CIRRUS1) beside the six classes. The procedures
-    read no code but QA_FILL, QA_CLEAR, QA_WATER, QA_SNOW and QA_CLOUD, so 8
-    is read as QA_SHADOW is, and it is encoded as each product's shadow."""
+    The codes include 8 (qa_cirrus1) beside the six classes. The procedures
+    read no code but qa_fill, qa_clear, qa_water, qa_snow and qa_cloud, so 8
+    is read as qa_shadow is, and it is encoded as each product's shadow."""
 
     @classmethod
     def setUpClass(cls):
@@ -397,7 +397,7 @@ class Validation(unittest.TestCase):
             "landsat_c2_qa_pixel",
             ccdcpp.qa_tables.landsat_c2_qa_pixel().codes,
             ccdcpp.qa_tables.landsat_c2_qa_pixel,
-            ccdcpp.HarmonicOptions(),
+            ccdcpp.Input(),
             1,
         )
         for value in wrong:

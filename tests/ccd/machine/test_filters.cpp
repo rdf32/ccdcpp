@@ -9,7 +9,7 @@
 //   GreenScope.*
 //              filter::insufficientclear's green median filter under each
 //              GreenFilterScope, on a series with green spikes before and
-//              after STAT_ORD, and on one dated entirely after it.
+//              after stat_ord, and on one dated entirely after it.
 //
 //==============================================================================
 
@@ -129,18 +129,18 @@ TEST(Bounds, InclusiveAndExclusiveAreTheLiteralForms)
     }
 }
 
-TEST(Bounds, OptionDefaults)
+TEST(Bounds, InputDefaults)
 {
-    const ccd::HarmonicOptions h;
+    const ccd::Input h;
 
-    EXPECT_FALSE(h.REFL_MIN_INCLUSIVE);
-    EXPECT_FALSE(h.REFL_MAX_INCLUSIVE);
-    EXPECT_FALSE(h.THERM_MIN_INCLUSIVE);
-    EXPECT_FALSE(h.THERM_MAX_INCLUSIVE);
+    EXPECT_FALSE(h.refl_min_inclusive);
+    EXPECT_FALSE(h.refl_max_inclusive);
+    EXPECT_FALSE(h.therm_min_inclusive);
+    EXPECT_FALSE(h.therm_max_inclusive);
 
     const auto refl = ccd::filter::reflectance_range(h);
-    EXPECT_EQ(refl.lo.value, h.REFL_MIN);
-    EXPECT_EQ(refl.hi.value, h.REFL_MAX);
+    EXPECT_EQ(refl.lo.value, h.refl_min);
+    EXPECT_EQ(refl.hi.value, h.refl_max);
     EXPECT_FALSE(refl.lo.inclusive);
     EXPECT_FALSE(refl.hi.inclusive);
 
@@ -234,7 +234,7 @@ TEST(Bounds, ThermalFilterAtTheBounds)
     }
 }
 
-// filter::standard reads the flags from the options.
+// filter::standard reads the flags from the input.
 TEST(Bounds, StandardFilterReadsTheFlags)
 {
     const auto series = probe(0.0, 10000.0);
@@ -257,16 +257,17 @@ TEST(Bounds, StandardFilterReadsTheFlags)
 
     for (const auto& mode : MODES)
     {
-        ccd::HarmonicOptions h;
-        h.REFL_MIN_INCLUSIVE = mode.lo_inclusive;
-        h.REFL_MAX_INCLUSIVE = mode.hi_inclusive;
+        ccd::Input h;
+        h.refl_min_inclusive = mode.lo_inclusive;
+        h.refl_max_inclusive = mode.hi_inclusive;
 
+        const ccd::config::Shared shared;
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {B, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h);
+            h, shared);
 
         EXPECT_EQ(kept(ccd::filter::standard(workspace)), mode.expected);
     }
@@ -281,16 +282,17 @@ TEST(Bounds, StandardFilterReadsTheFlags)
 
     for (const auto& mode : MODES)
     {
-        ccd::HarmonicOptions h;
-        h.THERM_MIN_INCLUSIVE = mode.lo_inclusive;
-        h.THERM_MAX_INCLUSIVE = mode.hi_inclusive;
+        ccd::Input h;
+        h.therm_min_inclusive = mode.lo_inclusive;
+        h.therm_max_inclusive = mode.hi_inclusive;
 
+        const ccd::config::Shared shared;
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {B, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h);
+            h, shared);
 
         EXPECT_EQ(kept(ccd::filter::standard(workspace)), mode.expected);
     }
@@ -301,6 +303,15 @@ namespace
 {
 
 constexpr std::int64_t STAT_ORD = 731000;
+
+// The shared values with the cutoff at STAT_ORD and the scope `scope`.
+ccd::config::Shared shared_with(ccd::GreenFilterScope scope)
+{
+    ccd::config::Shared shared;
+    shared.stat_ord = STAT_ORD;
+    shared.green_filter_scope = ccd::name(scope);
+    return shared;
+}
 
 // A 7-band DN series of `T` observations 16 days apart from `first`, all
 // clear, green 1000 except where `green` says otherwise.
@@ -328,16 +339,15 @@ struct Series
 
     std::vector<int> insufficient_clear(ccd::GreenFilterScope scope) const
     {
-        ccd::HarmonicOptions h;
-        h.STAT_ORD = STAT_ORD;
-        h.GREEN_FILTER_SCOPE = scope;
+        const ccd::Input h;
+        const ccd::config::Shared shared = shared_with(scope);
 
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h);
+            h, shared);
 
         return kept(ccd::filter::insufficientclear(workspace));
     }
@@ -347,16 +357,17 @@ struct Series
 
 TEST(GreenScope, DefaultIsStatWindow)
 {
-    EXPECT_EQ(ccd::HarmonicOptions().GREEN_FILTER_SCOPE, ccd::GreenFilterScope::StatWindow);
+    EXPECT_EQ(ccd::green_filter_scope(ccd::config::Shared{}.green_filter_scope),
+              ccd::GreenFilterScope::StatWindow);
 }
 
-// Green median before STAT_ORD is 1000, so the threshold is 1400. Spikes of
-// 2000 sit at t = 2 (before STAT_ORD) and t = 17 (after); t = 4 is exactly
+// Green median before stat_ord is 1000, so the threshold is 1400. Spikes of
+// 2000 sit at t = 2 (before stat_ord) and t = 17 (after); t = 4 is exactly
 // the threshold, which the filter drops (green >= threshold), and t = 6 is
 // just below it. t = 9 is a cloud: out of the mask whatever its green.
 TEST(GreenScope, SpikesBeforeAndAfterStatOrd)
 {
-    // 20 observations; the first 10 are dated <= STAT_ORD.
+    // 20 observations; the first 10 are dated <= stat_ord.
     Series s(STAT_ORD - 16 * 9, 20);
     ASSERT_LE(s.dates[9], STAT_ORD);
     ASSERT_GT(s.dates[10], STAT_ORD);
@@ -382,7 +393,7 @@ TEST(GreenScope, SpikesBeforeAndAfterStatOrd)
     EXPECT_EQ(s.insufficient_clear(ccd::GreenFilterScope::Off), off);
 }
 
-// Every observation after STAT_ORD: no median, so no scope drops anything.
+// Every observation after stat_ord: no median, so no scope drops anything.
 TEST(GreenScope, NothingBeforeStatOrd)
 {
     Series s(STAT_ORD + 1, 12);
@@ -413,15 +424,14 @@ TEST(GreenScope, StandardFilterIgnoresIt)
                              ccd::GreenFilterScope::StatWindow,
                              ccd::GreenFilterScope::Off})
     {
-        ccd::HarmonicOptions h;
-        h.STAT_ORD = STAT_ORD;
-        h.GREEN_FILTER_SCOPE = scope;
+        const ccd::Input h;
+        const ccd::config::Shared shared = shared_with(scope);
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(s.dates.data(), {s.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 s.spectral.data(), {7, s.T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(s.qas.data(), {s.T}),
-            h);
+            h, shared);
         masks.push_back(kept(ccd::filter::standard(workspace)));
     }
 

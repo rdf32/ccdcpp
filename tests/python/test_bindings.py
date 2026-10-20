@@ -46,19 +46,29 @@ def cube(bands, timesteps, dtype=np.float64, dates=None, qas=None):
 
 
 def options():
-    """The default input description, as the entry points' positional tail."""
-    return (ccdcpp.HarmonicOptions(),)
+    """The default input, as the entry points' positional tail."""
+    return (ccdcpp.Input(),)
 
 
 def preset(**changes):
-    """The built-in ccdc preset as the extension takes it (a dict of stages),
-    with stage__param=value changes."""
+    """The built-in ccdc preset as the extension takes it (a dict {"shared",
+    "stages"}), with shared__name=value and stage__param=value changes."""
     tree = ccdcpp._config_preset("ccdc")
     for key, value in changes.items():
         stage, param = key.split("__")
-        assert param in tree[stage]["params"], key
-        tree[stage]["params"][param] = value
+        if stage == "shared":
+            assert param in tree["shared"], key
+            tree["shared"][param] = value
+            continue
+        assert param in tree["stages"][stage]["params"], key
+        tree["stages"][stage]["params"][param] = value
     return tree
+
+
+def resolved(config=None, input=None):
+    """The configuration resolved against the input (default Input())."""
+    return ccdcpp._config_resolve(preset() if config is None else config,
+                                  ccdcpp.Input() if input is None else input)
 
 
 class BandCount(unittest.TestCase):
@@ -67,7 +77,7 @@ class BandCount(unittest.TestCase):
             call()
         message = str(caught.exception)
         self.assertIn(f"has {bands} bands", message)
-        self.assertIn("expects 7", message)
+        self.assertIn("the input has 7", message)
 
     def test_detect(self):
         for bands in (6, 8):
@@ -100,20 +110,23 @@ class BandCount(unittest.TestCase):
         self.assertEqual(out["failures"], [])
 
 
+TEN_ROLES = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
+             "other", "swir1", "swir2"]
+
+
 def ten_band_layout():
-    """A 10-band layout without thermal, which passes validation."""
-    h = ccdcpp.HarmonicOptions()
-    h.NUM_BANDS = 10
-    h.DETECTION_BANDS = [1, 2, 6, 8, 9]
-    h.SATURATION_BANDS = list(range(10))
-    h.GREEN_IDX = 1
-    h.THERMAL_IDX = ccdcpp.NO_BAND
+    """A 10-band layout without thermal, which passes validation: the
+    configuration's detection bands are rows 1, 2, 6, 8, 9 of it, its Tmask
+    bands 1 and 8."""
+    h = ccdcpp.Input()
+    h.roles = TEN_ROLES
+    h.saturation_bands = list(range(10))
     return h
 
 
 def ten_band_config(**changes):
-    """The configuration for ten_band_layout(): Tmask on bands 1 and 8."""
-    return preset(**dict({"window_screen__bands": [1, 8]}, **changes))
+    """The configuration for ten_band_layout(): the preset."""
+    return preset(**changes)
 
 
 def noisy(bands, timesteps, seed=1):
@@ -125,62 +138,64 @@ def noisy(bands, timesteps, seed=1):
 
 class BandLayout(unittest.TestCase):
     def test_defaults(self):
-        h = ccdcpp.HarmonicOptions()
-        self.assertEqual(h.NUM_BANDS, 7)
-        self.assertEqual(h.DETECTION_BANDS, [1, 2, 3, 4, 5])
-        self.assertEqual(preset()["window_screen"]["params"]["bands"], [1, 4])
-        self.assertEqual(h.SATURATION_BANDS, [0, 1, 2, 3, 4, 5])
+        h = ccdcpp.Input()
+        self.assertEqual(h.bands(), 7)
+        self.assertEqual(h.roles, ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
+        self.assertEqual(preset()["shared"]["detection_bands"],
+                         ["green", "red", "nir", "swir1", "swir2"])
+        self.assertEqual(preset()["stages"]["window_screen"]["params"]["bands"],
+                         ["green", "swir1"])
+        self.assertEqual(resolved()["shared"]["detection_bands"], [1, 2, 3, 4, 5])
+        self.assertEqual(resolved()["stages"]["window_screen"]["params"]["bands"], [1, 4])
+        self.assertEqual(h.saturation_bands, [0, 1, 2, 3, 4, 5])
         # The millworks nlcd plugin checks these.
+        self.assertEqual([h.index(r) for r in h.roles], [0, 1, 2, 3, 4, 5, 6])
+        self.assertEqual(h.index("coastal"), ccdcpp.NO_BAND)
         self.assertEqual(
-            [h.BLUE_IDX, h.GREEN_IDX, h.RED_IDX, h.NIR_IDX, h.SWIR1_IDX,
-             h.SWIR2_IDX, h.THERMAL_IDX, h.QA_IDX],
-            [0, 1, 2, 3, 4, 5, 6, 7])
-        self.assertEqual(
-            [h.QA_FILL, h.QA_CLEAR, h.QA_WATER, h.QA_SHADOW, h.QA_SNOW,
-             h.QA_CLOUD, h.QA_CIRRUS1, h.QA_CIRRUS2, h.QA_OCCLUSION],
+            [h.qa_fill, h.qa_clear, h.qa_water, h.qa_shadow, h.qa_snow,
+             h.qa_cloud, h.qa_cirrus1, h.qa_cirrus2, h.qa_occlusion],
             [255, 0, 1, 2, 3, 4, 8, 9, 10])
+        self.assertEqual(h.reflectance_unit, 10000.0)
         self.assertEqual(ccdcpp.NO_BAND, 2**64 - 1)
         self.assertEqual(ccdcpp.CCD_MAX_BANDS, 32)
 
-    def test_informational_indices_say_so(self):
-        for name in ("BLUE_IDX", "RED_IDX", "NIR_IDX", "SWIR1_IDX", "SWIR2_IDX", "QA_IDX",
-                     "QA_CIRRUS1", "QA_CIRRUS2", "QA_OCCLUSION"):
+    def test_informational_codes_say_so(self):
+        for name in ("qa_cirrus1", "qa_cirrus2", "qa_occlusion"):
             with self.subTest(name=name):
-                self.assertIn("Informational", getattr(ccdcpp.HarmonicOptions, name).__doc__)
-        for name in ("GREEN_IDX", "THERMAL_IDX", "QA_FILL", "QA_CLEAR", "QA_WATER",
-                     "QA_SHADOW", "QA_SNOW", "QA_CLOUD"):
+                self.assertIn("Informational", getattr(ccdcpp.Input, name).__doc__)
+        for name in ("qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud"):
             with self.subTest(name=name):
-                self.assertNotIn("Informational", getattr(ccdcpp.HarmonicOptions, name).__doc__)
+                self.assertNotIn("Informational", getattr(ccdcpp.Input, name).__doc__)
 
     def test_lists_keep_their_order(self):
-        h = ccdcpp.HarmonicOptions()
-        h.DETECTION_BANDS = [5, 1, 3]
-        h.SATURATION_BANDS = (4, 1)
-        self.assertEqual(h.DETECTION_BANDS, [5, 1, 3])
-        self.assertEqual(h.SATURATION_BANDS, [4, 1])
-        h.SATURATION_BANDS = []
-        self.assertEqual(h.SATURATION_BANDS, [])
+        h = ccdcpp.Input()
+        h.saturation_bands = (4, 1)
+        self.assertEqual(h.saturation_bands, [4, 1])
+        h.saturation_bands = []
+        self.assertEqual(h.saturation_bands, [])
+        cfg = preset(shared__detection_bands=[5, 1, 3])
+        self.assertEqual(resolved(cfg)["shared"]["detection_bands"], [5, 1, 3])
+        cfg = preset(shared__detection_bands=["swir2", "green", "nir"])
+        self.assertEqual(resolved(cfg)["shared"]["detection_bands"], [5, 1, 3])
 
     def test_list_setter_rejects_what_it_cannot_hold(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         with self.assertRaises(ValueError):
-            h.DETECTION_BANDS = [1, 32]
+            h.saturation_bands = [1, 32]
         with self.assertRaises(ValueError):
-            h.DETECTION_BANDS = [0] * 33
+            h.saturation_bands = [0] * 33
         with self.assertRaises(TypeError):
-            h.DETECTION_BANDS = [1, -1]
-        self.assertEqual(h.DETECTION_BANDS, [1, 2, 3, 4, 5])
+            h.saturation_bands = [1, -1]
+        self.assertEqual(h.saturation_bands, [0, 1, 2, 3, 4, 5])
 
     def test_explicit_landsat_layout_equals_default(self):
-        h = ccdcpp.HarmonicOptions()
-        h.NUM_BANDS = 7
-        h.DETECTION_BANDS = [1, 2, 3, 4, 5]
-        h.SATURATION_BANDS = [0, 1, 2, 3, 4, 5]
-        h.GREEN_IDX = 1
-        h.THERMAL_IDX = 6
+        h = ccdcpp.Input()
+        h.roles = ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"]
+        h.saturation_bands = [0, 1, 2, 3, 4, 5]
         args = noisy(7, 120)
+        by_rows = preset(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5])
         self.assertEqual(
-            repr(ccdcpp.detect(*args, h, config=preset(window_screen__bands=[1, 4]))),
+            repr(ccdcpp.detect(*args, h, config=by_rows)),
             repr(ccdcpp.detect(*args, *options())))
 
     def test_outputs_follow_the_band_count(self):
@@ -242,21 +257,35 @@ class LayoutValidation(unittest.TestCase):
                 self.assertIn(expected, str(caught.exception))
 
     def test_rules(self):
+        def roles(**at):
+            out = list(TEN_ROLES)
+            for row, role in at.items():
+                out[int(row[1:])] = role
+            return out
         cases = [
-            (self.broken(), 7, "spectral has 7 bands; HarmonicOptions.NUM_BANDS expects 10"),
-            (self.broken(NUM_BANDS=33), 33, "ccdcpp accepts at most 32"),
-            (self.broken(DETECTION_BANDS=[1, 10]), 10, "DETECTION_BANDS holds band 10"),
-            (self.broken(SATURATION_BANDS=[0, 31]), 10, "SATURATION_BANDS holds band 31"),
-            (self.broken(DETECTION_BANDS=[1, 2, 1]), 10, "DETECTION_BANDS holds band 1 more than once"),
-            (self.broken(SATURATION_BANDS=[3, 3]), 10, "SATURATION_BANDS holds band 3 more than once"),
-            (self.broken(DETECTION_BANDS=[]), 10, "DETECTION_BANDS is empty"),
-            (self.broken(GREEN_IDX=ccdcpp.NO_BAND), 10, "GREEN_IDX is NO_BAND"),
-            (self.broken(GREEN_IDX=10), 10, "GREEN_IDX is 10"),
-            (self.broken(THERMAL_IDX=10), 10, "THERMAL_IDX is 10"),
-            (self.broken(THERMAL_IDX=9), 10, "SATURATION_BANDS holds THERMAL_IDX (9)"),
+            (self.broken(), 7, "spectral has 7 bands; the input has 10 (a row per role)"),
+            (self.broken(roles=TEN_ROLES + ["other"] * 23), 33, "ccdcpp accepts at most 32"),
+            (self.broken(saturation_bands=[0, 31]), 10, "saturation_bands holds band 31"),
+            (self.broken(saturation_bands=[3, 3]), 10, "saturation_bands holds band 3 more than once"),
+            (self.broken(roles=roles(r1="other")), 10, "roles has no 'green'"),
+            (self.broken(roles=roles(r7="nir8a")), 10, "roles holds 'nir8a', which is not a role"),
+            (self.broken(roles=roles(r7="red")), 10, "roles holds 'red' more than once"),
+            (self.broken(roles=roles(r9="thermal")), 10, "saturation_bands holds the thermal row (9)"),
+            (self.broken(reflectance_unit=0.0), 10, "reflectance_unit is 0; it must be a positive number"),
         ]
         for h, bands, expected in cases:
             self.assert_rejected(h, bands, expected)
+
+        # The detection bands are the configuration's shared value, checked
+        # against the input's bands.
+        detection = "shared value 'detection_bands' "
+        for bands, expected in (([1, 10], "holds band 10; the input has 10 bands"),
+                                ([1, 2, 1], "holds band 1 twice"),
+                                ([], "is empty"),
+                                (["green", "coastal"], "holds 'coastal', which the input does "
+                                                       "not have")):
+            self.assert_rejected(self.broken(), 10, detection + expected,
+                                 config=ten_band_config(shared__detection_bands=bands))
 
         # The Tmask bands are window_screen's parameter, checked against the
         # input's bands.
@@ -285,18 +314,18 @@ class LayoutValidation(unittest.TestCase):
             (dict(change_test__seasonal_count=0), chi2 + "'seasonal_count' is 0; it must be at least 1"),
             (dict(change_test__seasonal_divisor=0.0), chi2 + "'seasonal_divisor' is 0; it must be greater than 0"),
             (dict(change_test__seasonal_divisor=-4.0), chi2 + "'seasonal_divisor' is -4"),
-            (dict(change_test__change_probability=0.0), chi2 + "'change_probability' is 0; it must be in (0, 1)"),
-            (dict(change_test__change_probability=1.0), chi2 + "'change_probability' is 1; it must be in (0, 1)"),
-            (dict(change_test__change_probability=1.5), chi2 + "'change_probability' is 1.5"),
-            (dict(change_test__change_probability=nan), chi2 + "'change_probability' is nan"),
+            (dict(shared__change_probability=0.0), "shared parameter 'change_probability' is 0; it must be in (0, 1)"),
+            (dict(shared__change_probability=1.0), "shared parameter 'change_probability' is 1; it must be in (0, 1)"),
+            (dict(shared__change_probability=1.5), "shared parameter 'change_probability' is 1.5"),
+            (dict(shared__change_probability=nan), "shared parameter 'change_probability' is nan"),
             (dict(change_test__peek_size=0), chi2 + "'peek_size' is 0; it must be at least 2"),
             (dict(change_test__peek_size=1), chi2 + "'peek_size' is 1; it must be at least 2"),
         ]
         for changes, expected in cases:
-            self.assert_rejected(ccdcpp.HarmonicOptions(), 7, expected, config=preset(**changes))
+            self.assert_rejected(ccdcpp.Input(), 7, expected, config=preset(**changes))
 
     def test_empty_saturation_list_is_allowed(self):
-        h = self.broken(SATURATION_BANDS=[])
+        h = self.broken(saturation_bands=[])
         ccdcpp.detect(*inputs(10, 40), h, config=ten_band_config())
 
 
@@ -312,7 +341,7 @@ class CadenceParameters(unittest.TestCase):
         ("refit", "factor"): 1.33,
         ("change_test", "seasonal_count"): 24,
         ("change_test", "seasonal_divisor"): 4.0,
-        ("change_test", "change_probability"): 0.99,
+        ("shared", "change_probability"): 0.99,
     }
 
     UNITS = {
@@ -322,62 +351,69 @@ class CadenceParameters(unittest.TestCase):
         ("refit", "factor"): "none",
         ("change_test", "seasonal_count"): "observations",
         ("change_test", "seasonal_divisor"): "none",
-        ("change_test", "change_probability"): "none",
+        ("shared", "change_probability"): "none",
     }
 
-    # HarmonicOptions' fields: the input's band layout, QA codes and screens.
+    # The Input's fields: the data's band layout, QA codes, units and bounds.
     INPUT_FIELDS = {
-        "NUM_BANDS", "BLUE_IDX", "GREEN_IDX", "RED_IDX", "NIR_IDX", "SWIR1_IDX",
-        "SWIR2_IDX", "THERMAL_IDX", "QA_IDX", "DETECTION_BANDS", "SATURATION_BANDS",
-        "QA_FILL", "QA_CLEAR", "QA_WATER", "QA_SHADOW", "QA_SNOW", "QA_CLOUD",
-        "QA_CIRRUS1", "QA_CIRRUS2", "QA_OCCLUSION", "CLEAR_OBSERVATION_THRESHOLD",
-        "THERMAL_SCALE", "THERMAL_OFFSET", "REFL_MIN", "REFL_MAX", "REFL_MIN_INCLUSIVE",
-        "REFL_MAX_INCLUSIVE", "THERM_MIN", "THERM_MAX", "THERM_MIN_INCLUSIVE",
-        "THERM_MAX_INCLUSIVE", "MEDIAN_GREEN_FILTER", "GREEN_FILTER_SCOPE", "STAT_ORD",
+        "roles", "saturation_bands", "bands", "index", "digest", "reflectance_unit",
+        "qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud",
+        "qa_cirrus1", "qa_cirrus2", "qa_occlusion",
+        "thermal_scale", "thermal_offset", "refl_min", "refl_max", "refl_min_inclusive",
+        "refl_max_inclusive", "therm_min", "therm_max", "therm_min_inclusive",
+        "therm_max_inclusive",
     }
+
+    def value(self, tree, stage, name):
+        return tree["shared"][name] if stage == "shared" else tree["stages"][stage]["params"][name]
 
     def test_defaults(self):
         tree = preset()
         for (stage, name), value in self.DEFAULTS.items():
             with self.subTest(stage=stage, name=name):
-                self.assertEqual(tree[stage]["params"][name], value)
-                self.assertIs(type(tree[stage]["params"][name]), type(value))
+                self.assertEqual(self.value(tree, stage, name), value)
+                self.assertIs(type(self.value(tree, stage, name)), type(value))
 
     def test_the_registry_states_unit_and_default(self):
         table = ccdcpp._strategies()
+        shared = {v["name"]: v for v in ccdcpp._shared()}
         tree = preset()
         for (stage, name), unit in self.UNITS.items():
             with self.subTest(stage=stage, name=name):
-                (param,) = [p for p in table[stage][tree[stage]["strategy"]]
-                            if p["name"] == name]
+                if stage == "shared":
+                    param = shared[name]
+                else:
+                    (param,) = [p for p in table[stage][tree["stages"][stage]["strategy"]]
+                                if p["name"] == name]
                 self.assertEqual(param["unit"], unit)
                 self.assertTrue(param["doc"])
                 self.assertEqual(param["default"], self.DEFAULTS[(stage, name)])
 
-    def test_harmonic_options_describe_the_input_only(self):
-        # The algorithm's parameters are the configuration's; HarmonicOptions
-        # holds the input's fields and takes no others.
-        h = ccdcpp.HarmonicOptions()
+    def test_the_input_describes_the_data_only(self):
+        # The algorithm's parameters are the configuration's; the Input holds
+        # the data's fields and takes no others.
+        h = ccdcpp.Input()
         self.assertEqual({n for n in dir(h) if not n.startswith("_")}, self.INPUT_FIELDS)
-        for stage, entry in preset().items():
-            for name in entry["params"]:
-                with self.subTest(stage=stage, name=name):
-                    with self.assertRaises(AttributeError):
-                        setattr(h, name.upper(), 1)
-
+        tree = preset()
+        names = set(tree["shared"])
+        for entry in tree["stages"].values():
+            names |= set(entry["params"])
+        for name in names:
+            with self.subTest(name=name):
+                with self.assertRaises(AttributeError):
+                    setattr(h, name, 1)
 
     def test_chi2_quantile_is_the_change_threshold(self):
-        h = ccdcpp.HarmonicOptions()
-        tree = preset()
+        tree = resolved()
         for stage in ("change_test", "stability_rule", "lookback"):
             with self.subTest(stage=stage):
-                params = tree[stage]["params"]
+                params = tree["stages"][stage]["params"]
                 # To the last bit.
                 self.assertEqual(
                     ccdcpp.chi2_quantile(0.99, 5).hex(), params["change_threshold"].hex())
                 self.assertEqual(
                     ccdcpp.chi2_quantile(p=params["change_probability"],
-                                         df=len(h.DETECTION_BANDS)),
+                                         df=len(tree["shared"]["detection_bands"])),
                     params["change_threshold"])
         self.assertGreater(ccdcpp.chi2_quantile(0.99, 8), ccdcpp.chi2_quantile(0.99, 5))
         self.assertGreater(ccdcpp.chi2_quantile(0.999, 5), ccdcpp.chi2_quantile(0.99, 5))
@@ -388,7 +424,7 @@ class CadenceParameters(unittest.TestCase):
                         for (stage, name), value in self.DEFAULTS.items()})
         for args in (noisy(7, 120), noisy(7, 400, seed=3)):
             self.assertEqual(
-                repr(ccdcpp.detect(*args, ccdcpp.HarmonicOptions(), config=cfg)),
+                repr(ccdcpp.detect(*args, ccdcpp.Input(), config=cfg)),
                 repr(ccdcpp.detect(*args, *options())))
 
     def test_peek_reference_days_reaches_the_procedure(self):
@@ -404,7 +440,7 @@ class CadenceParameters(unittest.TestCase):
         q = np.zeros(500, dtype=np.uint8)
 
         def breaks(config):
-            out = ccdcpp.detect(d, s, q, ccdcpp.HarmonicOptions(), config=config)
+            out = ccdcpp.detect(d, s, q, ccdcpp.Input(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
         self.assertEqual(breaks(None), 1)
@@ -413,18 +449,18 @@ class CadenceParameters(unittest.TestCase):
 
 class BoundFlags(unittest.TestCase):
     FLAGS = {
-        "REFL_MIN_INCLUSIVE": False,
-        "REFL_MAX_INCLUSIVE": False,
-        "THERM_MIN_INCLUSIVE": False,
-        "THERM_MAX_INCLUSIVE": False,
+        "refl_min_inclusive": False,
+        "refl_max_inclusive": False,
+        "therm_min_inclusive": False,
+        "therm_max_inclusive": False,
     }
 
     def test_defaults_and_docstrings(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         for name, value in self.FLAGS.items():
             with self.subTest(name=name):
                 self.assertIs(getattr(h, name), value)
-                doc = getattr(ccdcpp.HarmonicOptions, name).__doc__
+                doc = getattr(ccdcpp.Input, name).__doc__
                 self.assertIn(f"default {value}", doc)
                 setattr(h, name, not value)
                 self.assertIs(getattr(h, name), not value)
@@ -434,7 +470,7 @@ class BoundFlags(unittest.TestCase):
         its first observations."""
         d, s, q = inputs(7, 40)
         s[band, :len(values)] = values
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         for name, value in flags.items():
             setattr(h, name, value)
         return ccdcpp.detect(d, s, q, h)["processing_mask"][:len(values)].tolist()
@@ -443,9 +479,9 @@ class BoundFlags(unittest.TestCase):
         values = [0.0, 10000.0, -1.0, 10001.0]
         for flags, expected in (
             (dict(), [0, 0, 0, 0]),
-            (dict(REFL_MIN_INCLUSIVE=True, REFL_MAX_INCLUSIVE=True), [1, 1, 0, 0]),
-            (dict(REFL_MIN_INCLUSIVE=True), [1, 0, 0, 0]),
-            (dict(REFL_MAX_INCLUSIVE=True), [0, 1, 0, 0]),
+            (dict(refl_min_inclusive=True, refl_max_inclusive=True), [1, 1, 0, 0]),
+            (dict(refl_min_inclusive=True), [1, 0, 0, 0]),
+            (dict(refl_max_inclusive=True), [0, 1, 0, 0]),
         ):
             with self.subTest(**flags):
                 self.assertEqual([int(v) for v in self.mask(values, 3, **flags)], expected)
@@ -456,8 +492,8 @@ class BoundFlags(unittest.TestCase):
         values = [at(-9320.0), at(7070.0), at(0.0)]
         for flags, expected in (
             (dict(), [0, 0, 1]),
-            (dict(THERM_MIN_INCLUSIVE=True, THERM_MAX_INCLUSIVE=True), [1, 1, 1]),
-            (dict(THERM_MIN_INCLUSIVE=True), [1, 0, 1]),
+            (dict(therm_min_inclusive=True, therm_max_inclusive=True), [1, 1, 1]),
+            (dict(therm_min_inclusive=True), [1, 0, 1]),
         ):
             with self.subTest(**flags):
                 self.assertEqual([int(v) for v in self.mask(values, 6, **flags)], expected)
@@ -466,8 +502,8 @@ class BoundFlags(unittest.TestCase):
         # An exclusive end rejects NaN, so the pixel fits without it. (Both ends
         # inclusive let NaN through to the fit; see the README.)
         for band, flags in ((3, dict()),
-                            (3, dict(REFL_MIN_INCLUSIVE=True)),
-                            (3, dict(REFL_MAX_INCLUSIVE=True)),
+                            (3, dict(refl_min_inclusive=True)),
+                            (3, dict(refl_max_inclusive=True)),
                             (6, dict())):
             with self.subTest(band=band, **flags):
                 self.assertEqual(self.mask([np.nan, 1000.0 if band != 6 else 2900.0], band, **flags),
@@ -477,11 +513,13 @@ class BoundFlags(unittest.TestCase):
 class GreenFilterScope(unittest.TestCase):
     STAT_ORD = 731000
 
+    NAMES = {"All": "all", "StatWindow": "stat_window", "Off": "off"}
+
     def test_default_and_docstring(self):
-        self.assertEqual(ccdcpp.HarmonicOptions().GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.StatWindow)
+        self.assertEqual(preset()["shared"]["green_filter_scope"], "stat_window")
         self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
-        self.assertIn("default StatWindow", ccdcpp.HarmonicOptions.GREEN_FILTER_SCOPE.__doc__)
-        self.assertIn("STAT_ORD", ccdcpp.GreenFilterScope.__doc__)
+        self.assertIn("stat_ord", ccdcpp.GreenFilterScope.__doc__)
+        self.assertIn('"stat_window"', ccdcpp.GreenFilterScope.__doc__)
 
     def pixel(self, first):
         """An insufficient-clear pixel: one clear observation in five, green
@@ -497,15 +535,14 @@ class GreenFilterScope(unittest.TestCase):
         return d, s, q
 
     def detect_mask(self, pixel, scope):
-        h = ccdcpp.HarmonicOptions()
-        h.STAT_ORD = self.STAT_ORD
-        h.GREEN_FILTER_SCOPE = scope
-        out = ccdcpp.detect(*pixel, h)
+        config = preset(shared__stat_ord=self.STAT_ORD,
+                        shared__green_filter_scope=self.NAMES[scope.name])
+        out = ccdcpp.detect(*pixel, ccdcpp.Input(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]
 
     def test_spikes_before_and_after_stat_ord(self):
-        pixel = self.pixel(self.STAT_ORD - 16 * 99)   # t = 99 is STAT_ORD
+        pixel = self.pixel(self.STAT_ORD - 16 * 99)   # t = 99 is stat_ord
         for scope, kept in ((ccdcpp.GreenFilterScope.All, (0, 0)),
                             (ccdcpp.GreenFilterScope.StatWindow, (0, 1)),
                             (ccdcpp.GreenFilterScope.Off, (1, 1))):

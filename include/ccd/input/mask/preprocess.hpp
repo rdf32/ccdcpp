@@ -12,7 +12,9 @@
 #include "ccd/core/band_list.hpp"
 #include "ccd/input/pmask.hpp"
 #include "ccd/core/array_view.hpp"
+#include "ccd/config/shared.hpp"
 #include "ccd/input/harmonic.hpp"
+#include "ccd/input/input.hpp"
 #include "ccd/input/mask/filter.hpp"
 
 namespace ccd
@@ -37,8 +39,8 @@ namespace preprocess
 //                      order by apply().
 //   Step               one filter: a StepKind and the parameters it reads.
 //
-// default_plan(options) is the plan HarmonicOptions describe, and the one
-// a Run runs when it is given none. A plan is checked against the band
+// default_plan(input, shared) is the plan of an input and its resolved
+// shared values, and the one a Run runs when it is given none. A plan is checked against the band
 // count once per call by validate(), never per pixel.
 //
 // apply() starts from a mask that keeps every observation; each step then
@@ -277,50 +279,50 @@ using PreprocessPlanPtr = std::shared_ptr<const PreprocessPlan>;
 
 //------------------------------------------------------------------------------
 //
-// The plan `options` describe.
+// The plan of `input` and the shared values a run resolved for it
+// (config/shared.hpp: the green filter in the input's units).
 //
 // Every procedure's chain begins with the same four steps:
 //
-//   KeepQa {QA_CLEAR, QA_WATER}
-//   ThermalRange (THERMAL_IDX, THERM_MIN/THERM_MAX and their flags)
-//                                    -- omitted when THERMAL_IDX is NO_BAND
-//   BandRange (SATURATION_BANDS, REFL_MIN/REFL_MAX and their flags)
+//   KeepQa {qa_clear, qa_water}
+//   ThermalRange (the "thermal" row, therm_min/therm_max and their flags)
+//                                    -- omitted for an input without one
+//   BandRange (saturation_bands, refl_min/refl_max and their flags)
 //   Dedupe
 //
 // after which
 //
 //   standard             ends;
-//   snow                 adds AddQa {QA_SNOW}, Dedupe;
-//   insufficient_clear   adds GreenMedian (GREEN_IDX, MEDIAN_GREEN_FILTER,
-//                        STAT_ORD, GREEN_FILTER_SCOPE), Dedupe.
+//   snow                 adds AddQa {qa_snow}, Dedupe;
+//   insufficient_clear   adds GreenMedian (the "green" row, shared
+//                        green_filter, stat_ord, green_filter_scope), Dedupe.
 //
-// standard's transform is thermal_transform(options); the other two have
-// none, so their ThermalRange tests the caller's own unit (see the "Input
-// unit convention" block in harmonic.hpp).
+// standard's transform is thermal_transform(input); the other two have
+// none, so their ThermalRange tests the caller's own unit (see the "Units"
+// block in input.hpp).
 //
 //------------------------------------------------------------------------------
 
-PreprocessPlan default_plan(const HarmonicOptions& options);
+PreprocessPlan default_plan(const Input& input, const config::Shared& shared);
 
 //------------------------------------------------------------------------------
 //
 // The Standard procedure's transform
 //
-//     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
+//     thermal <- thermal * thermal_scale + thermal_offset
 //
-// of band THERMAL_IDX, which puts it into the unit its ThermalRange step
-// tests; none when that is the identity (1.0, 0.0) or THERMAL_IDX is
-// NO_BAND. The defaults are pyccd's collection-1 transform, Kelvin x 10 ->
+// of the input's "thermal" row, which puts it into the unit its ThermalRange
+// step tests; none when that is the identity (1.0, 0.0) or the input has no
+// thermal row. The defaults are pyccd's collection-1 transform, Kelvin x 10 ->
 // Celsius x 100 (the collection-2 form `* 0.00341802 + 149.0 - 273.15`
 // yields plain Celsius).
 //
 // default_plan() gives it to Standard only, matching pyccd, where
-// kelvin_to_celsius() is called inside standard_procedure(). See
-// harmonic.hpp's "Input unit convention" block for the consequences for the
-// other two procedures.
+// kelvin_to_celsius() is called inside standard_procedure(). See input.hpp's
+// "Units" block for the consequences for the other two procedures.
 //
 //------------------------------------------------------------------------------
-std::optional<Affine> thermal_transform(const HarmonicOptions& options);
+std::optional<Affine> thermal_transform(const Input& input);
 
 //------------------------------------------------------------------------------
 //

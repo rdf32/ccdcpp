@@ -13,6 +13,20 @@ strategy at its defaults, pyccd's values, Collection-1 DN); a run with `profile=
 `config=` uses `profile.config()`, that preset written for the profile's input. The stages and
 their strategies are in [docs/ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies).
 
+> **Step 5 state.** The description of the data is `ccdcpp.Input` (C++ `ccd::Input`): the QA
+> codes, a role per row (`roles`), `saturation_bands`, `reflectance_unit` (Collection-1 DN 10000,
+> reflectance 1) and the bounds and thermal transform, in snake_case. `HarmonicOptions` is gone,
+> and the entry points take `input=` where they took `hoptions=`; `profile.input()` replaces
+> `profile.options()`. A configuration is `{"shared": ..., "stages": ...}` in physical terms
+> (`ccdcpp.Config`, C++ `config::Config`): the values several stages read are written once in
+> `shared` (`detection_bands` by role, `change_probability`, `outlier_probability`, the Lasso's
+> `alpha`, `coef_floor`, `max_iter`, `tolerance`, the coefficient rule, `stat_ord`,
+> `green_filter` and `green_filter_scope`), reflectance values are multiplied by the input's
+> `reflectance_unit`, and the change and outlier thresholds are the chi-squared quantiles of the
+> probabilities for the detection-band count, all when a run resolves the configuration against
+> its input (C++ `ccd::Algorithm`, which caches the resolution per input). Some examples below
+> still use the earlier names; the full documentation comes with the two-call API.
+
 ## From Python
 
 ```python

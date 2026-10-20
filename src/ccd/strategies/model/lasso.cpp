@@ -72,22 +72,25 @@ const std::vector<config::Field<Lasso::Params>>& Lasso::schema()
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
         {"max_iter", &Params::max_iter, Unit::None, config::at_least(0),
-         "coordinate descent sweeps at most"},
+         "coordinate descent sweeps at most", config::Source::Shared, "max_iter"},
         {"alpha", &Params::alpha, Unit::Reflectance, config::at_least(0),
-         "the L1 penalty, in the input's units (1 for Collection-1 DN, 1e-4 for reflectance)"},
+         "the L1 penalty", config::Source::Shared, "alpha"},
         {"tolerance", &Params::tolerance, Unit::None, config::at_least(0),
          "a sweep whose largest update is at most this times max(largest coefficient, "
-         "coef_floor) checks the duality gap"},
+         "coef_floor) checks the duality gap", config::Source::Shared, "tolerance"},
         {"coef_floor", &Params::coef_floor, Unit::Reflectance, config::at_least(0),
-         "the least coefficient size the tolerance scales"},
+         "the least coefficient size the tolerance scales", config::Source::Shared, "coef_floor"},
         {"coefficient_min", &Params::coefficient_min, Unit::None, config::at_least(1),
-         "coefficients of a short window's fit, and of a start window's"},
+         "coefficients of a short window's fit, and of a start window's", config::Source::Shared,
+         "coefficient_min"},
         {"coefficient_mid", &Params::coefficient_mid, Unit::None, config::at_least(1),
-         "coefficients from coefficient_mid * num_obs_factor observations"},
+         "coefficients from coefficient_mid * num_obs_factor observations", config::Source::Shared,
+         "coefficient_mid"},
         {"coefficient_max", &Params::coefficient_max, Unit::None, config::at_least(1),
-         "coefficients from coefficient_max * num_obs_factor observations; the basis width"},
+         "coefficients from coefficient_max * num_obs_factor observations; the basis width",
+         config::Source::Shared, "coefficient_max"},
         {"num_obs_factor", &Params::num_obs_factor, Unit::None, config::at_least(1),
-         "observations per coefficient"},
+         "observations per coefficient", config::Source::Shared, "num_obs_factor"},
     };
     return s;
 }

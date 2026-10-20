@@ -41,7 +41,7 @@ ProcessingMask standard(
 )
 {
     return run_chain(
-        preprocess::default_plan(workspace.options()).standard.chain,
+        preprocess::default_plan(workspace.input(), workspace.shared()).standard.chain,
         workspace
     );
 }
@@ -51,7 +51,7 @@ ProcessingMask snow(
 )
 {
     return run_chain(
-        preprocess::default_plan(workspace.options()).snow.chain,
+        preprocess::default_plan(workspace.input(), workspace.shared()).snow.chain,
         workspace
     );
 }
@@ -61,7 +61,7 @@ ProcessingMask insufficientclear(
 )
 {
     return run_chain(
-        preprocess::default_plan(workspace.options()).insufficient_clear.chain,
+        preprocess::default_plan(workspace.input(), workspace.shared()).insufficient_clear.chain,
         workspace
     );
 }

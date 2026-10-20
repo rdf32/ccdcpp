@@ -18,8 +18,8 @@ namespace ccd
 // BandList
 //
 // An ordered list of band indices -- rows of the spectral array -- with a
-// fixed capacity of CCD_MAX_BANDS, stored inline. HarmonicOptions holds three
-// of them and is copied once per pixel, so the list allocates nothing.
+// fixed capacity of CCD_MAX_BANDS, stored inline, so a list allocates
+// nothing.
 //
 // The stored order is the order the procedures iterate in, and it is never
 // changed here: the detection-band sums are accumulated in this order, so two
@@ -29,7 +29,8 @@ namespace ccd
 // Every index is below CCD_MAX_BANDS; adding one that is not, or adding to a
 // full list, throws std::invalid_argument. Whether an index is below the
 // actual band count, and whether a list repeats a band, is checked per call
-// by ccd::validate().
+// where the list is used: ccd::validate() for the input's, the configuration's
+// resolution (Registry::resolve()) for its lists.
 //
 //==============================================================================
 
@@ -126,5 +127,20 @@ private:
     std::array<value_type, CCD_MAX_BANDS> bands_{};
     std::uint8_t count_ = 0;
 };
+
+inline bool operator==(const BandList& a, const BandList& b)
+{
+    if (a.size() != b.size())
+        return false;
+    for (index_t i = 0; i < a.size(); ++i)
+        if (a[i] != b[i])
+            return false;
+    return true;
+}
+
+inline bool operator!=(const BandList& a, const BandList& b)
+{
+    return !(a == b);
+}
 
 } // namespace ccd

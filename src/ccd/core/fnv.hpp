@@ -1,10 +1,12 @@
 #pragma once
 
-// Internal to the library: the hash behind options_digest() and the input
-// fingerprints of the resume records.
+// Internal to the library: the hash behind the digests (inputs,
+// configurations, options_digest()) and the input fingerprints of the resume
+// records.
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/band_list.hpp"
@@ -47,6 +49,14 @@ public:
     void flag(bool v)
     {
         byte(v ? 1 : 0);
+    }
+
+    // Its length, then its bytes.
+    void text(const std::string& s)
+    {
+        integer(static_cast<std::int64_t>(s.size()));
+        for (const char c : s)
+            byte(static_cast<std::uint8_t>(c));
     }
 
     void bands(const BandList& list)

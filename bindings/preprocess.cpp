@@ -12,8 +12,10 @@
 #include <vector>
 
 #include "ccd/core/constants.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/input.hpp"
 #include "ccd/input/mask/preprocess.hpp"
+
+#include "config.hpp"
 
 namespace py = pybind11;
 namespace pp = ccd::preprocess;
@@ -22,7 +24,7 @@ namespace pp = ccd::preprocess;
 // Preprocessing plans: ccd::preprocess (preprocess/preprocess.hpp) as Python
 // classes.
 //
-// The classes are mutable value types, like HarmonicOptions. The entry points
+// The classes are mutable value types, like Input. The entry points
 // take a plan as preprocess= and copy it before the GIL is released, so a
 // call never reads an object Python can change underneath it. Plans compare
 // with == field by field; describe() and repr() print them one step a line.
@@ -464,7 +466,7 @@ void bind_preprocess(py::module_& m)
         "A ProcedurePlan per procedure: standard, snow (PermanentSnow) and "
         "insufficient_clear. detect, detect_cube and detect_cube_columns run "
         "the one of the procedure each pixel selects; pass it as preprocess=. "
-        "default_plan(hoptions) is the plan they run without one."
+        "default_plan(input, config) is the plan they run without one."
     )
     .def(py::init(
         [](const pp::ProcedurePlan& standard,
@@ -489,15 +491,23 @@ void bind_preprocess(py::module_& m)
 
     m.def(
         "default_plan",
-        &pp::default_plan,
-        py::arg("hoptions"),
-        "The PreprocessPlan `hoptions` describe, the one detect runs without "
-        "preprocess=. Every procedure keeps QA_CLEAR and QA_WATER, tests "
-        "THERMAL_IDX against THERM_MIN/THERM_MAX (omitted without a thermal "
-        "band), tests SATURATION_BANDS against REFL_MIN/REFL_MAX and dedupes; "
-        "snow then adds QA_SNOW and dedupes, insufficient_clear runs the "
-        "green median filter and dedupes. Only standard has a transform: "
-        "THERMAL_SCALE/THERMAL_OFFSET, none when that is the identity."
+        [](const ccd::Input& input, const py::object& config)
+        {
+            const ccd::AlgorithmPtr algorithm = algorithm_from_python(config);
+            return pp::default_plan(input, algorithm->for_input(input)->shared);
+        },
+        py::arg("input"),
+        py::arg("config") = py::none(),
+        "The PreprocessPlan of `input` and the configuration's shared values "
+        "resolved for it (`config` as detect takes it; None: \"ccdc\"), the "
+        "one detect runs without preprocess=. Every procedure keeps qa_clear "
+        "and qa_water, tests the \"thermal\" row against therm_min/therm_max "
+        "(omitted without one), tests saturation_bands against "
+        "refl_min/refl_max and dedupes; snow then adds qa_snow and dedupes, "
+        "insufficient_clear runs the green median filter (the shared "
+        "green_filter, stat_ord and green_filter_scope) and dedupes. Only "
+        "standard has a transform: thermal_scale/thermal_offset, none when "
+        "that is the identity."
     );
 
     m.def(

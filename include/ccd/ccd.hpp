@@ -9,7 +9,8 @@
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/config/registry.hpp"
+#include "ccd/input/input.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/input/qa_table.hpp"
 #include "ccd/results/record.hpp"
@@ -22,27 +23,28 @@ namespace ccd
 
 //------------------------------------------------------------------------------
 //
-// The options check every entry point runs once per call, before any work.
+// The input check every entry point runs once per call, before any work.
 //
-// The procedures hold one fit per band and read bands by the indices in
-// `options`, so every index must name a row of an array with `bands` bands.
-// Throws std::invalid_argument when:
+// The procedures hold one fit per band and read bands by their rows in
+// `input`, so every row must be one of an array with `bands` bands. Throws
+// std::invalid_argument when:
 //
-//   * `bands` is not options.NUM_BANDS, or exceeds CCD_MAX_BANDS;
-//   * DETECTION_BANDS is empty;
-//   * DETECTION_BANDS or SATURATION_BANDS holds an index not below `bands`,
-//     or holds one index twice;
-//   * GREEN_IDX is NO_BAND or not below `bands`;
-//   * THERMAL_IDX is neither NO_BAND nor below `bands`, or is in
-//     SATURATION_BANDS.
+//   * `bands` is not input.bands() (one role per row), or exceeds
+//     CCD_MAX_BANDS;
+//   * a role is not one of ROLES, or a role other than "other" is held
+//     twice;
+//   * the input has no "green" row;
+//   * saturation_bands holds a row not below `bands`, holds one twice, or
+//     holds the "thermal" row;
+//   * reflectance_unit is not a positive number.
 //
 // The message names the field and the counts or the value. The algorithm's
-// parameters are the configuration's, checked by their schemas when a run
-// is built (RunSpec::config).
+// parameters are the configuration's, checked by their schemas and against
+// the input when an Algorithm resolves them (RunSpec::algorithm).
 //
 //------------------------------------------------------------------------------
 
-void validate(const HarmonicOptions& options, index_t bands);
+void validate(const Input& input, index_t bands);
 
 //------------------------------------------------------------------------------
 //
@@ -62,17 +64,15 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates);
 //
 //------------------------------------------------------------------------------
 
-// A fingerprint of everything besides the input that decides a run's
-// outputs: every field of the options, the configuration (a run's resolved,
-// Registry::resolve()), every field of the plan, and the QA table's codes
-// (none when qa_table is null). Equal ones
-// give equal digests on every platform; unequal ones, different digests but
-// for a 64-bit collision. STAT_ORD is in it: a resumed run
-// is given the first run's options, and caps the cutoffs itself
-// (ResumeHeader::statistics_end).
+// A fingerprint of everything besides the pixels that decides a run's
+// outputs: the input and the resolved configuration (Resolved::digest),
+// every field of the plan, and the QA table's codes (none when qa_table is
+// null). Equal ones give equal digests on every platform; unequal ones,
+// different digests but for a 64-bit collision. The shared stat_ord is in
+// it: a resumed run is given the first run's configuration, and caps the
+// cutoffs itself (ResumeHeader::statistics_end).
 std::uint64_t options_digest(
-    const HarmonicOptions& hoptions,
-    const config::ConfigTree& config,
+    const config::Resolved& resolved,
     const preprocess::PreprocessPlan& plan,
     const QaTable* qa_table
 );

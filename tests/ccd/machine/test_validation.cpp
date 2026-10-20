@@ -2,11 +2,11 @@
 //
 // Input validation at the entry points.
 //
-// run_pixel() and run_cube() reject a band layout ccd::validate() refuses --
-// a band count other than HarmonicOptions::NUM_BANDS, an index off the band
-// axis, a repeated or missing band -- inputs whose timestep counts
-// disagree, and dates that decrease, with std::invalid_argument before any
-// pixel runs. Inside
+// run_pixel() and run_cube() reject an input ccd::validate() refuses -- a
+// band count other than its roles', an unknown, repeated or missing role, a
+// saturation row off the band axis -- a configuration the input does not
+// fit, inputs whose timestep counts disagree, and dates that decrease, with
+// std::invalid_argument before any pixel runs. Inside
 // detect_cube a bad layout would otherwise be out-of-bounds access within
 // the OpenMP region, where nothing reports it.
 //
@@ -113,19 +113,17 @@ void expect_band_error(F&& f, ccd::index_t bands)
         const std::string message = e.what();
         EXPECT_NE(message.find("has " + std::to_string(bands) + " bands"),
                   std::string::npos) << message;
-        EXPECT_NE(message.find("expects 7"), std::string::npos) << message;
+        EXPECT_NE(message.find("the input has 7"), std::string::npos) << message;
     }
 }
 
-// `tree` refused for an input of `bands` bands, the message holding `where`
-// and `what`.
-void expect_config_error(const ccd::config::ConfigTree& tree, ccd::index_t bands,
+// `config` refused on `input`, the message holding `where` and `what`.
+void expect_config_error(const ccd::config::Config& config, const ccd::Input& input,
                          const std::string& where, const std::string& what)
 {
     try
     {
-        ccd::strategies::library_registry().check_bands(tree, bands);
-        ccd::strategies::build_strategies(ccd::strategies::library_registry(), tree);
+        ccd::strategies::library_registry().resolve(config, input);
         FAIL() << "no exception for " << where;
     }
     catch (const std::invalid_argument& e)
@@ -140,7 +138,7 @@ void expect_config_error(const ccd::config::ConfigTree& tree, ccd::index_t bands
 
 TEST(Validation, DefaultLayoutAcceptsSevenOnly)
 {
-    const ccd::HarmonicOptions h;
+    const ccd::Input h;
     EXPECT_NO_THROW(ccd::validate(h, 7));
     expect_band_error([&] { ccd::validate(h, 6); }, 6);
     expect_band_error([&] { ccd::validate(h, 8); }, 8);
@@ -156,19 +154,17 @@ namespace
 {
 
 // A 10-band layout without thermal, which passes.
-ccd::HarmonicOptions ten_band_layout()
+ccd::Input ten_band_layout()
 {
-    ccd::HarmonicOptions h;
-    h.NUM_BANDS = 10;
-    h.DETECTION_BANDS = {1, 2, 6, 8, 9};
-    h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-    h.GREEN_IDX = 1;
-    h.THERMAL_IDX = ccd::NO_BAND;
+    ccd::Input h;
+    h.roles = {"blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
+               "nir", "other", "swir1", "swir2"};
+    h.saturation_bands = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     return h;
 }
 
 void expect_layout_error(
-    const ccd::HarmonicOptions& h,
+    const ccd::Input& h,
     ccd::index_t bands,
     const std::string& expected
 )
@@ -191,98 +187,101 @@ TEST(Validation, LayoutRules)
 {
     EXPECT_NO_THROW(ccd::validate(ten_band_layout(), 10));
 
-    // B != NUM_BANDS
+    // B != the roles'
     expect_layout_error(ten_band_layout(), 7,
-        "spectral has 7 bands; HarmonicOptions.NUM_BANDS expects 10");
+        "spectral has 7 bands; the input has 10 (a row per role)");
 
     // B > CCD_MAX_BANDS
     {
         auto h = ten_band_layout();
-        h.NUM_BANDS = ccd::CCD_MAX_BANDS + 1;
+        h.roles.resize(ccd::CCD_MAX_BANDS + 1, "other");
         expect_layout_error(h, ccd::CCD_MAX_BANDS + 1,
             "spectral has 33 bands; ccdcpp accepts at most 32");
 
-        h.NUM_BANDS = ccd::CCD_MAX_BANDS;
+        h.roles.resize(ccd::CCD_MAX_BANDS);
         EXPECT_NO_THROW(ccd::validate(h, ccd::CCD_MAX_BANDS));
     }
 
-    // An index >= B, in each list.
-    {
-        auto h = ten_band_layout();
-        h.DETECTION_BANDS = {1, 2, 10};
-        expect_layout_error(h, 10, "DETECTION_BANDS holds band 10; spectral has 10 bands");
-    }
+    // A row >= B, in each list: the input's, and the configuration's
+    // (against the input, when it is resolved).
     expect_config_error(
-        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({1, 12})), 10,
-        "window_screen 'tmask'", "holds band 12; the input has 10 bands");
+        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 10})),
+        ten_band_layout(), "shared value 'detection_bands'", "holds band 10; the input has 10 bands");
+    expect_config_error(
+        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({1, 12})),
+        ten_band_layout(), "window_screen 'tmask'", "holds band 12; the input has 10 bands");
     {
         auto h = ten_band_layout();
-        h.SATURATION_BANDS = {0, 31};
-        expect_layout_error(h, 10, "SATURATION_BANDS holds band 31; spectral has 10 bands");
+        h.saturation_bands = {0, 31};
+        expect_layout_error(h, 10, "saturation_bands holds band 31; spectral has 10 bands");
     }
 
     // Duplicates, in each list.
-    {
-        auto h = ten_band_layout();
-        h.DETECTION_BANDS = {1, 2, 6, 2};
-        expect_layout_error(h, 10, "DETECTION_BANDS holds band 2 more than once");
-    }
     expect_config_error(
-        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({8, 8})), 10,
-        "window_screen 'tmask'", "holds band 8 twice");
+        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 6, 2})),
+        ten_band_layout(), "shared value 'detection_bands'", "holds band 2 twice");
+    expect_config_error(
+        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({8, 8})),
+        ten_band_layout(), "window_screen 'tmask'", "holds band 8 twice");
     {
         auto h = ten_band_layout();
-        h.SATURATION_BANDS = {0, 1, 0};
-        expect_layout_error(h, 10, "SATURATION_BANDS holds band 0 more than once");
+        h.saturation_bands = {0, 1, 0};
+        expect_layout_error(h, 10, "saturation_bands holds band 0 more than once");
     }
 
     // Empty detection or tmask list; an empty saturation list is allowed.
-    {
-        auto h = ten_band_layout();
-        h.DETECTION_BANDS = {};
-        expect_layout_error(h, 10, "DETECTION_BANDS is empty");
-    }
     expect_config_error(
-        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({})), 10,
-        "window_screen 'tmask'", "is empty");
+        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({})),
+        ten_band_layout(), "shared value 'detection_bands'", "is empty");
+    expect_config_error(
+        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({})),
+        ten_band_layout(), "window_screen 'tmask'", "is empty");
     {
         auto h = ten_band_layout();
-        h.SATURATION_BANDS = {};
+        h.saturation_bands = {};
         EXPECT_NO_THROW(ccd::validate(h, 10));
     }
 
-    // GREEN_IDX absent or out of range.
+    // Roles: green required, each known, none but "other" twice.
     {
         auto h = ten_band_layout();
-        h.GREEN_IDX = ccd::NO_BAND;
-        expect_layout_error(h, 10, "GREEN_IDX is NO_BAND");
+        h.roles[1] = "other";
+        expect_layout_error(h, 10, "roles has no 'green'");
     }
     {
         auto h = ten_band_layout();
-        h.GREEN_IDX = 10;
-        expect_layout_error(h, 10, "GREEN_IDX is 10; spectral has 10 bands");
+        h.roles[7] = "nir8a";
+        expect_layout_error(h, 10, "roles holds 'nir8a', which is not a role; the roles are blue");
+    }
+    {
+        auto h = ten_band_layout();
+        h.roles[7] = "green";
+        expect_layout_error(h, 10, "roles holds 'green' more than once");
     }
 
-    // THERMAL_IDX out of range, or in SATURATION_BANDS.
+    // The thermal row in saturation_bands.
     {
         auto h = ten_band_layout();
-        h.THERMAL_IDX = 10;
-        expect_layout_error(h, 10, "THERMAL_IDX is 10; spectral has 10 bands");
-    }
-    {
-        auto h = ten_band_layout();
-        h.THERMAL_IDX = 9;
-        expect_layout_error(h, 10, "SATURATION_BANDS holds THERMAL_IDX (9)");
+        h.roles[9] = "thermal";
+        expect_layout_error(h, 10, "saturation_bands holds the thermal row (9)");
 
-        h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+        h.saturation_bands = {0, 1, 2, 3, 4, 5, 6, 7, 8};
         EXPECT_NO_THROW(ccd::validate(h, 10));
     }
 
     // The default layout's thermal band is outside its saturation list.
     {
-        ccd::HarmonicOptions h;
-        h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6};
-        expect_layout_error(h, 7, "SATURATION_BANDS holds THERMAL_IDX (6)");
+        ccd::Input h;
+        h.saturation_bands = {0, 1, 2, 3, 4, 5, 6};
+        expect_layout_error(h, 7, "saturation_bands holds the thermal row (6)");
+    }
+
+    // A unit of reflectance is a positive number.
+    for (const double unit : {0.0, -1.0, std::nan("")})
+    {
+        ccd::Input h;
+        h.reflectance_unit = unit;
+        expect_layout_error(h, 7, "reflectance_unit is");
     }
 }
 
@@ -298,7 +297,7 @@ TEST(Validation, CadenceRules)
     const auto expect_error = [](const std::string& stage, const std::string& name,
                                  ccd::config::Value value, const std::string& where,
                                  const std::string& what)
-    { expect_config_error(golden::with(golden::ccdc(), stage, name, value), 7, where, what); };
+    { expect_config_error(golden::with(golden::ccdc(), stage, name, value), ccd::Input{}, where, what); };
 
     for (const double days : {0.0, -16.0, nan})
         expect_error("change_test", "peek_reference_days", real(days),
@@ -323,14 +322,9 @@ TEST(Validation, CadenceRules)
             "change_test 'chi2' parameter 'seasonal_divisor'", "it must be greater than 0");
 
     for (const double p : {0.0, 1.0, -0.5, 1.5, nan})
-    {
-        expect_error("change_test", "change_probability", real(p),
-            "change_test 'chi2' parameter 'change_probability'", "");
-        expect_error("stability_rule", "change_probability", real(p),
-            "stability_rule 'pyccd' parameter 'change_probability'", "");
-        expect_error("lookback", "change_probability", real(p),
-            "lookback 'pyccd' parameter 'change_probability'", "");
-    }
+        for (const char* name : {"change_probability", "outlier_probability"})
+            expect_config_error(golden::with_shared(golden::ccdc(), name, real(p)), ccd::Input{},
+                std::string("shared parameter '") + name + "'", "it must be in (0, 1)");
 
     // A peek of 0 or 1 would leave a peek empty.
     expect_error("change_test", "peek_size", integer(0),
@@ -339,19 +333,19 @@ TEST(Validation, CadenceRules)
         "change_test 'chi2' parameter 'peek_size' is 1", "it must be at least 2");
 
     // The smallest accepted values.
-    ccd::config::ConfigTree c = golden::ccdc();
-    c["change_test"].params["peek_size"] = integer(2);
-    c["change_test"].params["peek_reference_days"] = real(1e-9);
-    c["noise_floor"].params["min_lag_days"] = integer(1);
-    c["refit"].params["min_obs"] = integer(1);
-    c["change_test"].params["model_rmse_up_to"] = integer(1);
-    c["refit"].params["factor"] = real(1e-9);
-    c["change_test"].params["seasonal_count"] = integer(1);
-    c["change_test"].params["seasonal_divisor"] = real(1e-9);
+    ccd::config::Config c = golden::ccdc();
+    c.stages["change_test"].params["peek_size"] = integer(2);
+    c.stages["change_test"].params["peek_reference_days"] = real(1e-9);
+    c.stages["noise_floor"].params["min_lag_days"] = integer(1);
+    c.stages["refit"].params["min_obs"] = integer(1);
+    c.stages["change_test"].params["model_rmse_up_to"] = integer(1);
+    c.stages["refit"].params["factor"] = real(1e-9);
+    c.stages["change_test"].params["seasonal_count"] = integer(1);
+    c.stages["change_test"].params["seasonal_divisor"] = real(1e-9);
     for (const double p : {1e-9, 1.0 - 1e-9})
     {
-        for (const char* stage : {"change_test", "stability_rule", "lookback"})
-            c[stage].params["change_probability"] = real(p);
+        c.shared["change_probability"] = real(p);
+        c.shared["outlier_probability"] = real(p);
         EXPECT_NO_THROW(golden::strategies_of(c)) << p;
     }
 }
@@ -359,15 +353,13 @@ TEST(Validation, CadenceRules)
 namespace
 {
 
-// `tree` with every coefficient count set to `count`: the stability fit's
-// and the model's coefficient rule, and the edge fit's coefficients.
-ccd::config::ConfigTree with_coefficients(ccd::config::ConfigTree tree, std::int64_t count)
+// `config` with every coefficient count set to `count`: the shared
+// coefficient rule, which the stability fit, the model and the edge fit read.
+ccd::config::Config with_coefficients(ccd::config::Config config, std::int64_t count)
 {
-    for (const char* stage : {"stability_fit", "model"})
-        for (const char* name : {"coefficient_min", "coefficient_mid", "coefficient_max"})
-            tree[stage].params[name] = ccd::config::integer(count);
-    tree["edge_fit"].params["coefficients"] = ccd::config::integer(count);
-    return tree;
+    for (const char* name : {"coefficient_min", "coefficient_mid", "coefficient_max"})
+        config.shared[name] = ccd::config::integer(count);
+    return config;
 }
 
 } // namespace
@@ -378,13 +370,14 @@ TEST(Validation, CoefficientRules)
     const auto expect_error = [](const std::string& name, std::int64_t value,
                                  const std::string& what)
     {
-        expect_config_error(golden::with(golden::ccdc(), "model", name, ccd::config::integer(value)),
-                            7, "model 'lasso' ", what);
+        expect_config_error(
+            golden::with_shared(golden::ccdc(), name, ccd::config::integer(value)), ccd::Input{},
+            "model 'lasso' ", what);
     };
 
     expect_config_error(
-        golden::with(golden::ccdc(), "edge_fit", "coefficients", ccd::config::integer(0)), 7,
-        "edge_fit 'lasso' parameter 'coefficients' is 0", "it must be at least 1");
+        golden::with_shared(golden::ccdc(), "coefficient_min", ccd::config::integer(0)),
+        ccd::Input{}, "shared parameter 'coefficient_min' is 0", "it must be at least 1");
     expect_error("coefficient_min", 7,
         "model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' "
         "are 7, 6, 8; they must not decrease");
@@ -408,19 +401,26 @@ TEST(Validation, DetectRejectsACadenceParameter)
     const auto spectral = make_spectral<double>(7, T);
     const std::vector<std::uint8_t> qas(T, 0);
 
-    const ccd::config::ConfigTree config =
+    const ccd::config::Config config =
         golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(0.0));
 
+    // The Algorithm refuses it as it is built.
+    EXPECT_THROW(golden::algorithm(config), std::invalid_argument);
+
+    // A configuration the input does not fit: at the entry points.
+    const ccd::config::Config off_input =
+        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 9}));
+    const ccd::AlgorithmPtr algorithm = golden::algorithm(off_input);
     EXPECT_THROW(
         ccd::run_pixel(
-            golden::spec_of(ccd::HarmonicOptions{}, config),
+            golden::spec_of(ccd::Input{}, algorithm),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})),
         std::invalid_argument);
 
     EXPECT_THROW(ccd::run_cube(
-        golden::spec_of(ccd::HarmonicOptions{}, config),
+        golden::spec_of(ccd::Input{}, algorithm),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {1, 1, T}),
@@ -444,10 +444,10 @@ TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
         };
 
-        p.config["change_test"].params["peek_size"] = ccd::config::integer(1);
+        p.config.stages["change_test"].params["peek_size"] = ccd::config::integer(1);
         EXPECT_THROW(run(), std::invalid_argument) << p.name;
 
-        p.config["change_test"].params["peek_size"] = ccd::config::integer(2);
+        p.config.stages["change_test"].params["peek_size"] = ccd::config::integer(2);
         EXPECT_NO_THROW(run()) << p.name;
     }
 }
@@ -501,12 +501,13 @@ TEST(Validation, EntryPointsRejectALayout)
     const auto spectral = make_spectral<double>(7, T);
     const std::vector<std::uint8_t> qas(T, 0);
 
-    ccd::HarmonicOptions h;
-    h.DETECTION_BANDS = {1, 2, 7};
+    const ccd::Input h;
+    const ccd::AlgorithmPtr off = golden::algorithm(
+        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 7})));
 
     EXPECT_THROW(
         ccd::run_pixel(
-            golden::spec_of(h),
+            golden::spec_of(h, off),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})),
@@ -519,19 +520,19 @@ TEST(Validation, EntryPointsRejectALayout)
     const auto q = ccd::ArrayView<const std::uint8_t, 3>::contiguous(cube_qas.data(), {1, 1, T});
 
     EXPECT_THROW(ccd::run_cube(
-        golden::spec_of(h),
+        golden::spec_of(h, off),
         d,
         ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
         q,
         1), std::invalid_argument);
     EXPECT_THROW(ccd::run_cube(
-        golden::spec_of(h),
+        golden::spec_of(h, off),
         d,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 1, 7, T}),
         q,
         1), std::invalid_argument);
     EXPECT_THROW(ccd::run_cube(
-        golden::spec_of(h),
+        golden::spec_of(h, off),
         d,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 1, 7, T}),
         q,

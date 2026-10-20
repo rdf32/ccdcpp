@@ -38,60 +38,63 @@ void Chain::push_back(const Step& step)
     steps[count++] = step;
 }
 
-std::optional<Affine> thermal_transform(const HarmonicOptions& options)
+std::optional<Affine> thermal_transform(const Input& input)
 {
     const bool identity =
-        options.THERMAL_SCALE  == scalar_t(1.0) &&
-        options.THERMAL_OFFSET == scalar_t(0.0);
+        input.thermal_scale  == scalar_t(1.0) &&
+        input.thermal_offset == scalar_t(0.0);
+    const index_t thermal = input.index("thermal");
 
-    if (identity || options.THERMAL_IDX == NO_BAND)
+    if (identity || thermal == NO_BAND)
         return std::nullopt;
 
     return Affine{
-        options.THERMAL_IDX,
-        options.THERMAL_SCALE,
-        options.THERMAL_OFFSET
+        thermal,
+        input.thermal_scale,
+        input.thermal_offset
     };
 }
 
-PreprocessPlan default_plan(const HarmonicOptions& options)
+PreprocessPlan default_plan(const Input& input, const config::Shared& shared)
 {
     Chain common;
 
     common.push_back(Step::keep_qa(
-        qa_set({options.QA_CLEAR, options.QA_WATER})
+        qa_set({input.qa_clear, input.qa_water})
     ));
 
-    if (options.THERMAL_IDX != NO_BAND)
+    const index_t thermal = input.index("thermal");
+    if (thermal != NO_BAND)
     {
         common.push_back(Step::thermal_range(
-            options.THERMAL_IDX,
-            filter::thermal_range(options)
+            thermal,
+            filter::thermal_range(input)
         ));
     }
 
     common.push_back(Step::band_range(
-        options.SATURATION_BANDS,
-        filter::reflectance_range(options)
+        input.saturation_bands,
+        filter::reflectance_range(input)
     ));
 
     common.push_back(Step::dedupe());
 
     PreprocessPlan plan;
 
-    plan.standard.transform = thermal_transform(options);
+    plan.standard.transform = thermal_transform(input);
     plan.standard.chain = common;
 
     plan.snow.chain = common;
-    plan.snow.chain.push_back(Step::add_qa(qa_set({options.QA_SNOW})));
+    plan.snow.chain.push_back(Step::add_qa(qa_set({input.qa_snow})));
     plan.snow.chain.push_back(Step::dedupe());
 
     plan.insufficient_clear.chain = common;
+    // A resolved configuration's scope is one of the three (Registry::resolve()).
     plan.insufficient_clear.chain.push_back(Step::green_median(
-        options.GREEN_IDX,
-        options.MEDIAN_GREEN_FILTER,
-        options.STAT_ORD,
-        options.GREEN_FILTER_SCOPE
+        input.index("green"),
+        shared.green_filter,
+        shared.stat_ord,
+        *green_filter_scope(shared.green_filter_scope)
     ));
     plan.insufficient_clear.chain.push_back(Step::dedupe());
 

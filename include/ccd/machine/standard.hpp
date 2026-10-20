@@ -43,10 +43,10 @@ struct Cadence
     index_t min_window;   // a smaller model window grows untested
 };
 
-// What Initialize fits a candidate window with: the options' DETECTION_BANDS,
+// What Initialize fits a candidate window with: the shared detection bands,
 // and stability fits of the stability fit's rule's min coefficients in a
 // basis its max wide. Built once per pixel, in Prepare.
-InitializeCriteria initialize_criteria(const HarmonicOptions& options,
+InitializeCriteria initialize_criteria(const config::Shared& shared,
                                        const CoefficientRule& stability);
 
 //==============================================================================
@@ -307,12 +307,13 @@ std::string summary(const State& state);
 // Context
 //
 // What the transitions read and use but never change the meaning of: the
-// caller's options (never written), the pixel, and the run's strategies (each
-// holds its own solver and buffers in the State's scratch).
+// run's shared values (the detection bands, the statistics cutoff; never
+// written), the pixel, and the run's strategies (each holds its own solver
+// and buffers in the State's scratch).
 //------------------------------------------------------------------------------
 struct Context
 {
-    const HarmonicOptions& options;
+    const config::Shared& shared;
     const HarmonicWorkspace& pixel;
     // The run's strategies, one per stage (strategies/stages.hpp).
     const Strategies& strategies;
@@ -349,7 +350,7 @@ Scratch& edge_scratch(const Context& context, State& state);
 
 // Done (TooFewObservations) when the start search finds too few observations
 // (too_few()). Otherwise sets the cadence, Initialize's criteria and the
-// variogram from the statistics window (the observations dated <= STAT_ORD); Done
+// variogram from the statistics window (the observations dated <= stat_ord); Done
 // (VariogramNaN) on a NaN in it. Puts the window at the search's first(0)
 // and prev_break at 0. Next: Initialize (begin_search()), or EndCatch
 // (NoRoomToInitialize).

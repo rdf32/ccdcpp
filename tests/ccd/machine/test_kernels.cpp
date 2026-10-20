@@ -107,10 +107,11 @@ Pixel read_csv(const std::string& path)
 struct MaskedPixel
 {
     Pixel pixel;
-    ccd::HarmonicOptions options;
+    ccd::Input options;
+    ccd::config::Shared shared;
     ccd::MaskedSeries series;
 
-    MaskedPixel(const std::string& path, ccd::HarmonicOptions options_)
+    MaskedPixel(const std::string& path, ccd::Input options_)
         : pixel(read_csv(path)), options(options_)
     {
         const index_t T = pixel.dates.size();
@@ -118,25 +119,25 @@ struct MaskedPixel
             ccd::ArrayView<const std::int64_t, 1>::contiguous(pixel.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(pixel.spectral.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(pixel.qas.data(), {T}),
-            options
+            options, shared
         );
         series.reset(workspace, ccd::filter::standard(workspace));
     }
 };
 
-// The pyccd reference pixel at the default options, and the Collection 2
-// pixel at the golden corpus's C2 options.
+// The pyccd reference pixel at the default input, and the Collection 2
+// pixel at the golden corpus's C2 input.
 struct CsvPixel
 {
     std::string path;
-    ccd::HarmonicOptions options;
+    ccd::Input options;
 };
 
 const std::vector<CsvPixel>& csv_pixels()
 {
     static const std::vector<CsvPixel> pixels{
-        {CCD_PYCCD_PIXEL_CSV, ccd::HarmonicOptions{}},
-        {CCD_C2_PIXEL_CSV, golden::c2_harmonic()},
+        {CCD_PYCCD_PIXEL_CSV, ccd::Input{}},
+        {CCD_C2_PIXEL_CSV, golden::c2_input()},
     };
     return pixels;
 }
@@ -314,7 +315,7 @@ void peek_loop(
 }
 
 // The positional magnitude: copies of the detection bands' residuals and
-// variogram, in DETECTION_BANDS order.
+// variogram, in the detection bands' order.
 std::vector<scalar_t> magnitude_loop(
     const std::vector<std::vector<scalar_t>>& residuals_by_band,
     const ccd::BandList& bands,
@@ -354,7 +355,7 @@ ccd::LassoOptions lasso_options()
 // A whole-number parameter of the "ccdc" preset.
 std::int64_t preset_count(const char* stage, const char* name)
 {
-    return golden::parameter<std::int64_t>(golden::ccdc(), stage, name);
+    return golden::parameter<std::int64_t>(golden::resolved().stages, stage, name);
 }
 
 // The edge fit's coefficient count in the preset.
@@ -487,12 +488,12 @@ TEST(FitBands, MatchesEverySiteLoop)
                                  " site " + std::to_string(static_cast<int>(site)));
 
                     std::vector<ccd::LassoResult> expected(B), got(B);
-                    fit_loop(site, wd, ws, q, p.options.DETECTION_BANDS, expected_ws, solver, expected);
+                    fit_loop(site, wd, ws, q, p.shared.detection_bands, expected_ws, solver, expected);
 
                     switch (site)
                     {
                         case Site::Initialize:
-                            ccd::fit_bands(wd, ws, q, p.options.DETECTION_BANDS,
+                            ccd::fit_bands(wd, ws, q, p.shared.detection_bands,
                                            ccd::KeepResiduals::Yes, got_ws, solver, got);
                             break;
                         case Site::Extend:
@@ -527,7 +528,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
         const auto dates = p.series.dates();
         const auto spectral = p.series.spectral();
         const index_t B = spectral.extent(0);
-        const auto& detection = p.options.DETECTION_BANDS;
+        const auto& detection = p.shared.detection_bands;
 
         ccd::LassoSolver solver(lasso_options());
         ccd::LassoWorkspace lworkspace(0);
@@ -651,7 +652,7 @@ TEST(CatchSegment, MatchesTheCatchLoop)
             fit_loop(Site::Catch,
                      dates.slice(ccd::range(w.start, w.stop)),
                      spectral.slice(ccd::all(), ccd::range(w.start, w.stop)),
-                     edge_coefficients(), p.options.DETECTION_BANDS,
+                     edge_coefficients(), p.shared.detection_bands,
                      expected_ws, solver, expected);
 
             const ccd::ChangeModel got = ccd::catch_segment(

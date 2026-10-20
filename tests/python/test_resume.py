@@ -5,7 +5,7 @@ usage: python test_resume.py <module_dir> <source_dir> [unittest args]
 
 The C++ suite (tests/ccd/golden/test_resume.cpp) holds resume to the full
 run at thousands of cuts; this one holds the bindings to the C++: the
-continuation of a recorded run equals detect() with STAT_ORD capped at the
+continuation of a recorded run equals detect() with stat_ord capped at the
 cut, array for array, the record a resumed run returns equals a full run's,
 and segments stored the way nlcd stores them (no observation count, a
 placeholder break day and a NaN magnitude where there is no break) give the
@@ -23,7 +23,7 @@ import numpy as np  # noqa: E402
 import ccdcpp  # noqa: E402
 
 START = 724642          # 1985-01-01
-CUT_2010 = 733773       # 2010-01-01, before STAT_ORD: the cap matters
+CUT_2010 = 733773       # 2010-01-01, before stat_ord: the cap matters
 CUT_2019 = 737060       # 2019-01-01, after it
 
 
@@ -44,9 +44,10 @@ def pixel(seed, step_at=None):
 
 
 def capped(cut):
-    h = ccdcpp.HarmonicOptions()
-    h.STAT_ORD = min(h.STAT_ORD, cut)
-    return h
+    """The ccdc preset with its statistics cutoff capped at `cut`."""
+    config = ccdcpp._config_preset("ccdc")
+    config["shared"]["stat_ord"] = min(config["shared"]["stat_ord"], cut)
+    return config
 
 
 def upto(dates, cut):
@@ -83,13 +84,13 @@ class OnePixel(unittest.TestCase):
                 n = upto(dates, cut)
                 where = f"seed {seed} cut {cut}"
                 stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                                       ccdcpp.HarmonicOptions(), resume_record=True)
+                                       ccdcpp.Input(), resume_record=True)
                 self.assertEqual(stored["resume_header"]["series_end"], dates[n - 1])
                 again = ccdcpp.resume(
-                    dates, spectral, qas, ccdcpp.HarmonicOptions(),
+                    dates, spectral, qas, ccdcpp.Input(),
                     resume=stored["resume"], resume_header=stored["resume_header"],
                     models=stored["models"])
-                full = ccdcpp.detect(dates, spectral, qas, capped(dates[n - 1]),
+                full = ccdcpp.detect(dates, spectral, qas, ccdcpp.Input(), config=capped(dates[n - 1]),
                                      resume_record=True)
 
                 self.assertEqual(again["status"], "resumed", where)
@@ -102,13 +103,13 @@ class OnePixel(unittest.TestCase):
         dates, spectral, qas = pixel(3)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                               ccdcpp.HarmonicOptions(), resume_record=True)
+                               ccdcpp.Input(), resume_record=True)
         changed = spectral.copy()
         changed[3, int(np.flatnonzero(qas[:n] == 0)[50])] += 1.0
-        again = ccdcpp.resume(dates, changed, qas, ccdcpp.HarmonicOptions(),
+        again = ccdcpp.resume(dates, changed, qas, ccdcpp.Input(),
                               resume=stored["resume"], resume_header=stored["resume_header"],
                               models=stored["models"])
-        full = ccdcpp.detect(dates, changed, qas, capped(dates[n - 1]))
+        full = ccdcpp.detect(dates, changed, qas, ccdcpp.Input(), config=capped(dates[n - 1]))
         self.assertEqual(again["status"], "rerun_input_changed")
         assert_same_models(self, again["models"], full["models"], "changed")
 
@@ -116,22 +117,22 @@ class OnePixel(unittest.TestCase):
         dates, spectral, qas = pixel(1)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                               ccdcpp.HarmonicOptions(), resume_record=True)
+                               ccdcpp.Input(), resume_record=True)
 
         def call(h=None, header=None, until=None, config=None):
             m = dates.size if until is None else until
             return ccdcpp.resume(dates[:m], spectral[:, :m], qas[:m],
-                                 h or ccdcpp.HarmonicOptions(),
+                                 h or ccdcpp.Input(),
                                  resume=stored["resume"],
                                  resume_header=header or stored["resume_header"],
                                  models=stored["models"], config=config)
 
-        other = ccdcpp.HarmonicOptions()
-        other.CLEAR_OBSERVATION_THRESHOLD += 1
+        other = ccdcpp.Input()
+        other.qa_occlusion += 1
         with self.assertRaises(ValueError):
             call(h=other)
         stricter = ccdcpp._config_preset("ccdc")
-        stricter["change_test"]["params"]["change_threshold"] += 1
+        stricter["shared"]["change_probability"] = 0.995
         with self.assertRaises(ValueError):
             call(config=stricter)
         # The preset, given, is the default the record was made under.
@@ -151,7 +152,7 @@ class OnePixel(unittest.TestCase):
                 if key == "magnitude":
                     bad["exit"] = 6   # SeriesEnd
                 with self.assertRaises(ValueError):
-                    ccdcpp.resume(dates, spectral, qas, ccdcpp.HarmonicOptions(),
+                    ccdcpp.resume(dates, spectral, qas, ccdcpp.Input(),
                                   resume=bad, resume_header=stored["resume_header"],
                                   models=stored["models"])
 
@@ -189,15 +190,16 @@ class Cube(unittest.TestCase):
             for threads in (1, 3):
                 where = f"cut {cut} threads {threads}"
                 stored = ccdcpp.detect_cube_columns(
-                    dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.HarmonicOptions(),
+                    dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.Input(),
                     threads, resume_record=True)
                 self.assertEqual(stored["resume"]["row"].size, 12)
                 again = ccdcpp.resume_cube_columns(
-                    dates, spectral, qas, ccdcpp.HarmonicOptions(), threads,
+                    dates, spectral, qas, ccdcpp.Input(), threads,
                     resume=stored["resume"], resume_header=stored["resume_header"],
                     segments={k: stored[k] for k in SEGMENT_COLUMNS})
                 full = ccdcpp.detect_cube_columns(
-                    dates, spectral, qas, capped(dates[n - 1]), threads, resume_record=True)
+                    dates, spectral, qas, ccdcpp.Input(), threads, resume_record=True,
+                    config=capped(dates[n - 1]))
 
                 for key in SEGMENT_COLUMNS:
                     np.testing.assert_array_equal(again[key], full[key], err_msg=f"{where} {key}")
@@ -212,13 +214,14 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(20, 32), 3, 4)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect_cube_columns(
-            dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.HarmonicOptions(),
+            dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.Input(),
             2, resume_record=True)
         again = ccdcpp.resume_cube_columns(
-            dates, spectral, qas, ccdcpp.HarmonicOptions(), 2,
+            dates, spectral, qas, ccdcpp.Input(), 2,
             resume=stored["resume"], resume_header=stored["resume_header"],
             segments=nlcd_blanked(stored))
-        full = ccdcpp.detect_cube_columns(dates, spectral, qas, capped(dates[n - 1]), 2)
+        full = ccdcpp.detect_cube_columns(dates, spectral, qas, ccdcpp.Input(), 2,
+                                          config=capped(dates[n - 1]))
         a, b = nlcd_blanked(again), nlcd_blanked(full)
         for key in SEGMENT_COLUMNS:
             np.testing.assert_array_equal(a[key], b[key], err_msg=key)
@@ -227,12 +230,12 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(40, 46), 2, 3)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect_cube_columns(
-            dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.HarmonicOptions(),
+            dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.Input(),
             1, resume_record=True)
         changed = spectral.copy()
         changed[1, 2, 2, int(np.flatnonzero(qas[1, 2, :n] == 0)[30])] += 5.0
         again = ccdcpp.resume_cube_columns(
-            dates, changed, qas, ccdcpp.HarmonicOptions(), 1,
+            dates, changed, qas, ccdcpp.Input(), 1,
             resume=stored["resume"], resume_header=stored["resume_header"],
             segments={k: stored[k] for k in SEGMENT_COLUMNS})
         self.assertEqual(again["counts"], {"resumed": 5, "rerun_input_changed": 1, "failed": 0})
@@ -242,13 +245,13 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(50, 56), 2, 3)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect_cube_columns(
-            dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.HarmonicOptions(),
+            dates[:n], spectral[..., :n], qas[..., :n], ccdcpp.Input(),
             1, resume_record=True)
         segments = {k: stored[k] for k in SEGMENT_COLUMNS}
 
         def call(resume=None, segs=None):
             return ccdcpp.resume_cube_columns(
-                dates, spectral, qas, ccdcpp.HarmonicOptions(), 1,
+                dates, spectral, qas, ccdcpp.Input(), 1,
                 resume=resume or stored["resume"], resume_header=stored["resume_header"],
                 segments=segs or segments)
 
@@ -283,7 +286,7 @@ class Cube(unittest.TestCase):
 
     def test_the_schema_names_the_columns(self):
         dates, spectral, qas = cube(range(2), 1, 2)
-        out = ccdcpp.detect_cube_columns(dates, spectral, qas, ccdcpp.HarmonicOptions(),
+        out = ccdcpp.detect_cube_columns(dates, spectral, qas, ccdcpp.Input(),
                                          1, resume_record=True)
         schema = ccdcpp.resume_schema()
         self.assertEqual(set(out["resume"]), set(schema) - {"status"})

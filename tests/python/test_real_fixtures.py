@@ -285,8 +285,8 @@ class Findings(unittest.TestCase):
                 coastal_only = ((spectral[names.index("B01")] <= 0)
                                 & ((others > 0) & (others < 1)).all(axis=0)
                                 & np.isin(getattr(presets, preset)().qa_table().codes[qa],
-                                          (ccdcpp.HarmonicOptions().QA_CLEAR,
-                                           ccdcpp.HarmonicOptions().QA_WATER)))
+                                          (ccdcpp.Input().qa_clear,
+                                           ccdcpp.Input().qa_water)))
                 self.assertEqual(int(coastal_only.sum()), count)
                 self.assertFalse(out["processing_mask"][coastal_only].any())
                 profile = getattr(presets, preset)()

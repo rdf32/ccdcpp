@@ -77,12 +77,12 @@ class NlcdC2(unittest.TestCase):
         if table is None:
             self.skipTest(reason)
 
-        # The plugin's codes are HarmonicOptions' defaults.
-        h = ccdcpp.HarmonicOptions()
+        # The plugin's codes are the Input's defaults.
+        h = ccdcpp.Input()
         self.assertEqual(
             [science.QA_FILL, science.QA_CLEAR, science.QA_WATER,
              science.QA_SHADOW, science.QA_SNOW, science.QA_CLOUD],
-            [h.QA_FILL, h.QA_CLEAR, h.QA_WATER, h.QA_SHADOW, h.QA_SNOW, h.QA_CLOUD])
+            [h.qa_fill, h.qa_clear, h.qa_water, h.qa_shadow, h.qa_snow, h.qa_cloud])
 
         ours = ccdcpp.qa_tables.landsat_c2_qa_pixel().codes
         self.assertEqual(table.dtype, np.uint8)
@@ -106,10 +106,10 @@ class PyccdC1(unittest.TestCase):
         params = types.SimpleNamespace(
             QA_FILL=0, QA_CLEAR=1, QA_WATER=2, QA_SHADOW=3, QA_SNOW=4,
             QA_CLOUD=5, QA_CIRRUS1=8, QA_CIRRUS2=9, QA_OCCLUSION=10)
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         code_of_offset = {
-            0: h.QA_FILL, 1: h.QA_CLEAR, 2: h.QA_WATER,
-            3: h.QA_SHADOW, 4: h.QA_SNOW, 5: h.QA_CLOUD}
+            0: h.qa_fill, 1: h.qa_clear, 2: h.qa_water,
+            3: h.qa_shadow, 4: h.qa_snow, 5: h.qa_cloud}
 
         ours = ccdcpp.qa_tables.landsat_c1_pixel_qa().codes
         rejected = 0
@@ -118,7 +118,7 @@ class PyccdC1(unittest.TestCase):
                 expected = code_of_offset[qa.qabitval(v, params)]
             except ValueError:
                 # pyccd raises; the table decodes to fill.
-                expected = h.QA_FILL
+                expected = h.qa_fill
                 rejected += 1
             self.assertEqual(ours[v], expected, v)
         print(f"\nlandsat_c1_pixel_qa == pyccd qabitval on all 65536 entries, "

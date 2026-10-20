@@ -2,7 +2,7 @@
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/input.hpp"
 
 
 namespace ccd
@@ -73,17 +73,17 @@ public:
     };
 
 public:
+    // The statistics of every observation, by `input`'s QA codes.
     static Statistics compute(
         ArrayView<const std::uint8_t, 1> qas,
-        ArrayView<const std::int64_t, 1> dates,
-        const HarmonicOptions& options
+        const Input& input
     )
     {
         Statistics stats;
 
         for(index_t i = 0; i < qas.size(); ++i)
         {
-            update(stats, qas(i), options);
+            update(stats, qas(i), input);
         }
 
         stats.finalize();
@@ -91,19 +91,21 @@ public:
         return stats;
     }
 
+    // The statistics of the observations dated <= stat_ord.
     static Statistics compute_until(
         ArrayView<const std::uint8_t,1> qas,
         ArrayView<const std::int64_t,1> dates,
-        const HarmonicOptions& options
+        const Input& input,
+        std::int64_t stat_ord
     )
     {
         Statistics stats;
 
         for(index_t i = 0; i < qas.size(); ++i)
         {
-            if(dates(i) <= options.STAT_ORD)
+            if(dates(i) <= stat_ord)
             {
-                update(stats, qas(i), options);
+                update(stats, qas(i), input);
             }
         }
 
@@ -117,26 +119,26 @@ private:
     static void update(
         Statistics& stats,
         std::uint8_t value,
-        const HarmonicOptions& options
+        const Input& input
     )
     {
-        if(value == options.QA_FILL)
+        if(value == input.qa_fill)
         {
             ++stats.fill_count;
         }
-        else if(value == options.QA_CLEAR)
+        else if(value == input.qa_clear)
         {
             ++stats.clear_count;
         }
-        else if(value == options.QA_WATER)
+        else if(value == input.qa_water)
         {
             ++stats.water_count;
         }
-        else if(value == options.QA_SNOW)
+        else if(value == input.qa_snow)
         {
             ++stats.snow_count;
         }
-        else if(value == options.QA_CLOUD)
+        else if(value == input.qa_cloud)
         {
             ++stats.cloud_count;
         }

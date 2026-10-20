@@ -5,7 +5,7 @@
 #include <memory>
 
 #include "ccd/core/types.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/input.hpp"
 
 namespace ccd
 {
@@ -16,22 +16,21 @@ namespace ccd
 //
 // A lookup from one raw QA value -- a bitmask or a class number, as an
 // archive stores it -- to one of the codes the procedures read
-// (HarmonicOptions::QA_FILL, QA_CLEAR, QA_WATER, QA_SHADOW, QA_SNOW,
-// QA_CLOUD). Indexed by the raw value, so it covers every uint16 value, and a
+// (Input::qa_fill, qa_clear, qa_water, qa_shadow, qa_snow, qa_cloud). Indexed by the raw value, so it covers every uint16 value, and a
 // uint8 value reads its first 256 entries.
 //
-// run_pixel() and run_cube() take one in RunSpec::qa_table, never through
-// HarmonicOptions: the options are copied once per pixel, and the table is
-// 64 KiB that every pixel and thread shares read-only through a
+// run_pixel() and run_cube() take one in RunSpec::qa_table, not in the
+// Input: the table is 64 KiB that every pixel and thread shares read-only
+// through a
 // std::shared_ptr<const QaTable>. With a table, each pixel's T raw values are
 // decoded into per-thread scratch before the procedures run, and the
 // procedures see exactly what they would see had the caller passed the
 // decoded codes as uint8. Without one, a uint8 `qas` is read as codes, as it
 // is, and a uint16 `qas` is rejected.
 //
-// A table holds the codes of the HarmonicOptions it was built from. Building
-// with one set of QA_* codes and running with another gives codes the
-// procedures do not recognise; build with the options the run uses.
+// A table holds the codes of the Input it was built from. Building with one
+// set of qa_* codes and running with another gives codes the procedures do
+// not recognise; build with the input the run uses.
 //
 //==============================================================================
 
@@ -51,16 +50,16 @@ using QaTablePtr = std::shared_ptr<const QaTable>;
 // One per QA product. Each decodes in precedence order, most-excluding
 // first, so that a value carrying several flags gets the code that keeps the
 // observation out of the fit: fill, then cloud, then shadow, then snow, then
-// water, then clear. A value the product does not define decodes to QA_FILL,
+// water, then clear. A value the product does not define decodes to qa_fill,
 // which removes the observation from the fit and from the clear and snow
 // percentages alike.
 //
-// The procedures keep an observation for the fit when its code is QA_CLEAR or
-// QA_WATER, count QA_SNOW toward PermanentSnow and QA_FILL out of the valid
-// total, and read no other code: QA_SHADOW and QA_CLOUD differ only in
-// QA_CLOUD's count, which no decision reads.
+// The procedures keep an observation for the fit when its code is qa_clear or
+// qa_water, count qa_snow toward PermanentSnow and qa_fill out of the valid
+// total, and read no other code: qa_shadow and qa_cloud differ only in
+// qa_cloud's count, which no decision reads.
 //
-// Each builder takes the HarmonicOptions whose QA_* codes it writes, so a
+// Each builder takes the Input whose qa_* codes it writes, so a
 // caller that renumbers them gets a table that agrees with its run.
 //
 // The Landsat tables are the ones validated for production use. The HLS and
@@ -78,78 +77,78 @@ namespace qa_tables
 //------------------------------------------------------------------------------
 // Landsat Collection 2 QA_PIXEL (uint16).
 //
-//     bit 0       fill               -> QA_FILL
-//     bit 3       cloud              -> QA_CLOUD
-//     bit 1       dilated cloud      -> QA_CLOUD
-//     bit 2       cirrus             -> QA_CLOUD
-//     bit 4       cloud shadow       -> QA_SHADOW
-//     bit 5       snow               -> QA_SNOW
-//     bit 7       water              -> QA_WATER
-//     otherwise                      -> QA_CLEAR
+//     bit 0       fill               -> qa_fill
+//     bit 3       cloud              -> qa_cloud
+//     bit 1       dilated cloud      -> qa_cloud
+//     bit 2       cirrus             -> qa_cloud
+//     bit 4       cloud shadow       -> qa_shadow
+//     bit 5       snow               -> qa_snow
+//     bit 7       water              -> qa_water
+//     otherwise                      -> qa_clear
 //
 // Tested in that order. Bit 6 (clear) is not read: it is the complement of
 // bits 1 and 3. Bits 8-15 are confidence pairs and are not read. Bit 2 is
 // set on Landsat 8 and 9 only.
 //------------------------------------------------------------------------------
-QaTablePtr landsat_c2_qa_pixel(const HarmonicOptions& options = HarmonicOptions{});
+QaTablePtr landsat_c2_qa_pixel(const Input& input = Input{});
 
 //------------------------------------------------------------------------------
 // Landsat Collection 1 pixel_qa (uint16), decoded as pyccd's qabitval does.
 //
-//     bit 0       fill               -> QA_FILL
-//     bit 5       cloud              -> QA_CLOUD
-//     bit 3       cloud shadow       -> QA_SHADOW
-//     bit 4       snow               -> QA_SNOW
-//     bit 2       water              -> QA_WATER
-//     bit 1       clear              -> QA_CLEAR
-//     bits 8, 9   both set (cirrus)  -> QA_CLEAR
-//     bit 10      terrain occlusion  -> QA_CLEAR
-//     otherwise                      -> QA_FILL
+//     bit 0       fill               -> qa_fill
+//     bit 5       cloud              -> qa_cloud
+//     bit 3       cloud shadow       -> qa_shadow
+//     bit 4       snow               -> qa_snow
+//     bit 2       water              -> qa_water
+//     bit 1       clear              -> qa_clear
+//     bits 8, 9   both set (cirrus)  -> qa_clear
+//     bit 10      terrain occlusion  -> qa_clear
+//     otherwise                      -> qa_fill
 //
 // Tested in that order. pyccd raises on a value none of these match; here it
-// decodes to QA_FILL, so one undefined value removes one observation rather
+// decodes to qa_fill, so one undefined value removes one observation rather
 // than the pixel.
 //------------------------------------------------------------------------------
-QaTablePtr landsat_c1_pixel_qa(const HarmonicOptions& options = HarmonicOptions{});
+QaTablePtr landsat_c1_pixel_qa(const Input& input = Input{});
 
 //------------------------------------------------------------------------------
 // HLS v2.0 Fmask (uint8).
 //
-//     255         fill               -> QA_FILL
-//     bit 1       cloud              -> QA_CLOUD
+//     255         fill               -> qa_fill
+//     bit 1       cloud              -> qa_cloud
 //     bit 2       adjacent to cloud
-//                 or shadow          -> QA_CLOUD
-//     bit 0       reserved           -> QA_CLOUD
-//     bits 6-7    high aerosol (11)  -> QA_CLOUD, when exclude_high_aerosol
-//     bit 3       cloud shadow       -> QA_SHADOW
-//     bit 4       snow or ice        -> QA_SNOW
-//     bit 5       water              -> QA_WATER
-//     otherwise                      -> QA_CLEAR
+//                 or shadow          -> qa_cloud
+//     bit 0       reserved           -> qa_cloud
+//     bits 6-7    high aerosol (11)  -> qa_cloud, when exclude_high_aerosol
+//     bit 3       cloud shadow       -> qa_shadow
+//     bit 4       snow or ice        -> qa_snow
+//     bit 5       water              -> qa_water
+//     otherwise                      -> qa_clear
 //
 // Tested in that order. The aerosol level is ignored unless
 // exclude_high_aerosol is set. Values above 255 are not Fmask values and
-// decode to QA_FILL. The HLS v2.0 User Guide lists bit 0 as reserved and not
-// used in v2.0 (Fmask folds cirrus into cloud); it decodes to QA_CLOUD only
+// decode to qa_fill. The HLS v2.0 User Guide lists bit 0 as reserved and not
+// used in v2.0 (Fmask folds cirrus into cloud); it decodes to qa_cloud only
 // should it ever be set.
 //------------------------------------------------------------------------------
 QaTablePtr hls_fmask(
-    const HarmonicOptions& options = HarmonicOptions{},
+    const Input& input = Input{},
     bool exclude_high_aerosol = false
 );
 
 //------------------------------------------------------------------------------
 // Sentinel-2 L2A scene classification, SCL (uint8).
 //
-//     0  no data, 1 saturated or defective         -> QA_FILL
-//     2  cast shadows, 3 cloud shadows             -> QA_SHADOW
-//     4  vegetation, 5 not vegetated               -> QA_CLEAR
-//     6  water                                     -> QA_WATER
+//     0  no data, 1 saturated or defective         -> qa_fill
+//     2  cast shadows, 3 cloud shadows             -> qa_shadow
+//     4  vegetation, 5 not vegetated               -> qa_clear
+//     6  water                                     -> qa_water
 //     7  unclassified, 8 cloud medium probability,
-//     9  cloud high probability, 10 thin cirrus    -> QA_CLOUD
-//     11 snow or ice                               -> QA_SNOW
-//     otherwise                                    -> QA_FILL
+//     9  cloud high probability, 10 thin cirrus    -> qa_cloud
+//     11 snow or ice                               -> qa_snow
+//     otherwise                                    -> qa_fill
 //------------------------------------------------------------------------------
-QaTablePtr sentinel2_scl(const HarmonicOptions& options = HarmonicOptions{});
+QaTablePtr sentinel2_scl(const Input& input = Input{});
 
 } // namespace qa_tables
 

@@ -101,7 +101,8 @@ static void write_text(const std::string& path, const std::string& s)
     std::fclose(f);
 }
 
-struct OptSet { const char* name; ccd::HarmonicOptions h; golden::Algorithm l; int transform; }; // 0 none, 1 phys, 2 frac
+// Each runs the "ccdc" preset on its input.
+struct OptSet { const char* name; ccd::Input h; int transform; }; // 0 none, 1 phys, 2 frac
 
 static void apply_transform(golden::Cube& c, int transform)
 {
@@ -147,9 +148,9 @@ int main(int argc, char** argv)
     const bool bench = argc > 5;
 
     std::vector<OptSet> opts = {
-        {"dn", ccd::HarmonicOptions{}, golden::Algorithm{}, 0},
-        {"phys", golden::physical_harmonic(), golden::physical_algorithm(), 1},
-        {"frac", ccd::HarmonicOptions{}, golden::Algorithm{}, 2},
+        {"dn", ccd::Input{}, 0},
+        {"phys", golden::physical_input(), 1},
+        {"frac", ccd::Input{}, 2},
     };
 
     double detect_ms = 0.0;
@@ -165,16 +166,16 @@ int main(int argc, char** argv)
         for (const char* fn : files)
         {
             auto csv = read_csv(csvdir + "/" + fn);
-            std::vector<std::pair<std::string, std::pair<ccd::HarmonicOptions, golden::Algorithm>>> sets = {
-                {"dn", {ccd::HarmonicOptions{}, golden::Algorithm{}}},
-                {"c2", {golden::c2_harmonic(), golden::Algorithm{}}},
-                {"phys", {golden::physical_harmonic(), golden::physical_algorithm()}},
+            std::vector<std::pair<std::string, ccd::Input>> sets = {
+                {"dn", ccd::Input{}},
+                {"c2", golden::c2_input()},
+                {"phys", golden::physical_input()},
             };
             for (auto& set : sets)
             {
                 std::vector<double> spec = csv.spectral;
                 if (set.first == "phys") golden::to_physical(spec.data(), csv.T);
-                auto r = ccd::run_pixel(golden::spec_of(set.second.first, set.second.second),
+                auto r = ccd::run_pixel(golden::spec_of(set.second),
                     ccd::ArrayView<const std::int64_t, 1>::contiguous(csv.dates.data(), {csv.T}),
                     ccd::ArrayView<const double, 2>::contiguous(spec.data(), {7, csv.T}),
                     ccd::ArrayView<const std::uint8_t, 1>::contiguous(csv.qas.data(), {csv.T})).result;
@@ -208,7 +209,7 @@ int main(int argc, char** argv)
             for (std::size_t p = 0; p < N; ++p)
             {
                 std::copy(c.spectral.begin() + p * 7 * T, c.spectral.begin() + (p + 1) * 7 * T, px.begin());
-                auto r = ccd::run_pixel(golden::spec_of(o.h, o.l),
+                auto r = ccd::run_pixel(golden::spec_of(o.h),
                     dates,
                     ccd::ArrayView<const double, 2>::contiguous(px.data(), {7, T}),
                     ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T})).result;
@@ -225,7 +226,7 @@ int main(int argc, char** argv)
             {
                 std::vector<double> cube_spec = c.spectral;
                 const double c0 = now_ms();
-                auto cube = ccd::run_cube(golden::spec_of(o.h, o.l),
+                auto cube = ccd::run_cube(golden::spec_of(o.h),
                     dates,
                     ccd::ArrayView<const double, 4>::contiguous(cube_spec.data(), {c.H, c.W, 7, T}),
                     ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),

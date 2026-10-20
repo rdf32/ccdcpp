@@ -39,8 +39,8 @@ struct CharPixel
     std::vector<std::int64_t> dates;
     std::vector<double> spectral;      // (7, T), band-major
     std::vector<std::uint8_t> qas;     // (T)
-    ccd::HarmonicOptions h;
-    ccd::config::ConfigTree config = golden::ccdc();
+    ccd::Input h;
+    ccd::config::Config config = golden::ccdc();
 };
 
 // What a pixel's spectral series is made of.
@@ -144,7 +144,7 @@ inline CharPixel make_char_pixel(
 //------------------------------------------------------------------------------
 
 // 13 observations 34 days apart, then 500 `gap` days apart, all before
-// STAT_ORD: the median gap is `gap`, so the peek is adjusted to 13-25 for
+// stat_ord: the median gap is `gap`, so the peek is adjusted to 13-25 for
 // gaps of 4-6 days. A break at observation 13 with a decaying transient after
 // it, so the second Initialize shifts and its Lookback starts at or below
 // peek_size with prev_break = 13.
@@ -224,7 +224,7 @@ inline CharPixel series_end_after_outlier(std::uint64_t seed, std::size_t back)
     return make_char_pixel("series_end_after_outlier", d, s);
 }
 
-// One clear observation dated up to STAT_ORD (2017-12-31), 60 after it: the
+// One clear observation dated up to stat_ord (2017-12-31), 60 after it: the
 // QA statistics see 1 of 1 clear, so Standard runs, and the variogram over the
 // statistics window of one observation is NaN.
 inline CharPixel variogram_nan()
@@ -254,7 +254,7 @@ inline CharPixel constant_detection_band()
     return p;
 }
 
-// `n` observations 16 days apart before STAT_ORD; `clear` of them clear
+// `n` observations 16 days apart before stat_ord; `clear` of them clear
 // (QA 0) spread evenly, then of the others the first `snow` snow (QA 3) and
 // the rest cloud (QA 4). The clear percentage is clear / n and the snow
 // percentage snow / (clear + snow + 0.01).
@@ -394,9 +394,7 @@ inline std::vector<CharPixel> characterisation_pixels()
         // The fewest coefficients raised to 6: Initialize, Extend's
         // coefficient schedule and the Start/End fits all read it.
         CharPixel p = sparse_random("coefficient_min_6", 3);
-        p.config["stability_fit"].params["coefficient_min"] = ccd::config::integer(6);
-        p.config["model"].params["coefficient_min"] = ccd::config::integer(6);
-        p.config["edge_fit"].params["coefficients"] = ccd::config::integer(6);
+        p.config.shared["coefficient_min"] = ccd::config::integer(6);
 
         out.push_back(std::move(p));
     }

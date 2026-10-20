@@ -131,9 +131,10 @@ TEST(Record, TheHeaderNamesTheRun)
     EXPECT_EQ(r.header.results_version, ccd::RESULTS_VERSION);
     EXPECT_EQ(r.header.series_end, p.dates.back());
     EXPECT_EQ(r.header.statistics_end, p.dates.back());
+    const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
     EXPECT_EQ(r.header.options_digest,
-              ccd::options_digest(p.h, p.config,
-                                  ccd::preprocess::default_plan(p.h), nullptr));
+              ccd::options_digest(resolved,
+                                  ccd::preprocess::default_plan(p.h, resolved.shared), nullptr));
 }
 
 TEST(Record, EachExitAndItsSuspension)
@@ -193,7 +194,8 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         // record (the fit window, its coefficient count), bit for bit.
         // The pixel as the Standard machine reads it: its plan's transform
         // applied.
-        const auto plan = ccd::preprocess::default_plan(p.h);
+        const ccd::config::Shared shared = golden::shared_of(p.config, p.h);
+        const auto plan = ccd::preprocess::default_plan(p.h, shared);
         const index_t T = p.dates.size();
         std::vector<double> block = p.spectral;
         if (plan.standard.transform)
@@ -205,7 +207,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         ccd::MaskedSeries series;
         const ccd::HarmonicWorkspace ws(
             dates_of(p), ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
-            qas_of(p), p.h);
+            qas_of(p), p.h, shared);
         series.reset(ws, r.result.mask);
         // The model's solver, and its coefficient rule as configured.
         const ccd::Strategies strategies = golden::strategies_of(p.config);
@@ -213,7 +215,10 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         ccd::LassoSolver solver(
             static_cast<const ccd::strategies::Lasso&>(*strategies.model).solver_options());
         const auto model_count = [&](const char* name)
-        { return static_cast<index_t>(golden::parameter<std::int64_t>(p.config, "model", name)); };
+        {
+            return static_cast<index_t>(
+                golden::parameter<std::int64_t>(golden::resolved(p.config).stages, "model", name));
+        };
         std::vector<ccd::LassoResult> fits;
         const ccd::Window fit(s.window.start, s.fit_stop);
         ccd::fit_bands(
@@ -265,7 +270,8 @@ TEST(Record, TheExcludedDaysAreTheMachinesDrops)
             continue;
 
         // The Standard filter chain's mask, as Run::pixel builds it.
-        const auto plan = ccd::preprocess::default_plan(p.h);
+        const ccd::config::Shared shared = golden::shared_of(p.config, p.h);
+        const auto plan = ccd::preprocess::default_plan(p.h, shared);
         const index_t T = p.dates.size();
         std::vector<double> block = p.spectral;
         if (plan.standard.transform)
@@ -303,65 +309,95 @@ namespace
 {
 
 std::uint64_t digest_of(
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config = golden::ccdc(),
+    const ccd::Input& h,
+    const ccd::config::Config& config = golden::ccdc(),
     const ccd::QaTable* table = nullptr)
 {
-    return ccd::options_digest(h, config, ccd::preprocess::default_plan(h), table);
+    const ccd::config::Resolved resolved = golden::resolved(config, h);
+    return ccd::options_digest(resolved, ccd::preprocess::default_plan(h, resolved.shared), table);
 }
 
 } // namespace
 
 TEST(OptionsDigest, EqualOptionsEqualDigests)
 {
-    EXPECT_EQ(digest_of(ccd::HarmonicOptions{}), digest_of(ccd::HarmonicOptions{}));
-    EXPECT_EQ(digest_of(golden::physical_harmonic(), golden::physical_config()),
-              digest_of(golden::physical_harmonic(), golden::physical_config()));
+    EXPECT_EQ(digest_of(ccd::Input{}), digest_of(ccd::Input{}));
+    EXPECT_EQ(digest_of(golden::physical_input()), digest_of(golden::physical_input()));
+    // A configuration that leaves its defaults out is the same run.
+    ccd::config::Config partial = golden::ccdc();
+    partial.shared.clear();
+    partial.stages["refit"].params.clear();
+    EXPECT_EQ(digest_of(ccd::Input{}, partial), digest_of(ccd::Input{}));
 }
 
 // The configuration is in the digest: the preset's, and another's.
 TEST(OptionsDigest, TheConfigurationMoves)
 {
-    const ccd::HarmonicOptions h;
-    ccd::config::ConfigTree tree = ccd::strategies::library_registry().preset("ccdc");
-    const auto plan = ccd::preprocess::default_plan(h);
-    const std::uint64_t base = ccd::options_digest(h, tree, plan, nullptr);
+    const ccd::Input h;
+    ccd::config::Config tree = ccd::strategies::library_registry().preset("ccdc");
+    const auto plan = ccd::preprocess::default_plan(h, ccd::config::Shared{});
+    const std::uint64_t base = ccd::options_digest(golden::resolved(tree, h), plan, nullptr);
     EXPECT_EQ(base, digest_of(h));
-    tree["lookback"].params["peek"] = ccd::config::integer(6);
-    const std::uint64_t other = ccd::options_digest(h, tree, plan, nullptr);
+    tree.stages["lookback"].params["peek"] = ccd::config::integer(6);
+    const std::uint64_t other = ccd::options_digest(golden::resolved(tree, h), plan, nullptr);
     EXPECT_NE(other, base);
-    EXPECT_EQ(other, ccd::options_digest(h, tree, plan, nullptr));
+    EXPECT_EQ(other, ccd::options_digest(golden::resolved(tree, h), plan, nullptr));
 }
 
 TEST(OptionsDigest, EveryGroupOfFieldsMoves)
 {
-    const std::uint64_t base = digest_of(ccd::HarmonicOptions{});
+    const std::uint64_t base = digest_of(ccd::Input{});
 
-    using Set = std::function<void(ccd::HarmonicOptions&)>;
-    const std::pair<const char*, Set> harmonic[] = {
-        {"QA_SNOW", [](auto& h) { h.QA_SNOW = 7; }},
-        {"QA_OCCLUSION", [](auto& h) { h.QA_OCCLUSION = 11; }},
-        {"THERMAL_OFFSET", [](auto& h) { h.THERMAL_OFFSET = -2731.0; }},
-        {"REFL_MAX_INCLUSIVE", [](auto& h) { h.REFL_MAX_INCLUSIVE = true; }},
-        {"THERM_MIN", [](auto& h) { h.THERM_MIN = -9000.0; }},
-        {"GREEN_FILTER_SCOPE", [](auto& h) { h.GREEN_FILTER_SCOPE = ccd::GreenFilterScope::All; }},
-        {"STAT_ORD", [](auto& h) { h.STAT_ORD = 736695; }},
-        {"DETECTION_BANDS", [](auto& h) { h.DETECTION_BANDS = {1, 2, 3, 4}; }},
-        {"SATURATION_BANDS", [](auto& h) { h.SATURATION_BANDS = {0, 1, 2, 3, 4}; }},
-        {"QA_IDX", [](auto& h) { h.QA_IDX = 8; }},
+    // Every group of the input's fields.
+    using Set = std::function<void(ccd::Input&)>;
+    const std::pair<const char*, Set> input[] = {
+        {"qa_snow", [](auto& h) { h.qa_snow = 7; }},
+        {"qa_occlusion", [](auto& h) { h.qa_occlusion = 11; }},
+        {"roles", [](auto& h) { h.roles[0] = "coastal"; }},
+        {"saturation_bands", [](auto& h) { h.saturation_bands = {0, 1, 2, 3, 4}; }},
+        {"reflectance_unit", [](auto& h) { h.reflectance_unit = 1.0; }},
+        {"thermal_offset", [](auto& h) { h.thermal_offset = -2731.0; }},
+        {"refl_max_inclusive", [](auto& h) { h.refl_max_inclusive = true; }},
+        {"therm_min", [](auto& h) { h.therm_min = -9000.0; }},
+        {"therm_max_inclusive", [](auto& h) { h.therm_max_inclusive = true; }},
     };
-    for (const auto& [name, set] : harmonic)
+    for (const auto& [name, set] : input)
     {
-        ccd::HarmonicOptions h;
+        ccd::Input h;
         set(h);
         EXPECT_NE(digest_of(h), base) << name;
     }
 
+    // Every shared value, to another it accepts.
+    const ccd::config::Config preset = golden::ccdc();
+    for (const auto& [name, value] : preset.shared)
+    {
+        const ccd::config::Value moved = std::visit(
+            [](auto v) -> ccd::config::Value
+            {
+                using T = decltype(v);
+                if constexpr (std::is_same_v<T, std::int64_t>)
+                    return ccd::config::integer(v - 1);
+                else if constexpr (std::is_same_v<T, double>)
+                    return ccd::config::real(v * 0.5);
+                else if constexpr (std::is_same_v<T, std::string>)
+                    return std::string("all");
+                else if constexpr (std::is_same_v<T, std::vector<std::string>>)
+                {
+                    v.pop_back();
+                    return ccd::config::roles(v);
+                }
+                else
+                    return v;
+            },
+            value);
+        EXPECT_NE(digest_of(ccd::Input{}, golden::with_shared(preset, name, moved)), base) << name;
+    }
+
     // Every parameter of every stage of the configuration, and every stage's
     // strategy name.
-    const ccd::config::ConfigTree preset = golden::ccdc();
     std::size_t parameters = 0;
-    for (const auto& [stage, sc] : preset)
+    for (const auto& [stage, sc] : preset.stages)
     {
         for (const auto& [name, value] : sc.params)
         {
@@ -377,6 +413,11 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
                         return ccd::config::real(v + 0.5);
                     else if constexpr (std::is_same_v<T, std::string>)
                         return v + "-other";
+                    else if constexpr (std::is_same_v<T, std::vector<std::string>>)
+                    {
+                        v.push_back("nir");
+                        return ccd::config::roles(v);
+                    }
                     else
                     {
                         v.push_back(5);
@@ -384,50 +425,50 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
                     }
                 },
                 value);
-            EXPECT_NE(digest_of(ccd::HarmonicOptions{}, golden::with(preset, stage, name, moved)),
-                      base)
+            EXPECT_NE(digest_of(ccd::Input{}, golden::with(preset, stage, name, moved)), base)
                 << stage << " " << name;
             ++parameters;
         }
-        ccd::config::ConfigTree renamed = preset;
-        renamed[stage].strategy += "-other";
-        EXPECT_NE(digest_of(ccd::HarmonicOptions{}, renamed), base) << stage;
+        ccd::config::Config renamed = preset;
+        renamed.stages[stage].strategy += "-other";
+        EXPECT_NE(ccd::config::digest(renamed), ccd::config::digest(preset)) << stage;
     }
-    EXPECT_GT(parameters, 40u);
+    EXPECT_GT(parameters, 15u);
 }
 
 TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 {
-    const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree config = golden::ccdc();
-    const auto plan = ccd::preprocess::default_plan(h);
-    const std::uint64_t base = ccd::options_digest(h, config, plan, nullptr);
+    const ccd::Input h;
+    const ccd::config::Resolved config = golden::resolved();
+    const auto plan = ccd::preprocess::default_plan(h, config.shared);
+    const std::uint64_t base = ccd::options_digest(config, plan, nullptr);
 
 
     auto other = plan;
     other.insufficient_clear.chain.steps[0].codes.set(2);
-    EXPECT_NE(ccd::options_digest(h, config, other, nullptr), base);
+    EXPECT_NE(ccd::options_digest(config, other, nullptr), base);
 
     other = plan;
     other.standard.transform.reset();
-    EXPECT_NE(ccd::options_digest(h, config, other, nullptr), base);
+    EXPECT_NE(ccd::options_digest(config, other, nullptr), base);
 
     const auto table = ccd::qa_tables::landsat_c2_qa_pixel(h);
-    const std::uint64_t with_table = ccd::options_digest(h, config, plan, table.get());
+    const std::uint64_t with_table = ccd::options_digest(config, plan, table.get());
     EXPECT_NE(with_table, base);
 
     ccd::QaTable changed = *table;
     changed.code[21824] = changed.code[21824] == 0 ? 1 : 0;
-    EXPECT_NE(ccd::options_digest(h, config, plan, &changed), with_table);
+    EXPECT_NE(ccd::options_digest(config, plan, &changed), with_table);
 }
 
-// options_digest() names every field of these structs one by one, so a
+// The digests name every field of these structs one by one (digest(Input),
+// options_digest()'s plan), so a
 // field added to one must be added to the digest too. A struct's size is the
 // tripwire: on any LP64 platform these are the sizes the digest was written
 // for, and a test that fails here is a reminder, not a platform difference.
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 256u);
+    EXPECT_EQ(sizeof(ccd::Input), 152u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);
 }
@@ -441,7 +482,7 @@ namespace
 
 std::uint64_t fingerprint(const golden::CharPixel& p, std::int64_t through)
 {
-    return ccd::input_fingerprint(dates_of(p), spectral_of(p), qas_of(p), p.h.QA_FILL, through);
+    return ccd::input_fingerprint(dates_of(p), spectral_of(p), qas_of(p), p.h.qa_fill, through);
 }
 
 } // namespace
@@ -465,7 +506,7 @@ TEST(InputFingerprint, ReadsEveryKeptValueUpToTheDate)
     }
     {
         golden::CharPixel p = base;
-        p.qas[40] = p.h.QA_CLOUD;
+        p.qas[40] = p.h.qa_cloud;
         EXPECT_NE(fingerprint(p, through), f);
     }
     {
@@ -479,7 +520,7 @@ TEST(InputFingerprint, ReadsEveryKeptValueUpToTheDate)
         golden::CharPixel p = base;
         const index_t T = p.dates.size();
         p.spectral[2 * T + 151] += 100.0;
-        p.qas[160] = p.h.QA_CLOUD;
+        p.qas[160] = p.h.qa_cloud;
         EXPECT_EQ(fingerprint(p, through), f);
     }
 }
@@ -489,7 +530,7 @@ TEST(InputFingerprint, LeavesOutFill)
     const auto all = golden::characterisation_pixels();
     golden::CharPixel base = pixel(all, "start_catch");
     const index_t T = base.dates.size();
-    base.qas[40] = base.h.QA_FILL;
+    base.qas[40] = base.h.qa_fill;
     const std::int64_t through = base.dates[150];
     const std::uint64_t f = fingerprint(base, through);
 
@@ -507,7 +548,7 @@ TEST(InputFingerprint, LeavesOutFill)
         golden::CharPixel p = base;
         const index_t at = 60;
         p.dates.insert(p.dates.begin() + at, p.dates[at - 1] + 1);
-        p.qas.insert(p.qas.begin() + at, p.h.QA_FILL);
+        p.qas.insert(p.qas.begin() + at, p.h.qa_fill);
         std::vector<double> spectral;
         for (index_t b = 0; b < 7; ++b)
         {

@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/input.hpp"
 #include "ccd/input/qa_table.hpp"
 
 namespace py = pybind11;
@@ -84,9 +84,9 @@ void bind_qa_tables(py::module_& m)
 
     py::module_ sub = m.def_submodule(
         "qa_tables",
-        "QaTable builders, one per QA product. Each writes the QA_* codes of "
-        "the HarmonicOptions it is given (default HarmonicOptions()), so "
-        "build with the options the run uses. Precedence is most-excluding "
+        "QaTable builders, one per QA product. Each writes the qa_* codes of "
+        "the Input it is given (default Input()), so build with the input "
+        "the run uses. Precedence is most-excluding "
         "first: fill, cloud, shadow, snow, water, clear. The Landsat tables "
         "are validated for production use. The HLS and Sentinel-2 tables "
         "follow the products' definitions, are tested, and decode as that "
@@ -100,11 +100,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "landsat_c2_qa_pixel",
-        [](const ccd::HarmonicOptions& o)
+        [](const ccd::Input& o)
         {
             return held(ccd::qa_tables::landsat_c2_qa_pixel(o));
         },
-        py::arg("options") = ccd::HarmonicOptions{},
+        py::arg("input") = ccd::Input{},
         "Landsat Collection 2 QA_PIXEL (uint16). Bit 0 fill; bits 3, 1, 2 "
         "(cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; "
         "bit 7 water; otherwise clear. Bits 6 and 8-15 are not read."
@@ -112,11 +112,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "landsat_c1_pixel_qa",
-        [](const ccd::HarmonicOptions& o)
+        [](const ccd::Input& o)
         {
             return held(ccd::qa_tables::landsat_c1_pixel_qa(o));
         },
-        py::arg("options") = ccd::HarmonicOptions{},
+        py::arg("input") = ccd::Input{},
         "Landsat Collection 1 pixel_qa (uint16), in pyccd's order. Bit 0 "
         "fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 "
         "clear; bits 8 and 9 both set, or bit 10, clear; otherwise fill "
@@ -125,11 +125,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "hls_fmask",
-        [](const ccd::HarmonicOptions& o, bool exclude_high_aerosol)
+        [](const ccd::Input& o, bool exclude_high_aerosol)
         {
             return held(ccd::qa_tables::hls_fmask(o, exclude_high_aerosol));
         },
-        py::arg("options") = ccd::HarmonicOptions{},
+        py::arg("input") = ccd::Input{},
         py::arg("exclude_high_aerosol") = false,
         "HLS v2.0 Fmask (uint8). 255 fill; bits 1, 2 (cloud, adjacent to "
         "cloud or shadow) cloud; bit 0, reserved and unused in v2.0 (Fmask "
@@ -144,11 +144,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "sentinel2_scl",
-        [](const ccd::HarmonicOptions& o)
+        [](const ccd::Input& o)
         {
             return held(ccd::qa_tables::sentinel2_scl(o));
         },
-        py::arg("options") = ccd::HarmonicOptions{},
+        py::arg("input") = ccd::Input{},
         "Sentinel-2 L2A SCL (uint8). 0, 1 fill; 2, 3 (cast shadows, cloud "
         "shadows) shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud "
         "medium and high probability, thin cirrus) cloud; 11 snow; anything "

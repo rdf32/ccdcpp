@@ -8,7 +8,7 @@
 //                     Landsat cubes of the golden fixture, the band profiles
 //                     of the bands fixture) and on randomized series with NaN,
 //                     values on and beside the bounds, repeated dates, snow
-//                     and observations dated after STAT_ORD, in DN and in
+//                     and observations dated after stat_ord, in DN and in
 //                     physical units, under every GreenFilterScope and every
 //                     combination of the four inclusive flags. The
 //                     filter::standard/snow/insufficientclear wrappers are
@@ -88,6 +88,26 @@ PixelView view(
     };
 }
 
+// An input and the shared values a run resolves for it: what default_plan()
+// reads.
+struct Options
+{
+    ccd::Input input;
+    ccd::config::Shared shared;
+};
+
+// The physical-unit input's.
+Options physical_options()
+{
+    const ccd::Input input = golden::physical_input();
+    return {input, golden::shared_of(golden::ccdc(), input)};
+}
+
+pp::PreprocessPlan default_plan(const Options& options)
+{
+    return pp::default_plan(options.input, options.shared);
+}
+
 //------------------------------------------------------------------------------
 // The three chains written out by hand from the filter kernels: the
 // reference default_plan() is held to.
@@ -95,7 +115,7 @@ PixelView view(
 
 ccd::ProcessingMask reference_standard(
     const PixelView& px,
-    const ccd::HarmonicOptions& options
+    const Options& options
 )
 {
     ccd::ProcessingMask mask(px.dates.size());
@@ -103,24 +123,24 @@ ccd::ProcessingMask reference_standard(
     for (index_t i = 0; i < px.dates.size(); ++i)
     {
         const auto qa = px.qas(i);
-        if (qa == options.QA_WATER || qa == options.QA_CLEAR)
+        if (qa == options.input.qa_water || qa == options.input.qa_clear)
             mask.set(i, true);
     }
 
-    if (options.THERMAL_IDX != ccd::NO_BAND)
+    if (options.input.index("thermal") != ccd::NO_BAND)
     {
         ccd::filter::apply_thermal_filter(
             px.spectral,
-            options.THERMAL_IDX,
-            ccd::filter::thermal_range(options),
+            options.input.index("thermal"),
+            ccd::filter::thermal_range(options.input),
             mask
         );
     }
 
     ccd::filter::apply_saturation_filter(
         px.spectral,
-        options.SATURATION_BANDS,
-        ccd::filter::reflectance_range(options),
+        options.input.saturation_bands,
+        ccd::filter::reflectance_range(options.input),
         mask
     );
 
@@ -131,14 +151,14 @@ ccd::ProcessingMask reference_standard(
 
 ccd::ProcessingMask reference_snow(
     const PixelView& px,
-    const ccd::HarmonicOptions& options
+    const Options& options
 )
 {
     ccd::ProcessingMask mask = reference_standard(px, options);
 
     for (index_t i = 0; i < px.qas.size(); ++i)
     {
-        if (px.qas(i) == options.QA_SNOW)
+        if (px.qas(i) == options.input.qa_snow)
             mask.set(i, true);
     }
 
@@ -149,7 +169,7 @@ ccd::ProcessingMask reference_snow(
 
 ccd::ProcessingMask reference_insufficient_clear(
     const PixelView& px,
-    const ccd::HarmonicOptions& options
+    const Options& options
 )
 {
     ccd::ProcessingMask mask = reference_standard(px, options);
@@ -157,10 +177,10 @@ ccd::ProcessingMask reference_insufficient_clear(
     ccd::filter::apply_green_median_filter(
         px.dates,
         px.spectral,
-        options.GREEN_IDX,
-        options.STAT_ORD,
-        options.MEDIAN_GREEN_FILTER,
-        options.GREEN_FILTER_SCOPE,
+        options.input.index("green"),
+        options.shared.stat_ord,
+        options.shared.green_filter,
+        *ccd::green_filter_scope(options.shared.green_filter_scope),
         mask
     );
 
@@ -192,12 +212,12 @@ struct Tally
 
 void check_pixel(
     const PixelView& px,
-    const ccd::HarmonicOptions& options,
+    const Options& options,
     const std::string& label,
     Tally& tally
 )
 {
-    const pp::PreprocessPlan plan = pp::default_plan(options);
+    const pp::PreprocessPlan plan = default_plan(options);
     ASSERT_NO_THROW(pp::validate(plan, px.spectral.extent(0))) << label;
 
     const ccd::ProcessingMask standard = reference_standard(px, options);
@@ -211,7 +231,8 @@ void check_pixel(
     EXPECT_EQ(run_chain(plan.insufficient_clear.chain, px).data(), clear.data())
         << "insufficient_clear " << label;
 
-    const ccd::HarmonicWorkspace workspace(px.dates, px.spectral, px.qas, options);
+    const ccd::HarmonicWorkspace workspace(px.dates, px.spectral, px.qas, options.input,
+                                           options.shared);
     EXPECT_EQ(ccd::filter::standard(workspace).data(), standard.data())
         << "filter::standard " << label;
     EXPECT_EQ(ccd::filter::snow(workspace).data(), snow.data())
@@ -229,34 +250,32 @@ void check_pixel(
 // Option variations: every scope and every combination of the four flags.
 //------------------------------------------------------------------------------
 
-std::vector<ccd::HarmonicOptions> variations(const ccd::HarmonicOptions& base)
+std::vector<Options> variations(const Options& base)
 {
-    std::vector<ccd::HarmonicOptions> out;
-    for (const auto scope : {ccd::GreenFilterScope::All,
-                             ccd::GreenFilterScope::StatWindow,
-                             ccd::GreenFilterScope::Off})
+    std::vector<Options> out;
+    for (const char* scope : {"all", "stat_window", "off"})
     {
         for (unsigned flags = 0; flags < 16; ++flags)
         {
-            ccd::HarmonicOptions h = base;
-            h.GREEN_FILTER_SCOPE = scope;
-            h.REFL_MIN_INCLUSIVE  = flags & 1u;
-            h.REFL_MAX_INCLUSIVE  = flags & 2u;
-            h.THERM_MIN_INCLUSIVE = flags & 4u;
-            h.THERM_MAX_INCLUSIVE = flags & 8u;
+            Options h = base;
+            h.shared.green_filter_scope = scope;
+            h.input.refl_min_inclusive  = flags & 1u;
+            h.input.refl_max_inclusive  = flags & 2u;
+            h.input.therm_min_inclusive = flags & 4u;
+            h.input.therm_max_inclusive = flags & 8u;
             out.push_back(h);
         }
     }
     return out;
 }
 
-std::string variation_label(const ccd::HarmonicOptions& h)
+std::string variation_label(const Options& h)
 {
-    return "scope " + std::to_string(static_cast<int>(h.GREEN_FILTER_SCOPE)) +
-           " refl " + std::to_string(h.REFL_MIN_INCLUSIVE) +
-           std::to_string(h.REFL_MAX_INCLUSIVE) +
-           " therm " + std::to_string(h.THERM_MIN_INCLUSIVE) +
-           std::to_string(h.THERM_MAX_INCLUSIVE);
+    return "scope " + h.shared.green_filter_scope +
+           " refl " + std::to_string(h.input.refl_min_inclusive) +
+           std::to_string(h.input.refl_max_inclusive) +
+           " therm " + std::to_string(h.input.therm_min_inclusive) +
+           std::to_string(h.input.therm_max_inclusive);
 }
 
 //------------------------------------------------------------------------------
@@ -317,7 +336,7 @@ struct Series
     std::size_t N = 0;
     std::size_t B = 0;
     std::size_t T = 0;
-    ccd::HarmonicOptions h;
+    Options h;
 
     PixelView pixel(std::size_t p) const
     {
@@ -343,7 +362,7 @@ const GoldenCube GOLDEN_CUBES[] = {
     {"medium", 15, golden::Regime::Medium,      5,  8},
 };
 
-Series from_cube(const char* name, const golden::Cube& c, const ccd::HarmonicOptions& h)
+Series from_cube(const char* name, const golden::Cube& c, const Options& h)
 {
     return {name, c.dates, c.spectral, c.qas, c.H * c.W, 7, c.T, h};
 }
@@ -353,11 +372,11 @@ Series to_physical(Series s)
     for (std::size_t p = 0; p < s.N; ++p)
         golden::to_physical(s.spectral.data() + p * s.B * s.T, s.T);
     s.name += ":phys";
-    s.h = golden::physical_harmonic();
+    s.h = physical_options();
     return s;
 }
 
-Series from_pixel(const std::string& name, const Pixel& p, const ccd::HarmonicOptions& h)
+Series from_pixel(const std::string& name, const Pixel& p, const Options& h)
 {
     return {name, p.dates, p.spectral, p.qas, 1, 7, p.dates.size(), h};
 }
@@ -369,15 +388,15 @@ std::vector<Series> fixture_inputs()
 
     {
         const Pixel p = read_csv("test_3657_3610_observations.csv");
-        out.push_back(from_pixel("pyccd", p, ccd::HarmonicOptions{}));
+        out.push_back(from_pixel("pyccd", p, Options{}));
         out.push_back(to_physical(out.back()));
 
         Pixel bounds = p;
         golden::put_bound_values(bounds.spectral.data(), bounds.qas.data(), bounds.dates.size());
-        out.push_back(from_pixel("bounds", bounds, ccd::HarmonicOptions{}));
+        out.push_back(from_pixel("bounds", bounds, Options{}));
         out.push_back(to_physical(out.back()));
 
-        out.push_back(from_pixel("c2", read_csv("test002_c2.csv"), golden::c2_harmonic()));
+        out.push_back(from_pixel("c2", read_csv("test002_c2.csv"), Options{golden::c2_input(), {}}));
     }
 
     for (const auto& spec : GOLDEN_CUBES)
@@ -385,7 +404,7 @@ std::vector<Series> fixture_inputs()
         out.push_back(from_cube(
             spec.name,
             golden::make_cube(spec.seed, spec.regime, spec.H, spec.W),
-            ccd::HarmonicOptions{}));
+            Options{}));
         out.push_back(to_physical(out.back()));
     }
 
@@ -400,7 +419,7 @@ std::vector<Series> fixture_inputs()
             out.push_back({
                 std::string(profiles[pi].name) + ":" + spec.name,
                 c.dates, c.spectral, c.qas, c.H * c.W, c.B, c.T,
-                profiles[pi].h});
+                {profiles[pi].h, golden::shared_of(profiles[pi].config, profiles[pi].h)}});
         }
     }
 
@@ -412,7 +431,7 @@ std::vector<Series> fixture_inputs()
 //
 // Each value is drawn from the cases the filters distinguish: either bound
 // itself, just inside and just outside each, mid-range, far outside, and
-// NaN. Dates repeat, and STAT_ORD falls before, inside or after the series.
+// NaN. Dates repeat, and stat_ord falls before, inside or after the series.
 //------------------------------------------------------------------------------
 
 struct Unit
@@ -496,27 +515,27 @@ Series random_series(golden::Rng& rng, const Unit& unit)
         }
     }
 
-    ccd::HarmonicOptions& h = s.h;
-    h.REFL_MIN = unit.refl_lo;
-    h.REFL_MAX = unit.refl_hi;
-    h.THERM_MIN = unit.therm_lo;
-    h.THERM_MAX = unit.therm_hi;
-    h.MEDIAN_GREEN_FILTER = unit.green_filter;
+    ccd::Input& h = s.h.input;
+    h.refl_min = unit.refl_lo;
+    h.refl_max = unit.refl_hi;
+    h.therm_min = unit.therm_lo;
+    h.therm_max = unit.therm_hi;
+    s.h.shared.green_filter = unit.green_filter;
 
-    // STAT_ORD before the series, inside it (often on an observation's
+    // stat_ord before the series, inside it (often on an observation's
     // date), or after it.
     switch (rng.below(4))
     {
-        case 0: h.STAT_ORD = s.dates.front() - 1; break;
-        case 1: h.STAT_ORD = s.dates.back() + 1; break;
-        default: h.STAT_ORD = s.dates[rng.below(T)]; break;
+        case 0: s.h.shared.stat_ord = s.dates.front() - 1; break;
+        case 1: s.h.shared.stat_ord = s.dates.back() + 1; break;
+        default: s.h.shared.stat_ord = s.dates[rng.below(T)]; break;
     }
 
     // Some series have no thermal band to test, or no saturation bands.
     if (rng.uniform() < 0.1)
-        h.THERMAL_IDX = ccd::NO_BAND;
+        h.roles[6] = "other";
     if (rng.uniform() < 0.05)
-        h.SATURATION_BANDS = ccd::BandList{};
+        h.saturation_bands = ccd::BandList{};
 
     return s;
 }
@@ -528,14 +547,15 @@ std::string dump(const ccd::FitResult& r)
     return out;
 }
 
+// run_pixel() under "ccdc".
 ccd::FitResult run_detect(
     const PixelView& px,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config,
+    const ccd::Input& h,
     const ccd::PreprocessPlanPtr& plan
 )
 {
-    return ccd::run_pixel(golden::spec_of(h, config, nullptr, plan), px.dates, px.spectral, px.qas).result;
+    return ccd::run_pixel(golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, plan),
+                          px.dates, px.spectral, px.qas).result;
 }
 
 } // namespace
@@ -558,8 +578,9 @@ TEST(DefaultPlan, Shape)
         return out;
     };
 
-    const ccd::HarmonicOptions h;
-    const pp::PreprocessPlan plan = pp::default_plan(h);
+    const ccd::Input h;
+    const ccd::config::Shared shared;
+    const pp::PreprocessPlan plan = pp::default_plan(h, shared);
 
     EXPECT_EQ(kinds(plan.standard.chain), common);
 
@@ -572,32 +593,33 @@ TEST(DefaultPlan, Shape)
     EXPECT_EQ(kinds(plan.insufficient_clear.chain), clear);
 
     ASSERT_TRUE(plan.standard.transform.has_value());
-    EXPECT_EQ(plan.standard.transform->band, h.THERMAL_IDX);
-    EXPECT_EQ(plan.standard.transform->scale, h.THERMAL_SCALE);
-    EXPECT_EQ(plan.standard.transform->offset, h.THERMAL_OFFSET);
+    EXPECT_EQ(plan.standard.transform->band, h.index("thermal"));
+    EXPECT_EQ(plan.standard.transform->scale, h.thermal_scale);
+    EXPECT_EQ(plan.standard.transform->offset, h.thermal_offset);
     EXPECT_FALSE(plan.snow.transform.has_value());
     EXPECT_FALSE(plan.insufficient_clear.transform.has_value());
 
     const pp::Step& keep = plan.standard.chain[0];
-    EXPECT_EQ(keep.codes, pp::qa_set({h.QA_CLEAR, h.QA_WATER}));
-    EXPECT_EQ(plan.snow.chain[4].codes, pp::qa_set({h.QA_SNOW}));
+    EXPECT_EQ(keep.codes, pp::qa_set({h.qa_clear, h.qa_water}));
+    EXPECT_EQ(plan.snow.chain[4].codes, pp::qa_set({h.qa_snow}));
 
     const pp::Step& green = plan.insufficient_clear.chain[4];
-    EXPECT_EQ(green.band, h.GREEN_IDX);
-    EXPECT_EQ(green.green_offset, h.MEDIAN_GREEN_FILTER);
-    EXPECT_EQ(green.max_date, h.STAT_ORD);
-    EXPECT_EQ(green.scope, h.GREEN_FILTER_SCOPE);
+    EXPECT_EQ(green.band, h.index("green"));
+    EXPECT_EQ(green.green_offset, shared.green_filter);
+    EXPECT_EQ(green.green_offset, 400.0);
+    EXPECT_EQ(green.max_date, shared.stat_ord);
+    EXPECT_EQ(green.scope, ccd::GreenFilterScope::StatWindow);
 
     // The identity transform, and an input without thermal, have none; the
     // latter also has no ThermalRange step.
-    ccd::HarmonicOptions identity = h;
-    identity.THERMAL_SCALE = 1.0;
-    identity.THERMAL_OFFSET = 0.0;
-    EXPECT_FALSE(pp::default_plan(identity).standard.transform.has_value());
+    ccd::Input identity = h;
+    identity.thermal_scale = 1.0;
+    identity.thermal_offset = 0.0;
+    EXPECT_FALSE(pp::default_plan(identity, shared).standard.transform.has_value());
 
-    ccd::HarmonicOptions no_thermal = h;
-    no_thermal.THERMAL_IDX = ccd::NO_BAND;
-    const pp::PreprocessPlan nt = pp::default_plan(no_thermal);
+    ccd::Input no_thermal = h;
+    no_thermal.roles[6] = "other";
+    const pp::PreprocessPlan nt = pp::default_plan(no_thermal, shared);
     EXPECT_FALSE(nt.standard.transform.has_value());
     EXPECT_EQ(kinds(nt.standard.chain), (std::vector<K>{K::KeepQa, K::BandRange, K::Dedupe}));
 }
@@ -658,7 +680,7 @@ TEST(DefaultPlan, ApplyResetsTheMask)
 {
     const Pixel p = read_csv("test_3657_3610_observations.csv");
     const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
-    const pp::PreprocessPlan plan = pp::default_plan(ccd::HarmonicOptions{});
+    const pp::PreprocessPlan plan = default_plan(Options{});
 
     ccd::ProcessingMask fresh;
     pp::apply(plan.snow.chain, px.dates, px.spectral, px.qas, fresh);
@@ -679,22 +701,21 @@ TEST(DefaultPlan, ApplyResetsTheMask)
 TEST(CustomPlan, NullIsTheDefaultPlan)
 {
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
-    const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree config = golden::ccdc();
-    const auto plan = std::make_shared<const pp::PreprocessPlan>(pp::default_plan(h));
+    const ccd::Input h;
+    const auto plan = std::make_shared<const pp::PreprocessPlan>(default_plan(Options{}));
     const std::size_t T = c.T;
 
     for (std::size_t p = 0; p < c.H * c.W; ++p)
     {
         const PixelView px = view(c.dates, c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T);
-        EXPECT_EQ(dump(run_detect(px, h, config, nullptr)), dump(run_detect(px, h, config, plan)))
+        EXPECT_EQ(dump(run_detect(px, h, nullptr)), dump(run_detect(px, h, plan)))
             << "pixel " << p;
     }
 
     auto cube = [&](const ccd::PreprocessPlanPtr& given)
     {
         const ccd::CubeResult r = ccd::run_cube(
-            golden::spec_of(h, config, nullptr, given),
+            golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, given),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -714,15 +735,14 @@ TEST(CustomPlan, StandardKeepsSnow)
 {
     const Pixel p = read_csv("test_3657_3610_observations.csv");
     const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
-    const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree config = golden::ccdc();
+    const ccd::Input h;
 
-    pp::PreprocessPlan custom = pp::default_plan(h);
-    custom.standard.chain[0].codes.set(h.QA_SNOW);
+    pp::PreprocessPlan custom = default_plan(Options{});
+    custom.standard.chain[0].codes.set(h.qa_snow);
     const auto plan = std::make_shared<const pp::PreprocessPlan>(custom);
 
-    const ccd::FitResult base = run_detect(px, h, config, nullptr);
-    const ccd::FitResult snowy = run_detect(px, h, config, plan);
+    const ccd::FitResult base = run_detect(px, h, nullptr);
+    const ccd::FitResult snowy = run_detect(px, h, plan);
 
     // Both are Standard fits.
     ASSERT_FALSE(base.models.empty());
@@ -734,7 +754,7 @@ TEST(CustomPlan, StandardKeepsSnow)
     {
         std::size_t n = 0;
         for (index_t t = 0; t < mask.size(); ++t)
-            n += mask.test(t) && p.qas[t] == h.QA_SNOW;
+            n += mask.test(t) && p.qas[t] == h.qa_snow;
         return n;
     };
 
@@ -745,7 +765,7 @@ TEST(CustomPlan, StandardKeepsSnow)
 
 // The thermal transform on every procedure. That is the default plan run
 // on an input whose thermal band the caller transformed beforehand, with the
-// identity transform in the options -- for every procedure, Standard
+// identity transform in the input -- for every procedure, Standard
 // included. Thermal values of 1000 (Kelvin x 10) at some clear observations
 // pass the untransformed test of the default PermanentSnow and
 // InsufficientClear chains, and fail once transformed, so those pixels
@@ -768,10 +788,9 @@ TEST(CustomPlan, TransformOnEveryProcedure)
         }
     }
 
-    const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree config = golden::ccdc();
+    const ccd::Input h;
 
-    pp::PreprocessPlan everywhere = pp::default_plan(h);
+    pp::PreprocessPlan everywhere = default_plan(Options{});
     everywhere.snow.transform = everywhere.standard.transform;
     everywhere.insufficient_clear.transform = everywhere.standard.transform;
     const auto plan = std::make_shared<const pp::PreprocessPlan>(everywhere);
@@ -782,12 +801,12 @@ TEST(CustomPlan, TransformOnEveryProcedure)
         for (std::size_t t = 0; t < T; ++t)
         {
             double& v = converted[p * 7 * T + 6 * T + t];
-            v = v * h.THERMAL_SCALE + h.THERMAL_OFFSET;
+            v = v * h.thermal_scale + h.thermal_offset;
         }
 
-    ccd::HarmonicOptions identity = h;
-    identity.THERMAL_SCALE = 1.0;
-    identity.THERMAL_OFFSET = 0.0;
+    ccd::Input identity = h;
+    identity.thermal_scale = 1.0;
+    identity.thermal_offset = 0.0;
 
     // Pixels whose processing mask the plan changed, by procedure.
     std::size_t standard_changed = 0;
@@ -799,11 +818,11 @@ TEST(CustomPlan, TransformOnEveryProcedure)
         const PixelView raw = view(c.dates, c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T);
         const PixelView pre = view(c.dates, converted.data() + p * 7 * T, 7, c.qas.data() + p * T);
 
-        const ccd::FitResult with_plan = run_detect(raw, h, config, plan);
-        EXPECT_EQ(dump(with_plan), dump(run_detect(pre, identity, config, nullptr))) << "pixel " << p;
+        const ccd::FitResult with_plan = run_detect(raw, h, plan);
+        EXPECT_EQ(dump(with_plan), dump(run_detect(pre, identity, nullptr))) << "pixel " << p;
         per_pixel += dump(with_plan);
 
-        const ccd::FitResult base = run_detect(raw, h, config, nullptr);
+        const ccd::FitResult base = run_detect(raw, h, nullptr);
         if (base.mask.data() != with_plan.mask.data())
         {
             const bool standard =
@@ -817,7 +836,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     EXPECT_EQ(standard_changed, 0u);
 
     const ccd::CubeResult cube = ccd::run_cube(
-        golden::spec_of(h, config, nullptr, plan),
+        golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, plan),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -853,52 +872,54 @@ void expect_rejected(const pp::PreprocessPlan& plan, index_t bands, const std::s
 
 TEST(PlanValidation, DefaultPlanIsValid)
 {
-    EXPECT_NO_THROW(pp::validate(pp::default_plan(ccd::HarmonicOptions{}), 7));
-    EXPECT_NO_THROW(pp::validate(pp::default_plan(golden::physical_harmonic()), 7));
+    EXPECT_NO_THROW(pp::validate(default_plan(Options{}), 7));
+    EXPECT_NO_THROW(pp::validate(default_plan(physical_options()), 7));
     for (const auto& profile : golden::bands::profiles())
-        EXPECT_NO_THROW(pp::validate(pp::default_plan(profile.h), profile.h.NUM_BANDS))
+        EXPECT_NO_THROW(pp::validate(
+                            pp::default_plan(profile.h, golden::shared_of(profile.config, profile.h)),
+                            profile.h.bands()))
             << profile.name;
 }
 
 TEST(PlanValidation, BandIndexNotBelowBandCount)
 {
-    const ccd::HarmonicOptions h;
+    const Options h;
     const pp::Range r{{0.0, false}, {1.0, false}};
 
     {
-        pp::PreprocessPlan plan = pp::default_plan(h);
+        pp::PreprocessPlan plan = default_plan(h);
         plan.snow.chain[1] = pp::Step::thermal_range(7, r);
         expect_rejected(plan, 7, "snow step 1 (ThermalRange): band 7");
     }
     {
-        pp::PreprocessPlan plan = pp::default_plan(h);
+        pp::PreprocessPlan plan = default_plan(h);
         plan.standard.chain[2] = pp::Step::band_range({0, 1, 9}, r);
         expect_rejected(plan, 7, "standard step 2 (BandRange): band 9");
     }
     {
-        pp::PreprocessPlan plan = pp::default_plan(h);
+        pp::PreprocessPlan plan = default_plan(h);
         plan.insufficient_clear.chain[4].band = 8;
         expect_rejected(plan, 7, "insufficient_clear step 4 (GreenMedian): band 8");
     }
     {
-        pp::PreprocessPlan plan = pp::default_plan(h);
+        pp::PreprocessPlan plan = default_plan(h);
         plan.standard.transform->band = 7;
         expect_rejected(plan, 7, "standard transform: band 7");
     }
     // The default plan is valid for 7 bands and not for 6: thermal is band 6.
-    expect_rejected(pp::default_plan(h), 6, "band 6 is not below the band count 6");
+    expect_rejected(default_plan(h), 6, "band 6 is not below the band count 6");
 }
 
 TEST(PlanValidation, GreenMedianWithoutBand)
 {
-    pp::PreprocessPlan plan = pp::default_plan(ccd::HarmonicOptions{});
+    pp::PreprocessPlan plan = default_plan(Options{});
     plan.insufficient_clear.chain[4].band = ccd::NO_BAND;
     expect_rejected(plan, 7, "insufficient_clear step 4 (GreenMedian): needs a band");
 }
 
 TEST(PlanValidation, TransformBandInBandRange)
 {
-    pp::PreprocessPlan plan = pp::default_plan(ccd::HarmonicOptions{});
+    pp::PreprocessPlan plan = default_plan(Options{});
     plan.snow.transform = pp::Affine{3, 2.0, 1.0};
     expect_rejected(plan, 7, "snow transform: band 3 is also tested by step 2 (BandRange)");
 
@@ -909,17 +930,18 @@ TEST(PlanValidation, TransformBandInBandRange)
 
 TEST(PlanValidation, AddQaNotFollowedByDedupe)
 {
-    const ccd::HarmonicOptions h;
+    const Options options;
+    const ccd::Input& h = options.input;
     {
         // AddQa last.
-        pp::PreprocessPlan plan = pp::default_plan(h);
-        plan.standard.chain.push_back(pp::Step::add_qa(pp::qa_set({h.QA_SNOW})));
+        pp::PreprocessPlan plan = default_plan(options);
+        plan.standard.chain.push_back(pp::Step::add_qa(pp::qa_set({h.qa_snow})));
         expect_rejected(plan, 7, "standard step 4 (AddQa): must be followed by a Dedupe");
     }
     {
         // AddQa followed by another step.
-        pp::PreprocessPlan plan = pp::default_plan(h);
-        plan.snow.chain[5] = pp::Step::keep_qa(pp::qa_set({h.QA_CLEAR}));
+        pp::PreprocessPlan plan = default_plan(options);
+        plan.snow.chain[5] = pp::Step::keep_qa(pp::qa_set({h.qa_clear}));
         expect_rejected(plan, 7, "snow step 4 (AddQa): must be followed by a Dedupe");
     }
 }
@@ -931,7 +953,7 @@ TEST(PlanValidation, ChainOverCapacity)
         chain.push_back(pp::Step::dedupe());
     EXPECT_THROW(chain.push_back(pp::Step::dedupe()), std::invalid_argument);
 
-    pp::PreprocessPlan plan = pp::default_plan(ccd::HarmonicOptions{});
+    pp::PreprocessPlan plan = default_plan(Options{});
     plan.standard.chain.count = pp::CHAIN_CAPACITY + 1;
     expect_rejected(plan, 7, "standard chain: holds 9 steps; at most 8");
 }
@@ -942,19 +964,18 @@ TEST(PlanValidation, EntryPointsReject)
 {
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 2, 2);
     const std::size_t T = c.T;
-    const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree config = golden::ccdc();
+    const ccd::Input h;
 
-    pp::PreprocessPlan bad = pp::default_plan(h);
+    pp::PreprocessPlan bad = default_plan(Options{});
     bad.insufficient_clear.chain[4].band = ccd::NO_BAND;
     const auto plan = std::make_shared<const pp::PreprocessPlan>(bad);
 
     const PixelView px = view(c.dates, c.spectral.data(), 7, c.qas.data());
-    EXPECT_THROW(run_detect(px, h, config, plan), std::invalid_argument);
+    EXPECT_THROW(run_detect(px, h, plan), std::invalid_argument);
 
     EXPECT_THROW(
         ccd::run_cube(
-            golden::spec_of(h, config, nullptr, plan),
+            golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, plan),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -974,9 +995,9 @@ TEST(Microbench, ApplyDefaultChain)
 {
     const Pixel p = read_csv("test_3657_3610_observations.csv");
     const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
-    const ccd::HarmonicOptions h;
-    const pp::PreprocessPlan plan = pp::default_plan(h);
-    const ccd::HarmonicWorkspace workspace(px.dates, px.spectral, px.qas, h);
+    const Options h;
+    const pp::PreprocessPlan plan = default_plan(h);
+    const ccd::HarmonicWorkspace workspace(px.dates, px.spectral, px.qas, h.input, h.shared);
 
     constexpr int REPS = 20000;
     using clock = std::chrono::steady_clock;

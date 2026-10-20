@@ -19,7 +19,7 @@
 //   Cloudy     cloud-dominated QA, so run_pixel() takes InsufficientClear.
 //
 // Optical rows are reflectance x 10000 and a thermal row is Kelvin x 10, the
-// units of the default HarmonicOptions. Fill observations carry -9999 in
+// units of the default Input. Fill observations carry -9999 in
 // every row. Dates come from synthetic.hpp's make_dates().
 //
 // The values are only as portable as the C library's sin/cos/log; the

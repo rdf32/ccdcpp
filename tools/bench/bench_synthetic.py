@@ -1,8 +1,8 @@
 """bench_synthetic.py <module_dir> <corpus.bin> <dtype: f64|u16> <entry: cols|cube> <threads> <reps>
 
 The synthetic timing of one build: the corpus of make_corpus.cpp tiled 2x2 (8000 pixels),
-through ccdcpp.detect_cube_columns ("cols") or ccdcpp.detect_cube ("cube") with default
-options, `threads` threads, best of `reps` calls. Prints the best wall time of the call and its
+through ccdcpp.detect_cube_columns ("cols") or ccdcpp.detect_cube ("cube") with the default
+input, `threads` threads, best of `reps` calls. Prints the best wall time of the call and its
 time per pixel, and the file `import ccdcpp` loaded.
 
 `module_dir` is a directory from which `import ccdcpp` loads the build under test: the build
@@ -39,7 +39,7 @@ for i in range(2):
         np.clip(spec, 0, 65535, out=src[i * H:(i + 1) * H, j * W:(j + 1) * W], casting="unsafe")
 del spec
 
-h = ccdcpp.HarmonicOptions()
+h = ccdcpp.Input()
 fn = ccdcpp.detect_cube_columns if entry == "cols" else ccdcpp.detect_cube
 rss0 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 best = float("inf")

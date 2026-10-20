@@ -29,18 +29,18 @@ const std::vector<config::Field<LassoEdges::Params>>& LassoEdges::schema()
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
         {"coefficients", &Params::coefficients, Unit::None, config::at_least(1),
-         "coefficients of every edge fit"},
+         "coefficients of every edge fit", config::Source::Shared, "coefficient_min"},
         {"min_observations", &Params::min_observations, Unit::Observations, config::any(),
          "kept observations a whole-series curve needs"},
         {"max_iter", &Params::max_iter, Unit::None, config::at_least(0),
-         "coordinate descent sweeps at most"},
+         "coordinate descent sweeps at most", config::Source::Shared, "max_iter"},
         {"alpha", &Params::alpha, Unit::Reflectance, config::at_least(0),
-         "the L1 penalty, in the input's units (1 for Collection-1 DN, 1e-4 for reflectance)"},
+         "the L1 penalty", config::Source::Shared, "alpha"},
         {"tolerance", &Params::tolerance, Unit::None, config::at_least(0),
          "a sweep whose largest update is at most this times max(largest coefficient, "
-         "coef_floor) checks the duality gap"},
+         "coef_floor) checks the duality gap", config::Source::Shared, "tolerance"},
         {"coef_floor", &Params::coef_floor, Unit::Reflectance, config::at_least(0),
-         "the least coefficient size the tolerance scales"},
+         "the least coefficient size the tolerance scales", config::Source::Shared, "coef_floor"},
     };
     return s;
 }

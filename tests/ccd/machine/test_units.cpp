@@ -2,38 +2,42 @@
 //
 // The unit-convention guard.
 //
-// HarmonicOptions and the configuration's Lasso stages carry nine absolute
-// thresholds that are really statements about what unit the caller's
-// `spectral` array is in (THERMAL_SCALE, THERMAL_OFFSET, REFL_MIN, REFL_MAX,
-// THERM_MIN, THERM_MAX, MEDIAN_GREEN_FILTER, plus the Lasso's alpha and
-// coef_floor in stability_fit, model and edge_fit). Their defaults are
+// The Input carries the statements about what unit the caller's `spectral`
+// array is in: reflectance_unit (what one unit of reflectance is in the
+// data), thermal_scale, thermal_offset, refl_min, refl_max, therm_min,
+// therm_max. The configuration's reflectance values -- the shared alpha,
+// coef_floor and green_filter -- are physical and multiplied by
+// reflectance_unit when a run resolves it. The Input defaults are
 // Collection-1 DN, and the regression tests in test_standard.cpp pin those.
 //
 // This file pins the OTHER end: that dividing every band of the input by
-// 10,000 and dividing every one of those thresholds by the same 10,000 gives
-// the identical fit, scaled. That is what makes the algorithm unit-agnostic
-// rather than merely parameterised, and it is the property a future edit is
-// most likely to break silently -- every failure mode here returns numbers,
-// none of them raise.
+// 10,000 and every one of the Input's bounds by the same 10,000, with
+// reflectance_unit 1, gives the identical fit, scaled. That is what makes
+// the algorithm unit-agnostic rather than merely parameterised, and it is
+// the property a future edit is most likely to break silently -- every
+// failure mode here returns numbers, none of them raise.
 //
-// Six tests, the property twice and then in order of how hard the failure is
-// to notice:
+// Seven tests, the property twice and then in order of how hard the failure
+// is to notice:
 //
 //   PhysicalUnitsAreEquivalent  the property itself
 //   PhysicalUnitsAreEquivalentWithExclusiveBounds
 //                               the property with observations on the
 //                               reflectance bounds, which the default
 //                               exclusive bounds drop and inclusive ones keep:
-//                               the *_INCLUSIVE flags are not unit constants
-//   AlphaIsAUnitConstant        alpha left behind: 89 % of coefficients zeroed
-//                               and a different segment count -- and it runs
-//                               FASTER, so wall clock calls it an improvement
-//   CoefFloorIsAUnitConstant    coef_floor left behind: right sparsity, right
-//                               segments, coefficients wrong by 160 %. The one
-//                               a nonzero-count check would miss.
+//                               the *_inclusive flags are not unit constants
+//   ReflectanceUnitIsTheUnit    reflectance_unit left at 10000 on reflectance
+//                               data: alpha and coef_floor at their DN values
+//   AlphaIsAUnitConstant        alpha at its DN value: 89 % of coefficients
+//                               zeroed and a different segment count -- and
+//                               it runs FASTER, so wall clock calls it an
+//                               improvement
+//   CoefFloorIsAUnitConstant    coef_floor at its DN value: right sparsity,
+//                               right segments, coefficients wrong by 160 %.
+//                               The one a nonzero-count check would miss.
 //   BoundsAreUnitConstants      the two filter ranges, in the direction that
 //                               bites -- see below, it is not the obvious one
-//   GreenMedianFilterIsAUnitConstant   the fifth constant, which `detect` on
+//   GreenMedianFilterIsAUnitConstant   the green filter, which `detect` on
 //                               this pixel cannot reach at all
 //
 // Input is the same pyccd reference pixel test_standard.cpp uses, so a failure
@@ -42,17 +46,17 @@
 //------------------------------------------------------------------------------
 // What the equivalence test does NOT guard, measured rather than assumed
 //
-// PhysicalUnitsAreEquivalent passing does not mean all nine constants were
+// PhysicalUnitsAreEquivalent passing does not mean every value was
 // converted. Putting each one back to its DN value one at a time, with the rest
-// of the preset correct:
+// of the physical input correct:
 //
 //     alpha               = 1.0       -> 4 segments instead of 5     CAUGHT
 //     coef_floor          = 1.0       -> coefficients out by 163 %   CAUGHT
-//     REFL_MIN / REFL_MAX             -> no effect whatsoever
-//     THERM_MIN / THERM_MAX           -> no effect whatsoever
-//     MEDIAN_GREEN_FILTER = 400.0     -> no effect whatsoever
+//     refl_min / refl_max             -> no effect whatsoever
+//     therm_min / therm_max           -> no effect whatsoever
+//     green_filter        = 400.0     -> no effect whatsoever
 //
-// The three bounds are invisible because the preset makes them NARROWER, so
+// The bounds are invisible because the physical input makes them NARROWER, so
 // leaving them at the DN value only ever loosens a screen, and a screen that
 // rejects nothing is indistinguishable from a correct screen on clean data.
 // The direction that bites is the reverse one -- DN input with the physical
@@ -60,7 +64,7 @@
 // mask empties, and the pixel returns 0 segments instead of 5. That is
 // BoundsAreUnitConstants.
 //
-// MEDIAN_GREEN_FILTER is invisible for a different and more interesting reason:
+// The green filter is invisible for a different and more interesting reason:
 // the default plan runs the green median filter only in the InsufficientClear
 // chain, and this pixel takes the Standard procedure, so the constant is never
 // read. Even
@@ -69,7 +73,7 @@
 // fit the InsufficientClear procedure directly (ccd::fit_whole_series), the way
 // test_clear.cpp does. That is
 // GreenMedianFilterIsAUnitConstant, and without it this file would have looked
-// like it covered five constants while covering four.
+// like it covered every value while missing one.
 //
 //==============================================================================
 
@@ -186,43 +190,33 @@ std::vector<ccd::scalar_t> to_physical(
     return out;
 }
 
-ccd::HarmonicOptions physical_harmonic()
+// The physical-unit input: reflectance its unit, the thermal transform the
+// identity (the caller already applied it), every bound divided by SCALE.
+ccd::Input physical_input()
 {
-    ccd::HarmonicOptions h;
+    ccd::Input h;
 
-    // Identity: the caller already applied the transform.
-    h.THERMAL_SCALE = 1.0;
-    h.THERMAL_OFFSET = 0.0;
+    h.reflectance_unit = 1.0;
 
-    h.REFL_MIN = 0.0 / SCALE;
-    h.REFL_MAX = 10000.0 / SCALE;
+    h.thermal_scale = 1.0;
+    h.thermal_offset = 0.0;
 
-    h.THERM_MIN = ccd::MIN_CELSIUS / SCALE;
-    h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;
+    h.refl_min = 0.0 / SCALE;
+    h.refl_max = 10000.0 / SCALE;
 
-    h.MEDIAN_GREEN_FILTER = 400.0 / SCALE;
+    h.therm_min = ccd::MIN_CELSIUS / SCALE;
+    h.therm_max = ccd::MAX_CELSIUS / SCALE;
 
     return h;
 }
 
-// The stages that fit a Lasso, whose alpha and coef_floor are unit constants.
-constexpr const char* LASSO_STAGES[] = {"stability_fit", "model", "edge_fit"};
-
-// `config` with alpha and coef_floor set in every Lasso stage.
-ccd::config::ConfigTree with_lasso(ccd::config::ConfigTree config, double alpha, double coef_floor)
+// "ccdc" with the shared alpha and coef_floor at `alpha` and `coef_floor`
+// (in reflectance), which every Lasso stage reads.
+ccd::config::Config with_lasso(double alpha, double coef_floor)
 {
-    for (const char* stage : LASSO_STAGES)
-    {
-        config.at(stage).params.at("alpha") = ccd::config::real(alpha);
-        config.at(stage).params.at("coef_floor") = ccd::config::real(coef_floor);
-    }
-    return config;
-}
-
-// The preset with its Lasso constants in the preset's units.
-ccd::config::ConfigTree physical_config()
-{
-    return with_lasso(golden::ccdc(), 1.0 / SCALE, 1.0 / SCALE);
+    return golden::with_shared(golden::with_shared(golden::ccdc(), "alpha",
+                                                   ccd::config::real(alpha)),
+                               "coef_floor", ccd::config::real(coef_floor));
 }
 
 // The kernels' solver with the same constants, for fit_whole_series().
@@ -239,8 +233,8 @@ ccd::LassoOptions physical_solver()
 ccd::FitResult run(
     const Observations& obs,
     std::vector<ccd::scalar_t> spectral,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config
+    const ccd::Input& h,
+    const ccd::config::Config& config = golden::ccdc()
 )
 {
     auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
@@ -259,7 +253,7 @@ ccd::FitResult run(
 // Fit the InsufficientClear procedure directly (ccd::fit_whole_series), as
 // test_clear.cpp does.
 //
-// Needed because MEDIAN_GREEN_FILTER is unreachable through run_pixel() on this
+// Needed because the green filter is unreachable through run_pixel() on this
 // pixel: the default plan runs the green median filter only in the
 // InsufficientClear chain, and run_pixel() sends this pixel to the Standard
 // procedure.
@@ -269,7 +263,7 @@ ccd::FitResult run(
 // all seven bands, thermal included and left in K x 10. That is what
 // plain_divide() builds, and it is deliberately NOT the same input as
 // to_physical(): the unit a band arrives in is a property of the procedure that
-// reads it, which is the whole reason these are options.
+// reads it, which is the whole reason these are the input's.
 //------------------------------------------------------------------------------
 
 std::vector<ccd::scalar_t> plain_divide(const std::vector<ccd::scalar_t>& dn)
@@ -285,8 +279,8 @@ std::vector<ccd::scalar_t> plain_divide(const std::vector<ccd::scalar_t>& dn)
 ccd::FitResult run_insufficient_clear(
     const Observations& obs,
     const std::vector<ccd::scalar_t>& spectral,   // const: nothing writes to it
-    ccd::HarmonicOptions h,                       // by value: the workspace
-                                                  // binds a non-const reference
+    const ccd::Input& h,
+    const ccd::config::Shared& shared,
     const ccd::LassoOptions& lo
 )
 {
@@ -299,7 +293,8 @@ ccd::FitResult run_insufficient_clear(
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
         obs.qas.data(), {obs.T});
 
-    ccd::HarmonicWorkspace hworkspace(dates, spec, qas, h);
+    ccd::HarmonicWorkspace hworkspace(dates, spec, qas, h, shared);
+    const ccd::config::ConfigTree tree = golden::resolved().stages;
 
     ccd::LassoSolver solver(lo);
     ccd::LassoWorkspace lworkspace(obs.T);
@@ -309,9 +304,9 @@ ccd::FitResult run_insufficient_clear(
         hworkspace,
         ccd::filter::insufficientclear(hworkspace),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "min_observations")),
+            golden::parameter<std::int64_t>(tree, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "coefficients")),
+            golden::parameter<std::int64_t>(tree, "edge_fit", "coefficients")),
         lworkspace,
         solver
     );
@@ -383,12 +378,12 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, golden::ccdc()
+        ccd::Input{}
     );
 
     const auto phys = run(
         obs, to_physical(obs.spectral, obs.T),
-        physical_harmonic(), physical_config()
+        physical_input()
     );
 
     // Structure first: if the segmentation moved, comparing coefficients is
@@ -423,14 +418,14 @@ TEST(Units, PhysicalUnitsAreEquivalent)
     EXPECT_LT(worst, 1e-9)
         << "worst relative difference after x" << SCALE << " is " << worst
         << " -- an absolute threshold has been missed somewhere; see the"
-           " \"Input unit convention\" block in harmonic.hpp";
+           " \"Units\" block in input.hpp";
 }
 
 //------------------------------------------------------------------------------
 // The property again, with the reflectance bounds exclusive and observations
 // sitting exactly on them.
 //
-// The *_INCLUSIVE flags are not unit constants: 0 and 10000 in DN are 0.0 and
+// The *_inclusive flags are not unit constants: 0 and 10000 in DN are 0.0 and
 // 1.0 in reflectance, so an exclusive bound rejects the same observations in
 // both units. Five clear observations are moved onto a bound first, so the
 // flags have something to decide: under the default exclusive bounds the
@@ -441,7 +436,7 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 {
     auto obs = read_observations(OBSERVATIONS);
-    const auto original = run(obs, obs.spectral, ccd::HarmonicOptions{}, golden::ccdc());
+    const auto original = run(obs, obs.spectral, ccd::Input{});
 
     std::vector<ccd::index_t> moved;
     for (ccd::index_t t = 0; t < obs.T && moved.size() < 5; t += 37)
@@ -455,26 +450,26 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     }
     ASSERT_EQ(moved.size(), 5u);
 
-    const ccd::HarmonicOptions dn_h;
-    const ccd::HarmonicOptions phys_h = physical_harmonic();
-    ccd::HarmonicOptions inclusive_h;
-    inclusive_h.REFL_MIN_INCLUSIVE = inclusive_h.REFL_MAX_INCLUSIVE = true;
+    const ccd::Input dn_h;
+    const ccd::Input phys_h = physical_input();
+    ccd::Input inclusive_h;
+    inclusive_h.refl_min_inclusive = inclusive_h.refl_max_inclusive = true;
 
-    const auto dn_inclusive = run(obs, obs.spectral, inclusive_h, golden::ccdc());
+    const auto dn_inclusive = run(obs, obs.spectral, inclusive_h);
 
-    const auto dn = run(obs, obs.spectral, dn_h, golden::ccdc());
-    const auto phys = run(
-        obs, to_physical(obs.spectral, obs.T), phys_h, physical_config());
+    const auto dn = run(obs, obs.spectral, dn_h);
+    const auto phys = run(obs, to_physical(obs.spectral, obs.T), phys_h);
 
     // The filter mask, before any fitting: the inclusive bound keeps the
     // moved observations, the exclusive one drops them, in both units.
     const auto filter_mask = [&obs](const std::vector<ccd::scalar_t>& spectral,
-                                    const ccd::HarmonicOptions& h) {
+                                    const ccd::Input& h) {
+        const ccd::config::Shared shared = golden::shared_of(golden::ccdc(), h);
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.T}),
-            h);
+            h, shared);
         return ccd::filter::standard(workspace);
     };
 
@@ -515,6 +510,26 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 }
 
 //------------------------------------------------------------------------------
+// Negative control 0 -- the unit itself left behind: reflectance data
+// described as DN, so alpha and coef_floor resolve to their DN values.
+//------------------------------------------------------------------------------
+
+TEST(Units, ReflectanceUnitIsTheUnit)
+{
+    const auto obs = read_observations(OBSERVATIONS);
+
+    const auto dn = run(obs, obs.spectral, ccd::Input{});
+
+    ccd::Input h = physical_input();
+    h.reflectance_unit = 10000.0;
+    const auto bad = run(obs, to_physical(obs.spectral, obs.T), h);
+
+    ASSERT_GT(count_nonzero(dn), 0u);
+    EXPECT_LT(count_nonzero(bad) * 4, count_nonzero(dn));
+    EXPECT_NE(dn.models.size(), bad.models.size());
+}
+
+//------------------------------------------------------------------------------
 // Negative control 1 -- the loud one, which is still not loud.
 //------------------------------------------------------------------------------
 
@@ -524,15 +539,15 @@ TEST(Units, AlphaIsAUnitConstant)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, golden::ccdc()
+        ccd::Input{}
     );
 
-    // alpha at the DN value, left behind in every Lasso stage.
-    const ccd::config::ConfigTree config = with_lasso(golden::ccdc(), 1.0, 1.0 / SCALE);
+    // alpha written at the DN value, which every Lasso stage reads.
+    const ccd::config::Config config = with_lasso(1.0, 1.0 / SCALE);
 
     const auto bad = run(
         obs, to_physical(obs.spectral, obs.T),
-        physical_harmonic(), config
+        physical_input(), config
     );
 
     const std::size_t reference = count_nonzero(dn);
@@ -565,15 +580,15 @@ TEST(Units, CoefFloorIsAUnitConstant)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, golden::ccdc()
+        ccd::Input{}
     );
 
-    // coef_floor at the DN value, left behind in every Lasso stage.
-    const ccd::config::ConfigTree config = with_lasso(golden::ccdc(), 1.0 / SCALE, 1.0);
+    // coef_floor written at the DN value, which every Lasso stage reads.
+    const ccd::config::Config config = with_lasso(1.0 / SCALE, 1.0);
 
     const auto quiet = run(
         obs, to_physical(obs.spectral, obs.T),
-        physical_harmonic(), config
+        physical_input(), config
     );
 
     ASSERT_EQ(dn.models.size(), quiet.models.size());
@@ -613,31 +628,31 @@ TEST(Units, BoundsAreUnitConstants)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, golden::ccdc()
+        ccd::Input{}
     );
 
     ASSERT_GT(dn.models.size(), 0u);
 
     {
-        ccd::HarmonicOptions h;                 // DN input...
-        h.REFL_MIN = 0.0 / SCALE;               // ...physical saturation bound
-        h.REFL_MAX = 10000.0 / SCALE;
+        ccd::Input h;                           // DN input...
+        h.refl_min = 0.0 / SCALE;               // ...physical saturation bound
+        h.refl_max = 10000.0 / SCALE;
 
-        const auto out = run(obs, obs.spectral, h, golden::ccdc());
+        const auto out = run(obs, obs.spectral, h);
 
         EXPECT_EQ(out.models.size(), 0u)
             << "reflectance bounds against DN input left "
             << out.models.size() << " segments; every observation is supposed"
-               " to be screened out, which is what makes REFL_MIN/REFL_MAX"
+               " to be screened out, which is what makes refl_min/refl_max"
                " observable at all";
     }
 
     {
-        ccd::HarmonicOptions h;                 // DN input...
-        h.THERM_MIN = ccd::MIN_CELSIUS / SCALE; // ...physical thermal bound
-        h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;
+        ccd::Input h;                           // DN input...
+        h.therm_min = ccd::MIN_CELSIUS / SCALE; // ...physical thermal bound
+        h.therm_max = ccd::MAX_CELSIUS / SCALE;
 
-        const auto out = run(obs, obs.spectral, h, golden::ccdc());
+        const auto out = run(obs, obs.spectral, h);
 
         EXPECT_EQ(out.models.size(), 0u)
             << "thermal bounds against DN input left "
@@ -650,7 +665,8 @@ TEST(Units, BoundsAreUnitConstants)
 //
 // Through the InsufficientClear procedure, because that is the only caller of
 // apply_green_median_filter. Two assertions: the plain-divisor equivalence holds
-// for this procedure too, and MEDIAN_GREEN_FILTER left at 400.0 breaks it.
+// for this procedure too, and the green filter at its DN value, 400.0, breaks
+// it.
 //------------------------------------------------------------------------------
 
 TEST(Units, GreenMedianFilterIsAUnitConstant)
@@ -660,15 +676,17 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
 
     const auto dn = run_insufficient_clear(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, ccd::LassoOptions{}
+        ccd::Input{}, ccd::config::Shared{}, ccd::LassoOptions{}
     );
 
-    ccd::HarmonicOptions h = physical_harmonic();
-    h.THERM_MIN = ccd::MIN_CELSIUS / SCALE;     // thermal is K x 10 / SCALE
-    h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;     // here, not Celsius -- see
+    ccd::Input h = physical_input();
+    h.therm_min = ccd::MIN_CELSIUS / SCALE;     // thermal is K x 10 / SCALE
+    h.therm_max = ccd::MAX_CELSIUS / SCALE;     // here, not Celsius -- see
                                                 // plain_divide's comment
+    const ccd::config::Shared shared = golden::shared_of(golden::ccdc(), h);
+    ASSERT_EQ(shared.green_filter, 0.04);
 
-    const auto phys = run_insufficient_clear(obs, scaled, h, physical_solver());
+    const auto phys = run_insufficient_clear(obs, scaled, h, shared, physical_solver());
 
     ASSERT_EQ(dn.models.size(), phys.models.size());
     ASSERT_GT(dn.models.size(), 0u);
@@ -677,12 +695,11 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     EXPECT_LT(worst_relative(dn, phys), 1e-9);
 
     // Now the constant on its own.
-    ccd::HarmonicOptions bad = h;
-    bad.MEDIAN_GREEN_FILTER = 400.0;            // the DN value, left behind
+    ccd::config::Shared bad = shared;
+    bad.green_filter = 400.0;                   // the DN value, left behind
 
     const auto out = run_insufficient_clear(
-        obs, scaled, bad, physical_solver()
-
+        obs, scaled, h, bad, physical_solver()
     );
 
     // Compared against the DN fit, not against `phys` -- worst_relative()
@@ -694,8 +711,8 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
         count_nonzero(out) != count_nonzero(dn);
 
     EXPECT_TRUE(moved)
-        << "MEDIAN_GREEN_FILTER=400.0 at reflectance scale changed nothing"
+        << "green_filter=400.0 at reflectance scale changed nothing"
            " even through the procedure that reads it. If that is now true,"
-           " this constant has no guard anywhere -- say so in harmonic.hpp"
+           " this value has no guard anywhere -- say so in input.hpp"
            " rather than deleting the test";
 }

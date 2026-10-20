@@ -7,302 +7,14 @@
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/band_list.hpp"
+#include "ccd/config/shared.hpp"
+#include "ccd/input/input.hpp"
 #include "ccd/input/pmask.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/core/array_view.hpp"
 
 namespace ccd
 {
-
-//==============================================================================
-//
-// GreenFilterScope
-//
-// Which observations the InsufficientClear procedure's green median filter
-// drops. The threshold is the same in each: the median green of the masked
-// observations dated <= STAT_ORD, plus MEDIAN_GREEN_FILTER. A masked
-// observation whose green is >= the threshold is dropped
-//
-//   All          at any date;
-//   StatWindow   only when dated <= STAT_ORD, which is the scope pyccd's
-//                insufficient_clear_filter computes the mask for (the
-//                default);
-//   Off          never: the filter does not run.
-//
-// When no masked observation is dated <= STAT_ORD there is no median and
-// nothing is dropped.
-//
-//==============================================================================
-
-enum class GreenFilterScope : std::uint8_t
-{
-    All,
-    StatWindow,
-    Off
-};
-
-//==============================================================================
-//
-// HarmonicOptions
-//
-// Parameters controlling CCD harmonic processing.
-//
-// This class contains no computation.
-//
-//==============================================================================
-
-struct HarmonicOptions
-{
-    //--------------------------------------------------------------------------
-    // QA Values
-    //
-    // The codes the procedures compare `qas` against, one per observation:
-    // the caller's uint8 codes, or a QaTable's output (qa_table.hpp), which
-    // the table builders take from these fields.
-    //
-    //   QA_FILL               not a valid observation in the statistics
-    //   QA_CLEAR, QA_WATER    kept for the fit; the clear percentage
-    //   QA_SNOW               the snow percentage; PermanentSnow's fit
-    //   QA_CLOUD              the statistics' cloud count
-    //
-    // Every other code keeps the observation out of the fit and counts only
-    // toward the total. QA_SHADOW is not read by the procedures; the table
-    // builders write it. QA_CIRRUS1, QA_CIRRUS2 and QA_OCCLUSION are
-    // informational: nothing in ccdcpp reads them.
-    //--------------------------------------------------------------------------
-    std::uint8_t QA_FILL      = 255;
-    std::uint8_t QA_CLEAR     = 0;
-    std::uint8_t QA_WATER     = 1;
-    std::uint8_t QA_SHADOW    = 2;
-    std::uint8_t QA_SNOW      = 3;
-    std::uint8_t QA_CLOUD     = 4;
-    std::uint8_t QA_CIRRUS1   = 8;
-    std::uint8_t QA_CIRRUS2   = 9;
-    std::uint8_t QA_OCCLUSION = 10;
-
-    //--------------------------------------------------------------------------
-    // Quality Thresholds
-    //--------------------------------------------------------------------------
-
-    // Minimum number of clear observations required.
-    index_t CLEAR_OBSERVATION_THRESHOLD = 3;
-
-    //--------------------------------------------------------------------------
-    // Input unit convention
-    //
-    // Every value in this block is an ABSOLUTE threshold, which makes each one
-    // a statement about the unit of the caller's `spectral` array, and
-    // switching collection or unit is a change of options, not of C++.
-    //
-    // The defaults are Collection-1 DN as pyccd consumes it, and the
-    // regression references in tests/ are computed with them.
-    //
-    // The *_INCLUSIVE flags beside the bounds are not unit constants: they say
-    // whether a value equal to a bound is kept, which is the same question in
-    // every unit, so the preset leaves them as they are.
-    //
-    // THE PHYSICAL-UNIT PRESET
-    //
-    // One divisor, 10000, applied to every band of the input and to every
-    // absolute threshold below. Nothing else.
-    //
-    //     THERMAL_SCALE = 1.0       THERMAL_OFFSET = 0.0    (identity)
-    //     REFL_MIN      = 0.0       REFL_MAX       = 1.0
-    //     THERM_MIN     = -0.9320   THERM_MAX      = 0.7070
-    //     MEDIAN_GREEN_FILTER = 0.04
-    //
-    // with the configuration's Lasso alpha and coef_floor (model,
-    // stability_fit, edge_fit) at 1e-4 (Python's profiles convert them:
-    // Units.per_reflectance)
-    //
-    // and the caller pre-divides its own array by 10000:
-    //
-    //     optical  DN / 10000                  -> reflectance 0..1
-    //     thermal  (K*10 - 27315) / 10000      -> degrees Celsius / 100
-    //
-    // The coefficients then come out in those same units, which is the whole
-    // point: no descaling pass on the way out, at any scale, for any band.
-    //
-    // MEASURED, on the pyccd reference pixel in
-    // tests/ccd/machine/test_3657_3610_observations.csv (443 observations,
-    // 5 segments): against the DN defaults, this preset reproduces the
-    // processing mask bit for bit, the same 5 segments with identical
-    // start/end/break days, observation counts and curve_qa, change
-    // probabilities equal to 0.0e+00 absolute, and every coefficient,
-    // intercept, rmse and magnitude equal after multiplying by 10000 to a
-    // worst relative difference of 4.4e-13. It is the same fit.
-    //
-    // WHY DEGREES CELSIUS ITSELF IS NOT THE PRESET
-    //
-    // Feeding plain Celsius is the obvious choice and it is wrong, for a
-    // reason that is invisible from here: the Lasso's alpha is ONE value
-    // shared by all seven band fits, and it is an absolute soft-threshold, so
-    // the preset can only hold if every band shares one scale factor. Optical
-    // DN is 10000x reflectance; the DN thermal path lands on Celsius x 100, so
-    // plain Celsius would be a 100x factor -- two scales, one alpha. Measured
-    // on the same pixel, the Celsius variant leaves the six optical bands
-    // exact (1e-13) and breaks thermal alone: 2 extra nonzero coefficients,
-    // rmse off by 1.7e-2 relative, intercept by 4.0e-2. Celsius/100 looks like
-    // a strange unit to ask a caller for, and it is exactly the unit the
-    // downstream change-detection archive already stores, so nothing is lost.
-    //
-    // Two more things are worth knowing before changing any of these.
-    //
-    // 1. The two collection variants of the saturation bound are ONE
-    //    predicate. Collection-1's (0, 10000) and Collection-2's
-    //    (7273, 43636) both mean "reflectance in (0, 1)" -- C2 surface
-    //    reflectance is DN * 2.75e-5 - 0.2, which maps 7273 -> 0.0000 and
-    //    43636 -> 1.0000. So in physical units there is no collection branch
-    //    left to choose between; it collapses.
-    //
-    // 2. THERM_MIN/THERM_MAX are tested AFTER the transform above, and the
-    //    transform runs for the Standard procedure ONLY. That asymmetry is
-    //    inherited from pyccd, not introduced here: kelvin_to_celsius() is
-    //    called inside standard_procedure() while snow_procedure_filter()
-    //    applies filter_thermal_celsius() to values nothing converted. Under
-    //    the DN defaults the PermanentSnow and InsufficientClear procedures
-    //    therefore test Kelvin x 10 against Celsius x 100 bounds, and since
-    //    Kelvin x 10 is ~2200..3300, comfortably inside [-9320, 7070], the
-    //    filter rejects nothing a sensor records there. It is preserved
-    //    deliberately, because ccdcpp is a recreation of pyccd and the
-    //    regression references encode it.
-    //
-    //    Under the preset the caller has already converted thermal to
-    //    Celsius / 100 for every procedure, so PermanentSnow and
-    //    InsufficientClear test converted values against converted bounds,
-    //    as Standard does, and the filter is live there: a clear or water
-    //    observation outside (-93.20, 70.70) degrees Celsius is dropped
-    //    (PermanentSnow then adds back every snow observation regardless).
-    //    The DN defaults keep that observation. So on those two procedures
-    //    the preset and the DN defaults agree only while no clear or water
-    //    observation's thermal value is out of range; the equivalence
-    //    measured above is on a Standard pixel and does not cover them.
-    //
-    // Where the guard lives, and what each part of it is for.
-    // tests/ccd/machine/test_units.cpp asserts the equivalence above and
-    // then, one constant at a time, that leaving it behind is DETECTED. The
-    // three shapes of detection there are not interchangeable:
-    //
-    //   alpha, coef_floor    caught by the equivalence test directly. alpha
-    //                        also moves the segment count; coef_floor does
-    //                        not and leaves sparsity identical, so only the
-    //                        value comparison catches it.
-    //   REFL_*, THERM_*      NOT caught by it. The preset makes these bounds
-    //                        narrower, so leaving them at the DN value merely
-    //                        loosens a screen, and a screen that rejects
-    //                        nothing is indistinguishable from a correct one.
-    //                        The guard runs them the other way -- DN input,
-    //                        physical bound -- where the mask empties and the
-    //                        pixel returns 0 segments instead of 5.
-    //   MEDIAN_GREEN_FILTER  unreachable through run_pixel() on the reference
-    //                        pixel, because the default plan runs the
-    //                        green median filter in the InsufficientClear
-    //                        chain only and that pixel takes the Standard
-    //                        procedure. Even 0.0
-    //                        changes nothing. Its guard fits the
-    //                        InsufficientClear procedure directly
-    //                        (ccd::fit_whole_series).
-    //
-    // If you add a constant to this block, add its guard in that file and work
-    // out which of the three shapes it is. Two of the five are invisible to
-    // the obvious test.
-    //--------------------------------------------------------------------------
-
-    // Applied to the thermal band of Run::pixel's per-pixel copy before the
-    // Standard procedure runs:
-    //
-    //     thermal <- thermal * THERMAL_SCALE + THERMAL_OFFSET
-    //
-    // The default is pyccd's Kelvin x 10 -> Celsius x 100. The caller's
-    // buffer is never written. The identity (1.0, 0.0) skips the pass, and
-    // with it the copy when the pixel is already contiguous float64, and so
-    // does THERMAL_IDX == NO_BAND.
-    scalar_t THERMAL_SCALE  = KELVIN_SCALE;
-    scalar_t THERMAL_OFFSET = -KELVIN_OFFSET;
-
-    // Saturation bound for the SATURATION_BANDS. An observation is kept when
-    // every one of them lies within (REFL_MIN, REFL_MAX), each end inclusive
-    // or exclusive by its flag (default exclusive on both ends, pyccd's
-    // 0 < value < 10000).
-    //
-    // With either end exclusive NaN is rejected. With both ends inclusive the
-    // test is !(value < REFL_MIN || value > REFL_MAX), under which NaN passes.
-    scalar_t REFL_MIN = 0.0;
-    scalar_t REFL_MAX = 10000.0;
-    bool REFL_MIN_INCLUSIVE = false;
-    bool REFL_MAX_INCLUSIVE = false;
-
-    // Valid range for the THERMAL_IDX band, tested after the
-    // THERMAL_SCALE/THERMAL_OFFSET transform, each end inclusive or exclusive
-    // by its flag (default exclusive on both ends, pyccd's -9320 < value <
-    // 7070, which rejects NaN). Defaults are Celsius x 100; the preset's are
-    // those divided by 10000, i.e. [-0.9320, 0.7070]. NaN passes only with
-    // both ends inclusive, as for the saturation bound.
-    scalar_t THERM_MIN = MIN_CELSIUS;
-    scalar_t THERM_MAX = MAX_CELSIUS;
-    bool THERM_MIN_INCLUSIVE = false;
-    bool THERM_MAX_INCLUSIVE = false;
-
-    // Offset added to the median green value in the InsufficientClear
-    // procedure's cloud screen. 400 is Collection-1 DN; the reflectance
-    // equivalent is 0.04, which is why this is scalar_t and not index_t --
-    // as an integer it could not represent the preset's value at all.
-    scalar_t MEDIAN_GREEN_FILTER = 400.0;
-
-    // Which observations the green median filter drops; see GreenFilterScope.
-    // Not a unit constant.
-    GreenFilterScope GREEN_FILTER_SCOPE = GreenFilterScope::StatWindow;
-
-    //--------------------------------------------------------------------------
-    // Statistics
-    //--------------------------------------------------------------------------
-    // Landsat CCD historical cutoff date.
-    std::int64_t STAT_ORD = 736694;
-
-    //--------------------------------------------------------------------------
-    // Band layout
-    //
-    // The rows of the spectral array. NUM_BANDS is the band count every call
-    // must pass. Each row is fitted and reported -- ChangeModel::bands has
-    // one entry per row, whatever its role -- and the lists and indices
-    // below are where a procedure reads a band by role (the configuration's
-    // band lists, window_screen's, are its own).
-    // ccd::validate() checks them against the input once per call.
-    //
-    // The defaults are the Landsat layout: blue, green, red, nir, swir1,
-    // swir2, thermal.
-    //--------------------------------------------------------------------------
-    index_t NUM_BANDS = 7;
-
-    // Bands whose residuals make up the change magnitude, accumulated in
-    // this order. The count is the degrees of freedom of the chi-squared
-    // distribution behind the thresholds: the configuration's change and
-    // outlier thresholds are chi2(5) quantiles by default, so a caller
-    // changing the count sets them to match, and adjust_change_threshold()
-    // takes its df from here.
-    BandList DETECTION_BANDS = {1, 2, 3, 4, 5};
-
-    // Bands the saturation filter tests against REFL_MIN and REFL_MAX. May be
-    // empty; must not hold THERMAL_IDX.
-    BandList SATURATION_BANDS = {0, 1, 2, 3, 4, 5};
-
-    // GREEN_IDX is read by InsufficientClear's green median filter and is
-    // required. THERMAL_IDX is read by the thermal transform and the thermal
-    // filter; NO_BAND says the input has no thermal band and skips both.
-    //
-    // BLUE_IDX, RED_IDX, NIR_IDX, SWIR1_IDX, SWIR2_IDX and QA_IDX are
-    // informational: no procedure reads them.
-    index_t BLUE_IDX    = 0;
-    index_t GREEN_IDX   = 1;
-    index_t RED_IDX     = 2;
-    index_t NIR_IDX     = 3;
-    index_t SWIR1_IDX   = 4;
-    index_t SWIR2_IDX   = 5;
-    index_t THERMAL_IDX = 6;
-    index_t QA_IDX      = 7;
-
-};
-
 
 //==============================================================================
 //
@@ -336,32 +48,33 @@ public:
     // Constructor
     //----------------------------------------------------------------------
 
-    // The workspace refers to `options`, as it refers to the arrays, and never
-    // writes them: what a procedure derives per pixel (the Standard
-    // procedure's adjusted peek and change threshold) it keeps in its own
-    // records. `options` must outlive the workspace.
+    // The workspace refers to `input` and `shared` (the run's resolved shared
+    // values), as it refers to the arrays, and never writes them: what a
+    // procedure derives per pixel (the Standard procedure's adjusted peek and
+    // change threshold) it keeps in its own records. Both must outlive the
+    // workspace.
     HarmonicWorkspace(
         ArrayView<const std::int64_t, 1> dates,
         ArrayView<const scalar_t, 2> spectral,
         ArrayView<const std::uint8_t, 1> qas,
-        const HarmonicOptions& options
+        const Input& input,
+        const config::Shared& shared
     )
         :
         dates_(dates),
         spectral_(spectral),
         qas_(qas),
-        options_(options)
-    {   
+        input_(input),
+        shared_(shared)
+    {
         validate();
     }
 
     // A temporary would not outlive the workspace.
-    HarmonicWorkspace(
-        ArrayView<const std::int64_t, 1> dates,
-        ArrayView<const scalar_t, 2> spectral,
-        ArrayView<const std::uint8_t, 1> qas,
-        const HarmonicOptions&& options
-    ) = delete;
+    HarmonicWorkspace(ArrayView<const std::int64_t, 1>, ArrayView<const scalar_t, 2>,
+                      ArrayView<const std::uint8_t, 1>, Input&&, const config::Shared&) = delete;
+    HarmonicWorkspace(ArrayView<const std::int64_t, 1>, ArrayView<const scalar_t, 2>,
+                      ArrayView<const std::uint8_t, 1>, const Input&, config::Shared&&) = delete;
 
     //----------------------------------------------------------------------
     // Validation
@@ -397,18 +110,24 @@ public:
         return qas_;
     }
 
-    const HarmonicOptions& options() const
+    const Input& input() const
     {
-        return options_;
+        return input_;
     }
-    
+
+    const config::Shared& shared() const
+    {
+        return shared_;
+    }
+
 private:
 
     ArrayView<const std::int64_t, 1> dates_;
     ArrayView<const scalar_t, 2> spectral_;
     ArrayView<const std::uint8_t, 1> qas_;
 
-    const HarmonicOptions& options_;
+    const Input& input_;
+    const config::Shared& shared_;
 
 };
 

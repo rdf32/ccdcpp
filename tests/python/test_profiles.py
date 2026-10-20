@@ -7,6 +7,7 @@ The package is assembled as the wheel lays it out, python/ccdcpp/*.py next to
 the extension, in a temporary directory. ctest runs this as
 `python_profiles`.
 """
+import copy
 import dataclasses
 import glob
 import inspect
@@ -16,7 +17,6 @@ import pydoc
 import shutil
 import sys
 import unittest
-import warnings
 from unittest import mock
 from datetime import date
 
@@ -144,30 +144,33 @@ def to_physical(spectral):
 
 
 def explicit_physical():
-    """The physical-unit preset written out, as the golden tests write it:
-    (HarmonicOptions, Config)."""
-    h = ccdcpp.HarmonicOptions()
-    h.THERMAL_SCALE = 1.0
-    h.THERMAL_OFFSET = 0.0
-    h.REFL_MIN = 0.0 / SCALE
-    h.REFL_MAX = 10000.0 / SCALE
-    h.THERM_MIN = -9320.0 / SCALE
-    h.THERM_MAX = 7070.0 / SCALE
-    h.MEDIAN_GREEN_FILTER = 400.0 / SCALE
-    cfg = ccdcpp.config("ccdc").replace(**setting("alpha", 1.0 / SCALE),
-                                        **setting("coef_floor", 1.0 / SCALE))
-    return h, cfg
+    """The physical-unit input written out, as the golden tests write it, and the
+    configuration it runs: (Input, Config)."""
+    h = ccdcpp.Input()
+    h.reflectance_unit = 1.0
+    h.thermal_scale = 1.0
+    h.thermal_offset = 0.0
+    h.refl_min = 0.0 / SCALE
+    h.refl_max = 10000.0 / SCALE
+    h.therm_min = -9320.0 / SCALE
+    h.therm_max = 7070.0 / SCALE
+    return h, ccdcpp.config("ccdc")
 
 
-def change_threshold(cfg):
-    return cfg.params("change_test")["change_threshold"]
+def resolved(cfg, input=None):
+    """``cfg``'s stages resolved against ``input`` (default ccdcpp.Input())."""
+    return cfg.resolve(ccdcpp.Input() if input is None else input)["stages"]
 
 
-def outlier_threshold(cfg):
-    return cfg.params("outlier")["threshold"]
+def change_threshold(cfg, input=None):
+    return resolved(cfg, input)["change_test"]["params"]["change_threshold"]
 
 
-# The parameters a profile writes one value into (SensorProfile.config()).
+def outlier_threshold(cfg, input=None):
+    return resolved(cfg, input)["outlier"]["params"]["threshold"]
+
+
+# The parameters one shared value fills in, as a run resolves them.
 GROUPS = {
     "alpha": (("model", "alpha"), ("stability_fit", "alpha"), ("edge_fit", "alpha")),
     "coef_floor": (("model", "coef_floor"), ("stability_fit", "coef_floor"),
@@ -180,18 +183,14 @@ GROUPS = {
 }
 
 
-def option_params(cfg, name):
-    """{(stage, parameter): value} of group ``name`` (GROUPS) in ``cfg``, or of
-    one ``stage__parameter``."""
+def option_params(cfg, name, input=None):
+    """{(stage, parameter): value} of group ``name`` (GROUPS) in ``cfg`` resolved
+    against ``input``, or of one ``stage__parameter``."""
     pairs = GROUPS.get(name) or (tuple(name.split("__", 1)),)
-    return {(stage, param): cfg.params(stage)[param]
+    stages = resolved(cfg, input)
+    return {(stage, param): stages[stage]["params"][param]
             for stage, param in pairs
-            if stage in cfg.stages() and param in cfg.params(stage)}
-
-
-def setting(name, value):
-    """replace() keywords setting every parameter of group ``name`` to ``value``."""
-    return {f"{stage}__{param}": value for stage, param in GROUPS[name]}
+            if stage in stages and param in stages[stage]["params"]}
 
 
 DATES, CUBE_DN, CODES = corpus_cube()
@@ -220,7 +219,7 @@ def strip_band_names(outs):
 
 class Corpus(unittest.TestCase):
     def test_corpus_runs_every_procedure(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         out = EXT.detect_cube_columns(DATES, CUBE_DN, CODES, h, 1)
         self.assertEqual(out["failures"], [])
         # Standard, PermanentSnow and InsufficientClear.
@@ -230,19 +229,19 @@ class Corpus(unittest.TestCase):
 
 class LandsatC1DN(unittest.TestCase):
     def test_options_are_the_defaults_field_by_field(self):
-        h = presets.landsat_c1_dn().options()
+        h = presets.landsat_c1_dn().input()
         cfg = presets.landsat_c1_dn().config()
-        self.assertEqual(fields(h), fields(ccdcpp.HarmonicOptions()))
+        self.assertEqual(fields(h), fields(ccdcpp.Input()))
         self.assertEqual(cfg, ccdcpp.config("ccdc"))
         for threshold in (change_threshold, outlier_threshold):
-            self.assertEqual(threshold(cfg).hex(), threshold(ccdcpp.config("ccdc")).hex())
-        self.assertGreater(len(fields(h)), 30)
+            self.assertEqual(threshold(cfg, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
+        self.assertGreater(len(fields(h)), 20)
         self.assertIsNone(presets.landsat_c1_dn().qa_table())
 
     def test_output_is_the_unprofiled_output(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         profiled = every_entry(DATES, CUBE_DN, CODES, profile=presets.landsat_c1_dn())
-        plain = every_entry(DATES, CUBE_DN, CODES, hoptions=h)
+        plain = every_entry(DATES, CUBE_DN, CODES, input=h)
         assert_same(self, strip_band_names(profiled), plain)
 
 
@@ -251,13 +250,14 @@ class LandsatPhysical(unittest.TestCase):
         h, cfg = explicit_physical()
         for preset in (presets.landsat_c1_physical, presets.landsat_c2):
             with self.subTest(preset=preset.__name__):
-                self.assertEqual(fields(preset().options()), fields(h))
+                self.assertEqual(fields(preset().input()), fields(h))
                 self.assertEqual(preset().config(), cfg)
+                self.assertEqual(preset().config().resolve(preset().input()), cfg.resolve(h))
 
     def test_output_is_the_explicit_physical_output(self):
         h, cfg = explicit_physical()
         profiled = every_entry(DATES, CUBE_PHYS, CODES, profile=presets.landsat_c1_physical())
-        plain = every_entry(DATES, CUBE_PHYS, CODES, hoptions=h, config=cfg)
+        plain = every_entry(DATES, CUBE_PHYS, CODES, input=h, config=cfg)
         assert_same(self, strip_band_names(profiled), plain)
 
     def test_c2_raw_qa_pixel_is_the_decoded_codes(self):
@@ -269,7 +269,7 @@ class LandsatPhysical(unittest.TestCase):
         assert_same(self, decoded, codes)
         h, cfg = explicit_physical()
         assert_same(self, strip_band_names(decoded),
-                    every_entry(DATES, CUBE_PHYS, CODES, hoptions=h, config=cfg))
+                    every_entry(DATES, CUBE_PHYS, CODES, input=h, config=cfg))
 
     def test_presets_state_units_and_band_order(self):
         for preset in LANDSAT_PRESETS:
@@ -317,10 +317,11 @@ class Permutation(unittest.TestCase):
         order = [6, 3, 0, 5, 1, 4, 2]
         base = presets.landsat_c1_dn()
         profile = permuted(base, order)
-        h = profile.options()
-        self.assertEqual(h.GREEN_IDX, order.index(1))
-        self.assertEqual(h.THERMAL_IDX, order.index(6))
-        self.assertEqual(h.DETECTION_BANDS, [order.index(i) for i in (1, 2, 3, 4, 5)])
+        h = profile.input()
+        self.assertEqual(h.index("green"), order.index(1))
+        self.assertEqual(h.index("thermal"), order.index(6))
+        self.assertEqual(profile.config().resolve(h)["shared"]["detection_bands"],
+                         [order.index(i) for i in (1, 2, 3, 4, 5)])
         expected = every_entry(DATES, CUBE_DN, CODES, profile=base)
         got = every_entry(DATES, np.ascontiguousarray(CUBE_DN[:, :, order]), CODES,
                           profile=profile)
@@ -399,7 +400,7 @@ class Check(unittest.TestCase):
         # An 'other' band is fitted, and no list can name it.
         other = dict(roles=base.roles[:5] + ("other", "thermal"),
                      detection=("green", "red", "nir", "swir1"))
-        self.assertEqual(dataclasses.replace(base, **other, saturation=()).options().NUM_BANDS, 7)
+        self.assertEqual(dataclasses.replace(base, **other, saturation=()).input().bands(), 7)
         with self.assertRaises(ValueError) as caught:
             dataclasses.replace(base, **other, saturation=("green", "other"))
         self.assertIn("saturation names 'other'", str(caught.exception))
@@ -413,15 +414,16 @@ class Roles(unittest.TestCase):
 
     def test_nir_broad_is_a_band_role(self):
         # B08 as nir_broad next to B8A as nir: it is fitted, reported and may
-        # be listed, and it is not NIR_IDX.
+        # be listed, and it is not the "nir" row.
         p = ten_band_profile()
-        h = p.options()
+        h = p.input()
         self.assertEqual(p.index("nir_broad"), 6)
-        self.assertEqual(h.NIR_IDX, 7)
-        self.assertIn(6, h.SATURATION_BANDS)
+        self.assertEqual(h.index("nir"), 7)
+        self.assertIn(6, h.saturation_bands)
         q = dataclasses.replace(p, detection=("green", "red", "nir_broad", "nir", "swir1",
                                               "swir2"))
-        self.assertEqual(q.options().DETECTION_BANDS, [1, 2, 6, 7, 8, 9])
+        self.assertEqual(q.config().resolve(q.input())["shared"]["detection_bands"],
+                         [1, 2, 6, 7, 8, 9])
         with self.assertRaises(ValueError) as caught:
             dataclasses.replace(p, roles=p.roles[:7] + ("nir_broad",) + p.roles[8:])
         self.assertIn("repeats a role other than 'other'", str(caught.exception))
@@ -447,7 +449,7 @@ class QaTableOptionsField(unittest.TestCase):
         for aerosol in (False, True):
             with self.subTest(exclude_high_aerosol=aerosol):
                 p = self.hls(qa_table_options={"exclude_high_aerosol": aerosol})
-                h = p.options()
+                h = p.input()
                 expected = ccdcpp.qa_tables.hls_fmask(h, exclude_high_aerosol=aerosol).codes
                 got = p.qa_table().codes
                 self.assertEqual(got.shape, ALL_VALUES.shape)
@@ -464,9 +466,9 @@ class QaTableOptionsField(unittest.TestCase):
 
     def test_follows_the_run_options(self):
         p = self.hls(qa_table_options={"exclude_high_aerosol": True})
-        h = p.options()
-        h.QA_FILL, h.QA_CLEAR, h.QA_WATER = 200, 10, 11
-        h.QA_SHADOW, h.QA_SNOW, h.QA_CLOUD = 12, 13, 14
+        h = copy.copy(p.input())
+        h.qa_fill, h.qa_clear, h.qa_water = 200, 10, 11
+        h.qa_shadow, h.qa_snow, h.qa_cloud = 12, 13, 14
         np.testing.assert_array_equal(p.qa_table(h).codes,
                                       ccdcpp.qa_tables.hls_fmask(h, True).codes)
 
@@ -495,7 +497,7 @@ class QaTableOptionsField(unittest.TestCase):
         fmask[aerosol] = 192
         base = self.hls()
         screened = self.hls(qa_table_options={"exclude_high_aerosol": True})
-        table = ccdcpp.qa_tables.hls_fmask(screened.options(), True)
+        table = ccdcpp.qa_tables.hls_fmask(screened.input(), True)
         got = every_entry(DATES, CUBE_PHYS, fmask, profile=screened)
         assert_same(self, got, every_entry(DATES, CUBE_PHYS, fmask, profile=base, qa_table=table))
         codes = np.where(aerosol, np.uint8(CLOUD), CODES)
@@ -548,7 +550,7 @@ class QaTableOptionsField(unittest.TestCase):
             with self.subTest(builder=builder):
                 signature = getattr(ccdcpp.qa_tables, builder).__doc__.splitlines()[0]
                 self.assertEqual(signature.count(": "), 1 + len(declared), signature)
-                self.assertIn(f"{builder}(options: ", signature)
+                self.assertIn(f"{builder}(input: ", signature)
                 for name, (kind, default) in declared.items():
                     self.assertIn(f"{name}: {kind.__name__} = {default!r}", signature)
 
@@ -654,30 +656,30 @@ class BoundFlags(unittest.TestCase):
                         units=dataclasses.replace(base.units, refl_inclusive=refl),
                         thermal=dataclasses.replace(base.thermal, inclusive=therm),
                     )
-                    h = p.options()
-                    self.assertEqual((h.REFL_MIN_INCLUSIVE, h.REFL_MAX_INCLUSIVE), refl)
-                    self.assertEqual((h.THERM_MIN_INCLUSIVE, h.THERM_MAX_INCLUSIVE), therm)
+                    h = p.input()
+                    self.assertEqual((h.refl_min_inclusive, h.refl_max_inclusive), refl)
+                    self.assertEqual((h.therm_min_inclusive, h.therm_max_inclusive), therm)
 
-    def test_no_thermal_keeps_the_option_defaults(self):
-        h = ten_band_profile().options()
-        default = ccdcpp.HarmonicOptions()
-        self.assertEqual((h.THERM_MIN_INCLUSIVE, h.THERM_MAX_INCLUSIVE),
-                         (default.THERM_MIN_INCLUSIVE, default.THERM_MAX_INCLUSIVE))
+    def test_no_thermal_keeps_the_input_defaults(self):
+        h = ten_band_profile().input()
+        default = ccdcpp.Input()
+        self.assertEqual((h.therm_min_inclusive, h.therm_max_inclusive),
+                         (default.therm_min_inclusive, default.therm_max_inclusive))
 
     def test_flags_are_two_bools(self):
         for bad in ((True,), (True, True, True), (1, 0), ("yes", "no"), True):
             with self.subTest(bad=bad):
                 with self.assertRaises((ValueError, TypeError)):
-                    ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=bad)
+                    ccdcpp.Units(0.0, 1.0, 0.04, 1.0, refl_inclusive=bad)
                 with self.assertRaises((ValueError, TypeError)):
                     ccdcpp.Thermal(1.0, 0.0, -0.932, 0.707, inclusive=bad)
-        self.assertEqual(ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=[False, True]).refl_inclusive,
+        self.assertEqual(ccdcpp.Units(0.0, 1.0, 0.04, 1.0, refl_inclusive=[False, True]).refl_inclusive,
                          (False, True))
 
     def test_hashable_and_picklable(self):
-        u = ccdcpp.Units(0.0, 1.0, 0.04, refl_inclusive=(True, True))
+        u = ccdcpp.Units(0.0, 1.0, 0.04, 1.0, refl_inclusive=(True, True))
         self.assertEqual(pickle.loads(pickle.dumps(u)), u)
-        self.assertEqual(hash(u), hash(ccdcpp.Units(0.0, 1.0, 0.04, (True, True))))
+        self.assertEqual(hash(u), hash(ccdcpp.Units(0.0, 1.0, 0.04, 1.0, (True, True))))
         self.assertNotEqual(u, ccdcpp.REFLECTANCE)
 
 
@@ -687,14 +689,16 @@ class GreenFilterScopeField(unittest.TestCase):
             with self.subTest(preset=preset.__name__):
                 p = preset()
                 self.assertEqual(p.green_filter_scope, "stat_window")
-                self.assertEqual(p.options().GREEN_FILTER_SCOPE, ccdcpp.GreenFilterScope.StatWindow)
+                self.assertEqual(p.config().shared()["green_filter_scope"], "stat_window")
 
     def test_names_and_values(self):
         base = presets.landsat_c1_dn()
         for name, value in ccdcpp.GREEN_FILTER_SCOPES.items():
             with self.subTest(name=name):
                 p = dataclasses.replace(base, green_filter_scope=name)
-                self.assertEqual(p.options().GREEN_FILTER_SCOPE, value)
+                self.assertEqual(p.config().shared()["green_filter_scope"], name)
+                self.assertEqual(p.config().resolve(p.input())["shared"]["green_filter_scope"],
+                                 name)
                 q = dataclasses.replace(base, green_filter_scope=value)
                 self.assertEqual(q.green_filter_scope, name)
                 self.assertEqual(q, p)
@@ -722,19 +726,19 @@ class DateOrder(unittest.TestCase):
 
 
 class Overrides(unittest.TestCase):
-    def test_hoptions_and_config_win(self):
-        h, cfg = ccdcpp.HarmonicOptions(), ccdcpp.config("ccdc")
-        got = every_entry(DATES, CUBE_DN, CODES, hoptions=h, config=cfg,
+    def test_input_and_config_win(self):
+        h, cfg = ccdcpp.Input(), ccdcpp.config("ccdc")
+        got = every_entry(DATES, CUBE_DN, CODES, input=h, config=cfg,
                           profile=presets.landsat_c1_physical())
         assert_same(self, strip_band_names(got),
-                    every_entry(DATES, CUBE_DN, CODES, hoptions=h))
+                    every_entry(DATES, CUBE_DN, CODES, input=h))
 
     def test_each_one_wins_alone(self):
         h_phys, cfg_phys = explicit_physical()
-        h_dn, cfg_dn = ccdcpp.HarmonicOptions(), ccdcpp.config("ccdc")
+        h_dn, cfg_dn = ccdcpp.Input(), ccdcpp.config("ccdc")
         s, q = CUBE_PHYS[0, 0], CODES[0, 0]
         profile = presets.landsat_c1_dn()
-        assert_same(self, without(ccdcpp.detect(DATES, s, q, hoptions=h_phys, profile=profile),
+        assert_same(self, without(ccdcpp.detect(DATES, s, q, input=h_phys, profile=profile),
                                   "band_names"),
                     EXT.detect(DATES, s, q, h_phys, config=cfg_dn.to_dict()))
         assert_same(self, without(ccdcpp.detect(DATES, s, q, config=cfg_phys, profile=profile),
@@ -753,9 +757,9 @@ class Overrides(unittest.TestCase):
             ccdcpp.detect_cube(DATES, CUBE_PHYS, raw, profile=presets.landsat_c2(), qa_table=None)
 
     def test_table_follows_the_run_options(self):
-        h = presets.landsat_c2().options()
-        h.QA_FILL, h.QA_CLEAR, h.QA_WATER = 200, 10, 11
-        h.QA_SHADOW, h.QA_SNOW, h.QA_CLOUD = 12, 13, 14
+        h = copy.copy(presets.landsat_c2().input())
+        h.qa_fill, h.qa_clear, h.qa_water = 200, 10, 11
+        h.qa_shadow, h.qa_snow, h.qa_cloud = 12, 13, 14
         profile = presets.landsat_c2()
         np.testing.assert_array_equal(
             profile.qa_table(h).codes, ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
@@ -765,17 +769,17 @@ class Overrides(unittest.TestCase):
             {FILL: 200, CLEAR: 10, WATER: 11, SHADOW: 12, SNOW: 13, CLOUD: 14}.get,
             otypes=[np.uint8])(CODES)
         assert_same(self,
-                    every_entry(DATES, CUBE_PHYS, raw, hoptions=h, profile=profile),
-                    every_entry(DATES, CUBE_PHYS, renumbered, hoptions=h,
+                    every_entry(DATES, CUBE_PHYS, raw, input=h, profile=profile),
+                    every_entry(DATES, CUBE_PHYS, renumbered, input=h,
                                 config=presets.landsat_c2().config(), profile=profile,
                                 qa_table=None))
 
 
 class BandNames(unittest.TestCase):
     def test_only_with_a_profile(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         names = presets.landsat_c1_dn().band_names
-        plain = every_entry(DATES, CUBE_DN, CODES, hoptions=h)
+        plain = every_entry(DATES, CUBE_DN, CODES, input=h)
         profiled = every_entry(DATES, CUBE_DN, CODES, profile=presets.landsat_c1_dn())
         for out in plain["detect"] + [plain["detect_cube_columns"]]:
             self.assertNotIn("band_names", out)
@@ -790,13 +794,13 @@ class Unprofiled(unittest.TestCase):
     """Without profile= the package entry points are the extension's."""
 
     def test_same_output_every_call_form(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         d, s, q = DATES, CUBE_DN, CODES
         expected = without(EXT.detect_cube_columns(d, s, q, h, 1), "threads")
         forms = {
             # The millworks nlcd plugin's call.
             "keywords": lambda: ccdcpp.detect_cube_columns(
-                dates=d, spectral=s, qas=q, hoptions=h, threads=1),
+                dates=d, spectral=s, qas=q, input=h, threads=1),
             "positional": lambda: ccdcpp.detect_cube_columns(d, s, q, h, 1),
             "qa_table=None": lambda: ccdcpp.detect_cube_columns(d, s, q, h, 1, qa_table=None),
             # "ccdc" is the run without config=.
@@ -815,7 +819,7 @@ class Unprofiled(unittest.TestCase):
                     EXT.detect(d, s[0, 0], raw[0, 0], h, qa_table=table))
 
     def test_signatures_keep_names_and_positions(self):
-        pixel = ["dates", "spectral", "qas", "hoptions"]
+        pixel = ["dates", "spectral", "qas", "input"]
         cube = pixel + ["threads"]
         common = ["qa_table", "preprocess", "profile", "band_names"]
         for name, positional, keywords in (
@@ -839,14 +843,14 @@ class Unprofiled(unittest.TestCase):
                     self.assertEqual(params["threads"].default, 0)
                 if "resume_record" in params:
                     self.assertIs(params["resume_record"].default, False)
-                self.assertIsNone(params["hoptions"].default)
+                self.assertIsNone(params["input"].default)
                 self.assertIsNone(params["config"].default)
 
     def test_config_is_keyword_only_and_defaults_to_ccdc(self):
         # The algorithm is a ccdcpp.Config, given as config= and only by
         # keyword. With or without a profile, config="ccdc" is the default
         # run, and an unknown preset name is refused.
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         d, s, q = DATES, CUBE_DN, CODES
         with self.assertRaises(TypeError):
 
@@ -858,22 +862,22 @@ class Unprofiled(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no configuration 'cdcc'"):
             ccdcpp.detect(d, s[0, 0], q[0, 0], h, config="cdcc")
 
-    def test_options_required_without_a_profile(self):
-        h = ccdcpp.HarmonicOptions()
+    def test_input_required_without_a_profile(self):
+        h = ccdcpp.Input()
         with self.assertRaises(TypeError):
             ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0])
         with self.assertRaises(TypeError):
             ccdcpp.detect_cube_columns(DATES, CUBE_DN, CODES, config="ccdc")
         with self.assertRaises(TypeError):
             ccdcpp.detect_cube(DATES, CUBE_DN, CODES, threads=1)
-        # hoptions alone is a whole call: the configuration defaults to "ccdc".
+        # input alone is a whole call: the configuration defaults to "ccdc".
         self.assertEqual(ccdcpp.detect_cube_columns(DATES, CUBE_DN, CODES, h, 1)["failures"], [])
 
     def test_extension_errors_pass_through(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         with self.assertRaises(ValueError) as caught:
             ccdcpp.detect(DATES, CUBE_DN[0, 0, :6], CODES[0, 0], h)
-        self.assertIn("expects 7", str(caught.exception))
+        self.assertIn("the input has 7", str(caught.exception))
         # The configuration's schemas, checked when the run is built.
         bad = ccdcpp.config("ccdc").replace(change_test__peek_size=1)
         with self.assertRaisesRegex(ValueError, "'peek_size' is 1; it must be at least 2"):
@@ -885,7 +889,7 @@ class Unprofiled(unittest.TestCase):
                 entry = getattr(ccdcpp, name)
                 self.assertEqual((entry.__module__, entry.__name__), ("ccdcpp", name))
                 text = pydoc.render_doc(entry)
-                for word in ("hoptions", "config", "qa_table", "preprocess", "profile",
+                for word in ("input", "config", "qa_table", "preprocess", "profile",
                              "band_names"):
                     self.assertIn(word, text)
                 self.assertIs(pickle.loads(pickle.dumps(entry)), entry)
@@ -902,17 +906,20 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(hash(p), hash(preset()))
                 q = pickle.loads(pickle.dumps(p))
                 self.assertEqual(q, p)
-                self.assertEqual(fields(q.options()), fields(p.options()))
+                self.assertEqual(fields(q.input()), fields(p.input()))
                 self.assertEqual(q.config(), p.config())
                 with self.assertRaises(dataclasses.FrozenInstanceError):
                     p.alpha = 2.0
 
-    def test_options_are_new_objects(self):
+    def test_input_is_built_once_and_copies(self):
         p = presets.landsat_c1_dn()
-        h1, h2 = p.options(), p.options()
-        self.assertIsNot(h1, h2)
-        h1.REFL_MAX = 99.0
-        self.assertEqual(p.options().REFL_MAX, 10000.0)
+        self.assertIs(p.input(), p.input())
+        self.assertIs(p.input(), presets.landsat_c1_dn().input())
+        self.assertIs(p.config(), p.config())
+        h = copy.copy(p.input())
+        self.assertEqual(h, p.input())
+        h.refl_max = 99.0
+        self.assertEqual(p.input().refl_max, 10000.0)
         # The configuration is immutable; replace() is a changed copy.
         cfg = p.config()
         with self.assertRaises(AttributeError):
@@ -924,63 +931,40 @@ class Profiles(unittest.TestCase):
         p = dataclasses.replace(presets.landsat_c1_dn(), stat_ord=None,
                                 cadence={"change_test__peek_reference_days": 5.0,
                                          "start_search__meow_size": 18})
-        h, cfg = p.options(), p.config()
+        h, cfg = p.input(), p.config()
         self.assertEqual(p.cadence, (("change_test__peek_reference_days", 5.0),
                                      ("start_search__meow_size", 18)))
         self.assertEqual(cfg.params("change_test")["peek_reference_days"], 5.0)
         self.assertEqual(cfg.params("start_search")["meow_size"], 18)
         self.assertEqual(cfg.params("edge_fit")["min_observations"], 12)   # its own
-        self.assertEqual(h.STAT_ORD, ccdcpp.NO_STAT_CUTOFF)
-        self.assertEqual(h.STAT_ORD, 2**63 - 1)
+        self.assertEqual(cfg.shared()["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
+        self.assertEqual(cfg.resolve(h)["shared"]["stat_ord"], 2**63 - 1)
 
     def test_change_probability_moves_the_threshold(self):
         p = dataclasses.replace(presets.landsat_c1_dn(),
-                                cadence={"change_test__change_probability": 0.995})
+                                cadence={"shared__change_probability": 0.995})
         cfg = p.config()
         self.assertEqual(set(option_params(cfg, "change_threshold").values()),
                          {ccdcpp.chi2_quantile(0.995, 5)})
-        self.assertEqual(cfg.params("change_test")["change_probability"], 0.995)
+        self.assertEqual(resolved(cfg)["change_test"]["params"]["change_probability"], 0.995)
         self.assertEqual(option_params(cfg, "outlier_threshold"),
                          option_params(ccdcpp.config("ccdc"), "outlier_threshold"))
 
 
 class DetectionCount(unittest.TestCase):
     def test_thresholds_follow_the_count(self):
-        h, cfg = ten_band_profile().options(), ten_band_profile().config()
-        self.assertEqual(len(h.DETECTION_BANDS), 6)
-        self.assertEqual(set(option_params(cfg, "change_threshold").values()),
+        p = ten_band_profile()
+        h, cfg = p.input(), p.config()
+        self.assertEqual(len(cfg.resolve(h)["shared"]["detection_bands"]), 6)
+        self.assertEqual(set(option_params(cfg, "change_threshold", h).values()),
                          {ccdcpp.chi2_quantile(0.99, 6)})
-        self.assertEqual(set(option_params(cfg, "outlier_threshold").values()),
-                         {ccdcpp.chi2_quantile(ccdcpp.OUTLIER_PROBABILITY, 6)})
-        self.assertEqual(ccdcpp.chi2_quantile(ccdcpp.OUTLIER_PROBABILITY, 5).hex(),
+        self.assertEqual(set(option_params(cfg, "outlier_threshold", h).values()),
+                         {ccdcpp.chi2_quantile(1.0 - 1e-6, 6)})
+        self.assertEqual(cfg.shared()["outlier_probability"], 1.0 - 1e-6)
+        self.assertEqual(ccdcpp.chi2_quantile(1.0 - 1e-6, 5).hex(),
                          outlier_threshold(ccdcpp.config("ccdc")).hex())
         self.assertEqual(ccdcpp.chi2_quantile(0.99, 5).hex(),
                          change_threshold(ccdcpp.config("ccdc")).hex())
-
-    def test_warns_on_chi2_5_defaults(self):
-        defaults = ccdcpp.config("ccdc")
-        for name, field, value in (("change_threshold", "change_threshold",
-                                    change_threshold(defaults)),
-                                   ("outlier_threshold", "outlier_threshold",
-                                    outlier_threshold(defaults))):
-            with self.subTest(threshold=name):
-                p = dataclasses.replace(ten_band_profile(), **{field: value})
-                with self.assertWarns(UserWarning) as caught:
-                    cfg = p.config()
-                self.assertIn(f"6 detection bands but {name} is the chi2(5) default",
-                              str(caught.warning))
-                self.assertEqual(option_params(cfg, name), option_params(defaults, name))
-
-    def test_no_warning_otherwise(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            ten_band_profile().options()
-            ten_band_profile().config()
-            dataclasses.replace(ten_band_profile(), change_threshold=20.0).config()
-            for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
-                preset().options()
-                preset().config()
-                preset().qa_table()
 
 
 #------------------------------------------------------------------------------
@@ -1014,7 +998,7 @@ SCL_VALUES = np.array([4, 5, 6, 8, 9, 3, 0], dtype=np.uint8)
 
 def ten_band_inputs(H=2, W=2, seed=5):
     """(dates, spectral (H, W, 10, T) reflectance, raw SCL (H, W, T)): a 5-day
-    series from 2018, after the Landsat STAT_ORD, with a break per pixel."""
+    series from 2018, after the Landsat stat_ord, with a break per pixel."""
     rng = np.random.default_rng(seed)
     dates = (736695 + 5 * np.arange(4 * 73)).astype(np.int64)
     T = dates.size
@@ -1051,27 +1035,28 @@ class TenBand(unittest.TestCase):
     def test_is_the_hand_built_run(self):
         profile = ten_band_profile()
         dates, cube, scl = ten_band_inputs()
-        h = ccdcpp.HarmonicOptions()
-        h.NUM_BANDS = 10
-        h.DETECTION_BANDS = [1, 2, 4, 7, 8, 9]
-        h.SATURATION_BANDS = list(range(10))
-        h.GREEN_IDX = 1
-        h.THERMAL_IDX = ccdcpp.NO_BAND
-        h.REFL_MIN, h.REFL_MAX, h.MEDIAN_GREEN_FILTER = 0.0, 1.0, 0.04
-        h.STAT_ORD = 2**63 - 1
+        h = ccdcpp.Input()
+        h.roles = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
+                   "nir_broad", "nir", "swir1", "swir2"]
+        h.saturation_bands = list(range(10))
+        h.reflectance_unit = 1.0
+        h.refl_min, h.refl_max = 0.0, 1.0
         cfg = ccdcpp.config("ccdc").replace(
-            window_screen__bands=[1, 8],
             change_test__peek_reference_days=10.0,
-            **setting("change_threshold", ccdcpp.chi2_quantile(0.99, 6)),
-            **setting("outlier_threshold", ccdcpp.chi2_quantile(1 - 1e-6, 6)),
-            **setting("alpha", 1e-4),
-            **setting("coef_floor", 1e-4),
+            shared__detection_bands=["green", "red", "red_edge_2", "nir", "swir1", "swir2"],
+            shared__stat_ord=None,
         )
         self.assertEqual(profile.config(), cfg)
+        self.assertEqual(profile.input(), h)
+        r = cfg.resolve(h)
+        self.assertEqual(r["shared"]["detection_bands"], [1, 2, 4, 7, 8, 9])
+        self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], [1, 8])
+        self.assertEqual(set(option_params(cfg, "change_threshold", h).values()),
+                         {ccdcpp.chi2_quantile(0.99, 6)})
         table = ccdcpp.qa_tables.sentinel2_scl(h)
         assert_same(self,
                     strip_band_names(every_entry(dates, cube, scl, profile=profile)),
-                    every_entry(dates, cube, scl, hoptions=h, config=cfg, qa_table=table))
+                    every_entry(dates, cube, scl, input=h, config=cfg, qa_table=table))
 
     def test_documented_example_runs(self):
         # The profile in ccdcpp.profiles' docstring, which is not shipped.
@@ -1082,10 +1067,11 @@ class TenBand(unittest.TestCase):
         exec(compile(inspect.cleandoc("\n" + code), "<profiles docstring>", "exec"), namespace)
         profile = namespace["landsat_oli_c2"]()
         self.assertFalse(hasattr(presets, "landsat_oli_c2"))
-        h = profile.options()
-        self.assertEqual((h.NUM_BANDS, h.GREEN_IDX, h.THERMAL_IDX), (8, 2, 7))
-        self.assertEqual(h.DETECTION_BANDS, [2, 3, 4, 5, 6])
-        self.assertEqual(h.STAT_ORD, ccdcpp.HarmonicOptions().STAT_ORD)
+        h = profile.input()
+        self.assertEqual((h.bands(), h.index("green"), h.index("thermal")), (8, 2, 7))
+        shared = profile.config().resolve(h)["shared"]
+        self.assertEqual(shared["detection_bands"], [2, 3, 4, 5, 6])
+        self.assertEqual(shared["stat_ord"], ccdcpp.config("ccdc").shared()["stat_ord"])
         np.testing.assert_array_equal(profile.qa_table().codes,
                                       ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
 
@@ -1169,31 +1155,26 @@ def s2_inputs(H=2, W=2, seed=9, breaks=True, years=8):
     return dates, (dn + offset) / 10000.0, scl, dn
 
 
-#: Each preset's options, written out: HarmonicOptions() fields that differ.
+#: Each preset's input, written out: the ccdcpp.Input() fields that differ.
 #: Every unnamed field is the default.
-PHYSICAL = dict(REFL_MIN=0.0, REFL_MAX=1.0, MEDIAN_GREEN_FILTER=0.04, STAT_ORD=2**63 - 1)
+PHYSICAL = dict(refl_min=0.0, refl_max=1.0, reflectance_unit=1.0)
+_MSI = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad", "nir",
+        "swir1", "swir2"]
+_HLS = ["coastal", "blue", "green", "red", "nir", "swir1", "swir2"]
 EXPECTED = {
     "hls_l30": dict(
-        PHYSICAL, NUM_BANDS=8, DETECTION_BANDS=[2, 3, 4, 5, 6],
-        SATURATION_BANDS=[0, 1, 2, 3, 4, 5, 6], BLUE_IDX=1, GREEN_IDX=2, RED_IDX=3, NIR_IDX=4,
-        SWIR1_IDX=5, SWIR2_IDX=6, THERMAL_IDX=7, THERMAL_SCALE=1.0, THERMAL_OFFSET=0.0,
-        THERM_MIN=-0.932, THERM_MAX=0.707),
-    "hls_s30": dict(
-        PHYSICAL, NUM_BANDS=11, DETECTION_BANDS=[2, 3, 8, 9, 10],
-        SATURATION_BANDS=list(range(11)), BLUE_IDX=1, GREEN_IDX=2, RED_IDX=3, NIR_IDX=8,
-        SWIR1_IDX=9, SWIR2_IDX=10, THERMAL_IDX=ccdcpp.NO_BAND),
-    "hls": dict(
-        PHYSICAL, NUM_BANDS=7, DETECTION_BANDS=[2, 3, 4, 5, 6],
-        SATURATION_BANDS=list(range(7)), BLUE_IDX=1, GREEN_IDX=2, RED_IDX=3, NIR_IDX=4,
-        SWIR1_IDX=5, SWIR2_IDX=6, THERMAL_IDX=ccdcpp.NO_BAND),
-    "sentinel2_l2a": dict(
-        PHYSICAL, NUM_BANDS=10, DETECTION_BANDS=[1, 2, 7, 8, 9],
-        SATURATION_BANDS=list(range(10)), BLUE_IDX=0, GREEN_IDX=1, RED_IDX=2, NIR_IDX=7,
-        SWIR1_IDX=8, SWIR2_IDX=9, THERMAL_IDX=ccdcpp.NO_BAND),
+        PHYSICAL, roles=_HLS + ["thermal"], saturation_bands=[0, 1, 2, 3, 4, 5, 6],
+        thermal_scale=1.0, thermal_offset=0.0, therm_min=-0.932, therm_max=0.707),
+    "hls_s30": dict(PHYSICAL, roles=["coastal"] + _MSI, saturation_bands=list(range(11))),
+    "hls": dict(PHYSICAL, roles=_HLS, saturation_bands=list(range(7))),
+    "sentinel2_l2a": dict(PHYSICAL, roles=_MSI, saturation_bands=list(range(10))),
 }
-#: Each preset's Tmask bands (window_screen's bands): with alpha and
-#: coef_floor, what its configuration changes in "ccdc". Every other
-#: parameter, the thresholds included, is "ccdc"'s.
+#: Each preset's detection rows, as its configuration resolves them.
+DETECTION = {"hls_l30": [2, 3, 4, 5, 6], "hls_s30": [2, 3, 8, 9, 10], "hls": [2, 3, 4, 5, 6],
+             "sentinel2_l2a": [1, 2, 7, 8, 9]}
+#: Each preset's Tmask rows (window_screen's bands, "ccdc"'s roles resolved):
+#: with no statistics cutoff, what its configuration changes in "ccdc". Every
+#: other parameter, the thresholds included, is "ccdc"'s.
 TMASK = {"hls_l30": [2, 5], "hls_s30": [2, 9], "hls": [2, 5], "sentinel2_l2a": [1, 8]}
 BAND_NAMES = {
     "hls_l30": ("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10"),
@@ -1207,12 +1188,11 @@ NEW_PRESETS = (presets.hls_l30, presets.hls_s30, presets.hls, presets.sentinel2_
 
 
 def hand_built(name):
-    """(HarmonicOptions, Config, QaTable) of preset ``name``, by hand."""
-    h = ccdcpp.HarmonicOptions()
+    """(Input, Config, QaTable) of preset ``name``, by hand."""
+    h = ccdcpp.Input()
     for key, value in EXPECTED[name].items():
         setattr(h, key, value)
-    cfg = ccdcpp.config("ccdc").replace(window_screen__bands=TMASK[name],
-                                        **setting("alpha", 1e-4), **setting("coef_floor", 1e-4))
+    cfg = ccdcpp.config("ccdc").replace(shared__stat_ord=None)
     return h, cfg, getattr(ccdcpp.qa_tables, BUILDERS[name])(h)
 
 
@@ -1238,15 +1218,17 @@ class SensorPresets(unittest.TestCase):
         for preset in NEW_PRESETS:
             name = preset.__name__
             with self.subTest(preset=name):
-                h, cfg = preset().options(), preset().config()
+                h, cfg = preset().input(), preset().config()
                 expected, ecfg, table = hand_built(name)
                 self.assertEqual(fields(h), fields(expected))
                 self.assertEqual(cfg, ecfg)
-                self.assertEqual(cfg.params("window_screen")["bands"], TMASK[name])
-                self.assertEqual(set(option_params(cfg, "alpha").values()), {1e-4})
+                r = cfg.resolve(h)
+                self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], TMASK[name])
+                self.assertEqual(r["shared"]["detection_bands"], DETECTION[name])
+                self.assertEqual(set(option_params(cfg, "alpha", h).values()), {1e-4})
                 for threshold in (change_threshold, outlier_threshold):
-                    self.assertEqual(threshold(cfg).hex(), threshold(defaults).hex())
-                self.assertEqual(h.STAT_ORD, ccdcpp.NO_STAT_CUTOFF)
+                    self.assertEqual(threshold(cfg, h).hex(), threshold(defaults).hex())
+                self.assertEqual(r["shared"]["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
                 self.assertEqual(preset().band_names, BAND_NAMES[name])
                 self.assertEqual(preset().qa_table_options,
                                  dict(sentinel2_l2a=()).get(
@@ -1259,20 +1241,13 @@ class SensorPresets(unittest.TestCase):
         for preset in (presets.hls_s30, presets.sentinel2_l2a):
             with self.subTest(preset=preset.__name__):
                 p = preset()
-                h = p.options()
+                h = p.input()
+                detection = p.config().resolve(h)["shared"]["detection_bands"]
                 for role in ("red_edge_1", "red_edge_2", "red_edge_3", "nir_broad"):
-                    self.assertNotIn(p.index(role), h.DETECTION_BANDS)
-                    self.assertIn(p.index(role), h.SATURATION_BANDS)
+                    self.assertNotIn(p.index(role), detection)
+                    self.assertIn(p.index(role), h.saturation_bands)
                 self.assertEqual(p.band_names[p.index("nir")], "B8A")
                 self.assertEqual(p.band_names[p.index("nir_broad")], "B08")
-
-    def test_no_warning(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            for preset in NEW_PRESETS:
-                preset().options()
-                preset().config()
-                preset().qa_table()
 
     def test_docstrings(self):
         for preset in NEW_PRESETS:
@@ -1381,7 +1356,7 @@ class SensorPresets(unittest.TestCase):
                 h, cfg, table = hand_built(name)
                 profiled = every_entry(dates, cube, qa, threads=2, profile=preset())
                 assert_same(self, strip_band_names(profiled),
-                            every_entry(dates, cube, qa, threads=2, hoptions=h, config=cfg,
+                            every_entry(dates, cube, qa, threads=2, input=h, config=cfg,
                                         qa_table=table))
                 cols = profiled["detect_cube_columns"]
                 self.assertEqual(cols["failures"], [])
@@ -1493,9 +1468,9 @@ class BandNamesCheck(unittest.TestCase):
                                   band_names=given)
 
     def test_needs_a_profile(self):
-        h = ccdcpp.HarmonicOptions()
+        h = ccdcpp.Input()
         names = presets.landsat_c1_dn().band_names
-        for name, call in self.entries(DATES, CUBE_DN, CODES, hoptions=h,
+        for name, call in self.entries(DATES, CUBE_DN, CODES, input=h,
                                        band_names=names).items():
             with self.subTest(entry=name):
                 with self.assertRaises(TypeError) as caught:
@@ -1527,8 +1502,8 @@ class HlsInput(unittest.TestCase):
         np.testing.assert_array_equal(cube, raw * 1e-4)
         # Thermal B10 is degrees Celsius x 100; times 0.0001 it is degrees
         # Celsius / 100, inside CELSIUS_HUNDREDTHS' -0.932..0.707.
-        h = presets.hls_l30().options()
-        self.assertTrue(((cube[:, :, 7] > h.THERM_MIN) & (cube[:, :, 7] < h.THERM_MAX)).all())
+        h = presets.hls_l30().input()
+        self.assertTrue(((cube[:, :, 7] > h.therm_min) & (cube[:, :, 7] < h.therm_max)).all())
 
     def test_fill_is_dropped(self):
         dates, cube, fmask, raw = hls_inputs(8, thermal=True, H=1, W=1)

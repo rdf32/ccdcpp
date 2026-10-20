@@ -12,7 +12,8 @@ const std::vector<config::Field<Tmask::Params>>& Tmask::schema()
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
         {"bands", &Params::bands, Unit::Bands, config::any(),
-         "the bands Tmask fits (pyccd: green and swir1)"},
+         "the bands Tmask fits (pyccd: green and swir1)", config::Source::Own, nullptr,
+         config::roles({"green", "swir1"})},
         {"t_const", &Params::t_const, Unit::None, config::any(),
          "an observation is an outlier above this many variograms"},
     };

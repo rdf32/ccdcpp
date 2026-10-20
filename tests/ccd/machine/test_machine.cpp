@@ -75,8 +75,10 @@ struct Record
     std::vector<std::int64_t> dates;
     std::vector<double> spectral;   // (7, n)
     std::vector<std::uint8_t> qas;
-    ccd::HarmonicOptions options;
-    ccd::config::ConfigTree config = golden::ccdc();   // the strategies' configuration
+    ccd::Input options;
+    ccd::config::Config config = golden::ccdc();   // the strategies' configuration
+    ccd::config::Resolved resolved = golden::resolved(config, options);
+    const ccd::config::Shared& shared = resolved.shared;
     ccd::LassoOptions lasso_options;   // the kernels' solver, at the preset's values
 
     ccd::HarmonicWorkspace workspace;
@@ -94,10 +96,10 @@ struct Record
               ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n}),
               ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, n}),
               ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {n}),
-              options),
+              options, shared),
           solver(lasso_options),
-          strategies(golden::strategies_of(config)),
-          context{options, workspace, strategies}
+          strategies(resolved.strategies),
+          context{shared, workspace, strategies}
     {
         ccd::ProcessingMask mask(n);
         for (index_t i = 0; i < n; ++i)
@@ -108,11 +110,11 @@ struct Record
     // A whole-number and a real parameter of the record's configuration.
     index_t count(const char* stage, const char* name) const
     {
-        return static_cast<index_t>(golden::parameter<std::int64_t>(config, stage, name));
+        return static_cast<index_t>(golden::parameter<std::int64_t>(resolved.stages, stage, name));
     }
     double real(const char* stage, const char* name) const
     {
-        return golden::parameter<double>(config, stage, name);
+        return golden::parameter<double>(resolved.stages, stage, name);
     }
 
     // The record at a cursor, with a cadence, past Prepare.
@@ -121,7 +123,7 @@ struct Record
         state.cursor = ccd::Cursor{ccd::Window(start, stop), prev_break};
         state.cadence = ccd::standard::Cadence{peek, peek, 0};   // chi2: full peeks only
         state.initialize_criteria = ccd::standard::initialize_criteria(
-            options, strategies.stability_fit->coefficients());
+            shared, strategies.stability_fit->coefficients());
         state.coefficients = strategies.model->coefficients();
 
         // The change test as Prepare leaves it on a series at the reference
@@ -129,7 +131,7 @@ struct Record
         const std::int64_t reference[] = {730000, 730016};
         strategies.change_test->prepare(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(reference, {2}),
-            options.DETECTION_BANDS.size(),
+            shared.detection_bands.size(),
             state.extension.test.get(strategies.change_test,
                                      [](const ccd::ChangeTest& c) { return c.make_scratch(); }));
         // The stability rule's threshold, change_threshold (a peek of the
@@ -137,14 +139,14 @@ struct Record
         const index_t peek_size = count("change_test", "peek_size");
         const ccd::PeekPlan plan{peek_size, true, 0, peek_size};
         strategies.stability_rule->prepare(
-            plan, options.DETECTION_BANDS.size(), stability_scratch());
+            plan, shared.detection_bands.size(), stability_scratch());
         // Lookback over `peek` observations against its change_threshold:
         // pyccd's at a peek of its own, so its threshold is unadjusted.
         strategies.lookback = std::make_shared<const ccd::strategies::PyccdLookback>(
             ccd::strategies::PyccdLookback::Params{real("lookback", "change_threshold"),
                                                    real("lookback", "change_probability"),
                                                    real("lookback", "outlier_threshold"), peek});
-        strategies.lookback->prepare(plan, options.DETECTION_BANDS.size(),
+        strategies.lookback->prepare(plan, shared.detection_bands.size(),
                                      ccd::standard::lookback_scratch(context, state));
     }
 
@@ -186,7 +188,7 @@ struct Record
             state.series.spectral().slice(ccd::all(), ccd::range(start, stop)),
             count("stability_fit", "coefficient_min"),
             count("stability_fit", "coefficient_max"),
-            options.DETECTION_BANDS,
+            shared.detection_bands,
             ccd::KeepResiduals::Yes
         );
     }
@@ -376,9 +378,9 @@ TEST(StandardPrepare, AtMostMeowObservationsIsDoneWithTheMaskOnly)
 
 TEST(StandardPrepare, ANaNVariogramIsDoneWithTheMaskOnly)
 {
-    // One observation dated <= STAT_ORD: the statistics window's variogram
+    // One observation dated <= stat_ord: the statistics window's variogram
     // has no pair to difference, and is NaN.
-    Record r(40, ccd::HarmonicOptions{}.STAT_ORD);
+    Record r(40, ccd::config::Shared{}.stat_ord);
     EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Done);
     EXPECT_EQ(r.state.exit, Exit::VariogramNaN);
 
@@ -405,7 +407,7 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     // (coefficient_min coefficients in a coefficient_max-wide basis among
     // them).
     const ccd::InitializeCriteria& c = r.state.initialize_criteria;
-    EXPECT_EQ(c.detection_bands.size(), r.options.DETECTION_BANDS.size());
+    EXPECT_EQ(c.detection_bands.size(), r.shared.detection_bands.size());
     EXPECT_EQ(c.num_coefficients, r.count("stability_fit", "coefficient_min"));
     EXPECT_EQ(c.max_coefficients, r.count("stability_fit", "coefficient_max"));
     EXPECT_EQ(r.state.variogram.bands.size(), 7u);
@@ -802,7 +804,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     r.step();
     // The magnitudes the test wrote are change_magnitude() of those RMSEs.
     const ccd::standard::Extension& e = r.state.extension;
-    const auto& bands = r.options.DETECTION_BANDS;
+    const auto& bands = r.shared.detection_bands;
     const auto magnitude_with = [&](const std::vector<double>& rmse)
     {
         std::vector<double> m;
@@ -832,14 +834,14 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     // seasonal RMSE when the test's limit is 10.
     Record r(80);
     auto tree = ccd::strategies::library_registry().preset("ccdc");
-    tree["change_test"].params["model_rmse_up_to"] = ccd::config::integer(10);
-    r.strategies = ccd::strategies::build_strategies(ccd::strategies::core_registry(), tree);
+    tree.stages["change_test"].params["model_rmse_up_to"] = ccd::config::integer(10);
+    r.strategies = ccd::strategies::core_registry().resolve(tree, r.options).strategies;
     in_extend(r, 0, 24);
     r.step();
 
     const ccd::standard::Extension& e = r.state.extension;
     EXPECT_EQ(e.fit_window.stop, 24u);
-    const auto& bands = r.options.DETECTION_BANDS;
+    const auto& bands = r.shared.detection_bands;
     const auto closest = ccd::find_closest_doy(
         r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.count("change_test", "seasonal_count"));
     std::vector<double> rmse(bands.size());
@@ -1257,7 +1259,7 @@ TEST(StandardHooks, TheModesExtraMaskStepsFollowTheChain)
     Record r(80);
     r.edit([](index_t b, index_t i, double v) { return (b == 1 && (i == 30 || i == 50)) ? v + 5000 : v; });
     const auto green = ccd::preprocess::Step::green_median(
-        r.options.GREEN_IDX, r.options.MEDIAN_GREEN_FILTER, r.options.STAT_ORD,
+        r.options.index("green"), r.shared.green_filter, r.shared.stat_ord,
         ccd::GreenFilterScope::All);
     const ccd::preprocess::Chain chain{ccd::preprocess::Step::dedupe()};
     ccd::PixelMode mode(ccd::PixelProcedure::Standard);
@@ -1320,7 +1322,9 @@ struct MachineRun
 MachineRun run_machine(const golden::CharPixel& p)
 {
     const index_t T = p.dates.size();
-    const ccd::preprocess::PreprocessPlan plan = ccd::preprocess::default_plan(p.h);
+    const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
+    const ccd::preprocess::PreprocessPlan plan =
+        ccd::preprocess::default_plan(p.h, resolved.shared);
     const ccd::preprocess::ProcedurePlan& standard = plan.standard;
 
     std::vector<double> block = p.spectral;
@@ -1335,15 +1339,15 @@ MachineRun run_machine(const golden::CharPixel& p)
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-        p.h
+        p.h, resolved.shared
     );
 
     ccd::ProcessingMask mask;
     ccd::preprocess::apply(
         standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-    const ccd::Strategies strategies = golden::strategies_of(p.config);
-    const ccd::standard::Context context{p.h, workspace, strategies};
+    const ccd::Strategies& strategies = resolved.strategies;
+    const ccd::standard::Context context{resolved.shared, workspace, strategies};
 
     ccd::standard::State state;
     MachineRun out;
@@ -1458,7 +1462,9 @@ TEST(StandardMachine, EachStepIsOneDecision)
     for (const auto& p : all)
     {
         const index_t T = p.dates.size();
-        const ccd::preprocess::PreprocessPlan plan = ccd::preprocess::default_plan(p.h);
+        const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
+        const ccd::preprocess::PreprocessPlan plan =
+            ccd::preprocess::default_plan(p.h, resolved.shared);
         std::vector<double> block = p.spectral;
         if (plan.standard.transform)
         {
@@ -1470,14 +1476,14 @@ TEST(StandardMachine, EachStepIsOneDecision)
             ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-            p.h
+            p.h, resolved.shared
         );
         ccd::ProcessingMask mask;
         ccd::preprocess::apply(
             plan.standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-        const ccd::Strategies strategies = golden::strategies_of(p.config);
-        const ccd::standard::Context context{p.h, workspace, strategies};
+        const ccd::Strategies& strategies = resolved.strategies;
+        const ccd::standard::Context context{resolved.shared, workspace, strategies};
 
         ccd::standard::State driven;
         const ccd::FitResult want = ccd::standard::run(context, driven, mask);
@@ -1543,7 +1549,9 @@ TEST(StandardMachine, OneStateServesManyPixels)
     for (const auto& p : all)
     {
         const index_t T = p.dates.size();
-        const ccd::preprocess::PreprocessPlan plan = ccd::preprocess::default_plan(p.h);
+        const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
+        const ccd::preprocess::PreprocessPlan plan =
+            ccd::preprocess::default_plan(p.h, resolved.shared);
         std::vector<double> block = p.spectral;
         if (plan.standard.transform)
         {
@@ -1555,7 +1563,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
             ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-            p.h
+            p.h, resolved.shared
         );
         ccd::ProcessingMask mask;
         ccd::preprocess::apply(
@@ -1577,8 +1585,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
 
 TEST(SelectProcedure, TheClearThenTheSnowPercentage)
 {
-    const ccd::HarmonicOptions options;   // clear 0.25, snow 0.75
-    const auto mode = golden::strategies_of().mode;
+    const auto mode = golden::strategies_of().mode;   // clear 0.25, snow 0.75
 
     auto stats = [](scalar_t clear, scalar_t snow)
     {

@@ -17,11 +17,11 @@ namespace ccd
 namespace standard
 {
 
-InitializeCriteria initialize_criteria(const HarmonicOptions& options,
+InitializeCriteria initialize_criteria(const config::Shared& shared,
                                        const CoefficientRule& stability)
 {
     return InitializeCriteria{
-        options.DETECTION_BANDS,
+        shared.detection_bands,
         stability.min,
         stability.max
     };
@@ -97,7 +97,7 @@ Peek peek_of(const Context& context, const State& state)
     return Peek{*extension.model, state.series.dates(), state.series.spectral(),
                     state.cursor.window,
                     extension.fit_window, extension.fits, extension.peek, extension.residuals,
-                    state.variogram, context.options.DETECTION_BANDS};
+                    state.variogram, context.shared.detection_bands};
 }
 
 } // namespace
@@ -324,7 +324,7 @@ Phase peek_guard(const Context&, State& state)
 
 Phase prepare(const Context& context, State& state)
 {
-    const auto& options = context.options;
+    const config::Shared& shared = context.shared;
     MaskedSeries& series = state.series;
 
     LOG_DEBUG("num obs: " << context.pixel.dates().size());
@@ -342,10 +342,10 @@ Phase prepare(const Context& context, State& state)
     }
 
     //----------------------------------------------------------
-    // Statistics window: the observations dated <= STAT_ORD
+    // Statistics window: the observations dated <= stat_ord
     // (views, no copy)
     //----------------------------------------------------------
-    const index_t stat_count = series.count_until(options.STAT_ORD);
+    const index_t stat_count = series.count_until(shared.stat_ord);
     LOG_DEBUG("Stat mask count: " << stat_count);
 
     const auto stat_dates =
@@ -358,9 +358,9 @@ Phase prepare(const Context& context, State& state)
 
     //----------------------------------------------------------
     // The pixel's cadence and variogram, read by every step
-    // below; the caller's options are never written
+    // below; the run's shared values are never written
     //----------------------------------------------------------
-    const index_t detection_bands = options.DETECTION_BANDS.size();
+    const index_t detection_bands = shared.detection_bands.size();
     const ChangeTest& change_test = *context.strategies.change_test;
     const PeekPlan plan = change_test.prepare(
         stat_dates, detection_bands, test_scratch(context, state.extension));
@@ -376,7 +376,7 @@ Phase prepare(const Context& context, State& state)
     context.strategies.lookback->prepare(
         plan, detection_bands, lookback_scratch(context, state));
     state.initialize_criteria =
-        initialize_criteria(options, context.strategies.stability_fit->coefficients());
+        initialize_criteria(shared, context.strategies.stability_fit->coefficients());
     state.coefficients = context.strategies.model->coefficients();
 
     LOG_DEBUG("Peek size: " << state.cadence.peek);
@@ -479,7 +479,7 @@ LookbackOutcome lookback_step(const Context& context, State& state)
 
     const LookbackJudgement judged = context.strategies.lookback->judge(
         *state.init_model, series.dates(), series.spectral(), window, state.cursor.prev_break,
-        state.variogram, context.options.DETECTION_BANDS, lookback_scratch(context, state));
+        state.variogram, context.shared.detection_bands, lookback_scratch(context, state));
 
     switch (judged.verdict)
     {
@@ -547,7 +547,7 @@ Model& refit_model(const Context& context, Extension& extension)
                                [](const MonitoringModel& m) { return m.make_model(); });
 }
 
-// The bands no test reads (those not in DETECTION_BANDS), as the last test
+// The bands no test reads (those not in the detection bands), as the last test
 // would have had them: fitted on the last refit's window with its
 // coefficient count, their residuals over the last test's peek.
 void complete_models(const Context& context, State& state)
@@ -558,7 +558,7 @@ void complete_models(const Context& context, State& state)
 
     BandList others;
     for (index_t band = 0; band < masked_spectral.extent(0); ++band)
-        if (!context.options.DETECTION_BANDS.contains(band))
+        if (!context.shared.detection_bands.contains(band))
             others.push_back(band);
 
     const Window& fit = extension.fit_window;
@@ -672,13 +672,12 @@ const char* to_string(TestOutcome outcome)
 
 ExtendOutcome extend_step(const Context& context, State& state)
 {
-    const auto& options = context.options;
     MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
     const Cadence& cadence = state.cadence;
     Extension& extension = state.extension;
 
-    const BandList& detection_bands = options.DETECTION_BANDS;
+    const BandList& detection_bands = context.shared.detection_bands;
 
     // while model_window.stop + peek_size <= period.shape[0]:
     assert(peek_fits(state));
@@ -1170,8 +1169,7 @@ FitResult Procedure::resume(
     Observe observe,
     bool carried_change
 ) {
-    const Context context{hworkspace.options(), hworkspace, strategies,
-                          observe};
+    const Context context{hworkspace.shared(), hworkspace, strategies, observe};
     return standard::resume(context, state_, std::move(mask), from, excluded_days,
                             carried_change);
 }
@@ -1198,7 +1196,7 @@ FitResult Procedure::run(
     index_t max_coefficients
 ) {
     const Context context{
-        hworkspace.options(),
+        hworkspace.shared(),
         hworkspace,
         strategies,
         observe,

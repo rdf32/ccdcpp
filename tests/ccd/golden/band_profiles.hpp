@@ -9,8 +9,6 @@
 
 #include <vector>
 
-#include <boost/math/distributions/chi_squared.hpp>
-
 #include "ccd/ccd.hpp"
 
 #include "config.hpp"
@@ -37,12 +35,6 @@ inline std::vector<ccd::index_t> iota(ccd::index_t n)
     return out;
 }
 
-inline double chi2_quantile(ccd::index_t df, double p)
-{
-    return boost::math::quantile(
-        boost::math::chi_squared(static_cast<double>(df)), p);
-}
-
 //------------------------------------------------------------------------------
 // Synthetic profiles
 //
@@ -54,8 +46,8 @@ struct Profile
 {
     const char* name;
     std::vector<golden::BandSpec> specs;
-    ccd::HarmonicOptions h;
-    ccd::config::ConfigTree config = golden::ccdc();   // Tmask bands, thresholds
+    ccd::Input h;
+    ccd::config::Config config = golden::ccdc();   // the detection bands
 
 };
 
@@ -72,76 +64,55 @@ inline const golden::BandSpec SWIR1   = {1900, 450, 60};
 inline const golden::BandSpec SWIR2   = {1100, 300, 45};
 inline const golden::BandSpec THERMAL = {2950, 120, 15, true};
 
-// blue, green, red, re1, re2, re3, nir, nir8a, swir1, swir2
+// blue, green, red, re1, re2, re3, nir, nir8a, swir1, swir2: the "nir" the
+// detection bands read is row 6, so row 7 is an "other".
 inline const std::vector<golden::BandSpec> S2_SPECS =
     {BLUE, GREEN, RED, RE1, RE2, RE3, NIR, NIR8A, SWIR1, SWIR2};
 
-inline ccd::config::ConfigTree s2_config()
+inline ccd::Input s2_layout()
 {
-    ccd::config::ConfigTree c = golden::ccdc();
-    c["window_screen"].params["bands"] = ccd::config::bands({1, 8});
-    return c;
-}
-
-inline ccd::HarmonicOptions s2_layout()
-{
-    ccd::HarmonicOptions h;
-    h.NUM_BANDS = 10;
-    h.DETECTION_BANDS = {1, 2, 6, 8, 9};
-    h.SATURATION_BANDS = band_list(iota(10));
-    h.GREEN_IDX = 1;
-    h.THERMAL_IDX = ccd::NO_BAND;
+    ccd::Input h;
+    h.roles = {"blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
+               "nir", "other", "swir1", "swir2"};
+    h.saturation_bands = band_list(iota(10));
     return h;
 }
 
+// The default configuration's detection bands (green, red, nir, swir1,
+// swir2) and Tmask bands (green, swir1) are each layout's own rows.
 inline std::vector<Profile> profiles()
 {
     std::vector<Profile> out;
 
     // Sentinel-2-like: 10 bands, no thermal.
-    out.push_back({"s2_b10", S2_SPECS, s2_layout(), s2_config()});
+    out.push_back({"s2_b10", S2_SPECS, s2_layout(), golden::ccdc()});
 
     // HLS L30-like: coastal, blue, green, red, nir, swir1, swir2, thermal.
     {
-        ccd::HarmonicOptions h;
-        h.NUM_BANDS = 8;
-        h.DETECTION_BANDS = {2, 3, 4, 5, 6};
-        h.SATURATION_BANDS = band_list(iota(7));
-        h.GREEN_IDX = 2;
-        h.THERMAL_IDX = 7;
-        ccd::config::ConfigTree c = golden::ccdc();
-        c["window_screen"].params["bands"] = ccd::config::bands({2, 5});
+        ccd::Input h;
+        h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
+        h.saturation_bands = band_list(iota(7));
         out.push_back({"hls_l30_b8",
-            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, c});
+            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, golden::ccdc()});
     }
 
     // HLS-like, 7 bands without thermal.
     {
-        ccd::HarmonicOptions h;
-        h.DETECTION_BANDS = {2, 3, 4, 5, 6};
-        h.SATURATION_BANDS = band_list(iota(7));
-        h.GREEN_IDX = 2;
-        h.THERMAL_IDX = ccd::NO_BAND;
-        ccd::config::ConfigTree c = golden::ccdc();
-        c["window_screen"].params["bands"] = ccd::config::bands({2, 5});
+        ccd::Input h;
+        h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2"};
+        h.saturation_bands = band_list(iota(7));
         out.push_back({"hls_b7",
-            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, c});
+            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, golden::ccdc()});
     }
 
-    // Sentinel-2-like with the red edge in detection: df = 8, thresholds
-    // from chi2(8) at the default probabilities.
+    // Sentinel-2-like with the red edge in detection: df = 8, the thresholds
+    // chi2(8)'s at the default probabilities.
     {
-        ccd::HarmonicOptions h = s2_layout();
-        h.DETECTION_BANDS = {1, 2, 3, 4, 5, 6, 8, 9};
-        ccd::config::ConfigTree c = s2_config();
-        const double change = chi2_quantile(8, 0.99);
-        const double outlier = chi2_quantile(8, 1.0 - 1e-6);
-        c["change_test"].params["change_threshold"] = ccd::config::real(change);
-        c["stability_rule"].params["change_threshold"] = ccd::config::real(change);
-        c["lookback"].params["change_threshold"] = ccd::config::real(change);
-        c["lookback"].params["outlier_threshold"] = ccd::config::real(outlier);
-        c["outlier"].params["threshold"] = ccd::config::real(outlier);
-        out.push_back({"s2_b10_df8", S2_SPECS, h, c});
+        const ccd::config::Config c = golden::with_shared(
+            golden::ccdc(), "detection_bands",
+            ccd::config::roles({"green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
+                                "swir1", "swir2"}));
+        out.push_back({"s2_b10_df8", S2_SPECS, s2_layout(), c});
 
     }
 

@@ -53,11 +53,14 @@ const std::vector<config::Field<PyccdLookback::Params>>& PyccdLookback::schema()
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
         {"change_threshold", &Params::change_threshold, Unit::None, config::any(),
-         "the threshold for the change test's reference peek (or `peek`)"},
+         "the threshold for the change test's reference peek (or `peek`)", config::Source::Chi2,
+         "change_probability"},
         {"change_probability", &Params::change_probability, Unit::None,
-         config::open_interval(0, 1), "the probability a longer peek's threshold keeps"},
+         config::open_interval(0, 1), "the probability a longer peek's threshold keeps",
+         config::Source::Shared, "change_probability"},
         {"outlier_threshold", &Params::outlier_threshold, Unit::None, config::any(),
-         "the observation before the window is dropped above this"},
+         "the observation before the window is dropped above this", config::Source::Chi2,
+         "outlier_probability"},
         {"peek", &Params::peek, Unit::Observations, config::any(),
          "0: the change test's peek; N: a peek of N, change_threshold for it"},
     };

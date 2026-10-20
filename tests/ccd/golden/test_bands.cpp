@@ -2,10 +2,10 @@
 //
 // Band layouts other than Landsat's.
 //
-// HarmonicOptions describes the band layout -- NUM_BANDS, the detection,
-// Tmask and saturation lists, GREEN_IDX and THERMAL_IDX -- and the
-// procedures read bands only through it. These tests hold that claim from
-// three sides:
+// The Input describes the band layout -- a role per row and the saturation
+// list -- and the configuration names its bands (the detection bands,
+// Tmask's) by role, resolved through it; the procedures read bands only that
+// way. These tests hold that claim from three sides:
 //
 //   * Bands.BitIdenticalToFixture: synthetic profiles with 7, 8 and 10 bands,
 //     with and without thermal, and an 8-band detection list, through
@@ -13,9 +13,9 @@
 //     profiles live here, in the test; ccdcpp ships no presets for them.
 //
 //   * Equivalences that need no fixture, on the Landsat corpus and on the
-//     10-band profile: the default layout spelled out field by field equals
-//     HarmonicOptions{}; permuting the rows and remapping every index gives
-//     the same fits, un-permuted, bit for bit; bands that are in no list
+//     10-band profile: the default layout spelled out, its bands as rows,
+//     equals Input{} with the bands by role; permuting the rows and their
+//     roles gives the same fits, un-permuted, bit for bit; bands that are in no list
 //     leave the other bands' results bit for bit as they were; and an input
 //     without a thermal row matches one whose thermal row nothing rejects.
 //
@@ -72,8 +72,8 @@ ccd::FitResult run_detect(
     const double* spectral,
     std::size_t B,
     const std::uint8_t* qas,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config
+    const ccd::Input& h,
+    const ccd::config::Config& config
 )
 {
     const std::size_t T = dates.size();
@@ -167,8 +167,8 @@ Series with_inert_rows(const Series& s, std::size_t k, std::uint64_t seed)
 template<typename Map>
 std::string dump_series(
     const Series& s,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config,
+    const ccd::Input& h,
+    const ccd::config::Config& config,
     Map map
 )
 {
@@ -185,8 +185,8 @@ std::string dump_series(
 
 std::string dump_series(
     const Series& s,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config
+    const ccd::Input& h,
+    const ccd::config::Config& config
 )
 {
     return dump_series(s, h, config, [](ccd::FitResult r) { return r; });
@@ -242,7 +242,7 @@ TEST(Bands, BitIdenticalToFixture)
     for (std::size_t pi = 0; pi < profiles().size(); ++pi)
     {
         const Profile profile = profiles()[pi];
-        const ccd::config::ConfigTree& config = profile.config;
+        const ccd::config::Config& config = profile.config;
         const std::size_t B = profile.specs.size();
         Coverage coverage;
 
@@ -369,21 +369,26 @@ TEST(Bands, BitIdenticalToFixture)
 //==============================================================================
 // Generic equals default
 //
-// The Landsat layout written out through every band-layout field gives what
-// HarmonicOptions{} gives, under the DN defaults and the physical preset.
+// The Landsat layout written out field by field, and the configuration's
+// band lists as its rows, give what Input{} and the lists by role give,
+// under the DN defaults and the physical-unit input.
 //==============================================================================
 
 namespace
 {
 
-ccd::HarmonicOptions landsat_layout(ccd::HarmonicOptions h)
+ccd::Input landsat_layout(ccd::Input h)
 {
-    h.NUM_BANDS = 7;
-    h.DETECTION_BANDS = band_list({1, 2, 3, 4, 5});
-    h.SATURATION_BANDS = band_list({0, 1, 2, 3, 4, 5});
-    h.GREEN_IDX = 1;
-    h.THERMAL_IDX = 6;
+    h.roles = {"blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
+    h.saturation_bands = band_list({0, 1, 2, 3, 4, 5});
     return h;
+}
+
+ccd::config::Config by_rows()
+{
+    return golden::with(
+        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 3, 4, 5})),
+        "window_screen", "bands", ccd::config::bands({1, 4}));
 }
 
 } // namespace
@@ -393,53 +398,51 @@ TEST(Bands, GenericLayoutEqualsDefault)
     for (const auto& s : landsat_corpus())
     {
         EXPECT_EQ(
-            dump_series(s, landsat_layout(ccd::HarmonicOptions{}), golden::ccdc()),
-            dump_series(s, ccd::HarmonicOptions{}, golden::ccdc()));
+            dump_series(s, landsat_layout(ccd::Input{}), by_rows()),
+            dump_series(s, ccd::Input{}, golden::ccdc()));
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
-            dump_series(phys, landsat_layout(golden::physical_harmonic()), golden::physical_config()),
-            dump_series(phys, golden::physical_harmonic(), golden::physical_config()));
+            dump_series(phys, landsat_layout(golden::physical_input()), by_rows()),
+            dump_series(phys, golden::physical_input(), golden::ccdc()));
     }
 }
 
 //==============================================================================
 // Permutation
 //
-// Row r of the permuted input holds row perm[r] of the original. Every index
-// is remapped to follow its band, and each list keeps its order of roles, so
-// the detection sums run over the same bands in the same order. The fits
-// come back in the permuted row order; put back, they are bit-identical.
+// Row r of the permuted input holds row perm[r] of the original, and its
+// role. The configuration's lists, by role, follow their bands, and each
+// keeps its order of roles, so the detection sums run over the same bands in
+// the same order; the saturation list is remapped likewise. The fits come
+// back in the permuted row order; put back, they are bit-identical.
 //==============================================================================
 
 namespace
 {
 
-ccd::HarmonicOptions permute_layout(
-    ccd::HarmonicOptions h,
+ccd::Input permute_layout(
+    ccd::Input h,
+    const std::vector<ccd::index_t>& perm,
     const std::vector<ccd::index_t>& inv
 )
 {
-    const auto remap = [&](const ccd::BandList& list)
-    {
-        ccd::BandList out;
-        for (const ccd::index_t b : list)
-            out.push_back(inv[b]);
-        return out;
-    };
+    ccd::BandList saturation;
+    for (const ccd::index_t b : h.saturation_bands)
+        saturation.push_back(inv[b]);
+    h.saturation_bands = saturation;
 
-    h.DETECTION_BANDS = remap(h.DETECTION_BANDS);
-    h.SATURATION_BANDS = remap(h.SATURATION_BANDS);
-    h.GREEN_IDX = inv[h.GREEN_IDX];
-    if (h.THERMAL_IDX != ccd::NO_BAND)
-        h.THERMAL_IDX = inv[h.THERMAL_IDX];
+    std::vector<std::string> roles(perm.size());
+    for (ccd::index_t r = 0; r < perm.size(); ++r)
+        roles[r] = h.roles[perm[r]];
+    h.roles = roles;
     return h;
 }
 
 void expect_permutation_invariant(
     const Series& s,
-    const ccd::HarmonicOptions& h,
-    const ccd::config::ConfigTree& config,
+    const ccd::Input& h,
+    const ccd::config::Config& config,
     const std::vector<ccd::index_t>& perm
 )
 {
@@ -450,16 +453,11 @@ void expect_permutation_invariant(
         inv[perm[r]] = r;
 
     const Series permuted = take_rows(s, perm);
-    const ccd::HarmonicOptions hp = permute_layout(h, inv);
-    ccd::config::ConfigTree permuted_config = config;   // the Tmask bands follow theirs too
-    std::vector<std::int64_t> tmask;
-    for (const std::int64_t b :
-         golden::parameter<std::vector<std::int64_t>>(config, "window_screen", "bands"))
-        tmask.push_back(static_cast<std::int64_t>(inv[static_cast<std::size_t>(b)]));
-    permuted_config["window_screen"].params["bands"] = tmask;
+    const ccd::Input hp = permute_layout(h, perm, inv);
 
+    // The same configuration: its bands, by role, are the permuted rows.
     EXPECT_EQ(
-        dump_series(permuted, hp, permuted_config,
+        dump_series(permuted, hp, config,
 
             [&](const ccd::FitResult& r) { return select_bands(r, inv); }),
         dump_series(s, h, config));
@@ -473,9 +471,9 @@ TEST(Bands, PermutationInvariantSevenBands)
 
     for (const auto& s : landsat_corpus())
     {
-        expect_permutation_invariant(s, ccd::HarmonicOptions{}, golden::ccdc(), perm);
+        expect_permutation_invariant(s, ccd::Input{}, golden::ccdc(), perm);
         expect_permutation_invariant(
-            to_physical(s), golden::physical_harmonic(), golden::physical_config(), perm);
+            to_physical(s), golden::physical_input(), golden::ccdc(), perm);
     }
 }
 
@@ -508,11 +506,11 @@ TEST(Bands, InertBandsChangeNothingElse)
 {
     for (const std::size_t k : {1u, 3u})
     {
-        ccd::HarmonicOptions h;
-        h.NUM_BANDS = 7 + k;
+        ccd::Input h;
+        h.roles.resize(7 + k, "other");
 
-        ccd::HarmonicOptions hp = golden::physical_harmonic();
-        hp.NUM_BANDS = 7 + k;
+        ccd::Input hp = golden::physical_input();
+        hp.roles.resize(7 + k, "other");
 
         for (const auto& s : landsat_corpus())
         {
@@ -521,13 +519,13 @@ TEST(Bands, InertBandsChangeNothingElse)
             EXPECT_EQ(
                 dump_series(wide, h, golden::ccdc(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(s, ccd::HarmonicOptions{}, golden::ccdc()));
+                dump_series(s, ccd::Input{}, golden::ccdc()));
 
             const Series phys = to_physical(s);
             EXPECT_EQ(
-                dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::physical_config(),
+                dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::ccdc(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(phys, golden::physical_harmonic(), golden::physical_config()));
+                dump_series(phys, golden::physical_input(), golden::ccdc()));
         }
     }
 
@@ -538,8 +536,8 @@ TEST(Bands, InertBandsChangeNothingElse)
         const Series s = from_cube(golden::make_band_cube(
             700 + spec.seed, spec.regime, spec.H, spec.W, l30.specs));
 
-        ccd::HarmonicOptions h = l30.h;
-        h.NUM_BANDS = 10;
+        ccd::Input h = l30.h;
+        h.roles.resize(10, "other");
 
         EXPECT_EQ(
             dump_series(with_inert_rows(s, 2, 77), h, l30.config,
@@ -551,7 +549,7 @@ TEST(Bands, InertBandsChangeNothingElse)
 //==============================================================================
 // Thermal absent
 //
-// THERMAL_IDX = NO_BAND skips the thermal filter and the Standard thermal
+// An input without a "thermal" row skips the thermal filter and the Standard thermal
 // transform. Its reference is the same series WITH the thermal row, under an
 // identity transform and infinite thermal bounds: a filter that rejects no
 // finite value. The thermal row is in no list, so the six optical bands, the
@@ -560,14 +558,14 @@ TEST(Bands, InertBandsChangeNothingElse)
 // What the equivalence needs, and what it does not claim:
 //
 //   * Every thermal value is finite. NaN fails both bound comparisons, so an
-//     infinite-bounds filter still drops a NaN observation that NO_BAND
-//     keeps. The generator writes no NaN.
+//     infinite-bounds filter still drops a NaN observation that an input
+//     without thermal keeps. The generator writes no NaN.
 //   * The reference needs the infinite bounds, not the defaults: the
 //     generator plants out-of-range thermal values, which the default
-//     bounds reject and NO_BAND does not. That difference is checked below,
+//     bounds reject and an input without thermal does not. That difference is checked below,
 //     so the test is not passing because the filter never fired.
 //   * The transform plays no part in the optical results (thermal is in no
-//     list); NO_BAND is run under the DN transform defaults to show the
+//     list); the input without thermal is run under the DN transform defaults to show the
 //     transform is skipped rather than applied to a row that is not there.
 //   * PermanentSnow and InsufficientClear apply the thermal filter too; the
 //     corpus reaches both, and the equivalence covers them.
@@ -578,19 +576,18 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
     constexpr double INF = std::numeric_limits<double>::infinity();
     const std::vector<ccd::index_t> optical = iota(6);
 
-    const auto no_thermal = [](ccd::HarmonicOptions h)
+    const auto no_thermal = [](ccd::Input h)
     {
-        h.NUM_BANDS = 6;
-        h.THERMAL_IDX = ccd::NO_BAND;
+        h.roles.resize(6);
         return h;
     };
 
-    const auto open_thermal = [&](ccd::HarmonicOptions h)
+    const auto open_thermal = [&](ccd::Input h)
     {
-        h.THERMAL_SCALE = 1.0;
-        h.THERMAL_OFFSET = 0.0;
-        h.THERM_MIN = -INF;
-        h.THERM_MAX = INF;
+        h.thermal_scale = 1.0;
+        h.thermal_offset = 0.0;
+        h.therm_min = -INF;
+        h.therm_max = INF;
         return h;
     };
 
@@ -607,26 +604,26 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
         const Series stripped = take_rows(s, optical);
         const std::string absent =
-            dump_series(stripped, no_thermal(ccd::HarmonicOptions{}), golden::ccdc());
+            dump_series(stripped, no_thermal(ccd::Input{}), golden::ccdc());
 
         EXPECT_EQ(
             absent,
-            dump_series(s, open_thermal(ccd::HarmonicOptions{}), golden::ccdc(), optical_only));
+            dump_series(s, open_thermal(ccd::Input{}), golden::ccdc(), optical_only));
 
         default_bounds_differ = default_bounds_differ ||
-            absent != dump_series(s, ccd::HarmonicOptions{}, golden::ccdc(), optical_only);
+            absent != dump_series(s, ccd::Input{}, golden::ccdc(), optical_only);
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
-            dump_series(take_rows(phys, optical), no_thermal(golden::physical_harmonic()),
-                golden::physical_config()),
-            dump_series(phys, open_thermal(golden::physical_harmonic()),
-                golden::physical_config(), optical_only));
+            dump_series(take_rows(phys, optical), no_thermal(golden::physical_input()),
+                golden::ccdc()),
+            dump_series(phys, open_thermal(golden::physical_input()),
+                golden::ccdc(), optical_only));
 
         for (std::size_t p = 0; p < s.N; ++p)
         {
             for (const auto& m : run_detect(stripped.dates, stripped.pixel(p), 6,
-                     stripped.qa(p), no_thermal(ccd::HarmonicOptions{}), golden::ccdc()).models)
+                     stripped.qa(p), no_thermal(ccd::Input{}), golden::ccdc()).models)
             {
                 if (m.curve_qa == ccd::CurveQA::PersistentSnow) ++coverage.snow;
                 else if (m.curve_qa == ccd::CurveQA::InsufficientClear) ++coverage.insufficient;
@@ -690,7 +687,7 @@ TEST(Bands, ChangeThresholdTakesItsDegreesOfFreedom)
 
     // df = 8: the chi2(8) quantile of the same probability.
     const double pt = 1.0 - std::pow(1.0 - 0.99, 6.0 / 12.0);
-    EXPECT_EQ(ccd::adjust_change_threshold(12, 6, DEFAULT, 8, 0.99), chi2_quantile(8, pt));
+    EXPECT_EQ(ccd::adjust_change_threshold(12, 6, DEFAULT, 8, 0.99), ccd::chi2_quantile(pt, 8));
     EXPECT_GT(ccd::adjust_change_threshold(12, 6, DEFAULT, 8, 0.99),
               ccd::adjust_change_threshold(12, 6, DEFAULT, 5, 0.99));
 }

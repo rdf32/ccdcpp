@@ -19,13 +19,8 @@ const config::Registry& core_registry();
 void register_extension_strategies(config::Registry& registry);
 
 // The registry with the library's strategies and its extensions', built
-// once: the one a run's configuration names its strategies in.
+// once: the one an Algorithm (run/algorithm.hpp) names its strategies in.
 const config::Registry& library_registry();
-
-// One call's strategies from its configuration. Throws std::invalid_argument
-// on a stage the configuration lacks, a strategy its stage does not have, or
-// parameters the strategy refuses.
-Strategies build_strategies(const config::Registry& registry, const config::ConfigTree& config);
 
 } // namespace strategies
 } // namespace ccd

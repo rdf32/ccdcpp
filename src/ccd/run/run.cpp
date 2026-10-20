@@ -39,17 +39,17 @@ namespace
 // The checks a Run makes before any pixel
 //==============================================================================
 
-// The options against the band count, one timestep count shared by dates,
+// The input against the band count, one timestep count shared by dates,
 // spectral and the QA, and dates in non-decreasing order.
 void check_shapes(
-    const HarmonicOptions& options,
+    const Input& input,
     index_t bands,
     index_t timesteps,
     ArrayView<const std::int64_t, 1> dates,
     index_t qa_timesteps
 )
 {
-    validate(options, bands);
+    validate(input, bands);
 
     if (dates.size() != timesteps)
     {
@@ -82,8 +82,9 @@ void check_qa(bool raw_qa, const QaTable* qa_table)
     }
 }
 
-// A resume's refusals: another record format or results version, other
-// options, plan or QA table, a series that ends before the record's.
+// A resume's refusals: another record format or results version, another
+// input, configuration, plan or QA table, a series that ends before the
+// record's.
 void check_resume(
     const ResumeHeader& from,
     std::uint64_t digest,
@@ -101,7 +102,7 @@ void check_resume(
             std::to_string(RESULTS_VERSION) + ": rerun in full");
     if (from.options_digest != digest)
         throw std::invalid_argument(
-            "the resume record was made with other options, configuration, plan or QA table");
+            "the resume record was made with another input, configuration, plan or QA table");
     if (dates.size() == 0 || dates(dates.size() - 1) < from.series_end)
         throw std::invalid_argument(
             "the series ends before the resume record's, on " +
@@ -112,11 +113,11 @@ void check_resume(
 // Resume: the cutoffs of a run resumed from one whose series ended at `end`
 //==============================================================================
 
-// STAT_ORD capped at `end`.
-HarmonicOptions capped(const HarmonicOptions& options, std::int64_t end)
+// stat_ord capped at `end`.
+config::Shared capped(const config::Shared& shared, std::int64_t end)
 {
-    HarmonicOptions out = options;
-    out.STAT_ORD = std::min(out.STAT_ORD, end);
+    config::Shared out = shared;
+    out.stat_ord = std::min(out.stat_ord, end);
     return out;
 }
 
@@ -175,16 +176,16 @@ ArrayView<const std::uint8_t, 1> decode_qa(
 }
 
 // Step 2. The pixel's procedure and mode, from its QA statistics up to
-// STAT_ORD.
+// stat_ord.
 PixelMode choose_procedure(
     ArrayView<const std::uint8_t, 1> qas,
     ArrayView<const std::int64_t, 1> dates,
-    const HarmonicOptions& options,
+    const Input& input,
+    std::int64_t stat_ord,
     const ModeRule& mode
 )
 {
-    Quality quality;
-    const Quality::Statistics statistics = quality.compute_until(qas, dates, options);
+    const Quality::Statistics statistics = Quality::compute_until(qas, dates, input, stat_ord);
     return mode.choose(statistics);
 }
 
@@ -326,7 +327,7 @@ struct PassRequest
     bool carried_change = false;   // its last final segment ended in a change
 };
 
-// The steps on one pixel, under `options` and `plan`. Sets `continued` to
+// The steps on one pixel, under `input`, `shared` and `plan`. Sets `continued` to
 // whether the stored run was continued (only with request.continue_from).
 template<typename Value, typename Qa>
 FitResult run_steps(
@@ -335,7 +336,8 @@ FitResult run_steps(
     ArrayView<const Qa, 1> raw_qas,
     const QaTable* qa_table,
     const preprocess::PreprocessPlan& plan,
-    const HarmonicOptions& options,
+    const Input& input,
+    const config::Shared& shared,
     const Strategies& strategies,
     Worker& worker,
     const PassRequest& request,
@@ -343,19 +345,19 @@ FitResult run_steps(
 )
 {
     const auto qas = decode_qa<Qa>(raw_qas, qa_table, worker.qas);
-    const PixelMode mode = choose_procedure(qas, dates, options, *strategies.mode);
+    const PixelMode mode = choose_procedure(qas, dates, input, shared.stat_ord, *strategies.mode);
     const PixelProcedure procedure = mode.procedure;
 
     if (request.record)
     {
         request.record->input_fingerprint = detail::fingerprint_of<Value>(
-            dates, spectral, qas, options.QA_FILL, request.through);
+            dates, spectral, qas, input.qa_fill, request.through);
         request.record->procedure = procedure;
     }
 
     const preprocess::ProcedurePlan& steps = procedure_plan(procedure, plan);
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
-    const HarmonicWorkspace pixel(dates, values, qas, options);
+    const HarmonicWorkspace pixel(dates, values, qas, input, shared);
     LOG_DEBUG("initial spectral: " << pixel.spectral());
 
     ProcessingMask mask = build_mask(steps.chain, pixel);
@@ -409,22 +411,23 @@ Run::Run(
 )
     : spec_(spec), dates_(dates), bands_(bands), timesteps_(timesteps), raw_qa_(raw_qa)
 {
-    check_shapes(spec_.hoptions, bands, timesteps, dates, qa_timesteps);
+    check_shapes(spec_.input, bands, timesteps, dates, qa_timesteps);
     check_qa(raw_qa, spec_.qa_table.get());
+
+    if (!spec_.algorithm)
+        throw std::invalid_argument("the run has no algorithm");
+    resolved_ = spec_.algorithm->for_input(spec_.input);
 
     if (spec_.plan)
         plan_ = *spec_.plan;
     else
-        plan_ = preprocess::default_plan(spec_.hoptions);
+        plan_ = preprocess::default_plan(spec_.input, resolved_->shared);
     preprocess::validate(plan_, bands);
-
-    const config::Registry& registry = strategies::library_registry();
-    const config::ConfigTree config = registry.resolve(spec_.config);
 
     if (spec_.record || resume)
     {
         header_.options_digest =
-            options_digest(spec_.hoptions, config, plan_, spec_.qa_table.get());
+            options_digest(*resolved_, plan_, spec_.qa_table.get());
         header_.series_end = dates.size() > 0
             ? dates(dates.size() - 1)
             : std::numeric_limits<std::int64_t>::min();
@@ -438,18 +441,14 @@ Run::Run(
         resume_ = *resume;
         // A resumed run reruns what it does not continue under the stored
         // run's statistics cutoff.
-        options_ = capped(spec_.hoptions, header_.statistics_end);
+        shared_ = capped(resolved_->shared, header_.statistics_end);
         run_plan_ = capped(plan_, header_.statistics_end);
     }
     else
     {
-        options_ = spec_.hoptions;
+        shared_ = resolved_->shared;
         run_plan_ = plan_;
     }
-
-    // The run's strategies, its configuration's.
-    registry.check_bands(config, bands_);
-    strategies_ = strategies::build_strategies(registry, config);
 }
 
 Observe Run::observed(index_t at) const
@@ -494,8 +493,9 @@ PixelOutcome Run::pixel_typed(
             request.record = &out.record;
             request.through = header_.series_end;
         }
-        out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, options_,
-                                          strategies_, worker, request, continued);
+        out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
+                                          shared_, resolved_->strategies, worker, request,
+                                          continued);
         if (!spec_.keep_masks)
             out.result.mask = ProcessingMask();
         return out;
@@ -514,7 +514,7 @@ PixelOutcome Run::pixel_typed(
 
     const std::uint64_t fingerprint = detail::fingerprint_of<Value>(
         dates_, spectral, decode_qa<Qa>(qa, table, worker.qas),
-        options_.QA_FILL, resume_->series_end);
+        spec_.input.qa_fill, resume_->series_end);
 
     out.status = fingerprint == from.input_fingerprint
         ? ResumeStatus::Resumed
@@ -531,8 +531,8 @@ PixelOutcome Run::pixel_typed(
     request.continue_from = continues ? &from : nullptr;
     const index_t carried = from.standard.final_segments;
     request.carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
-    out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, options_,
-                                      strategies_, worker, request, continued);
+    out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
+                                      shared_, resolved_->strategies, worker, request, continued);
 
     // The machine may still not continue (a stored drop on a date the plan
     // keeps twice): then its result is a whole rerun, without the stored

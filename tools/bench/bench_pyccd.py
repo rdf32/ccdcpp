@@ -4,7 +4,7 @@ ccdcpp against PyCCD on the same pixels, one thread each. Takes `pixels` pixels 
 over the corpus of make_corpus.cpp, plus any PyCCD-format CSV pixels given (day, the seven
 bands, the QA code per line, e.g. tests/ccd/machine/test_3657_3610_observations.csv). Each
 pixel runs once through PyCCD's ccd.detect and best of 5 through ccdcpp.detect with default
-options. Prints per-pixel times, the median and total of each and their ratio, and how many
+input. Prints per-pixel times, the median and total of each and their ratio, and how many
 pixels gave the same segments (start, end and break days) in both: not all, since the 0.8.0
 fixes move some pixels on purpose (see CHANGELOG.md).
 
@@ -76,7 +76,7 @@ for path in sys.argv[5:]:
     d = np.genfromtxt(path, delimiter=",")
     pixels.append((os.path.basename(path), d[:, 0].astype(np.int64), d[:, 1:8].T, d[:, 8]))
 
-hopt = ccdcpp.HarmonicOptions()
+hopt = ccdcpp.Input()
 
 
 def peak_mb():

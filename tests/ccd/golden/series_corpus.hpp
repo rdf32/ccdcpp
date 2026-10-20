@@ -9,7 +9,7 @@
 //
 //   * characterization_series(): the pixels of characterisation.hpp;
 //   * csv_series(dir): the pyccd reference pixel, the Atlanta pixel with a
-//     half-day median gap, and the Collection-2 pixel under c2_harmonic();
+//     half-day median gap, and the Collection-2 pixel under c2_input();
 //   * synthetic_series(): every pixel of the golden cubes (synthetic.hpp)
 //     under the DN defaults and the physical-unit preset.
 //
@@ -40,8 +40,14 @@ struct Series
     std::vector<std::int64_t> dates;
     std::vector<double> spectral;   // (7, T), band-major
     std::vector<std::uint8_t> qas;
-    ccd::HarmonicOptions h;
-    ccd::config::ConfigTree config = golden::ccdc();
+    ccd::Input h;
+    ccd::config::Config config = golden::ccdc();
+
+    // The configuration's statistics cutoff.
+    std::int64_t stat_ord() const
+    {
+        return std::get<std::int64_t>(config.shared.at("stat_ord"));
+    }
 
     std::size_t size() const
     {
@@ -77,25 +83,23 @@ struct Series
     }
 };
 
-// run_pixel() on `s` with STAT_ORD at `stat_ord`.
+// run_pixel() on `s` with the shared stat_ord at `stat_ord`.
 inline ccd::FitResult detect_at(const Series& s, std::int64_t stat_ord)
 {
-    ccd::HarmonicOptions h = s.h;
-    h.STAT_ORD = stat_ord;
     return ccd::run_pixel(
-        golden::spec_of(h, s.config),
+        golden::spec_of(s.h, with_shared(s.config, "stat_ord", ccd::config::integer(stat_ord))),
         s.date_view(),
         s.spectral_view(),
         s.qa_view()).result;
 }
 
-// run_pixel() with RunSpec::record on `s` with STAT_ORD at `stat_ord`.
+// run_pixel() with RunSpec::record on `s` with the shared stat_ord at
+// `stat_ord`.
 inline ccd::PixelRun recorded_at(const Series& s, std::int64_t stat_ord)
 {
-    ccd::HarmonicOptions h = s.h;
-    h.STAT_ORD = stat_ord;
     return ccd::run_pixel(
-        golden::spec_of(h, s.config, nullptr, nullptr, true),
+        golden::spec_of(s.h, with_shared(s.config, "stat_ord", ccd::config::integer(stat_ord)),
+                        nullptr, nullptr, true),
         s.date_view(),
         s.spectral_view(),
         s.qa_view());
@@ -152,7 +156,7 @@ inline std::vector<Series> csv_series(const std::string& dir)
     out.push_back(read_csv("pyccd", dir + "/test_3657_3610_observations.csv", false));
     out.push_back(read_csv("atlanta_481_393", dir + "/test_atlanta_024013_00030008_481_393.csv", false));
     Series c2 = read_csv("c2", dir + "/test002_c2.csv", true);
-    c2.h = c2_harmonic();
+    c2.h = c2_input();
     out.push_back(std::move(c2));
     return out;
 }
@@ -185,8 +189,7 @@ inline std::vector<Series> synthetic_series()
                 if (physical)
                 {
                     to_physical(s.spectral.data(), T);
-                    s.h = physical_harmonic();
-                    s.config = physical_config();
+                    s.h = physical_input();
 
                 }
                 out.push_back(std::move(s));
@@ -237,7 +240,7 @@ inline std::vector<std::size_t> shard_of(const Series& s, std::size_t ordinal,
                                          const std::vector<std::size_t>& cuts, std::size_t shard)
 {
     std::vector<bool> near(s.size(), false);
-    for (const auto& m : detect_at(s, s.h.STAT_ORD).models)
+    for (const auto& m : detect_at(s, s.stat_ord()).models)
     {
         if (m.change_probability != 1.0)
             continue;

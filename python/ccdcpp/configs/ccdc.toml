@@ -1,13 +1,28 @@
-# The ccdc preset: pyccd's algorithm, as ccdcpp corrects it (README), in Collection-1 DN (the
-# Lasso's alpha and coef_floor). The library registry's "ccdc" preset
-# (ccd::strategies::library_registry().preset("ccdc")), written out by its Config's to_toml();
-# a profile writes it for its input (SensorProfile.config()).
+# The ccdc preset: pyccd's algorithm, as ccdcpp corrects it (README), in physical terms: the
+# shared alpha, coef_floor and green_filter in reflectance (a run multiplies them by its input's
+# reflectance_unit), probabilities for the chi-squared thresholds, bands by role. The library
+# registry's "ccdc" preset (ccd::strategies::library_registry().preset("ccdc")), written out by
+# its Config's to_toml().
+
+[shared]
+alpha = 0.0001
+change_probability = 0.99
+coef_floor = 0.0001
+coefficient_max = 8
+coefficient_mid = 6
+coefficient_min = 4
+detection_bands = ["green", "red", "nir", "swir1", "swir2"]
+green_filter = 0.04
+green_filter_scope = "stat_window"
+max_iter = 1000
+num_obs_factor = 3
+outlier_probability = 0.999999
+stat_ord = 736694
+tolerance = 0.0001
 
 [change_test]
 strategy = "chi2"
 [change_test.params]
-change_probability = 0.99
-change_threshold = 15.086272469388987
 model_rmse_up_to = 24
 peek_reference_days = 16.0
 peek_size = 6
@@ -17,19 +32,11 @@ seasonal_divisor = 4.0
 [edge_fit]
 strategy = "lasso"
 [edge_fit.params]
-alpha = 1.0
-coef_floor = 1.0
-coefficients = 4
-max_iter = 1000
 min_observations = 12
-tolerance = 0.0001
 
 [lookback]
 strategy = "pyccd"
 [lookback.params]
-change_probability = 0.99
-change_threshold = 15.086272469388987
-outlier_threshold = 35.88818687961042
 peek = 0
 
 [mode]
@@ -40,15 +47,6 @@ snow_pct_threshold = 0.75
 
 [model]
 strategy = "lasso"
-[model.params]
-alpha = 1.0
-coef_floor = 1.0
-coefficient_max = 8
-coefficient_mid = 6
-coefficient_min = 4
-max_iter = 1000
-num_obs_factor = 3
-tolerance = 0.0001
 
 [noise_floor]
 strategy = "variogram"
@@ -57,8 +55,6 @@ min_lag_days = 30
 
 [outlier]
 strategy = "floored"
-[outlier.params]
-threshold = 35.88818687961042
 
 [refit]
 strategy = "span-factor"
@@ -71,21 +67,10 @@ strategy = "model-fit"
 
 [stability_fit]
 strategy = "lasso"
-[stability_fit.params]
-alpha = 1.0
-coef_floor = 1.0
-coefficient_max = 8
-coefficient_mid = 6
-coefficient_min = 4
-max_iter = 1000
-num_obs_factor = 3
-tolerance = 0.0001
 
 [stability_rule]
 strategy = "pyccd"
 [stability_rule.params]
-change_probability = 0.99
-change_threshold = 15.086272469388987
 peek = 0
 
 [start_search]
@@ -97,5 +82,5 @@ meow_size = 12
 [window_screen]
 strategy = "tmask"
 [window_screen.params]
-bands = [1, 4]
+bands = ["green", "swir1"]
 t_const = 4.89

@@ -102,33 +102,22 @@ inline void dump_pixel(
 // Option sets the corpus is run under.
 //------------------------------------------------------------------------------
 
-// The physical-unit preset of harmonic.hpp: input pre-divided by 10000.
+// The physical-unit input of input.hpp: data pre-divided by 10000, and
+// reflectance its unit, so the configuration's reflectance values (the
+// Lasso's alpha and coefficient floor, the green filter) are its own.
 constexpr double SCALE = 10000.0;
 
-inline ccd::HarmonicOptions physical_harmonic()
+inline ccd::Input physical_input()
 {
-    ccd::HarmonicOptions h;
-    h.THERMAL_SCALE = 1.0;
-    h.THERMAL_OFFSET = 0.0;
-    h.REFL_MIN = 0.0 / SCALE;
-    h.REFL_MAX = 10000.0 / SCALE;
-    h.THERM_MIN = ccd::MIN_CELSIUS / SCALE;
-    h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;
-    h.MEDIAN_GREEN_FILTER = 400.0 / SCALE;
+    ccd::Input h;
+    h.reflectance_unit = 1.0;
+    h.thermal_scale = 1.0;
+    h.thermal_offset = 0.0;
+    h.refl_min = 0.0 / SCALE;
+    h.refl_max = 10000.0 / SCALE;
+    h.therm_min = ccd::MIN_CELSIUS / SCALE;
+    h.therm_max = ccd::MAX_CELSIUS / SCALE;
     return h;
-}
-
-// The configuration for the preset's units: the Lasso's alpha and
-// coefficient floor, in each stage that fits a Lasso, divided by SCALE.
-inline ccd::config::ConfigTree physical_config()
-{
-    ccd::config::ConfigTree c = golden::ccdc();
-    for (const char* stage : {"stability_fit", "model", "edge_fit"})
-    {
-        c.at(stage).params.at("alpha") = ccd::config::real(1.0 / SCALE);
-        c.at(stage).params.at("coef_floor") = ccd::config::real(1.0 / SCALE);
-    }
-    return c;
 }
 
 // DN (7, T) block -> the preset's units, in place.
@@ -170,15 +159,15 @@ inline void put_bound_values(double* block, const std::uint8_t* qas, std::size_t
 }
 
 // Collection-2 style bounds, for the two C2 reference files.
-inline ccd::HarmonicOptions c2_harmonic()
+inline ccd::Input c2_input()
 {
-    ccd::HarmonicOptions h;
-    h.THERMAL_SCALE = 1.0;
-    h.THERMAL_OFFSET = 0.0;
-    h.REFL_MIN = 7273.0;
-    h.REFL_MAX = 43636.0;
-    h.THERM_MIN = -1.0e6;
-    h.THERM_MAX = 1.0e6;
+    ccd::Input h;
+    h.thermal_scale = 1.0;
+    h.thermal_offset = 0.0;
+    h.refl_min = 7273.0;
+    h.refl_max = 43636.0;
+    h.therm_min = -1.0e6;
+    h.therm_max = 1.0e6;
     return h;
 }
 

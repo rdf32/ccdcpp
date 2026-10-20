@@ -144,10 +144,9 @@ void change_magnitude(
 //------------------------------------------------------------------------------
 
 // What Initialize fits a candidate window with, besides its strategies. A
-// procedure fills it from its options; nothing here is read from the
-// options directly. Values throughout (a BandList is a small fixed-capacity
-// array), so a criteria object never refers to the options it was filled
-// from.
+// procedure fills it from its run's shared values; nothing here reads them
+// directly. Values throughout (a BandList is a small fixed-capacity array),
+// so a criteria object never refers to what it was filled from.
 struct InitializeCriteria
 {
     BandList detection_bands;   // the bands fitted and tested for stability
