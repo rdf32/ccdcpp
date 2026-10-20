@@ -893,11 +893,13 @@ class Profiles(unittest.TestCase):
 
     def test_a_denser_cadence_and_no_cutoff_are_a_configuration(self):
         cfg = ccdcpp.config("ccdc").replace(change_test__peek_reference_days=5.0,
-                                            start_search__meow_size=18)
+                                            shared__min_observations=18)
         h = presets.landsat_c1_dn().input()
         self.assertEqual(cfg.params("change_test")["peek_reference_days"], 5.0)
-        self.assertEqual(cfg.params("start_search")["meow_size"], 18)
-        self.assertEqual(cfg.params("edge_fit")["min_observations"], 12)   # its own
+        self.assertEqual(cfg.shared()["min_observations"], 18)
+        stages = cfg.resolve(h)["stages"]
+        self.assertEqual(stages["start_search"]["params"]["meow_size"], 18)
+        self.assertEqual(stages["edge_fit"]["params"]["min_observations"], 18)
         self.assertEqual(cfg.shared()["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
         self.assertEqual(cfg.resolve(h)["shared"]["stat_ord"], 2**63 - 1)
         out = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(), config=cfg)

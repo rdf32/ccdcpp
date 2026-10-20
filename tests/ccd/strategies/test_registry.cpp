@@ -17,7 +17,7 @@
 //   * the lasso monitoring model fits, predicts and scores as the shared
 //     kernels do, bit for bit, with the solver options it was configured with;
 //   * the pyccd start search's decisions are pyccd's comparisons with
-//     meow_size and day_delta;
+//     meow_size (the shared min_observations) and day_delta;
 //   * a band list parameter takes indices 0 to CCD_MAX_BANDS - 1, and the
 //     tmask window screen is tmask() of its bands and t_const;
 //   * the pyccd stability rule is pyccd's check of the stability fit, against
@@ -913,7 +913,7 @@ TEST(WindowScreen, TmaskIsTmaskOfItsBands)
 TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
 {
     ccd::config::Config tree = golden::ccdc();
-    tree.stages["start_search"].params["meow_size"] = ccd::config::integer(10);
+    tree.shared["min_observations"] = ccd::config::integer(10);
     tree.stages["start_search"].params["day_delta"] = ccd::config::integer(200);
     EXPECT_EQ(tree.stages.at("start_search").strategy, "pyccd");
     const auto s = golden::strategies_of(tree);
@@ -948,9 +948,17 @@ TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
     EXPECT_TRUE(search.usable(d(10)));
     EXPECT_FALSE(search.usable(d(9)));   // 9 observations
 
-    tree.stages["start_search"].params["meow_size"] = ccd::config::integer(0);
+    tree.shared["min_observations"] = ccd::config::integer(0);
     expect_refused([&] { golden::strategies_of(tree); },
-                   "start_search 'pyccd' parameter 'meow_size' is 0; it must be at least 1");
+                   "shared parameter 'min_observations' is 0; it must be at least 1");
+
+    // The start search's window is the shared min_observations, and so is
+    // the whole-series curve's least: a stage sets neither.
+    ccd::config::Config own = golden::ccdc();
+    own.stages["start_search"].params["meow_size"] = ccd::config::integer(10);
+    expect_refused([&] { golden::strategies_of(own); },
+                   "start_search 'pyccd' parameter 'meow_size' is the shared value "
+                   "'min_observations'; set shared 'min_observations' instead");
 }
 
 // The preset's Lookback judges at the change test's peek, with the change
@@ -1052,7 +1060,7 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 {
     ccd::config::Config config = golden::ccdc();
     config.shared["coefficient_min"] = ccd::config::integer(6);
-    config.stages["edge_fit"].params["min_observations"] = ccd::config::integer(15);
+    config.shared["min_observations"] = ccd::config::integer(15);
     config.shared["alpha"] = ccd::config::real(0.5);
     ccd::Input reflectance;
     reflectance.reflectance_unit = 1.0;
@@ -1061,6 +1069,7 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     EXPECT_EQ(edges.strategy, "lasso");
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients")), 6);
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("min_observations")), 15);
+    EXPECT_EQ(golden::parameter<std::int64_t>(tree, "start_search", "meow_size"), 15);
     EXPECT_EQ(std::get<double>(edges.params.at("alpha")), 0.5);
     EXPECT_EQ(tree.at("segment_fit").strategy, "model-fit");
     EXPECT_EQ(tree.at("mode").strategy, "pyccd");

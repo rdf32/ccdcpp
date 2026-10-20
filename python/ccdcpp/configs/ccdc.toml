@@ -15,6 +15,7 @@ coefficient_mid = 6
 coefficient_min = 4
 detection_bands = ["green", "red", "nir", "swir1", "swir2"]
 max_iter = 1000
+min_observations = 12
 num_obs_factor = 3
 outlier_probability = 0.999999
 stat_ord = 9223372036854775807
@@ -31,8 +32,6 @@ seasonal_divisor = 4.0
 
 [edge_fit]
 strategy = "lasso"
-[edge_fit.params]
-min_observations = 12
 
 [lookback]
 strategy = "pyccd"
@@ -79,7 +78,6 @@ peek = 0
 strategy = "pyccd"
 [start_search.params]
 day_delta = 365
-meow_size = 12
 
 [window_screen]
 strategy = "tmask"

@@ -43,6 +43,12 @@ constexpr std::int64_t NO_STAT_CUTOFF = std::numeric_limits<std::int64_t>::max()
 //   coefficient_min/_mid/_max,          the coefficient rule of model and
 //   num_obs_factor       none           stability_fit; edge_fit's
 //                                       coefficients is coefficient_min
+//   min_observations     observations   the fewest observations a curve is
+//                                       fitted on: start_search's window
+//                                       (pyccd's meow_size) and the
+//                                       observations it needs after it, and
+//                                       edge_fit's least for a whole-series
+//                                       curve
 //   stat_ord             ordinal day    the statistics cutoff: the procedure
 //                                       choice, the cadence, the variogram
 //                                       and the green median step read only
@@ -69,6 +75,7 @@ struct Shared
     index_t coefficient_mid = 6;
     index_t coefficient_max = 8;
     index_t num_obs_factor = 3;
+    index_t min_observations = 12;
     std::int64_t stat_ord = NO_STAT_CUTOFF;
 };
 

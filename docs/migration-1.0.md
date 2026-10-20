@@ -95,7 +95,7 @@ cfg = ccdcpp.config("ccdc").replace(
     shared__stat_ord=736694,                 # 0.10.0's cutoff
     shared__change_probability=0.995,        # every change test, its thresholds derived
     refit__factor=2.0,
-    start_search__meow_size=16, edge_fit__min_observations=16,
+    shared__min_observations=16,             # the start window and a whole-series curve's least
     window_screen__bands=["green", "red", "swir1"],
     shared__max_iter=500)
 out = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=cfg)
@@ -120,7 +120,7 @@ probability.
 | `GREEN_FILTER_SCOPE` | StatWindow | `green_median`'s `scope` ("stat_window") |
 | `STAT_ORD` | 736694 | `shared__stat_ord` (default: no cutoff) |
 | `DETECTION_BANDS` | [1..5] | `shared__detection_bands` (roles) |
-| `MEOW_SIZE` | 12 | `start_search__meow_size`, `edge_fit__min_observations` |
+| `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_fit`'s `min_observations`) |
 | `PEEK_SIZE` | 6 | `change_test__peek_size` (`stability_rule__peek` and `lookback__peek` are 0, the change test's peek) |
 | `DAY_DELTA` | 365 | `start_search__day_delta` |
 | `CLEAR_PCT_THRESHOLD` | 0.25 | `mode__clear_pct_threshold` |
@@ -189,5 +189,5 @@ ccd::FitResult r = ccd::run_pixel(spec, dates, spectral, qas).result;
 | `TMASK_BANDS is empty` | `window_screen 'tmask' parameter 'bands' is empty` |
 
 A `MEOW_SIZE` of 0, a NaN change or outlier threshold and negative or NaN Lasso constants ran
-in 0.10.0; 1.0 refuses them (`start_search 'pyccd' parameter 'meow_size' is 0; it must be at
-least 1`).
+in 0.10.0; 1.0 refuses them (`shared parameter 'min_observations' is 0; it must be at least
+1`).

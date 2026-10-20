@@ -528,7 +528,7 @@ The Standard procedure has parameters that assume something about the revisit in
 | `refit__factor` | `1.33` | ratio | | Extend: refit once the window spans at least this times the span of the last fit |
 | `change_test__seasonal_count` | `24` | observations | | the seasonal RMSE: residuals of this many fit observations closest in day of year to the last peek observation |
 | `change_test__seasonal_divisor` | `4.0` | none | | the seasonal RMSE: their norm divided by this. pyccd's 4 is `sqrt(24 - 8)`; it is not derived from `seasonal_count` |
-| `start_search__meow_size` | `12` | observations | `edge_fit__min_observations` | the start window, and the observations a start needs after it; the observations a whole-series curve needs |
+| `shared__min_observations` | `12` | observations | `start_search`'s `meow_size`, `edge_fit`'s `min_observations` | the fewest observations a curve is fitted on: the start window, and the observations a start needs after it; the observations a whole-series curve needs |
 | `start_search__day_delta` | `365` | days | | the least span of a start window |
 
 `ccdcpp.chi2_quantile(p, df)` is the chi-squared quantile the procedure computes. The change threshold a run resolves is `chi2_quantile(change_probability, 5)` to the last bit for the default five detection bands:
@@ -548,18 +548,17 @@ A denser series' start windows and refits are a configuration too: start windows
 
 ```python
 dense = ccdcpp.config("ccdc").replace(
-    start_search__meow_size=24, edge_fit__min_observations=24,
-    refit__min_obs=48, change_test__model_rmse_up_to=48)
-print(dense.params("start_search"), dense.params("refit"))
+    shared__min_observations=24, refit__min_obs=48, change_test__model_rmse_up_to=48)
+print(dense.shared()["min_observations"], dense.params("refit"))
 ```
 
 ```text
-{'meow_size': 24, 'day_delta': 365} {'min_obs': 48, 'factor': 1.33}
+24 {'min_obs': 48, 'factor': 1.33}
 ```
 
 A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises `ValueError` naming the stage, strategy and parameter, before any pixel runs: `peek_reference_days` or `min_lag_days` of zero or less, a count below 1, a `peek_size` below 2, a probability outside (0, 1), a factor or divisor of zero or less, a NaN threshold, a negative or NaN Lasso constant, and coefficient counts that decrease from `coefficient_min` to `coefficient_max` or exceed 8 (the harmonic basis's width).
 
-**Denser cadences.** The peek size follows the cadence: it is `round(peek_size * peek_reference_days / (median gap + 0.001))`, never below `peek_size`, where the gap is between consecutive observations the processing mask keeps, up to the shared `stat_ord`; at 8 days it is 12, at 5 days 19, at 4 days 24. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: with the defaults it is 9.24 at a peek of 12, 6.83 at 19 and 5.90 at 24. Both are computed per pixel, as pyccd's `adjustpeek` and `adjustchgthresh` do; a series whose median gap is about 14.8 days or more keeps `peek_size` and `change_threshold` as given. `meow_size` and the refit's `min_obs` are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 4–5 day cadence 12 observations are about 50–60 days, where at 16 days they are about half a year. A caller who wants them in time sets them from the cadence, as above.
+**Denser cadences.** The peek size follows the cadence: it is `round(peek_size * peek_reference_days / (median gap + 0.001))`, never below `peek_size`, where the gap is between consecutive observations the processing mask keeps, up to the shared `stat_ord`; at 8 days it is 12, at 5 days 19, at 4 days 24. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: with the defaults it is 9.24 at a peek of 12, 6.83 at 19 and 5.90 at 24. Both are computed per pixel, as pyccd's `adjustpeek` and `adjustchgthresh` do; a series whose median gap is about 14.8 days or more keeps `peek_size` and `change_threshold` as given. The shared `min_observations` and the refit's `min_obs` are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 4–5 day cadence 12 observations are about 50–60 days, where at 16 days they are about half a year. A caller who wants them in time sets them from the cadence, as above.
 
 ## Sensor Profiles
 

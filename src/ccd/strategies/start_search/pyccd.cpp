@@ -12,7 +12,8 @@ const std::vector<config::Field<PyccdSearch::Params>>& PyccdSearch::schema()
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
         {"meow_size", &Params::meow_size, Unit::Observations, config::at_least(1),
-         "observations a candidate start window holds, and needs after it"},
+         "observations a candidate start window holds, and needs after it",
+         config::Source::Shared, "min_observations"},
         {"day_delta", &Params::day_delta, Unit::Days, config::any(),
          "days a candidate spans at least"},
     };

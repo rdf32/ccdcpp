@@ -37,7 +37,10 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   `TMASK_BANDS`, `DETECTION_BANDS`, `STAT_ORD`) and `LassoOptions`' four are values of the
   configuration: `shared` values read by every stage that needs them (`detection_bands` by
   role, `change_probability`, `outlier_probability`, `alpha`, `coef_floor`, `max_iter`,
-  `tolerance`, the coefficient rule, `stat_ord`), or `stage__parameter` parameters. The change
+  `tolerance`, the coefficient rule, `min_observations`, `stat_ord`), or `stage__parameter`
+  parameters. `MEOW_SIZE` is the shared `min_observations`, the fewest observations a curve is
+  fitted on, which the start search reads as its `meow_size` and the edge fit as its
+  `min_observations`. The change
   and outlier thresholds are the chi-squared quantiles of the probabilities for the
   detection-band count. `LassoOptions` remains the solver's own options type, inside the
   `lasso` strategies.

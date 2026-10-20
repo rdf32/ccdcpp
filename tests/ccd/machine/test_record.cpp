@@ -435,7 +435,7 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         renamed.stages[stage].strategy += "-other";
         EXPECT_NE(ccd::config::digest(renamed), ccd::config::digest(preset)) << stage;
     }
-    EXPECT_GT(parameters, 15u);
+    EXPECT_GE(parameters, 15u);
 }
 
 TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)

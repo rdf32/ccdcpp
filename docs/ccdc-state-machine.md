@@ -80,7 +80,7 @@ the edge fit's `coefficients` (4).
                       EndCatch [NoRoomToInitialize] ── the End segment, if prev_break + peek < size ──► Done
 ```
 
-`meow_size` and `day_delta` here are the `pyccd` start search's parameters
+`meow_size` (the shared `min_observations`) and `day_delta` here are the `pyccd` start search's parameters
 (the `start_search` stage, section 3): the machine asks the run's start search where a candidate
 is, whether it has room and whether the search is exhausted.
 
@@ -215,28 +215,26 @@ rows, `config::bands({1, 4})`).
 | `segment_fit` | the coefficients each band of a segment Extend grew reports, and its coefficient count (`segment()`, under the mode's cap); and a forced start's own segment when the series ends before Extend fits it (`unfitted()`) | `model-fit`: the monitoring model's, as its last refit left them; refitted on the segment's window with the capped count below a cap |
 | `edge_fit` | whether the Start and End segments are written (`start_due()`, `end_due()`), their fits (`catch_window()`) and the whole-series curve (`whole_series()`) | `lasso`: every band a Lasso fit of `coefficients` coefficients (pyccd: 4); no whole-series segment under `min_observations` kept observations (pyccd: 12); the Start and End segments when more than a peek of observations is before the first stable start, or after the last segment |
 
-A run's configuration is `RunSpec::config`, by default the registry's `ccdc` preset
+A run's configuration is `RunSpec::algorithm`, by default the registry's `ccdc` preset
 (`strategies::library_registry().preset("ccdc")`, written out in `python/ccdcpp/configs/ccdc.toml`):
-each core strategy above at its defaults, pyccd's values for Collection-1 DN. Where pyccd has
-one constant, the preset holds it in each stage that reads it, with the same value:
+each core strategy above at its defaults, in physical terms. Where pyccd has one constant, the
+configuration holds it once, as a shared value (`include/ccd/config/shared.hpp`) the stages
+read, or derives it from one:
 
-| pyccd's constant | The parameters that hold it |
+| pyccd's constant | Where the configuration holds it |
 |---|---|
-| the start window, 12 observations | `start_search`'s `meow_size`, `edge_fit`'s `min_observations` |
-| the change threshold, chi2(5) at 0.99 | `change_threshold` of `change_test`, `stability_rule` and `lookback` |
-| the change probability, 0.99 | `change_probability` of `change_test`, `stability_rule` and `lookback` |
-| the outlier threshold, chi2(5) at 1 - 1e-6 | `outlier`'s `threshold`, `lookback`'s `outlier_threshold` |
-| the refit and model-RMSE window, 24 observations | `refit`'s `min_obs`, `change_test`'s `model_rmse_up_to` |
-| the coefficient counts, 4, 6 and 8 | `coefficient_min`, `_mid`, `_max` of `model` and `stability_fit`; `edge_fit`'s `coefficients` (4) |
-| the Lasso's constants | `max_iter`, `alpha`, `tolerance`, `coef_floor` of `model`, `stability_fit` and `edge_fit` |
+| the start window, 12 observations | shared `min_observations`: `start_search`'s `meow_size`, `edge_fit`'s `min_observations` |
+| the change probability, 0.99 | shared `change_probability`: `change_probability` of `change_test`, `stability_rule` and `lookback` |
+| the change threshold, chi2(5) at 0.99 | derived from it: `change_threshold` of `change_test`, `stability_rule` and `lookback` |
+| the outlier threshold, chi2(5) at 1 - 1e-6 | derived from shared `outlier_probability`: `outlier`'s `threshold`, `lookback`'s `outlier_threshold` |
+| the coefficient counts, 4, 6 and 8 | shared `coefficient_min`, `_mid`, `_max`: `model`'s and `stability_fit`'s; `edge_fit`'s `coefficients` (4) |
+| the Lasso's constants | shared `max_iter`, `alpha`, `tolerance`, `coef_floor`: `model`'s, `stability_fit`'s and `edge_fit`'s |
+| the refit and model-RMSE window, 24 observations | two parameters, `refit`'s `min_obs` and `change_test`'s `model_rmse_up_to`, which a configuration may set apart |
 
-A configuration may set them apart. The stability rule's and the lookback's `peek` is 0, the
-change test's peek; N gives them a peek of N, with their `change_threshold` for it, unadjusted.
-The machine's other decisions are made inside its phases. The peek size the change test chooses
-is also what the machine's guards and the stability rule's and lookback's `prepare()` read.
-Each of the change test, the stability rule and the lookback has its own `change_threshold` and
-`change_probability`, and each of the outlier rule and the lookback its own outlier threshold, so
-a configuration may set Extend's tests, Initialize's and Lookback's apart.
+The stability rule's and the lookback's `peek` is 0, the change test's peek; N gives them a peek
+of N, with their `change_threshold` for it, unadjusted. The machine's other decisions are made
+inside its phases. The peek size the change test chooses is also what the machine's guards and
+the stability rule's and lookback's `prepare()` read.
 
 **The routes other strategies take.** The core strategies take the routes of section 2; the
 hooks above give other strategies routes of their own, all on the same machine:
@@ -311,16 +309,17 @@ using namespace ccd;
 config::Config config = strategies::library_registry().preset("ccdc");
 // config.shared holds detection_bands {"green", "red", "nir", "swir1", "swir2"},
 //   change_probability 0.99, outlier_probability 0.999999, alpha and coef_floor 1e-4
-//   (reflectance), max_iter 1000, tolerance 1e-4, the coefficient rule 4/6/8/3 and stat_ord
-//   NO_STAT_CUTOFF; the stages that read them hold no copy.
-// config.stages["start_search"] is {"pyccd", {{"meow_size", 12}, {"day_delta", 365}}}
+//   (reflectance), max_iter 1000, tolerance 1e-4, the coefficient rule 4/6/8/3,
+//   min_observations 12 and stat_ord NO_STAT_CUTOFF; the stages that read them hold no copy.
+// config.stages["start_search"] is {"pyccd", {{"day_delta", 365}}}: its meow_size is the
+//   shared min_observations.
 // config.stages["window_screen"] is {"tmask", {{"bands", {"green", "swir1"}}, {"t_const", 4.89}}}
 // config.stages["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
 // config.stages["outlier"] is {"floored", {{"statistic", "change_magnitude"}}}: its
 //   threshold is the chi-squared quantile of the shared outlier_probability.
 
 // Start windows of 18 observations spanning two years.
-config.stages["start_search"].params["meow_size"] = config::integer(18);
+config.shared["min_observations"] = config::integer(18);
 config.stages["start_search"].params["day_delta"] = config::integer(730);
 
 // Tmask over green, red and swir1, and a looser outlier cut.
