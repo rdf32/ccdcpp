@@ -129,7 +129,7 @@ TEST(Record, TheHeaderNamesTheRun)
     EXPECT_EQ(r.header.series_end, p.dates.back());
     EXPECT_EQ(r.header.statistics_end, p.dates.back());
     EXPECT_EQ(r.header.options_digest,
-              ccd::options_digest(p.h, ccd::config::legacy_config(p.a),
+              ccd::options_digest(p.h, golden::config_of(p.a),
                                   ccd::preprocess::default_plan(p.h), nullptr));
 }
 
@@ -295,10 +295,10 @@ namespace
 
 std::uint64_t digest_of(
     const ccd::HarmonicOptions& h,
-    const ccd::config::Legacy& a = ccd::config::Legacy{},
+    const golden::Algorithm& a = golden::Algorithm{},
     const ccd::QaTable* table = nullptr)
 {
-    return ccd::options_digest(h, ccd::config::legacy_config(a), ccd::preprocess::default_plan(h),
+    return ccd::options_digest(h, golden::config_of(a), ccd::preprocess::default_plan(h),
                                table);
 }
 
@@ -311,29 +311,18 @@ TEST(OptionsDigest, EqualOptionsEqualDigests)
               digest_of(golden::physical_harmonic(), golden::physical_algorithm()));
 }
 
-// A configuration 0.10's options describe digests as 0.10 digested those
-// options, so 0.10.0's resume records stay valid: 0.10.0's digests of the
-// default run, of two variants and of the Collection-2 options.
-TEST(OptionsDigest, AConfigurationOfTheOptionsKeepsTheirDigest)
+// The configuration is in the digest: the preset's, and another's.
+TEST(OptionsDigest, TheConfigurationMoves)
 {
-    EXPECT_EQ(digest_of(ccd::HarmonicOptions{}), 10514528273867247594ull);
-    ccd::config::Legacy threshold;
-    threshold.CHANGE_THRESHOLD = 11.0;
-    EXPECT_EQ(digest_of(ccd::HarmonicOptions{}, threshold), 8596613333196416811ull);
-    ccd::config::Legacy alpha;
-    alpha.lasso.alpha = 2.0;
-    EXPECT_EQ(digest_of(ccd::HarmonicOptions{}, alpha), 13857117797823812633ull);
-
-    // A configuration no options describe: its own digest, and another.
     const ccd::HarmonicOptions h;
-    ccd::config::ConfigTree tree = ccd::config::preset("ccdc");
-    EXPECT_TRUE(ccd::config::recover(tree));
+    ccd::config::ConfigTree tree = ccd::strategies::library_registry().preset("ccdc");
+    const auto plan = ccd::preprocess::default_plan(h);
+    const std::uint64_t base = ccd::options_digest(h, tree, plan, nullptr);
+    EXPECT_EQ(base, digest_of(h));
     tree["lookback"].params["peek"] = ccd::config::integer(6);
-    EXPECT_FALSE(ccd::config::recover(tree));
-    const std::uint64_t own =
-        ccd::options_digest(h, tree, ccd::preprocess::default_plan(h), nullptr);
-    EXPECT_NE(own, digest_of(h));
-    EXPECT_EQ(own, ccd::options_digest(h, tree, ccd::preprocess::default_plan(h), nullptr));
+    const std::uint64_t other = ccd::options_digest(h, tree, plan, nullptr);
+    EXPECT_NE(other, base);
+    EXPECT_EQ(other, ccd::options_digest(h, tree, plan, nullptr));
 }
 
 TEST(OptionsDigest, EveryGroupOfFieldsMoves)
@@ -361,8 +350,9 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
     }
 
     // The algorithm's options, each in the configuration they describe.
-    using SetLegacy = std::function<void(ccd::config::Legacy&)>;
-    const std::pair<const char*, SetLegacy> legacy[] = {
+    // The algorithm's values, each in the configuration.
+    using SetAlgorithm = std::function<void(golden::Algorithm&)>;
+    const std::pair<const char*, SetAlgorithm> algorithm[] = {
         {"MEOW_SIZE", [](auto& a) { a.MEOW_SIZE = 13; }},
         {"PEEK_SIZE", [](auto& a) { a.PEEK_SIZE = 7; }},
         {"DAY_DELTA", [](auto& a) { a.DAY_DELTA = 366; }},
@@ -380,9 +370,9 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         {"tolerance", [](auto& a) { a.lasso.tolerance = 1e-5; }},
         {"coef_floor", [](auto& a) { a.lasso.coef_floor = 2.0; }},
     };
-    for (const auto& [name, set] : legacy)
+    for (const auto& [name, set] : algorithm)
     {
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         set(a);
         EXPECT_NE(digest_of(ccd::HarmonicOptions{}, a), base) << name;
     }
@@ -391,7 +381,7 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
 TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 {
     const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree l = ccd::config::preset("ccdc");
+    const ccd::config::ConfigTree l = ccd::strategies::library_registry().preset("ccdc");
     const auto plan = ccd::preprocess::default_plan(h);
     const std::uint64_t base = ccd::options_digest(h, l, plan, nullptr);
 
@@ -419,7 +409,6 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
     EXPECT_EQ(sizeof(ccd::HarmonicOptions), 256u);
-    EXPECT_EQ(sizeof(ccd::config::Legacy), 232u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);
 }

@@ -72,8 +72,8 @@ def landsat_c1_dn():
     ``HarmonicOptions`` ``QA_*`` fields); for raw ``pixel_qa`` pass
     ``qa_table=ccdcpp.qa_tables.landsat_c1_pixel_qa()``.
 
-    ``options()`` is ``HarmonicOptions()`` and ``LassoOptions()``, field for
-    field.
+    ``options()`` is ``HarmonicOptions()``, field for field, and
+    ``config()`` the "ccdc" preset.
     """
     return SensorProfile(
         name="landsat_c1_dn",
@@ -267,8 +267,8 @@ def hls():
     row is saturation-screened. No statistics cutoff. On the validation cell
     the series ran at a median gap of 4-5 days, and the peek window grew to
     19-24 observations (19 at 5 days, 24 at 4; change threshold 6.83 to
-    5.90); ``MEOW_SIZE`` and the ``RETRAIN_*`` counts stay pyccd's
-    observation counts, so 12 observations span about 50-60 days.
+    5.90); the start search's ``meow_size`` and the refit's ``min_obs`` stay
+    pyccd's observation counts, so 12 observations span about 50-60 days.
 
     An L30 and an S30 observation on one date: the filters keep the first in
     array order, so put L30 before S30 on a shared date.

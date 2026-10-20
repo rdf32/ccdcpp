@@ -76,7 +76,7 @@ for path in sys.argv[5:]:
     d = np.genfromtxt(path, delimiter=",")
     pixels.append((os.path.basename(path), d[:, 0].astype(np.int64), d[:, 1:8].T, d[:, 8]))
 
-hopt, lopt = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+hopt = ccdcpp.HarmonicOptions()
 
 
 def peak_mb():
@@ -102,7 +102,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
         if only != "ccdcpp":
             run_pyccd(d, s64, q8)
         if only != "pyccd":
-            ccdcpp.detect(d, s64, q8, hopt, lopt)
+            ccdcpp.detect(d, s64, q8, hopt)
         before = peak_mb()
         continue
     py = cpp = None
@@ -114,7 +114,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
         best = None
         for _ in range(5):
             t0 = time.perf_counter()
-            cpp = ccdcpp.detect(d, s64, q8, hopt, lopt)
+            cpp = ccdcpp.detect(d, s64, q8, hopt)
             el = time.perf_counter() - t0
             best = el if best is None else min(best, el)
         cpp_t.append(best)

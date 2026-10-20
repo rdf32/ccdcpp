@@ -25,7 +25,6 @@ int omp_get_thread_num() { return 0; }
 #include "ccd/input/quality.hpp"
 #include "ccd/core/logger.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
-#include "ccd/config/legacy.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 #include "../core/fnv.hpp"

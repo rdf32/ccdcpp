@@ -286,8 +286,8 @@ ccd::FitResult run_insufficient_clear(
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
         ccd::filter::insufficientclear(hworkspace),
-        ccd::config::Legacy{}.MEOW_SIZE,
-        ccd::config::Legacy{}.COEFFICIENT_MIN,
+        golden::Algorithm{}.MEOW_SIZE,
+        golden::Algorithm{}.COEFFICIENT_MIN,
         lworkspace,
         solver
     );

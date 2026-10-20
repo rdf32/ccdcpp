@@ -49,7 +49,7 @@
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/machine/standard.hpp"
 #include "ccd/regression/lasso_solver.hpp"
-#include "ccd/config/legacy.hpp"
+#include "../golden/algorithm.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/register_core.hpp"
 
@@ -76,7 +76,7 @@ struct Record
     std::vector<double> spectral;   // (7, n)
     std::vector<std::uint8_t> qas;
     ccd::HarmonicOptions options;
-    ccd::config::Legacy legacy;   // the algorithm's options
+    golden::Algorithm legacy;   // the algorithm's options
     ccd::LassoOptions lasso_options;
 
     ccd::HarmonicWorkspace workspace;
@@ -819,7 +819,7 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     // a 24-observation window, refitted (min_obs 24), compares against the
     // seasonal RMSE when the test's limit is 10.
     Record r(80);
-    auto tree = ccd::config::preset("ccdc");
+    auto tree = ccd::strategies::library_registry().preset("ccdc");
     tree["change_test"].params["model_rmse_up_to"] = ccd::config::integer(10);
     r.strategies = ccd::strategies::build_strategies(ccd::strategies::core_registry(), tree);
     in_extend(r, 0, 24);
@@ -1620,7 +1620,7 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
         expect_same(
             fit,
             ccd::fit_whole_series(procedure, r.workspace, mask, r.legacy.MEOW_SIZE,
-                                  ccd::config::Legacy{}.COEFFICIENT_MIN, r.lasso, r.solver),
+                                  golden::Algorithm{}.COEFFICIENT_MIN, r.lasso, r.solver),
             "whole series");
         ASSERT_EQ(fit.models.size(), 1u);
         EXPECT_EQ(fit.models[0].curve_qa,

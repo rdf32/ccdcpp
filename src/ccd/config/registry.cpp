@@ -109,5 +109,40 @@ std::uint64_t digest(const ConfigTree& config)
     return h.value();
 }
 
+Values Registry::defaults(const std::string& stage, const std::string& strategy) const
+{
+    find(stage, strategy);   // the same refusal as make()'s
+    Values out;
+    for (const ParameterInfo& p : schemas_.at(stage).at(strategy))
+        out[p.name] = p.default_value;
+    return out;
+}
+
+void Registry::add_preset(const std::string& name, ConfigTree config)
+{
+    presets_[name] = std::move(config);
+}
+
+const ConfigTree& Registry::preset(const std::string& name) const
+{
+    const auto p = presets_.find(name);
+    if (p == presets_.end())
+    {
+        std::string names;
+        for (const auto& [n, _] : presets_)
+            names += std::string(names.empty() ? "" : ", ") + "\"" + n + "\"";
+        throw std::invalid_argument("no preset '" + name + "'; there are " + names);
+    }
+    return p->second;
+}
+
+std::vector<std::string> Registry::presets() const
+{
+    std::vector<std::string> out;
+    for (const auto& [n, _] : presets_)
+        out.push_back(n);
+    return out;
+}
+
 } // namespace config
 } // namespace ccd

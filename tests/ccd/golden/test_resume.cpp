@@ -39,7 +39,7 @@
 #include "specs.hpp"
 
 #include "ccd/ccd.hpp"
-#include "ccd/config/legacy.hpp"
+#include "algorithm.hpp"
 
 #include "golden.hpp"
 #include "series_corpus.hpp"
@@ -637,7 +637,7 @@ TEST(RunConfiguration, TheOptionsConfigurationRunsAsTheOptions)
             break;
         ccd::RunSpec by_options = golden::spec_of(s.h, s.a, nullptr, nullptr, true);
         ccd::RunSpec by_config = by_options;
-        by_config.config = ccd::config::legacy_config(s.a);
+        by_config.config = golden::config_of(s.a);
         const ccd::PixelRun a =
             ccd::run_pixel(by_options, s.date_view(), s.spectral_view(), s.qa_view());
         const ccd::PixelRun b =
@@ -649,7 +649,7 @@ TEST(RunConfiguration, TheOptionsConfigurationRunsAsTheOptions)
     const std::vector<Series> all = golden::synthetic_series();
     const Series& s = all.front();
     ccd::RunSpec spec = golden::spec_of(s.h, s.a);
-    auto tree = ccd::config::legacy_config(s.a);
+    auto tree = golden::config_of(s.a);
     tree["window_screen"].params["bands"] = ccd::config::bands({1, 9});
     spec.config = tree;
     try

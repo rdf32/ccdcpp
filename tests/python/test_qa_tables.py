@@ -121,7 +121,7 @@ def synthetic(H=3, W=4, seed=7):
 
 
 def options():
-    return ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+    return ccdcpp.HarmonicOptions()
 
 
 def assert_same(test, a, b, where="out"):
@@ -276,11 +276,11 @@ class DecodedEqualsCodes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dates, cls.spectral, cls.codes = synthetic()
-        h, lo = options()
+        h = options()
         cls.columns = ccdcpp.detect_cube_columns(
-            cls.dates, cls.spectral, cls.codes, h, lo, threads=1)
+            cls.dates, cls.spectral, cls.codes, h, threads=1)
         cls.pixels = ccdcpp.detect_cube(
-            cls.dates, cls.spectral, cls.codes, h, lo, threads=1)
+            cls.dates, cls.spectral, cls.codes, h, threads=1)
         assert cls.columns["failures"] == []
         assert len(cls.columns["row"]) > cls.codes.shape[0] * cls.codes.shape[1]
         # PermanentSnow, InsufficientClear and Standard all ran.
@@ -298,7 +298,7 @@ class DecodedEqualsCodes(unittest.TestCase):
         yield "strided", np.moveaxis(np.ascontiguousarray(np.moveaxis(raw, 2, 0)), 0, 2)
 
     def test_detect_cube_columns(self):
-        h, lo = options()
+        h = options()
         for name in SCHEMES:
             table = build(name)
             for kind, raw in self.raw_inputs(name):
@@ -306,7 +306,7 @@ class DecodedEqualsCodes(unittest.TestCase):
                     with self.subTest(name=name, qas=kind, threads=threads):
                         before = raw.copy()
                         out = ccdcpp.detect_cube_columns(
-                            self.dates, self.spectral, raw, h, lo, threads, qa_table=table)
+                            self.dates, self.spectral, raw, h, threads, qa_table=table)
                         out.pop("threads")
                         expected = dict(self.columns)
                         expected.pop("threads")
@@ -314,17 +314,17 @@ class DecodedEqualsCodes(unittest.TestCase):
                         np.testing.assert_array_equal(raw, before)
 
     def test_detect_cube(self):
-        h, lo = options()
+        h = options()
         for name in SCHEMES:
             table = build(name)
             for kind, raw in self.raw_inputs(name):
                 with self.subTest(name=name, qas=kind):
                     out = ccdcpp.detect_cube(
-                        self.dates, self.spectral, raw, h, lo, threads=8, qa_table=table)
+                        self.dates, self.spectral, raw, h, threads=8, qa_table=table)
                     assert_same(self, out, self.pixels)
 
     def test_detect(self):
-        h, lo = options()
+        h = options()
         H, W, _ = self.codes.shape
         for name in SCHEMES:
             table = build(name)
@@ -333,31 +333,31 @@ class DecodedEqualsCodes(unittest.TestCase):
                 for c in range(W):
                     with self.subTest(name=name, pixel=(r, c)):
                         expected = ccdcpp.detect(
-                            self.dates, self.spectral[r, c], self.codes[r, c], h, lo)
+                            self.dates, self.spectral[r, c], self.codes[r, c], h)
                         assert_same(self, ccdcpp.detect(
-                            self.dates, self.spectral[r, c], raw[r, c], h, lo,
+                            self.dates, self.spectral[r, c], raw[r, c], h,
                             qa_table=table), expected)
                         if name in NARROW:
                             assert_same(self, ccdcpp.detect(
                                 self.dates, self.spectral[r, c], raw[r, c].astype(np.uint8),
-                                h, lo, qa_table=table), expected)
+                                h, qa_table=table), expected)
 
     def test_uint16_spectral(self):
-        h, lo = options()
+        h = options()
         spectral = np.clip(self.spectral, 0, 65535).astype(np.uint16)
         reference = ccdcpp.detect_cube_columns(
-            self.dates, spectral, self.codes, h, lo, threads=2)
+            self.dates, spectral, self.codes, h, threads=2)
         out = ccdcpp.detect_cube_columns(
-            self.dates, spectral, encode("landsat_c2_qa_pixel", self.codes), h, lo, threads=2,
+            self.dates, spectral, encode("landsat_c2_qa_pixel", self.codes), h, threads=2,
             qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel())
         assert_same(self, out, reference)
 
     def test_uint8_codes_through_an_identity_table(self):
-        h, lo = options()
+        h = options()
         identity = np.full(65536, FILL, dtype=np.uint8)
         identity[:256] = np.arange(256, dtype=np.uint8)
         out = ccdcpp.detect_cube_columns(
-            self.dates, self.spectral, self.codes, h, lo, threads=2,
+            self.dates, self.spectral, self.codes, h, threads=2,
             qa_table=ccdcpp.QaTable(identity))
         out.pop("threads")
         expected = dict(self.columns)
@@ -370,14 +370,14 @@ class Validation(unittest.TestCase):
         self.dates, self.spectral, codes = synthetic(1, 2)
         self.codes = codes
         self.raw = encode("landsat_c2_qa_pixel", codes)
-        self.h, self.lo = options()
+        self.h = options()
 
     def entries(self, qas, **kw):
-        d, s, h, lo = self.dates, self.spectral, self.h, self.lo
+        d, s, h = self.dates, self.spectral, self.h
         return {
-            "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], h, lo, **kw),
-            "detect_cube": lambda: ccdcpp.detect_cube(d, s, qas, h, lo, 1, **kw),
-            "detect_cube_columns": lambda: ccdcpp.detect_cube_columns(d, s, qas, h, lo, 1, **kw),
+            "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], h, **kw),
+            "detect_cube": lambda: ccdcpp.detect_cube(d, s, qas, h, 1, **kw),
+            "detect_cube_columns": lambda: ccdcpp.detect_cube_columns(d, s, qas, h, 1, **kw),
         }
 
     def test_uint16_without_a_table(self):
@@ -410,10 +410,10 @@ class Validation(unittest.TestCase):
         table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
         with self.assertRaises(TypeError):
             ccdcpp.detect_cube(
-                self.dates, self.spectral, self.raw, self.h, self.lo, 1, table)
+                self.dates, self.spectral, self.raw, self.h, 1, table)
         with self.assertRaises(TypeError):
             ccdcpp.detect(
-                self.dates, self.spectral[0, 0], self.raw[0, 0], self.h, self.lo, table)
+                self.dates, self.spectral[0, 0], self.raw[0, 0], self.h, table)
 
     def test_unsafe_qa_dtype_with_a_table(self):
         table = ccdcpp.qa_tables.landsat_c2_qa_pixel()

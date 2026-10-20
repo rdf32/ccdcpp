@@ -29,28 +29,16 @@ namespace ccd
 // Throws std::invalid_argument when:
 //
 //   * `bands` is not options.NUM_BANDS, or exceeds CCD_MAX_BANDS;
-//   * DETECTION_BANDS or TMASK_BANDS is empty;
-//   * DETECTION_BANDS, TMASK_BANDS or SATURATION_BANDS holds an index not
-//     below `bands`, or holds one index twice;
+//   * DETECTION_BANDS is empty;
+//   * DETECTION_BANDS or SATURATION_BANDS holds an index not below `bands`,
+//     or holds one index twice;
 //   * GREEN_IDX is NO_BAND or not below `bands`;
 //   * THERMAL_IDX is neither NO_BAND nor below `bands`, or is in
 //     SATURATION_BANDS.
 //
-// and the cadence and change-probability options when:
-//
-//   * PEEK_REFERENCE_DAYS or VARIOGRAM_MIN_LAG_DAYS is not greater than 0;
-//   * RETRAIN_MIN_OBS or SEASONAL_RMSE_COUNT is below 1;
-//   * RETRAIN_SPAN_FACTOR or SEASONAL_RMSE_DIVISOR is not greater than 0;
-//   * CHANGE_PROBABILITY is not in (0, 1);
-//
-// and the coefficient counts when:
-//
-//   * COEFFICIENT_MIN is below 1;
-//   * COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX decrease;
-//   * COEFFICIENT_MAX is above 8, the harmonic basis's width (the intercept
-//     and seven columns).
-//
-// The message names the field and the counts or the value.
+// The message names the field and the counts or the value. The algorithm's
+// parameters are the configuration's, checked by their schemas when a run
+// is built (RunSpec::config).
 //
 //------------------------------------------------------------------------------
 
@@ -78,9 +66,7 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates);
 // outputs: every field of the options, the configuration, every field of the
 // plan, and the QA table's codes (none when qa_table is null). Equal ones
 // give equal digests on every platform; unequal ones, different digests but
-// for a 64-bit collision. A configuration 0.10's options describe
-// (config::recover()) is digested as those options were, so the digest is
-// 0.10's and its resume records stay valid. STAT_ORD is in it: a resumed run
+// for a 64-bit collision. STAT_ORD is in it: a resumed run
 // is given the first run's options, and caps the cutoffs itself
 // (ResumeHeader::statistics_end).
 std::uint64_t options_digest(

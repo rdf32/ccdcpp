@@ -25,6 +25,8 @@
 
 #include "ccd/ccd.hpp"
 
+#include "algorithm.hpp"
+
 #include "specs.hpp"
 #include "synthetic.hpp"
 
@@ -38,7 +40,7 @@ struct CharPixel
     std::vector<double> spectral;      // (7, T), band-major
     std::vector<std::uint8_t> qas;     // (T)
     ccd::HarmonicOptions h;
-    ccd::config::Legacy a;               // the algorithm's options
+    golden::Algorithm a;               // the algorithm's options
 };
 
 // What a pixel's spectral series is made of.

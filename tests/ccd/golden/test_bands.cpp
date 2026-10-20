@@ -73,7 +73,7 @@ ccd::FitResult run_detect(
     std::size_t B,
     const std::uint8_t* qas,
     const ccd::HarmonicOptions& h,
-    const ccd::config::Legacy& l
+    const golden::Algorithm& l
 )
 {
     const std::size_t T = dates.size();
@@ -168,7 +168,7 @@ template<typename Map>
 std::string dump_series(
     const Series& s,
     const ccd::HarmonicOptions& h,
-    const ccd::config::Legacy& l,
+    const golden::Algorithm& l,
     Map map
 )
 {
@@ -186,7 +186,7 @@ std::string dump_series(
 std::string dump_series(
     const Series& s,
     const ccd::HarmonicOptions& h,
-    const ccd::config::Legacy& l
+    const golden::Algorithm& l
 )
 {
     return dump_series(s, h, l, [](ccd::FitResult r) { return r; });
@@ -242,7 +242,7 @@ TEST(Bands, BitIdenticalToFixture)
     for (std::size_t pi = 0; pi < profiles().size(); ++pi)
     {
         const Profile profile = profiles()[pi];
-        const ccd::config::Legacy& l = profile.a;
+        const golden::Algorithm& l = profile.a;
         const std::size_t B = profile.specs.size();
         Coverage coverage;
 
@@ -393,8 +393,8 @@ TEST(Bands, GenericLayoutEqualsDefault)
     for (const auto& s : landsat_corpus())
     {
         EXPECT_EQ(
-            dump_series(s, landsat_layout(ccd::HarmonicOptions{}), ccd::config::Legacy{}),
-            dump_series(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}));
+            dump_series(s, landsat_layout(ccd::HarmonicOptions{}), golden::Algorithm{}),
+            dump_series(s, ccd::HarmonicOptions{}, golden::Algorithm{}));
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
@@ -439,7 +439,7 @@ ccd::HarmonicOptions permute_layout(
 void expect_permutation_invariant(
     const Series& s,
     const ccd::HarmonicOptions& h,
-    const ccd::config::Legacy& l,
+    const golden::Algorithm& l,
     const std::vector<ccd::index_t>& perm
 )
 {
@@ -451,7 +451,7 @@ void expect_permutation_invariant(
 
     const Series permuted = take_rows(s, perm);
     const ccd::HarmonicOptions hp = permute_layout(h, inv);
-    ccd::config::Legacy lp = l;   // the Tmask bands follow theirs too
+    golden::Algorithm lp = l;   // the Tmask bands follow theirs too
     ccd::BandList tmask;
     for (const ccd::index_t b : l.TMASK_BANDS)
         tmask.push_back(inv[b]);
@@ -471,7 +471,7 @@ TEST(Bands, PermutationInvariantSevenBands)
 
     for (const auto& s : landsat_corpus())
     {
-        expect_permutation_invariant(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}, perm);
+        expect_permutation_invariant(s, ccd::HarmonicOptions{}, golden::Algorithm{}, perm);
         expect_permutation_invariant(
             to_physical(s), golden::physical_harmonic(), golden::physical_algorithm(), perm);
     }
@@ -517,9 +517,9 @@ TEST(Bands, InertBandsChangeNothingElse)
             const Series wide = with_inert_rows(s, k, 900 + k);
 
             EXPECT_EQ(
-                dump_series(wide, h, ccd::config::Legacy{},
+                dump_series(wide, h, golden::Algorithm{},
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}));
+                dump_series(s, ccd::HarmonicOptions{}, golden::Algorithm{}));
 
             const Series phys = to_physical(s);
             EXPECT_EQ(
@@ -605,14 +605,14 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
         const Series stripped = take_rows(s, optical);
         const std::string absent =
-            dump_series(stripped, no_thermal(ccd::HarmonicOptions{}), ccd::config::Legacy{});
+            dump_series(stripped, no_thermal(ccd::HarmonicOptions{}), golden::Algorithm{});
 
         EXPECT_EQ(
             absent,
-            dump_series(s, open_thermal(ccd::HarmonicOptions{}), ccd::config::Legacy{}, optical_only));
+            dump_series(s, open_thermal(ccd::HarmonicOptions{}), golden::Algorithm{}, optical_only));
 
         default_bounds_differ = default_bounds_differ ||
-            absent != dump_series(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}, optical_only);
+            absent != dump_series(s, ccd::HarmonicOptions{}, golden::Algorithm{}, optical_only);
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
@@ -624,7 +624,7 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
         for (std::size_t p = 0; p < s.N; ++p)
         {
             for (const auto& m : run_detect(stripped.dates, stripped.pixel(p), 6,
-                     stripped.qa(p), no_thermal(ccd::HarmonicOptions{}), ccd::config::Legacy{}).models)
+                     stripped.qa(p), no_thermal(ccd::HarmonicOptions{}), golden::Algorithm{}).models)
             {
                 if (m.curve_qa == ccd::CurveQA::PersistentSnow) ++coverage.snow;
                 else if (m.curve_qa == ccd::CurveQA::InsufficientClear) ++coverage.insufficient;

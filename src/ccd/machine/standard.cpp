@@ -327,10 +327,6 @@ Phase prepare(const Context& context, State& state)
     const auto& options = context.options;
     MaskedSeries& series = state.series;
 
-    // validate() refuses less: the change test needs consecutive
-    // observations, and both peeks read their first magnitude.
-    assert(options.PEEK_SIZE >= 2);
-
     LOG_DEBUG("num obs: " << context.pixel.dates().size());
     LOG_DEBUG("Processing mask initial count: " << series.size());
     //----------------------------------------------------------
@@ -368,6 +364,9 @@ Phase prepare(const Context& context, State& state)
     const ChangeTest& change_test = *context.strategies.change_test;
     const PeekPlan plan = change_test.prepare(
         stat_dates, detection_bands, test_scratch(context, state.extension));
+    // A peek holds an observation at least; chi2's schema refuses fewer than
+    // two (a change is consecutive observations over the threshold).
+    assert(plan.peek >= 1);
     state.cadence = Cadence{plan.peek, plan.full ? plan.peek : 0, plan.min_window};
     // A resume continues full peeks only (resume_series_end()).
     if (!plan.full)
@@ -1004,19 +1003,19 @@ void check_fits(const Context& context, const State& state, const Suspended& fro
     {
         case Exit::NoRoomToInitialize:
             if (w.size() != meow)
-                refuse("NoRoomToInitialize with a window other than MEOW_SIZE long");
+                refuse("NoRoomToInitialize with a window other than the start search's");
             break;
         case Exit::InitializeExhausted:
             if (w.size() < meow || w.stop > size)
-                refuse("InitializeExhausted with a window shorter than MEOW_SIZE or past the series");
+                refuse("InitializeExhausted with a window shorter than the start search's or past the series");
             break;
         case Exit::PeekBeyondEnd:
             if (w.size() < meow || w.stop > size)
-                refuse("PeekBeyondEnd with a window shorter than MEOW_SIZE or past the series");
+                refuse("PeekBeyondEnd with a window shorter than the start search's or past the series");
             break;
         case Exit::SeriesEnd:
             if (w.size() < meow || w.stop >= size)
-                refuse("SeriesEnd with a window shorter than MEOW_SIZE or reaching the series end");
+                refuse("SeriesEnd with a window shorter than the start search's or reaching the series end");
             if (!(w.start < from.fit_stop && from.fit_stop <= w.stop))
                 refuse("SeriesEnd with a fit window outside the window");
             if (from.num_coef < 1 || from.num_coef > state.coefficients.max)

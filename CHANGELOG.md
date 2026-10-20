@@ -4,6 +4,48 @@
 
 ### Changed
 
+- **The options describe the input; the configuration is the algorithm.** `HarmonicOptions`
+  keeps the input's fields (QA codes, `CLEAR_OBSERVATION_THRESHOLD`, the thermal transform and
+  value ranges, `MEDIAN_GREEN_FILTER`, `GREEN_FILTER_SCOPE`, `STAT_ORD`, `NUM_BANDS`,
+  `DETECTION_BANDS`, `SATURATION_BANDS`, the band indices). Gone from it: `METHOD`,
+  `MEOW_SIZE`, `PEEK_SIZE`, `DAY_DELTA`, `CLEAR_PCT_THRESHOLD`, `SNOW_PCT_THRESHOLD`,
+  `OUTLIER_THRESHOLD`, `CHANGE_THRESHOLD`, `T_CONST`, `PEEK_REFERENCE_DAYS`,
+  `VARIOGRAM_MIN_LAG_DAYS`, `RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR`, `SEASONAL_RMSE_COUNT`,
+  `SEASONAL_RMSE_DIVISOR`, `CHANGE_PROBABILITY`, `TMASK_BANDS`, `COEFFICIENT_MIN`,
+  `COEFFICIENT_MID`, `COEFFICIENT_MAX`, `NUM_OBS_FACTOR`; `ccd::ChangeMethod`,
+  `with_method()`, `method_name()`, `method_from_name()`; `config::from_options()` and
+  `config::strategies_for()`. Every result is unchanged (docs/migration-1.0.md maps each name):
+  - C++: `RunSpec` is `{hoptions, config, qa_table, plan, record, keep_masks, observer,
+    observe}`: no `loptions`; `config` is a `ConfigTree` held by value, the built-in "ccdc"
+    preset by default (`config::preset()`). `config::Legacy`
+    (`include/ccd/config/legacy.hpp`) holds 0.10's algorithm options; `legacy_config()` is the
+    configuration they describe and `recover()` its inverse. `standard::Context`, `Procedure`
+    and `Detector` take no Lasso workspace or solver (each strategy holds its own); `Worker`
+    has none.
+  - The resume digest (`options_digest(hoptions, config, plan, qa_table)`) of a configuration
+    0.10's options describe is 0.10's digest of those options, so 0.10.0 resume records stay
+    valid; another configuration's folds in its digest.
+  - `validate()` checks the input; the configuration's schemas check the algorithm when a run
+    is built, with messages naming the parameter: `PEEK_SIZE is 1; it must be at least 2` is
+    `change_test 'chi2' parameter 'peek_size' is 1; it must be at least 2`, `COEFFICIENT_MAX is
+    9; the harmonic basis has at most 8` is `lasso: coefficient_max is 9; the harmonic basis
+    has at most 8`, `TMASK_BANDS is empty` is `window_screen 'tmask' parameter 'bands' is
+    empty`; a run's band list is `window_screen 'tmask' parameter 'bands' holds band 12; the
+    input has 10 bands`.
+  - Python: `ccdcpp.LassoOptions`, `with_method()`, `METHODS`, `method=` and
+    `Config.from_options()` are gone, and the entry points take no `loptions`. `config=` takes
+    any `ccdcpp.config()` source; without one a run with `profile=` uses `profile.config()`
+    and one without the "ccdc" preset. `SensorProfile.options()` returns the `HarmonicOptions`
+    alone; `SensorProfile.config(base="ccdc")` writes a configuration for the profile (its
+    `alpha` and `coef_floor`, its Tmask roles, its `cadence`, the thresholds of its detection
+    band count). `Config.with_options(**fields)` sets 0.10's option names on the parameters
+    they became (`ccdcpp.OPTION_PARAMS`).
+
+  ```python
+  cfg = ccdcpp.presets.landsat_c2().config().with_options(CHANGE_PROBABILITY=0.995)
+  out = ccdcpp.detect_cube_columns(dates, cube, qa, profile=ccdcpp.presets.landsat_c2(),
+                                   config=cfg, threads=8)
+  ```
 - **Strategies take routes of their own on the one machine.** The stage interfaces gain the
   decisions the Standard machine made itself, each the pyccd one for the core strategies (every
   result unchanged):

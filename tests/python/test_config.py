@@ -50,12 +50,15 @@ def pixel(seed=3, T=420):
 
 
 class Presets(unittest.TestCase):
-    def test_the_ccdc_preset_is_the_default_options_configuration(self):
+    def test_the_ccdc_preset_is_the_built_in_one(self):
         preset = ccdcpp.config("ccdc")
-        options = ccdcpp.Config.from_options(ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions())
-        self.assertEqual(preset, options)
-        self.assertEqual(preset.hash(), options.hash())
+        built_in = ccdcpp.Config(ccdcpp.ccdcpp._config_preset("ccdc"))
+        self.assertEqual(preset, built_in)
+        self.assertEqual(preset.hash(), built_in.hash())
         self.assertEqual(ccdcpp.config(), preset)
+
+    def test_the_c1_dn_profile_writes_the_ccdc_preset(self):
+        self.assertEqual(ccdcpp.presets.landsat_c1_dn().config(), ccdcpp.config("ccdc"))
 
     def test_a_file_extends_a_preset(self):
         path = os.path.join(_ROOT, "variant.toml")
@@ -141,41 +144,45 @@ class Strategies(unittest.TestCase):
 
 
 class Runs(unittest.TestCase):
-    def test_the_options_configuration_runs_as_the_options(self):
+    def test_the_preset_runs_as_the_default(self):
         d, s, q = pixel()
-        h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
-        plain = ccdcpp.detect(d, s, q, h, l)
-        configured = ccdcpp.detect(d, s, q, h, l, config=ccdcpp.Config.from_options(h, l))
-        self.assertEqual(plain["models"], configured["models"])
+        h = ccdcpp.HarmonicOptions()
+        plain = ccdcpp.detect(d, s, q, h)
         self.assertGreater(len(plain["models"]), 1)
+        for cfg in ("ccdc", ccdcpp.config("ccdc"), ccdcpp.ccdcpp._config_preset("ccdc")):
+            configured = ccdcpp.detect(d, s, q, h, config=cfg)
+            self.assertEqual(plain["models"], configured["models"])
+        # The extension's own default (config=None) is the same built-in preset.
+        bare = ccdcpp.ccdcpp.detect(d, s, q, h)
+        self.assertEqual(plain["models"], bare["models"])
 
     def test_a_configuration_changes_the_run(self):
         d, s, q = pixel()
-        h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
-        plain = ccdcpp.detect(d, s, q, h, l)
-        strict = ccdcpp.detect(d, s, q, h, l,
+        h = ccdcpp.HarmonicOptions()
+        plain = ccdcpp.detect(d, s, q, h)
+        strict = ccdcpp.detect(d, s, q, h,
                                config=ccdcpp.config().replace(change_test__change_threshold=1e9))
         # No peek can pass a threshold of 1e9: one segment, the change gone.
         self.assertLess(len(strict["models"]), len(plain["models"]))
 
     def test_the_cube_entry_points_take_it(self):
         d, s, q = pixel()
-        h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        h = ccdcpp.HarmonicOptions()
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
-        cfg = ccdcpp.Config.from_options(h, l)
-        a = ccdcpp.detect_cube_columns(d, cube, qc, h, l, threads=1)
-        b = ccdcpp.detect_cube_columns(d, cube, qc, h, l, threads=1, config=cfg)
+        cfg = ccdcpp.config("ccdc")
+        a = ccdcpp.detect_cube_columns(d, cube, qc, h, threads=1)
+        b = ccdcpp.detect_cube_columns(d, cube, qc, h, threads=1, config=cfg)
         for key in a:
             if key != "failures":
                 np.testing.assert_array_equal(a[key], b[key], err_msg=key)
-        self.assertEqual(len(ccdcpp.detect_cube(d, cube, qc, h, l, threads=1, config=cfg)), 4)
+        self.assertEqual(len(ccdcpp.detect_cube(d, cube, qc, h, threads=1, config=cfg)), 4)
 
     def test_a_trace_records_the_run(self):
         d, s, q = pixel()
-        h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
-        plain = ccdcpp.detect(d, s, q, h, l)
-        traced = ccdcpp.detect(d, s, q, h, l, trace=True)
+        h = ccdcpp.HarmonicOptions()
+        plain = ccdcpp.detect(d, s, q, h)
+        traced = ccdcpp.detect(d, s, q, h, trace=True)
         self.assertEqual(plain["models"], traced["models"])
         rows = traced["trace"]
         if not rows:
@@ -188,19 +195,21 @@ class Runs(unittest.TestCase):
         self.assertTrue(any(r["outcome"] == "change" for r in tests))
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
-        out = ccdcpp.detect_cube_columns(d, cube, qc, h, l, threads=2, trace_pixels=[(1, 0)])
+        out = ccdcpp.detect_cube_columns(d, cube, qc, h, threads=2, trace_pixels=[(1, 0)])
         self.assertEqual(list(out["traces"]), [(1, 0)])
         self.assertEqual(out["traces"][(1, 0)], rows)
 
     def test_a_bad_configuration_is_refused_before_any_pixel(self):
         d, s, q = pixel()
-        h, l = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        h = ccdcpp.HarmonicOptions()
         tree = ccdcpp.config().to_dict()
         tree["refit"] = {"strategy": "nope", "params": {}}
         with self.assertRaisesRegex(ValueError, "refit has no strategy 'nope'"):
-            ccdcpp.detect(d, s, q, h, l, config=tree)
+            ccdcpp.detect(d, s, q, h, config=tree)
         with self.assertRaisesRegex(ValueError, "the configuration has no 'mode' stage"):
-            ccdcpp.detect(d, s, q, h, l, config={"refit": {"strategy": "span-factor"}})
+            ccdcpp.detect(d, s, q, h, config={"refit": {"strategy": "span-factor"}})
+        with self.assertRaisesRegex(ValueError, "refit 'span-factor' parameter 'factor' is 0"):
+            ccdcpp.detect(d, s, q, h, config=ccdcpp.config().replace(refit__factor=0.0))
 
 
 if __name__ == "__main__":

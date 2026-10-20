@@ -131,7 +131,7 @@ inline scalar_t span(
 // The peek size for `dates`: defpeek * reference_days over the median gap
 // between consecutive dates, rounded, and never below `defpeek`. `defpeek`
 // for fewer than two dates. reference_days is
-// HarmonicOptions::PEEK_REFERENCE_DAYS.
+// chi2's peek_reference_days.
 index_t adjust_peek(
     ArrayView<const std::int64_t, 1> dates,
     index_t defpeek,
@@ -143,7 +143,7 @@ index_t adjust_peek(
 // freedom (the detection band count), of the per-observation probability
 // 1 - (1 - probability)^(defpeek / peek), which keeps the window's
 // false-alarm rate at the default's. `defthresh` when peek <= defpeek.
-// probability is HarmonicOptions::CHANGE_PROBABILITY.
+// probability is the strategy's change_probability.
 scalar_t adjust_change_threshold(
     index_t peek,
     index_t defpeek,
@@ -178,7 +178,7 @@ std::vector<scalar_t> calculate_variogram(
 // The first-order variogram at the smallest lag whose most common
 // separation exceeds min_lag_days, over the pairs further apart than
 // min_lag_days; calculate_variogram() when no lag qualifies. min_lag_days is
-// HarmonicOptions::VARIOGRAM_MIN_LAG_DAYS.
+// the variogram noise floor's min_lag_days.
 std::vector<scalar_t> adjusted_variogram(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
@@ -279,7 +279,7 @@ private:
 };
 
 // The norm of a fit's in-window `residuals` at `indices`, over `divisor`
-// (HarmonicOptions::SEASONAL_RMSE_DIVISOR).
+// (chi2's seasonal_divisor).
 scalar_t seasonal_rmse(
     const std::vector<scalar_t>& residuals,
     const std::vector<index_t>& indices,

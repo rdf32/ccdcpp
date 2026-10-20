@@ -25,6 +25,8 @@
 
 #include "ccd/ccd.hpp"
 
+#include "algorithm.hpp"
+
 namespace golden
 {
 
@@ -116,9 +118,9 @@ inline ccd::HarmonicOptions physical_harmonic()
     return h;
 }
 
-inline ccd::config::Legacy physical_algorithm()
+inline golden::Algorithm physical_algorithm()
 {
-    ccd::config::Legacy a;
+    golden::Algorithm a;
     a.lasso.alpha = 1.0 / SCALE;
     a.lasso.coef_floor = 1.0 / SCALE;
     return a;

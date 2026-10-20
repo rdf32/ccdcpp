@@ -45,44 +45,7 @@ import tomllib
 
 from . import ccdcpp as _extension
 
-__all__ = ["Config", "config", "strategies", "OPTION_PARAMS"]
-
-#: The configuration parameters each of 0.10's algorithm options became, as (stage,
-#: parameter) pairs: ``Config.with_options()`` sets each of them where the stage's strategy
-#: has that parameter.
-OPTION_PARAMS = {
-    "MEOW_SIZE": (("start_search", "meow_size"), ("edge_fit", "min_observations")),
-    "PEEK_SIZE": (("change_test", "peek_size"),),
-    "DAY_DELTA": (("start_search", "day_delta"),),
-    "CLEAR_PCT_THRESHOLD": (("mode", "clear_pct_threshold"),),
-    "SNOW_PCT_THRESHOLD": (("mode", "snow_pct_threshold"),),
-    "OUTLIER_THRESHOLD": (("outlier", "threshold"), ("lookback", "outlier_threshold")),
-    "CHANGE_THRESHOLD": (("change_test", "change_threshold"),
-                         ("stability_rule", "change_threshold"),
-                         ("lookback", "change_threshold")),
-    "T_CONST": (("window_screen", "t_const"),),
-    "PEEK_REFERENCE_DAYS": (("change_test", "peek_reference_days"),),
-    "VARIOGRAM_MIN_LAG_DAYS": (("noise_floor", "min_lag_days"),),
-    "RETRAIN_MIN_OBS": (("refit", "min_obs"), ("change_test", "model_rmse_up_to")),
-    "RETRAIN_SPAN_FACTOR": (("refit", "factor"),),
-    "SEASONAL_RMSE_COUNT": (("change_test", "seasonal_count"),),
-    "SEASONAL_RMSE_DIVISOR": (("change_test", "seasonal_divisor"),),
-    "CHANGE_PROBABILITY": (("change_test", "change_probability"),
-                           ("stability_rule", "change_probability"),
-                           ("lookback", "change_probability")),
-    "COEFFICIENT_MIN": (("model", "coefficient_min"), ("stability_fit", "coefficient_min"),
-                        ("edge_fit", "coefficients")),
-    "COEFFICIENT_MID": (("model", "coefficient_mid"), ("stability_fit", "coefficient_mid")),
-    "COEFFICIENT_MAX": (("model", "coefficient_max"), ("stability_fit", "coefficient_max")),
-    "NUM_OBS_FACTOR": (("model", "num_obs_factor"), ("stability_fit", "num_obs_factor")),
-    "TMASK_BANDS": (("window_screen", "bands"),),
-    "max_iter": (("model", "max_iter"), ("stability_fit", "max_iter"), ("edge_fit", "max_iter")),
-    "alpha": (("model", "alpha"), ("stability_fit", "alpha"), ("edge_fit", "alpha")),
-    "tolerance": (("model", "tolerance"), ("stability_fit", "tolerance"),
-                  ("edge_fit", "tolerance")),
-    "coef_floor": (("model", "coef_floor"), ("stability_fit", "coef_floor"),
-                   ("edge_fit", "coef_floor")),
-}
+__all__ = ["Config", "config", "strategies"]
 
 _PRESETS = os.path.join(os.path.dirname(__file__), "configs")
 
@@ -154,22 +117,6 @@ class Config:
 
     def __setattr__(self, name, value):
         raise AttributeError("a Config is immutable; replace() returns a changed copy")
-
-    def with_options(self, **fields):
-        """A copy with 0.10's algorithm options set (``OPTION_PARAMS``): each value goes
-        to every parameter its option became, in the stages whose strategy has it, so
-        ``with_options(CHANGE_PROBABILITY=0.95)`` changes the change test's, the stability
-        rule's and Lookback's. Unknown names raise ValueError."""
-        tree = copy.deepcopy(self._tree)
-        for name, value in fields.items():
-            if name not in OPTION_PARAMS:
-                raise ValueError(f"'{name}' is not one of 0.10's algorithm options; they are "
-                                 f"{', '.join(OPTION_PARAMS)}")
-            for stage, param in OPTION_PARAMS[name]:
-                entry = tree.get(stage)
-                if entry is not None and param in entry["params"]:
-                    entry["params"][param] = _value(value, entry["params"][param])
-        return Config(tree)
 
     def stages(self):
         """The stage names, sorted."""

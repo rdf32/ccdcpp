@@ -101,7 +101,7 @@ static void write_text(const std::string& path, const std::string& s)
     std::fclose(f);
 }
 
-struct OptSet { const char* name; ccd::HarmonicOptions h; ccd::config::Legacy l; int transform; }; // 0 none, 1 phys, 2 frac
+struct OptSet { const char* name; ccd::HarmonicOptions h; golden::Algorithm l; int transform; }; // 0 none, 1 phys, 2 frac
 
 static void apply_transform(golden::Cube& c, int transform)
 {
@@ -147,9 +147,9 @@ int main(int argc, char** argv)
     const bool bench = argc > 5;
 
     std::vector<OptSet> opts = {
-        {"dn", ccd::HarmonicOptions{}, ccd::config::Legacy{}, 0},
+        {"dn", ccd::HarmonicOptions{}, golden::Algorithm{}, 0},
         {"phys", golden::physical_harmonic(), golden::physical_algorithm(), 1},
-        {"frac", ccd::HarmonicOptions{}, ccd::config::Legacy{}, 2},
+        {"frac", ccd::HarmonicOptions{}, golden::Algorithm{}, 2},
     };
 
     double detect_ms = 0.0;
@@ -165,9 +165,9 @@ int main(int argc, char** argv)
         for (const char* fn : files)
         {
             auto csv = read_csv(csvdir + "/" + fn);
-            std::vector<std::pair<std::string, std::pair<ccd::HarmonicOptions, ccd::config::Legacy>>> sets = {
-                {"dn", {ccd::HarmonicOptions{}, ccd::config::Legacy{}}},
-                {"c2", {golden::c2_harmonic(), ccd::config::Legacy{}}},
+            std::vector<std::pair<std::string, std::pair<ccd::HarmonicOptions, golden::Algorithm>>> sets = {
+                {"dn", {ccd::HarmonicOptions{}, golden::Algorithm{}}},
+                {"c2", {golden::c2_harmonic(), golden::Algorithm{}}},
                 {"phys", {golden::physical_harmonic(), golden::physical_algorithm()}},
             };
             for (auto& set : sets)

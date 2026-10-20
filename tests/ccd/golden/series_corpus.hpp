@@ -40,7 +40,7 @@ struct Series
     std::vector<double> spectral;   // (7, T), band-major
     std::vector<std::uint8_t> qas;
     ccd::HarmonicOptions h;
-    ccd::config::Legacy a;   // the algorithm's options
+    golden::Algorithm a;   // the algorithm's options
 
     std::size_t size() const
     {

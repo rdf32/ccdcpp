@@ -145,6 +145,17 @@ public:
     // does not hold are not checked (build_strategies() refuses them).
     void check_bands(const ConfigTree& config, index_t bands) const;
 
+    // The parameters of `strategy` in `stage` at their defaults (refusing
+    // an unknown one as make() does).
+    Values defaults(const std::string& stage, const std::string& strategy) const;
+
+    // Named configurations ("ccdc", and an extension's): add_preset()
+    // registers one, preset() returns it (std::invalid_argument naming the
+    // presets for another name), presets() lists them.
+    void add_preset(const std::string& name, ConfigTree config);
+    const ConfigTree& preset(const std::string& name) const;
+    std::vector<std::string> presets() const;
+
 private:
 
     using Factory = std::function<std::shared_ptr<const void>(const Values&)>;
@@ -157,6 +168,7 @@ private:
     using BandCheck = std::function<void(const Values&, index_t, const std::string&)>;
     std::map<std::string, std::map<std::string, BandCheck>> band_checks_;
     std::map<std::string, std::map<std::string, std::vector<ParameterInfo>>> schemas_;
+    std::map<std::string, ConfigTree> presets_;
 };
 
 } // namespace config

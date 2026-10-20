@@ -119,12 +119,12 @@ void expect_band_error(F&& f, ccd::index_t bands)
 
 // A configuration of `a` refused for an input of `bands` bands, the message
 // holding `where` and `what`.
-void expect_config_error(const ccd::config::Legacy& a, ccd::index_t bands,
+void expect_config_error(const golden::Algorithm& a, ccd::index_t bands,
                          const std::string& where, const std::string& what)
 {
     try
     {
-        const ccd::config::ConfigTree tree = ccd::config::legacy_config(a);
+        const ccd::config::ConfigTree tree = golden::config_of(a);
         ccd::strategies::library_registry().check_bands(tree, bands);
         ccd::strategies::build_strategies(ccd::strategies::library_registry(), tree);
         FAIL() << "no exception for " << where;
@@ -214,7 +214,7 @@ TEST(Validation, LayoutRules)
         expect_layout_error(h, 10, "DETECTION_BANDS holds band 10; spectral has 10 bands");
     }
     {
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         a.TMASK_BANDS = {1, 12};
         expect_config_error(a, 10, "window_screen 'tmask'", "holds band 12; the input has 10 bands");
     }
@@ -231,7 +231,7 @@ TEST(Validation, LayoutRules)
         expect_layout_error(h, 10, "DETECTION_BANDS holds band 2 more than once");
     }
     {
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         a.TMASK_BANDS = {8, 8};
         expect_config_error(a, 10, "window_screen 'tmask'", "holds band 8 twice");
     }
@@ -248,7 +248,7 @@ TEST(Validation, LayoutRules)
         expect_layout_error(h, 10, "DETECTION_BANDS is empty");
     }
     {
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         a.TMASK_BANDS = {};
         expect_config_error(a, 10, "window_screen 'tmask'", "is empty");
     }
@@ -302,7 +302,7 @@ TEST(Validation, CadenceRules)
 
     const auto expect_error = [](auto set, const std::string& where, const std::string& what)
     {
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         set(a);
         expect_config_error(a, 7, where, what);
     };
@@ -339,7 +339,7 @@ TEST(Validation, CadenceRules)
         "change_test 'chi2' parameter 'peek_size' is 1", "it must be at least 2");
 
     // The smallest accepted values.
-    ccd::config::Legacy a;
+    golden::Algorithm a;
     a.PEEK_SIZE = 2;
     a.PEEK_REFERENCE_DAYS = 1e-9;
     a.VARIOGRAM_MIN_LAG_DAYS = 1;
@@ -358,14 +358,14 @@ TEST(Validation, CoefficientRules)
 {
     const auto expect_error = [](auto set, const std::string& what)
     {
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         set(a);
         expect_config_error(a, 7, "lasso: ", what);
     };
 
     // COEFFICIENT_MIN is also the edge fit's count, refused first.
     {
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         a.COEFFICIENT_MIN = 0;
         expect_config_error(a, 7, "edge_fit 'lasso' parameter 'coefficients' is 0",
                             "it must be at least 1");
@@ -379,7 +379,7 @@ TEST(Validation, CoefficientRules)
 
     // The extremes accepted: a count of 1 throughout (the trend and annual
     // basis, as 4, with 1 degree of freedom), and 8.
-    ccd::config::Legacy a;
+    golden::Algorithm a;
     a.COEFFICIENT_MIN = a.COEFFICIENT_MID = a.COEFFICIENT_MAX = 1;
     EXPECT_NO_THROW(golden::strategies_of(a));
     a.COEFFICIENT_MIN = a.COEFFICIENT_MID = a.COEFFICIENT_MAX = 8;
@@ -394,7 +394,7 @@ TEST(Validation, DetectRejectsACadenceOption)
     const auto spectral = make_spectral<double>(7, T);
     const std::vector<std::uint8_t> qas(T, 0);
 
-    ccd::config::Legacy a;
+    golden::Algorithm a;
     a.SEASONAL_RMSE_DIVISOR = 0.0;
 
     EXPECT_THROW(

@@ -40,21 +40,21 @@
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
-#include "ccd/config/legacy.hpp"
+#include "../golden/algorithm.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 namespace
 {
 
-// 0.10's options as a configuration (config::Legacy): `a` with the Lasso's
+// An algorithm's values as a configuration (golden::Algorithm): `a` with the Lasso's
 // parameters `l`, and its strategies.
-ccd::config::ConfigTree from_options(ccd::config::Legacy a, const ccd::LassoOptions& l)
+ccd::config::ConfigTree from_options(golden::Algorithm a, const ccd::LassoOptions& l)
 {
     a.lasso = l;
-    return ccd::config::legacy_config(a);
+    return golden::config_of(a);
 }
 
-ccd::Strategies strategies_for(const ccd::config::Legacy& a, const ccd::LassoOptions& l)
+ccd::Strategies strategies_for(const golden::Algorithm& a, const ccd::LassoOptions& l)
 {
     return ccd::strategies::build_strategies(ccd::strategies::library_registry(),
                                              from_options(a, l));
@@ -184,7 +184,7 @@ TEST(Registry, RefusesAStrategyRegisteredTwice)
 
 TEST(Registry, TheOptionsConfigurationIsTheirs)
 {
-    ccd::config::Legacy h;
+    golden::Algorithm h;
     h.RETRAIN_MIN_OBS = 30;
     h.RETRAIN_SPAN_FACTOR = 1.5;
     const auto tree = from_options(h, ccd::LassoOptions{});
@@ -215,9 +215,9 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     ccd::LassoOptions l;
     l.alpha = 0.5;
     l.max_iter = 300;
-    const auto tree = from_options(ccd::config::Legacy{}, l);
+    const auto tree = from_options(golden::Algorithm{}, l);
     EXPECT_EQ(tree.at("model").strategy, "lasso");
-    const auto s = strategies_for(ccd::config::Legacy{}, l);
+    const auto s = strategies_for(golden::Algorithm{}, l);
     const auto& lasso = static_cast<const ccd::strategies::Lasso&>(*s.model);
     EXPECT_EQ(lasso.solver_options().alpha, 0.5);
     EXPECT_EQ(lasso.solver_options().max_iter, 300u);
@@ -270,7 +270,7 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     EXPECT_TRUE(got[1].empty());   // band 1 was not fitted
 
     const auto& r = ccd::strategies::core_registry();
-    ccd::config::Legacy nan_threshold;
+    golden::Algorithm nan_threshold;
     nan_threshold.CHANGE_THRESHOLD = NAN;
     expect_refused([&] { strategies_for(nan_threshold, l); },
                    "stability_rule 'pyccd' parameter 'change_threshold' is nan");
@@ -285,7 +285,7 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
 // for every sequence of arguments.
 TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
 {
-    const ccd::config::Legacy h;
+    const golden::Algorithm h;
     const auto s = strategies_for(h, ccd::LassoOptions{});
     const auto scratch = s.change_test->make_scratch();
     for (const std::int64_t gap : {16, 8, 5})
@@ -421,7 +421,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
     ccd::config::Registry r;
     ccd::strategies::register_core_strategies(r);
     r.add<ccd::MonitoringModel, Opaque>("opaque");
-    auto tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
+    auto tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
     EXPECT_NO_THROW(ccd::strategies::build_strategies(r, tree));
     tree["model"] = {"opaque", {}};
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
@@ -438,7 +438,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
 
     // The stability rule's needs, from the stability fit; Lookback's too.
     r.add<ccd::StabilityFit, OpaqueFit>("opaque");
-    tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
+    tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
     tree["stability_fit"] = {"opaque", {}};
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
                    "stability_rule 'pyccd' needs model_rmse, in_window_residuals, which "
@@ -451,7 +451,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
                    "provide");
 
     // A configuration without an outlier stage.
-    tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
+    tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
     tree.erase("outlier");
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
                    "the configuration has no 'outlier' stage");
@@ -459,7 +459,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
 
 TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 {
-    ccd::config::Legacy h;
+    golden::Algorithm h;
     h.OUTLIER_THRESHOLD = 10.0;
     const auto tree = from_options(h, ccd::LassoOptions{});
     EXPECT_EQ(tree.at("outlier").strategy, "floored");
@@ -493,7 +493,7 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 
 TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
 {
-    const ccd::config::Legacy h;
+    const golden::Algorithm h;
     const auto s = strategies_for(h, ccd::LassoOptions{});
     EXPECT_EQ(from_options(h, ccd::LassoOptions{}).at("stability_rule").strategy,
               "pyccd");
@@ -582,7 +582,7 @@ TEST(Params, ABandListTakesBandIndices)
 
 TEST(WindowScreen, TmaskIsTmaskOfItsBands)
 {
-    ccd::config::Legacy h;
+    golden::Algorithm h;
     h.TMASK_BANDS = {2, 5};
     h.T_CONST = 3.5;
     const auto s = strategies_for(h, ccd::LassoOptions{});
@@ -619,7 +619,7 @@ TEST(WindowScreen, TmaskIsTmaskOfItsBands)
 
 TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
 {
-    ccd::config::Legacy h;
+    golden::Algorithm h;
     h.MEOW_SIZE = 10;
     h.DAY_DELTA = 200;
     const auto tree = from_options(h, ccd::LassoOptions{});
@@ -663,7 +663,7 @@ TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
 
 TEST(Lookback, PyccdTakesItsParametersFromTheOptions)
 {
-    ccd::config::Legacy h;
+    golden::Algorithm h;
     h.OUTLIER_THRESHOLD = 20.0;
     const auto tree = from_options(h, ccd::LassoOptions{});
     const auto& lookback = tree.at("lookback");
@@ -746,7 +746,7 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
 
 TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 {
-    ccd::config::Legacy h;
+    golden::Algorithm h;
     h.COEFFICIENT_MIN = 6;
     h.MEOW_SIZE = 15;
     ccd::LassoOptions l;
@@ -793,7 +793,7 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 
 TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
 {
-    ccd::config::Legacy h;
+    golden::Algorithm h;
     h.VARIOGRAM_MIN_LAG_DAYS = 45;
     const auto s = strategies_for(h, ccd::LassoOptions{});
     const ccd::index_t n = 50, bands = 3;
@@ -816,7 +816,7 @@ TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
 
 TEST(ConfigDigest, EqualTreesAndOnlyThem)
 {
-    const auto a = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
+    const auto a = from_options(golden::Algorithm{}, ccd::LassoOptions{});
     auto b = a;
     EXPECT_EQ(ccd::config::digest(a), ccd::config::digest(b));
     b["refit"].params["factor"] = ccd::config::real(1.34);
@@ -831,7 +831,7 @@ TEST(ConfigDigest, EqualTreesAndOnlyThem)
 TEST(Registry, BandListsAreCheckedAgainstTheInputAsSetAndByDefault)
 {
     const auto& r = ccd::strategies::core_registry();
-    auto tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
+    auto tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
     EXPECT_NO_THROW(r.check_bands(tree, 7));
     expect_refused([&] { r.check_bands(tree, 4); },
                    "window_screen 'tmask' parameter 'bands' holds band 4; the input has 4 bands");

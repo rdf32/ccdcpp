@@ -1,6 +1,6 @@
 // python/
 //     module.cpp          // PYBIND11_MODULE + detect wrapper
-//     options.cpp         // HarmonicOptions, LassoOptions
+//     options.cpp         // HarmonicOptions
 //     regression.cpp      // LassoModel, LassoScore, LassoResult
 //     fit.cpp             // ChangeModel, FitResult, CurveQA
 //     pmask.cpp           // ProcessingMask

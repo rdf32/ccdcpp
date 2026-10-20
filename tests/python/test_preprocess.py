@@ -165,18 +165,17 @@ class DefaultPlan(unittest.TestCase):
     """The default plan, passed explicitly, is the null plan to the bit."""
 
     def test_extension_default_is_null(self):
-        h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        h = ccdcpp.HarmonicOptions()
         plan = ccdcpp.default_plan(h)
-        assert_same(self, every_entry(DATES, CUBE_DN, CODES, hoptions=h, loptions=lo,
-                                      preprocess=plan),
-                    every_entry(DATES, CUBE_DN, CODES, hoptions=h, loptions=lo))
+        assert_same(self, every_entry(DATES, CUBE_DN, CODES, hoptions=h, preprocess=plan),
+                    every_entry(DATES, CUBE_DN, CODES, hoptions=h))
         for dtype in (np.float32, np.uint16):
             with self.subTest(dtype=dtype.__name__):
                 s = CUBE_DN.astype(dtype)
                 assert_same(self,
-                            without(EXT.detect_cube_columns(DATES, s, CODES, h, lo, 2,
+                            without(EXT.detect_cube_columns(DATES, s, CODES, h, 2,
                                                             preprocess=plan), "threads"),
-                            without(EXT.detect_cube_columns(DATES, s, CODES, h, lo, 2),
+                            without(EXT.detect_cube_columns(DATES, s, CODES, h, 2),
                                     "threads"))
 
     def test_profile_plans_are_null(self):
@@ -185,14 +184,14 @@ class DefaultPlan(unittest.TestCase):
             with self.subTest(preset=preset.__name__):
                 profile = preset()
                 plan = profile.preprocess_plan()
-                self.assertEqual(plan, ccdcpp.default_plan(profile.options()[0]))
+                self.assertEqual(plan, ccdcpp.default_plan(profile.options()))
                 assert_same(self, every_entry(DATES, cube, CODES, profile=profile,
                                               preprocess=plan),
                             every_entry(DATES, cube, CODES, profile=profile))
 
     def test_written_default_equals_default(self):
         dn = presets.landsat_c1_dn()
-        h = dn.options()[0]
+        h = dn.options()
         self.assertEqual(Preprocess().plan(dn), ccdcpp.default_plan(h))
         self.assertEqual(written_default().plan(dn), ccdcpp.default_plan(h))
         self.assertEqual(written_default_explicit().plan(dn), ccdcpp.default_plan(h))
@@ -203,7 +202,7 @@ class DefaultPlan(unittest.TestCase):
             snow=written_default().snow,
             insufficient_clear=written_default().insufficient_clear,
         )
-        self.assertEqual(written.plan(phys), ccdcpp.default_plan(phys.options()[0]))
+        self.assertEqual(written.plan(phys), ccdcpp.default_plan(phys.options()))
 
     def test_written_default_output(self):
         for preprocess in (Preprocess(), written_default(), written_default_explicit()):
@@ -214,7 +213,7 @@ class DefaultPlan(unittest.TestCase):
 
     def test_transform_default_none_and_given(self):
         dn = presets.landsat_c1_dn()
-        h = dn.options()[0]
+        h = dn.options()
         default = ccdcpp.default_plan(h)
         self.assertEqual(ProcedureChain().transform, ccdcpp.DEFAULT_TRANSFORM)
         plan = Preprocess(standard=ProcedureChain(steps=(KeepQa(), Dedupe()))).plan(dn)
@@ -236,7 +235,7 @@ class DefaultPlan(unittest.TestCase):
             snow=ProcedureChain(steps=common + (AddQa(), Dedupe())),
             insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), Dedupe())),
         )
-        self.assertEqual(written.plan(profile), ccdcpp.default_plan(profile.options()[0]))
+        self.assertEqual(written.plan(profile), ccdcpp.default_plan(profile.options()))
         with_plan = dataclasses.replace(profile, preprocess=written)
         assert_same(self,
                     ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=with_plan),
@@ -246,9 +245,9 @@ class DefaultPlan(unittest.TestCase):
 class CustomPlan(unittest.TestCase):
     def test_standard_keeps_snow(self):
         dates, ref, qa = tp.reference_pixel()
-        h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
-        base = EXT.detect(dates, ref, qa, h, lo)
-        snowy = EXT.detect(dates, ref, qa, h, lo, preprocess=keeps_snow_plan(h))
+        h = ccdcpp.HarmonicOptions()
+        base = EXT.detect(dates, ref, qa, h)
+        snowy = EXT.detect(dates, ref, qa, h, preprocess=keeps_snow_plan(h))
         self.assertNotIn(54, [m["curve_qa"] for m in snowy["models"]])
         self.assertEqual(snow_kept(base, qa), 0)
         self.assertGreater(snow_kept(snowy, qa), 0)
@@ -273,10 +272,10 @@ class CustomPlan(unittest.TestCase):
         cube[..., 6, ::7] = 1000.0
         converted = cube.copy()
         converted[..., 6, :] = converted[..., 6, :] * 10.0 - 27315.0
-        h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        h = ccdcpp.HarmonicOptions()
         h.THERMAL_SCALE, h.THERMAL_OFFSET = 1.0, 0.0
         got = ccdcpp.detect_cube(DATES, cube, CODES, threads=2, profile=profile)
-        assert_same(self, got, ccdcpp.detect_cube(DATES, converted, CODES, h, lo, 2))
+        assert_same(self, got, ccdcpp.detect_cube(DATES, converted, CODES, h, 2))
         self.assertNotEqual(
             repr(got), repr(ccdcpp.detect_cube(DATES, cube, CODES, threads=2,
                                                profile=presets.landsat_c1_dn())))
@@ -315,7 +314,7 @@ class ProfileValues(unittest.TestCase):
             self.assertIsNone(preset().preprocess)
 
     def test_codes_follow_the_run_options(self):
-        h, lo = presets.landsat_c1_dn().options()
+        h = presets.landsat_c1_dn().options()
         h.QA_CLEAR, h.QA_WATER, h.QA_SNOW = 10, 11, 13
         plan = keeps_snow().plan(presets.landsat_c1_dn(), h)
         self.assertEqual(plan.standard.chain[0].codes, [10, 11, 13])
@@ -359,17 +358,17 @@ class Validation(unittest.TestCase):
             ccdcpp.Step.band_range([ccdcpp.CCD_MAX_BANDS], 0.0, 1.0)
 
     def test_entry_points_raise_before_running(self):
-        h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+        h = ccdcpp.HarmonicOptions()
         bad = ccdcpp.default_plan(h)
         bad.insufficient_clear.chain[4].band = 9
         with self.assertRaisesRegex(ValueError, "band 9 is not below the band count 7"):
-            EXT.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], h, lo, preprocess=bad)
+            EXT.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], h, preprocess=bad)
         for entry in (ccdcpp.detect_cube, ccdcpp.detect_cube_columns):
             with self.subTest(entry=entry.__name__):
                 with self.assertRaises(ValueError):
-                    entry(DATES, CUBE_DN, CODES, h, lo, 1, preprocess=bad)
+                    entry(DATES, CUBE_DN, CODES, h, 1, preprocess=bad)
         with self.assertRaises(TypeError):
-            EXT.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], h, lo, preprocess="default")
+            EXT.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], h, preprocess="default")
 
     def test_dataclasses(self):
         with self.assertRaisesRegex(ValueError, "unknown QA code name 'cirrus'"):
@@ -414,10 +413,10 @@ class Sentinel(unittest.TestCase):
 
     def setUp(self):
         self.dates, self.ref, self.qa = tp.reference_pixel()
-        self.h, self.lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
-        self.snowy = EXT.detect(self.dates, self.ref, self.qa, self.h, self.lo,
+        self.h = ccdcpp.HarmonicOptions()
+        self.snowy = EXT.detect(self.dates, self.ref, self.qa, self.h,
                                 preprocess=keeps_snow_plan(self.h))
-        self.base = EXT.detect(self.dates, self.ref, self.qa, self.h, self.lo)
+        self.base = EXT.detect(self.dates, self.ref, self.qa, self.h)
         self.profile = dataclasses.replace(presets.landsat_c1_dn(), preprocess=keeps_snow())
 
     def run_detect(self, **kw):
@@ -439,35 +438,32 @@ class Sentinel(unittest.TestCase):
 
     def test_explicit_options_keep_the_profile_plan(self):
         assert_same(self, self.run_detect(profile=self.profile, hoptions=self.h,
-                                          loptions=self.lo), self.snowy)
+                                          config=ccdcpp.config("ccdc")), self.snowy)
 
     def test_without_a_profile(self):
-        assert_same(self, ccdcpp.detect(self.dates, self.ref, self.qa, self.h, self.lo),
-                    self.base)
-        assert_same(self, ccdcpp.detect(self.dates, self.ref, self.qa, self.h, self.lo,
+        assert_same(self, ccdcpp.detect(self.dates, self.ref, self.qa, self.h), self.base)
+        assert_same(self, ccdcpp.detect(self.dates, self.ref, self.qa, self.h,
                                         preprocess=None), self.base)
-        assert_same(self, ccdcpp.detect(self.dates, self.ref, self.qa, self.h, self.lo,
+        assert_same(self, ccdcpp.detect(self.dates, self.ref, self.qa, self.h,
                                         preprocess=keeps_snow_plan(self.h)), self.snowy)
         with self.assertRaisesRegex(TypeError, "needs profile="):
-            ccdcpp.detect(self.dates, self.ref, self.qa, self.h, self.lo,
-                          preprocess=keeps_snow())
+            ccdcpp.detect(self.dates, self.ref, self.qa, self.h, preprocess=keeps_snow())
 
     def test_cube_entry_points(self):
-        h, lo = self.h, self.lo
-        plain = every_entry(DATES, CUBE_DN, CODES, hoptions=h, loptions=lo,
-                            preprocess=keeps_snow_plan(h))
+        h = self.h
+        plain = every_entry(DATES, CUBE_DN, CODES, hoptions=h, preprocess=keeps_snow_plan(h))
         assert_same(self, strip(every_entry(DATES, CUBE_DN, CODES, profile=self.profile)), plain)
         assert_same(self, strip(every_entry(DATES, CUBE_DN, CODES, profile=self.profile,
                                             preprocess=None)),
-                    every_entry(DATES, CUBE_DN, CODES, hoptions=h, loptions=lo))
+                    every_entry(DATES, CUBE_DN, CODES, hoptions=h))
 
     def test_plan_is_copied_at_the_call(self):
         plan = keeps_snow_plan(self.h)
-        first = EXT.detect(self.dates, self.ref, self.qa, self.h, self.lo, preprocess=plan)
+        first = EXT.detect(self.dates, self.ref, self.qa, self.h, preprocess=plan)
         plan.standard.chain[0] = ccdcpp.Step.keep_qa([self.h.QA_CLEAR, self.h.QA_WATER])
         assert_same(self, first, self.snowy)
-        assert_same(self, EXT.detect(self.dates, self.ref, self.qa, self.h, self.lo,
-                                     preprocess=plan), self.base)
+        assert_same(self, EXT.detect(self.dates, self.ref, self.qa, self.h, preprocess=plan),
+                    self.base)
 
 
 if __name__ == "__main__":

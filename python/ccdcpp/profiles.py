@@ -112,21 +112,6 @@ _INDEX_FIELDS = {
     "thermal": "THERMAL_IDX",
 }
 
-#: The options ``cadence=`` may set (``ccdcpp.OPTION_PARAMS`` names the
-#: configuration parameters each one sets): the cadence and change-probability
-#: options and the two window sizes.
-CADENCE_FIELDS = (
-    "MEOW_SIZE",
-    "PEEK_SIZE",
-    "PEEK_REFERENCE_DAYS",
-    "VARIOGRAM_MIN_LAG_DAYS",
-    "RETRAIN_MIN_OBS",
-    "RETRAIN_SPAN_FACTOR",
-    "SEASONAL_RMSE_COUNT",
-    "SEASONAL_RMSE_DIVISOR",
-    "CHANGE_PROBABILITY",
-)
-
 #: The probability behind the outlier threshold's default:
 #: ``chi2_quantile(OUTLIER_PROBABILITY, 5)`` is that default to the last bit.
 OUTLIER_PROBABILITY = 1.0 - 1e-6
@@ -598,10 +583,11 @@ class SensorProfile:
         A :class:`Thermal`, or None for an input without a thermal band
         (``THERMAL_IDX = NO_BAND``, which skips the transform and filter).
     cadence
-        Option -> value, from :data:`CADENCE_FIELDS`, which :meth:`config`
-        sets in the configuration (``ccdcpp.OPTION_PARAMS``). Options not
-        named keep the base configuration's values (pyccd's 16-day Landsat
-        values in "ccdc").
+        ``stage__parameter`` -> value, the configuration's parameters that
+        follow the sensor's revisit (``{"change_test__peek_reference_days":
+        10.0}``), which :meth:`config` sets with ``Config.replace()``.
+        Parameters not named keep the base configuration's values (pyccd's
+        16-day Landsat values in "ccdc").
     stat_ord
         ``STAT_ORD``, the last date of the statistics window, as a proleptic
         Gregorian ordinal; None for no cutoff (:data:`NO_STAT_CUTOFF`). The
@@ -714,8 +700,8 @@ class SensorProfile:
         if "thermal" in self.saturation:
             self._fail("saturation holds 'thermal'; the thermal bounds test it")
         for key, _ in self.cadence:
-            if key not in CADENCE_FIELDS:
-                self._fail(f"cadence names {key!r}; it may set {CADENCE_FIELDS}")
+            if "__" not in key:
+                self._fail(f"cadence names {key!r}; its keys are stage__parameter")
         if self.green_filter_scope not in GREEN_FILTER_SCOPES:
             self._fail(
                 f"green_filter_scope is {self.green_filter_scope!r}; it is one of "
@@ -837,12 +823,13 @@ class SensorProfile:
 
     def config(self, base="ccdc"):
         """``base`` (a ``ccdcpp.config()`` source) written for this profile's input, a
-        ``ccdcpp.Config``: its Lasso ``alpha`` and ``coef_floor``, its Tmask bands, its
-        ``cadence``, and change and outlier thresholds for its detection-band count
-        (``chi2_quantile(change_probability, n)`` and
-        ``chi2_quantile(OUTLIER_PROBABILITY, n)`` unless given), each where ``base``'s
-        strategies have those parameters (``Config.with_options()``). A run with
-        ``profile=`` and no ``config=`` uses ``profile.config()``.
+        ``ccdcpp.Config``: its ``cadence``; its Lasso ``alpha`` and ``coef_floor`` in the
+        model, stability fit and edge fit; its Tmask bands (window_screen ``bands``); and the
+        change and outlier thresholds of its detection-band count in the change test,
+        stability rule, Lookback and outlier rule (``chi2_quantile(change_probability, n)``
+        and ``chi2_quantile(OUTLIER_PROBABILITY, n)`` unless given), each where ``base``'s
+        strategy has that parameter. A run with ``profile=`` and no ``config=`` uses
+        ``profile.config()``.
 
         Warns (``UserWarning``) when the detection count is not 5 and a threshold is
         given as the chi2(5) default, which tests the change magnitude against the wrong
@@ -850,29 +837,27 @@ class SensorProfile:
         """
         from .config import config as _config
 
-        cfg = _config(base)
-        fields = {"TMASK_BANDS": [self.index(r) for r in self.tmask]}
-        fields.update(dict(self.cadence))
-        probability = fields.get("CHANGE_PROBABILITY")
-        if probability is None:
-            params = cfg.params("change_test") if "change_test" in cfg.stages() else {}
-            probability = params.get("change_probability", 0.99)
+        cfg = _config(base).replace(**dict(self.cadence))
+        params = {}
 
+        def put(stages, name, value):
+            for stage in stages:
+                if stage in cfg.stages() and name in cfg.params(stage):
+                    params[f"{stage}__{name}"] = value
+
+        put(("window_screen",), "bands", [self.index(r) for r in self.tmask])
+        probability = (cfg.params("change_test").get("change_probability", 0.99)
+                       if "change_test" in cfg.stages() else 0.99)
         df = len(self.detection)
-        fields["CHANGE_THRESHOLD"] = (
-            chi2_quantile(probability, df)
-            if self.change_threshold is None else self.change_threshold
-        )
-        fields["OUTLIER_THRESHOLD"] = (
-            chi2_quantile(OUTLIER_PROBABILITY, df)
-            if self.outlier_threshold is None else self.outlier_threshold
-        )
+        change = (chi2_quantile(probability, df)
+                  if self.change_threshold is None else self.change_threshold)
+        outlier = (chi2_quantile(OUTLIER_PROBABILITY, df)
+                   if self.outlier_threshold is None else self.outlier_threshold)
         if df != 5:
-            stale = [
-                name for name, default in (("CHANGE_THRESHOLD", _CHI2_5_CHANGE),
-                                           ("OUTLIER_THRESHOLD", _CHI2_5_OUTLIER))
-                if fields[name] == default
-            ]
+            stale = [name for name, value, default in (
+                         ("change_threshold", change, _CHI2_5_CHANGE),
+                         ("outlier_threshold", outlier, _CHI2_5_OUTLIER))
+                     if value == default]
             if stale:
                 warnings.warn(
                     f"SensorProfile {self.name!r} has {df} detection bands but "
@@ -881,9 +866,12 @@ class SensorProfile:
                     UserWarning,
                     stacklevel=2,
                 )
-        fields["alpha"] = self.alpha
-        fields["coef_floor"] = self.coef_floor
-        return cfg.with_options(**fields)
+        put(("change_test", "stability_rule", "lookback"), "change_threshold", change)
+        put(("outlier",), "threshold", outlier)
+        put(("lookback",), "outlier_threshold", outlier)
+        put(("model", "stability_fit", "edge_fit"), "alpha", self.alpha)
+        put(("model", "stability_fit", "edge_fit"), "coef_floor", self.coef_floor)
+        return cfg.replace(**params)
 
     def qa_table(self, options=None):
         """The ``ccdcpp.QaTable`` of ``qa_table_builder``, or None for

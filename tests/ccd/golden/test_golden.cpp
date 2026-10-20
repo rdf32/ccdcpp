@@ -112,7 +112,7 @@ ccd::FitResult run_detect(
     const double* spectral,
     const std::uint8_t* qas,
     const ccd::HarmonicOptions& h,
-    const ccd::config::Legacy& l
+    const golden::Algorithm& l
 )
 {
     const std::size_t T = dates.size();
@@ -131,14 +131,14 @@ struct Options
 {
     const char* name;
     ccd::HarmonicOptions h;
-    ccd::config::Legacy a;
+    golden::Algorithm a;
     bool physical;
 };
 
 std::vector<Options> option_sets()
 {
     return {
-        {"dn", ccd::HarmonicOptions{}, ccd::config::Legacy{}, false},
+        {"dn", ccd::HarmonicOptions{}, golden::Algorithm{}, false},
         {"phys", golden::physical_harmonic(), golden::physical_algorithm(), true},
     };
 }
@@ -183,7 +183,7 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "pyccd:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::HarmonicOptions{}, ccd::config::Legacy{}));
+                ccd::HarmonicOptions{}, golden::Algorithm{}));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
@@ -200,7 +200,7 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "bounds:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::HarmonicOptions{}, ccd::config::Legacy{}));
+                ccd::HarmonicOptions{}, golden::Algorithm{}));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
@@ -212,7 +212,7 @@ std::string run_corpus()
         const Pixel p = read_csv("test002_c2.csv");
         golden::dump_pixel(dump, "c2:c2",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                golden::c2_harmonic(), ccd::config::Legacy{}));
+                golden::c2_harmonic(), golden::Algorithm{}));
     }
 
     //--------------------------------------------------------------------------
@@ -408,7 +408,7 @@ TEST(Golden, CubeDtypesAndLayouts)
     const auto qas =
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {H, W, T});
     const ccd::HarmonicOptions h;
-    const ccd::config::Legacy l;
+    const golden::Algorithm l;
 
     const std::string reference = cube_dump(ccd::run_cube(
         golden::spec_of(h, l),
@@ -469,13 +469,13 @@ TEST(Golden, DetectDoesNotWriteItsInput)
 
     std::string first, second;
     golden::dump_pixel(first, "", ccd::run_pixel(
-        golden::spec_of(ccd::HarmonicOptions{}, ccd::config::Legacy{}),
+        golden::spec_of(ccd::HarmonicOptions{}, golden::Algorithm{}),
         dates,
         view,
         qas).result);
     EXPECT_EQ(buffer, p.spectral);
     golden::dump_pixel(second, "", ccd::run_pixel(
-        golden::spec_of(ccd::HarmonicOptions{}, ccd::config::Legacy{}),
+        golden::spec_of(ccd::HarmonicOptions{}, golden::Algorithm{}),
         dates,
         view,
         qas).result);

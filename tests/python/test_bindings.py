@@ -1,4 +1,4 @@
-"""Python entry points: input validation, the band layout, the cadence options
+"""Python entry points: input validation, the band layout, the cadence parameters
 and __version__.
 
 usage: python test_bindings.py <module_dir> <source_dir> [unittest args]
@@ -46,7 +46,19 @@ def cube(bands, timesteps, dtype=np.float64, dates=None, qas=None):
 
 
 def options():
-    return ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+    """The default input description, as the entry points' positional tail."""
+    return (ccdcpp.HarmonicOptions(),)
+
+
+def preset(**changes):
+    """The built-in ccdc preset as the extension takes it (a dict of stages),
+    with stage__param=value changes."""
+    tree = ccdcpp._config_preset("ccdc")
+    for key, value in changes.items():
+        stage, param = key.split("__")
+        assert param in tree[stage]["params"], key
+        tree[stage]["params"][param] = value
+    return tree
 
 
 class BandCount(unittest.TestCase):
@@ -93,11 +105,15 @@ def ten_band_layout():
     h = ccdcpp.HarmonicOptions()
     h.NUM_BANDS = 10
     h.DETECTION_BANDS = [1, 2, 6, 8, 9]
-    h.TMASK_BANDS = [1, 8]
     h.SATURATION_BANDS = list(range(10))
     h.GREEN_IDX = 1
     h.THERMAL_IDX = ccdcpp.NO_BAND
     return h
+
+
+def ten_band_config(**changes):
+    """The configuration for ten_band_layout(): Tmask on bands 1 and 8."""
+    return preset(**dict({"window_screen__bands": [1, 8]}, **changes))
 
 
 def noisy(bands, timesteps, seed=1):
@@ -112,7 +128,7 @@ class BandLayout(unittest.TestCase):
         h = ccdcpp.HarmonicOptions()
         self.assertEqual(h.NUM_BANDS, 7)
         self.assertEqual(h.DETECTION_BANDS, [1, 2, 3, 4, 5])
-        self.assertEqual(h.TMASK_BANDS, [1, 4])
+        self.assertEqual(preset()["window_screen"]["params"]["bands"], [1, 4])
         self.assertEqual(h.SATURATION_BANDS, [0, 1, 2, 3, 4, 5])
         # The millworks nlcd plugin checks these.
         self.assertEqual(
@@ -139,10 +155,10 @@ class BandLayout(unittest.TestCase):
     def test_lists_keep_their_order(self):
         h = ccdcpp.HarmonicOptions()
         h.DETECTION_BANDS = [5, 1, 3]
-        h.TMASK_BANDS = (4, 1)
-        h.SATURATION_BANDS = []
+        h.SATURATION_BANDS = (4, 1)
         self.assertEqual(h.DETECTION_BANDS, [5, 1, 3])
-        self.assertEqual(h.TMASK_BANDS, [4, 1])
+        self.assertEqual(h.SATURATION_BANDS, [4, 1])
+        h.SATURATION_BANDS = []
         self.assertEqual(h.SATURATION_BANDS, [])
 
     def test_list_setter_rejects_what_it_cannot_hold(self):
@@ -159,19 +175,18 @@ class BandLayout(unittest.TestCase):
         h = ccdcpp.HarmonicOptions()
         h.NUM_BANDS = 7
         h.DETECTION_BANDS = [1, 2, 3, 4, 5]
-        h.TMASK_BANDS = [1, 4]
         h.SATURATION_BANDS = [0, 1, 2, 3, 4, 5]
         h.GREEN_IDX = 1
         h.THERMAL_IDX = 6
         args = noisy(7, 120)
         self.assertEqual(
-            repr(ccdcpp.detect(*args, h, ccdcpp.LassoOptions())),
+            repr(ccdcpp.detect(*args, h, config=preset(window_screen__bands=[1, 4]))),
             repr(ccdcpp.detect(*args, *options())))
 
     def test_outputs_follow_the_band_count(self):
-        h, lo = ten_band_layout(), ccdcpp.LassoOptions()
+        h, cfg = ten_band_layout(), ten_band_config()
         d, s, q = noisy(10, 120)
-        out = ccdcpp.detect(d, s, q, h, lo)
+        out = ccdcpp.detect(d, s, q, h, config=cfg)
         self.assertEqual(out["num_bands"], 10)
         self.assertGreater(len(out["models"]), 0)
         for m in out["models"]:
@@ -181,12 +196,12 @@ class BandLayout(unittest.TestCase):
 
         cube_s = np.broadcast_to(s, (2, 3, 10, 120)).copy()
         cube_q = np.zeros((2, 3, 120), dtype=np.uint8)
-        pixels = ccdcpp.detect_cube(d, cube_s, cube_q, h, lo, threads=1)
+        pixels = ccdcpp.detect_cube(d, cube_s, cube_q, h, threads=1, config=cfg)
         for p in pixels:
             for m in p["models"]:
                 self.assertEqual(len(m["bands"]), 10)
 
-        cols = ccdcpp.detect_cube_columns(d, cube_s, cube_q, h, lo, threads=1)
+        cols = ccdcpp.detect_cube_columns(d, cube_s, cube_q, h, threads=1, config=cfg)
         n = len(cols["row"])
         self.assertGreater(n, 0)
         self.assertEqual(cols["num_bands"], 10)
@@ -199,7 +214,8 @@ class BandLayout(unittest.TestCase):
 
 
 class LayoutValidation(unittest.TestCase):
-    """Each rule of ccd::validate(), as ValueError, before any pixel runs."""
+    """Each rule of ccd::validate() and of the configuration's schemas, as
+    ValueError, before any pixel runs."""
 
     def broken(self, **fields):
         h = ten_band_layout()
@@ -207,16 +223,17 @@ class LayoutValidation(unittest.TestCase):
             setattr(h, k, v)
         return h
 
-    def assert_rejected(self, h, bands, expected):
-        lo = ccdcpp.LassoOptions()
+    def assert_rejected(self, h, bands, expected, config=None):
         d, s, q = inputs(bands, 40)
         cube_s = np.broadcast_to(s, (2, 3, bands, 40)).copy()
         cube_q = np.zeros((2, 3, 40), dtype=np.uint8)
         calls = {
-            "detect": lambda: ccdcpp.detect(d, s, q, h, lo),
-            "detect_cube": lambda: ccdcpp.detect_cube(d, cube_s, cube_q, h, lo, threads=1),
+            "detect": lambda: ccdcpp.detect(d, s, q, h, config=config),
+            "detect_cube":
+                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, h, threads=1, config=config),
             "detect_cube_columns":
-                lambda: ccdcpp.detect_cube_columns(d, cube_s, cube_q, h, lo, threads=1),
+                lambda: ccdcpp.detect_cube_columns(d, cube_s, cube_q, h, threads=1,
+                                                   config=config),
         }
         for name, call in calls.items():
             with self.subTest(entry=name, expected=expected):
@@ -229,13 +246,10 @@ class LayoutValidation(unittest.TestCase):
             (self.broken(), 7, "spectral has 7 bands; HarmonicOptions.NUM_BANDS expects 10"),
             (self.broken(NUM_BANDS=33), 33, "ccdcpp accepts at most 32"),
             (self.broken(DETECTION_BANDS=[1, 10]), 10, "DETECTION_BANDS holds band 10"),
-            (self.broken(TMASK_BANDS=[1, 12]), 10, "TMASK_BANDS holds band 12"),
             (self.broken(SATURATION_BANDS=[0, 31]), 10, "SATURATION_BANDS holds band 31"),
             (self.broken(DETECTION_BANDS=[1, 2, 1]), 10, "DETECTION_BANDS holds band 1 more than once"),
-            (self.broken(TMASK_BANDS=[8, 8]), 10, "TMASK_BANDS holds band 8 more than once"),
             (self.broken(SATURATION_BANDS=[3, 3]), 10, "SATURATION_BANDS holds band 3 more than once"),
             (self.broken(DETECTION_BANDS=[]), 10, "DETECTION_BANDS is empty"),
-            (self.broken(TMASK_BANDS=[]), 10, "TMASK_BANDS is empty"),
             (self.broken(GREEN_IDX=ccdcpp.NO_BAND), 10, "GREEN_IDX is NO_BAND"),
             (self.broken(GREEN_IDX=10), 10, "GREEN_IDX is 10"),
             (self.broken(THERMAL_IDX=10), 10, "THERMAL_IDX is 10"),
@@ -244,116 +258,130 @@ class LayoutValidation(unittest.TestCase):
         for h, bands, expected in cases:
             self.assert_rejected(h, bands, expected)
 
-    def test_cadence_rules(self):
-        def broken(**fields):
-            h = ccdcpp.HarmonicOptions()
-            for k, v in fields.items():
-                setattr(h, k, v)
-            return h
+        # The Tmask bands (0.10's TMASK_BANDS) are the configuration's.
+        tmask = "window_screen 'tmask' parameter 'bands' "
+        for bands, expected in (([1, 12], "holds band 12; the input has 10 bands"),
+                                ([8, 8], "holds band 8 twice"),
+                                ([], "is empty")):
+            self.assert_rejected(self.broken(), 10, tmask + expected,
+                                 config=ten_band_config(window_screen__bands=bands))
 
+    def test_cadence_rules(self):
+        # 0.10's cadence options are the configuration's parameters now: the
+        # schemas refuse them by stage, strategy and parameter.
         nan = float("nan")
+        chi2 = "change_test 'chi2' parameter "
         cases = [
-            (broken(PEEK_REFERENCE_DAYS=0.0), "PEEK_REFERENCE_DAYS is 0.000000; it must be greater than 0 days"),
-            (broken(PEEK_REFERENCE_DAYS=-16.0), "PEEK_REFERENCE_DAYS is -16.000000"),
-            (broken(PEEK_REFERENCE_DAYS=nan), "PEEK_REFERENCE_DAYS is nan"),
-            (broken(VARIOGRAM_MIN_LAG_DAYS=0), "VARIOGRAM_MIN_LAG_DAYS is 0; it must be greater than 0 days"),
-            (broken(VARIOGRAM_MIN_LAG_DAYS=-30), "VARIOGRAM_MIN_LAG_DAYS is -30"),
-            (broken(RETRAIN_MIN_OBS=0), "RETRAIN_MIN_OBS is 0; it must be at least 1"),
-            (broken(RETRAIN_SPAN_FACTOR=0.0), "RETRAIN_SPAN_FACTOR is 0.000000; it must be greater than 0"),
-            (broken(RETRAIN_SPAN_FACTOR=-1.33), "RETRAIN_SPAN_FACTOR is -1.330000"),
-            (broken(SEASONAL_RMSE_COUNT=0), "SEASONAL_RMSE_COUNT is 0; it must be at least 1"),
-            (broken(SEASONAL_RMSE_DIVISOR=0.0), "SEASONAL_RMSE_DIVISOR is 0.000000; it must be greater than 0"),
-            (broken(SEASONAL_RMSE_DIVISOR=-4.0), "SEASONAL_RMSE_DIVISOR is -4.000000"),
-            (broken(CHANGE_PROBABILITY=0.0), "CHANGE_PROBABILITY is 0.000000; it must be in (0, 1)"),
-            (broken(CHANGE_PROBABILITY=1.0), "CHANGE_PROBABILITY is 1.000000; it must be in (0, 1)"),
-            (broken(CHANGE_PROBABILITY=1.5), "CHANGE_PROBABILITY is 1.500000"),
-            (broken(CHANGE_PROBABILITY=nan), "CHANGE_PROBABILITY is nan"),
-            (broken(PEEK_SIZE=0), "PEEK_SIZE is 0; it must be at least 2"),
-            (broken(PEEK_SIZE=1), "PEEK_SIZE is 1; it must be at least 2"),
+            (dict(change_test__peek_reference_days=0.0), chi2 + "'peek_reference_days' is 0; it must be greater than 0"),
+            (dict(change_test__peek_reference_days=-16.0), chi2 + "'peek_reference_days' is -16"),
+            (dict(change_test__peek_reference_days=nan), chi2 + "'peek_reference_days' is nan"),
+            (dict(noise_floor__min_lag_days=0), "noise_floor 'variogram' parameter 'min_lag_days' is 0; it must be greater than 0"),
+            (dict(noise_floor__min_lag_days=-30), "noise_floor 'variogram' parameter 'min_lag_days' is -30"),
+            (dict(refit__min_obs=0), "refit 'span-factor' parameter 'min_obs' is 0; it must be at least 1"),
+            (dict(refit__min_obs=-1), "refit 'span-factor' parameter 'min_obs' is -1"),
+            (dict(refit__factor=0.0), "refit 'span-factor' parameter 'factor' is 0; it must be greater than 0"),
+            (dict(refit__factor=-1.33), "refit 'span-factor' parameter 'factor' is -1.33"),
+            (dict(change_test__seasonal_count=0), chi2 + "'seasonal_count' is 0; it must be at least 1"),
+            (dict(change_test__seasonal_divisor=0.0), chi2 + "'seasonal_divisor' is 0; it must be greater than 0"),
+            (dict(change_test__seasonal_divisor=-4.0), chi2 + "'seasonal_divisor' is -4"),
+            (dict(change_test__change_probability=0.0), chi2 + "'change_probability' is 0; it must be in (0, 1)"),
+            (dict(change_test__change_probability=1.0), chi2 + "'change_probability' is 1; it must be in (0, 1)"),
+            (dict(change_test__change_probability=1.5), chi2 + "'change_probability' is 1.5"),
+            (dict(change_test__change_probability=nan), chi2 + "'change_probability' is nan"),
+            (dict(change_test__peek_size=0), chi2 + "'peek_size' is 0; it must be at least 2"),
+            (dict(change_test__peek_size=1), chi2 + "'peek_size' is 1; it must be at least 2"),
         ]
-        for h, expected in cases:
-            self.assert_rejected(h, 7, expected)
+        for changes, expected in cases:
+            self.assert_rejected(ccdcpp.HarmonicOptions(), 7, expected, config=preset(**changes))
 
     def test_empty_saturation_list_is_allowed(self):
         h = self.broken(SATURATION_BANDS=[])
-        ccdcpp.detect(*inputs(10, 40), h, ccdcpp.LassoOptions())
+        ccdcpp.detect(*inputs(10, 40), h, config=ten_band_config())
 
 
 class CadenceOptions(unittest.TestCase):
-    """The cadence and change-probability fields and ccdcpp.chi2_quantile."""
+    """The cadence and change-probability parameters (0.10's HarmonicOptions
+    fields, the configuration's now) and ccdcpp.chi2_quantile."""
 
+    # (stage, parameter): the ccdc preset's value, 0.10's default for the option.
     DEFAULTS = {
-        "PEEK_REFERENCE_DAYS": 16.0,
-        "VARIOGRAM_MIN_LAG_DAYS": 30,
-        "RETRAIN_MIN_OBS": 24,
-        "RETRAIN_SPAN_FACTOR": 1.33,
-        "SEASONAL_RMSE_COUNT": 24,
-        "SEASONAL_RMSE_DIVISOR": 4.0,
-        "CHANGE_PROBABILITY": 0.99,
+        ("change_test", "peek_reference_days"): 16.0,      # PEEK_REFERENCE_DAYS
+        ("noise_floor", "min_lag_days"): 30,               # VARIOGRAM_MIN_LAG_DAYS
+        ("refit", "min_obs"): 24,                          # RETRAIN_MIN_OBS
+        ("refit", "factor"): 1.33,                         # RETRAIN_SPAN_FACTOR
+        ("change_test", "seasonal_count"): 24,             # SEASONAL_RMSE_COUNT
+        ("change_test", "seasonal_divisor"): 4.0,          # SEASONAL_RMSE_DIVISOR
+        ("change_test", "change_probability"): 0.99,       # CHANGE_PROBABILITY
     }
 
     UNITS = {
-        "PEEK_REFERENCE_DAYS": "Days",
-        "VARIOGRAM_MIN_LAG_DAYS": "Days",
-        "RETRAIN_MIN_OBS": "Observations",
-        "RETRAIN_SPAN_FACTOR": "Unitless",
-        "SEASONAL_RMSE_COUNT": "Observations",
-        "SEASONAL_RMSE_DIVISOR": "Unitless",
-        "CHANGE_PROBABILITY": "Probability",
+        ("change_test", "peek_reference_days"): "days",
+        ("noise_floor", "min_lag_days"): "days",
+        ("refit", "min_obs"): "observations",
+        ("refit", "factor"): "none",
+        ("change_test", "seasonal_count"): "observations",
+        ("change_test", "seasonal_divisor"): "none",
+        ("change_test", "change_probability"): "none",
     }
 
+    REMOVED = ("METHOD", "MEOW_SIZE", "PEEK_SIZE", "DAY_DELTA", "CLEAR_PCT_THRESHOLD",
+               "SNOW_PCT_THRESHOLD", "OUTLIER_THRESHOLD", "CHANGE_THRESHOLD", "T_CONST",
+               "PEEK_REFERENCE_DAYS", "VARIOGRAM_MIN_LAG_DAYS", "RETRAIN_MIN_OBS",
+               "RETRAIN_SPAN_FACTOR", "SEASONAL_RMSE_COUNT", "SEASONAL_RMSE_DIVISOR",
+               "CHANGE_PROBABILITY", "TMASK_BANDS", "COEFFICIENT_MIN", "COEFFICIENT_MID",
+               "COEFFICIENT_MAX", "NUM_OBS_FACTOR")
+
     def test_defaults(self):
-        h = ccdcpp.HarmonicOptions()
-        for name, value in self.DEFAULTS.items():
-            with self.subTest(name=name):
-                self.assertEqual(getattr(h, name), value)
-                self.assertIs(type(getattr(h, name)), type(value))
+        tree = preset()
+        for (stage, name), value in self.DEFAULTS.items():
+            with self.subTest(stage=stage, name=name):
+                self.assertEqual(tree[stage]["params"][name], value)
+                self.assertIs(type(tree[stage]["params"][name]), type(value))
 
-    def test_docstrings_state_unit_and_reader(self):
-        for name, unit in self.UNITS.items():
-            with self.subTest(name=name):
-                doc = getattr(ccdcpp.HarmonicOptions, name).__doc__
-                self.assertTrue(doc.startswith(unit), doc)
-                self.assertIn("Standard procedure", doc)
-                self.assertIn("default", doc)
+    def test_the_registry_states_unit_and_default(self):
+        table = ccdcpp._strategies()
+        tree = preset()
+        for (stage, name), unit in self.UNITS.items():
+            with self.subTest(stage=stage, name=name):
+                (param,) = [p for p in table[stage][tree[stage]["strategy"]]
+                            if p["name"] == name]
+                self.assertEqual(param["unit"], unit)
+                self.assertTrue(param["doc"])
+                self.assertEqual(param["default"], self.DEFAULTS[(stage, name)])
 
-    def test_fields_are_writable(self):
+    def test_the_options_are_gone_from_harmonic_options(self):
         h = ccdcpp.HarmonicOptions()
-        h.PEEK_REFERENCE_DAYS = 2.5
-        h.VARIOGRAM_MIN_LAG_DAYS = 6
-        h.RETRAIN_MIN_OBS = 48
-        h.RETRAIN_SPAN_FACTOR = 1.5
-        h.SEASONAL_RMSE_COUNT = 30
-        h.SEASONAL_RMSE_DIVISOR = 4.69
-        h.CHANGE_PROBABILITY = 0.995
-        self.assertEqual(
-            [h.PEEK_REFERENCE_DAYS, h.VARIOGRAM_MIN_LAG_DAYS, h.RETRAIN_MIN_OBS,
-             h.RETRAIN_SPAN_FACTOR, h.SEASONAL_RMSE_COUNT, h.SEASONAL_RMSE_DIVISOR,
-             h.CHANGE_PROBABILITY],
-            [2.5, 6, 48, 1.5, 30, 4.69, 0.995])
-        # Counts are unsigned.
-        with self.assertRaises(TypeError):
-            h.RETRAIN_MIN_OBS = -1
+        for name in self.REMOVED:
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(h, name))
+                with self.assertRaises(AttributeError):
+                    setattr(h, name, 1)
+        self.assertFalse(hasattr(ccdcpp, "LassoOptions"))
+        self.assertFalse(hasattr(ccdcpp, "_config_from_options"))
 
     def test_chi2_quantile_is_the_change_threshold(self):
         h = ccdcpp.HarmonicOptions()
-        # To the last bit.
-        self.assertEqual(
-            ccdcpp.chi2_quantile(0.99, 5).hex(), h.CHANGE_THRESHOLD.hex())
-        self.assertEqual(
-            ccdcpp.chi2_quantile(p=h.CHANGE_PROBABILITY, df=len(h.DETECTION_BANDS)),
-            h.CHANGE_THRESHOLD)
+        tree = preset()
+        for stage in ("change_test", "stability_rule", "lookback"):
+            with self.subTest(stage=stage):
+                params = tree[stage]["params"]
+                # To the last bit.
+                self.assertEqual(
+                    ccdcpp.chi2_quantile(0.99, 5).hex(), params["change_threshold"].hex())
+                self.assertEqual(
+                    ccdcpp.chi2_quantile(p=params["change_probability"],
+                                         df=len(h.DETECTION_BANDS)),
+                    params["change_threshold"])
         self.assertGreater(ccdcpp.chi2_quantile(0.99, 8), ccdcpp.chi2_quantile(0.99, 5))
         self.assertGreater(ccdcpp.chi2_quantile(0.999, 5), ccdcpp.chi2_quantile(0.99, 5))
         self.assertIn("same boost call", ccdcpp.chi2_quantile.__doc__)
 
     def test_defaults_spelled_out_equal_default(self):
-        h = ccdcpp.HarmonicOptions()
-        for name, value in self.DEFAULTS.items():
-            setattr(h, name, value)
+        cfg = preset(**{f"{stage}__{name}": value
+                        for (stage, name), value in self.DEFAULTS.items()})
         for args in (noisy(7, 120), noisy(7, 400, seed=3)):
             self.assertEqual(
-                repr(ccdcpp.detect(*args, h, ccdcpp.LassoOptions())),
+                repr(ccdcpp.detect(*args, ccdcpp.HarmonicOptions(), config=cfg)),
                 repr(ccdcpp.detect(*args, *options())))
 
     def test_peek_reference_days_reaches_the_procedure(self):
@@ -368,14 +396,12 @@ class CadenceOptions(unittest.TestCase):
         s[1:6, 250:258] += 600.0
         q = np.zeros(500, dtype=np.uint8)
 
-        def breaks(h):
-            out = ccdcpp.detect(d, s, q, h, ccdcpp.LassoOptions())
+        def breaks(config):
+            out = ccdcpp.detect(d, s, q, ccdcpp.HarmonicOptions(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
-        h = ccdcpp.HarmonicOptions()
-        self.assertEqual(breaks(h), 1)
-        h.PEEK_REFERENCE_DAYS = 32.0
-        self.assertEqual(breaks(h), 0)
+        self.assertEqual(breaks(None), 1)
+        self.assertEqual(breaks(preset(change_test__peek_reference_days=32.0)), 0)
 
 
 class BoundFlags(unittest.TestCase):
@@ -401,10 +427,10 @@ class BoundFlags(unittest.TestCase):
         its first observations."""
         d, s, q = inputs(7, 40)
         s[band, :len(values)] = values
-        h, lo = options()
+        h = ccdcpp.HarmonicOptions()
         for name, value in flags.items():
             setattr(h, name, value)
-        return ccdcpp.detect(d, s, q, h, lo)["processing_mask"][:len(values)].tolist()
+        return ccdcpp.detect(d, s, q, h)["processing_mask"][:len(values)].tolist()
 
     def test_reflectance_bounds(self):
         values = [0.0, 10000.0, -1.0, 10001.0]
@@ -464,10 +490,10 @@ class GreenFilterScope(unittest.TestCase):
         return d, s, q
 
     def detect_mask(self, pixel, scope):
-        h, lo = options()
+        h = ccdcpp.HarmonicOptions()
         h.STAT_ORD = self.STAT_ORD
         h.GREEN_FILTER_SCOPE = scope
-        out = ccdcpp.detect(*pixel, h, lo)
+        out = ccdcpp.detect(*pixel, h)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]
 

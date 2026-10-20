@@ -39,7 +39,7 @@ for i in range(2):
         np.clip(spec, 0, 65535, out=src[i * H:(i + 1) * H, j * W:(j + 1) * W], casting="unsafe")
 del spec
 
-h, lo = ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions()
+h = ccdcpp.HarmonicOptions()
 fn = ccdcpp.detect_cube_columns if entry == "cols" else ccdcpp.detect_cube
 rss0 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 best = float("inf")
@@ -47,7 +47,7 @@ for _ in range(reps):
     # A fresh float64 input per call, as a caller's buffer would be.
     s = src.copy() if (reps > 1 and dtype == "f64") else src
     t0 = time.perf_counter()
-    r = fn(dates, s, qas, h, lo, threads)
+    r = fn(dates, s, qas, h, threads)
     best = min(best, time.perf_counter() - t0)
     del r, s
 

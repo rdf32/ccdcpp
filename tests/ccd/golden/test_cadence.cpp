@@ -103,7 +103,7 @@ Pixel make_pixel(
     return p;
 }
 
-ccd::FitResult run(const Pixel& p, const ccd::config::Legacy& a)
+ccd::FitResult run(const Pixel& p, const golden::Algorithm& a)
 {
     return ccd::run_pixel(
         golden::spec_of(ccd::HarmonicOptions{}, a),
@@ -128,7 +128,7 @@ std::int64_t first_break(const ccd::FitResult& r)
 }
 
 // Every option of this file set to its default value by hand.
-ccd::config::Legacy spelled_out(ccd::config::Legacy h)
+golden::Algorithm spelled_out(golden::Algorithm h)
 {
     h.PEEK_REFERENCE_DAYS = 16.0;
     h.VARIOGRAM_MIN_LAG_DAYS = 30;
@@ -143,7 +143,7 @@ ccd::config::Legacy spelled_out(ccd::config::Legacy h)
 std::string dump_cube(
     golden::Cube c,
     const ccd::HarmonicOptions& h,
-    const ccd::config::Legacy& a,
+    const golden::Algorithm& a,
     bool physical
 )
 {
@@ -171,7 +171,7 @@ std::string dump_cube(
 
 TEST(Cadence, Defaults)
 {
-    const ccd::config::Legacy h;
+    const golden::Algorithm h;
     EXPECT_EQ(h.PEEK_REFERENCE_DAYS, 16.0);
     EXPECT_EQ(h.VARIOGRAM_MIN_LAG_DAYS, 30);
     EXPECT_EQ(h.RETRAIN_MIN_OBS, 24u);
@@ -200,8 +200,8 @@ TEST(Cadence, DefaultsSpelledOutEqualDefault)
         const auto cube = golden::make_cube(c.seed, c.regime, c.H, c.W);
 
         EXPECT_EQ(
-            dump_cube(cube, ccd::HarmonicOptions{}, spelled_out(ccd::config::Legacy{}), false),
-            dump_cube(cube, ccd::HarmonicOptions{}, ccd::config::Legacy{}, false));
+            dump_cube(cube, ccd::HarmonicOptions{}, spelled_out(golden::Algorithm{}), false),
+            dump_cube(cube, ccd::HarmonicOptions{}, golden::Algorithm{}, false));
 
         EXPECT_EQ(
             dump_cube(cube, golden::physical_harmonic(), spelled_out(golden::physical_algorithm()), true),
@@ -241,17 +241,17 @@ TEST(Cadence, PeekReferenceDays)
     const auto d85 = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates85.data(), {101});
     EXPECT_EQ(ccd::adjust_peek(d85, 6, 16.0), 11u);
 
-    ccd::config::Legacy longer;
+    golden::Algorithm longer;
     longer.PEEK_REFERENCE_DAYS = 32.0;
 
     // Eight disturbed observations fill a peek window of 6, not one of 12.
     const auto transient = make_pixel(300.0, 0.0, {{250, 258, 600.0}});
-    EXPECT_EQ(breaks(run(transient, ccd::config::Legacy{})), 1);
+    EXPECT_EQ(breaks(run(transient, golden::Algorithm{})), 1);
     EXPECT_EQ(breaks(run(transient, longer)), 0);
 
     // A lasting step is found by both, on the same day.
     const auto step = make_pixel(300.0, 0.0, {{250, T, 600.0}});
-    const auto at6 = run(step, ccd::config::Legacy{});
+    const auto at6 = run(step, golden::Algorithm{});
     const auto at12 = run(step, longer);
     ASSERT_EQ(breaks(at6), 1);
     ASSERT_EQ(breaks(at12), 1);
@@ -285,16 +285,16 @@ TEST(Cadence, VariogramMinLagDays)
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 40)[0], 30.0);  // lag 3, 48 days
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 60)[0], 40.0);  // lag 4, 64 days
 
-    ccd::config::Legacy shorter, longer;
+    golden::Algorithm shorter, longer;
     shorter.VARIOGRAM_MIN_LAG_DAYS = 10;
     longer.VARIOGRAM_MIN_LAG_DAYS = 60;
 
     const auto small = make_pixel(300.0, 0.0, {{250, T, 150.0}});
     EXPECT_EQ(breaks(run(small, shorter)), 1);
-    EXPECT_EQ(breaks(run(small, ccd::config::Legacy{})), 0);
+    EXPECT_EQ(breaks(run(small, golden::Algorithm{})), 0);
 
     const auto large = make_pixel(300.0, 0.0, {{250, T, 300.0}});
-    EXPECT_EQ(breaks(run(large, ccd::config::Legacy{})), 1);
+    EXPECT_EQ(breaks(run(large, golden::Algorithm{})), 1);
     EXPECT_EQ(breaks(run(large, longer)), 0);
 }
 
@@ -309,14 +309,14 @@ TEST(Cadence, RetrainSpanFactor)
 {
     const auto drifting = make_pixel(0.0, 0.5, {});
 
-    ccd::config::Legacy often;
+    golden::Algorithm often;
     often.RETRAIN_SPAN_FACTOR = 1.2;
     EXPECT_EQ(breaks(run(drifting, often)), 0);
 
     std::int64_t previous = 0;
     for (const double factor : {1.33, 1.6, 2.0, 4.0})
     {
-        ccd::config::Legacy h;
+        golden::Algorithm h;
         h.RETRAIN_SPAN_FACTOR = factor;
         const auto r = run(drifting, h);
         ASSERT_GE(breaks(r), 1) << "factor " << factor;
@@ -336,7 +336,7 @@ TEST(Cadence, RetrainMinObs)
     std::size_t segments = 0;
     for (const ccd::index_t count : {24, 48, 96, 200})
     {
-        ccd::config::Legacy h;
+        golden::Algorithm h;
         h.RETRAIN_SPAN_FACTOR = 1e6;
         h.RETRAIN_MIN_OBS = count;
         const auto r = run(drifting, h);
@@ -361,31 +361,31 @@ TEST(Cadence, RetrainMinObs)
 
 TEST(Cadence, SeasonalRmseDivisor)
 {
-    ccd::config::Legacy larger, smaller;
+    golden::Algorithm larger, smaller;
     larger.SEASONAL_RMSE_DIVISOR = 8.0;
     smaller.SEASONAL_RMSE_DIVISOR = 2.0;
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
-    EXPECT_EQ(breaks(run(small, ccd::config::Legacy{})), 0);
+    EXPECT_EQ(breaks(run(small, golden::Algorithm{})), 0);
     EXPECT_EQ(breaks(run(small, larger)), 1);
 
     const auto medium = make_pixel(0.0, 0.0, {{250, T, 60.0}});
-    EXPECT_EQ(breaks(run(medium, ccd::config::Legacy{})), 1);
+    EXPECT_EQ(breaks(run(medium, golden::Algorithm{})), 1);
     EXPECT_EQ(breaks(run(medium, smaller)), 0);
 }
 
 TEST(Cadence, SeasonalRmseCount)
 {
-    ccd::config::Legacy fewer, more;
+    golden::Algorithm fewer, more;
     fewer.SEASONAL_RMSE_COUNT = 6;
     more.SEASONAL_RMSE_COUNT = 96;
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
-    EXPECT_EQ(breaks(run(small, ccd::config::Legacy{})), 0);
+    EXPECT_EQ(breaks(run(small, golden::Algorithm{})), 0);
     EXPECT_EQ(breaks(run(small, fewer)), 1);
 
     const auto medium = make_pixel(0.0, 0.0, {{250, T, 60.0}});
-    EXPECT_EQ(breaks(run(medium, ccd::config::Legacy{})), 1);
+    EXPECT_EQ(breaks(run(medium, golden::Algorithm{})), 1);
     EXPECT_EQ(breaks(run(medium, more)), 0);
 }
 
@@ -425,11 +425,11 @@ TEST(Cadence, ChangeProbability)
 // clears the first and not the second; a step of 65 clears both.
 TEST(Cadence, ChangeProbabilityThroughDetect)
 {
-    ccd::config::Legacy higher;
+    golden::Algorithm higher;
     higher.CHANGE_PROBABILITY = 0.999;
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
-    const auto at99 = run(small, ccd::config::Legacy{});
+    const auto at99 = run(small, golden::Algorithm{});
     ASSERT_EQ(breaks(at99), 1);
     EXPECT_EQ(first_break(at99), small.dates[250]);
     EXPECT_EQ(breaks(run(small, higher)), 0);
@@ -470,22 +470,22 @@ TEST(PeekThreshold, AdjustChangeThreshold)
 // step the adjusted one finds.
 TEST(PeekThreshold, DenseSeriesUsesAdjustedThreshold)
 {
-    ccd::config::Legacy fixed;
+    golden::Algorithm fixed;
     fixed.PEEK_SIZE = 12;
     fixed.PEEK_REFERENCE_DAYS = 8.0;
-    fixed.CHANGE_THRESHOLD = ccd::adjust_change_threshold(12, 6, ccd::config::Legacy{}.CHANGE_THRESHOLD, 5, 0.99);
+    fixed.CHANGE_THRESHOLD = ccd::adjust_change_threshold(12, 6, golden::Algorithm{}.CHANGE_THRESHOLD, 5, 0.99);
 
-    ccd::config::Legacy unadjusted = fixed;
-    unadjusted.CHANGE_THRESHOLD = ccd::config::Legacy{}.CHANGE_THRESHOLD;
+    golden::Algorithm unadjusted = fixed;
+    unadjusted.CHANGE_THRESHOLD = golden::Algorithm{}.CHANGE_THRESHOLD;
 
     const auto step = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
 
     std::string adjusted_dump, fixed_dump;
-    golden::dump_pixel(adjusted_dump, "step", run(step, ccd::config::Legacy{}));
+    golden::dump_pixel(adjusted_dump, "step", run(step, golden::Algorithm{}));
     golden::dump_pixel(fixed_dump, "step", run(step, fixed));
     EXPECT_EQ(adjusted_dump, fixed_dump);
 
-    const auto adjusted = run(step, ccd::config::Legacy{});
+    const auto adjusted = run(step, golden::Algorithm{});
     ASSERT_EQ(breaks(adjusted), 1);
     EXPECT_EQ(first_break(adjusted), step.dates[250]);
     EXPECT_EQ(breaks(run(step, unadjusted)), 0);
@@ -500,13 +500,13 @@ TEST(PeekThreshold, EachPixelStartsFromTheCallerOptions)
     const auto sparse = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 16);
 
     std::string alone;
-    golden::dump_pixel(alone, "sparse", run(sparse, ccd::config::Legacy{}));
+    golden::dump_pixel(alone, "sparse", run(sparse, golden::Algorithm{}));
 
-    const ccd::config::Legacy h;
+    const golden::Algorithm h;
     run(dense, h);
     std::string after;
     golden::dump_pixel(after, "sparse", run(sparse, h));
     EXPECT_EQ(alone, after);
     EXPECT_EQ(h.PEEK_SIZE, 6u);
-    EXPECT_EQ(h.CHANGE_THRESHOLD, ccd::config::Legacy{}.CHANGE_THRESHOLD);
+    EXPECT_EQ(h.CHANGE_THRESHOLD, golden::Algorithm{}.CHANGE_THRESHOLD);
 }

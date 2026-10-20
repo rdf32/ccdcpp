@@ -579,7 +579,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
                 // The magnitude over them, against the positional sum, with
                 // the models' RMSE and with a stand-in seasonal RMSE.
                 const ccd::Variogram variogram{
-                    ccd::adjusted_variogram(dates, spectral, ccd::config::Legacy{}.VARIOGRAM_MIN_LAG_DAYS)};
+                    ccd::adjusted_variogram(dates, spectral, golden::Algorithm{}.VARIOGRAM_MIN_LAG_DAYS)};
                 for (const scalar_t scale : {1.0, 0.37})
                 {
                     std::vector<scalar_t> rmse;
@@ -638,11 +638,11 @@ TEST(CatchSegment, MatchesTheCatchLoop)
             fit_loop(Site::Catch,
                      dates.slice(ccd::range(w.start, w.stop)),
                      spectral.slice(ccd::all(), ccd::range(w.start, w.stop)),
-                     ccd::config::Legacy{}.COEFFICIENT_MIN, p.options.DETECTION_BANDS,
+                     golden::Algorithm{}.COEFFICIENT_MIN, p.options.DETECTION_BANDS,
                      expected_ws, solver, expected);
 
             const ccd::ChangeModel got = ccd::catch_segment(
-                dates, spectral, w, ccd::config::Legacy{}.COEFFICIENT_MIN, qa, got_ws, solver);
+                dates, spectral, w, golden::Algorithm{}.COEFFICIENT_MIN, qa, got_ws, solver);
 
             EXPECT_EQ(got.start_day, dates(w.start));
             EXPECT_EQ(got.end_day, dates(w.stop - 1));

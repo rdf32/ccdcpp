@@ -1,11 +1,9 @@
 #include "ccd/ccd.hpp"
 
-#include <optional>
 #include <stdexcept>
 #include <string>
 
 #include "core/fnv.hpp"
-#include "ccd/config/legacy.hpp"
 
 namespace ccd 
 {
@@ -133,34 +131,13 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates)
 namespace
 {
 
-// The input's fields of the options, in 0.10's order, with the algorithm's
-// where 0.10's options held them (`legacy`, when the configuration is one
-// they describe): with them, the digest is 0.10's, so its records stay valid.
-void digest(detail::Fnv& h, const HarmonicOptions& o, const config::Legacy* legacy)
+// Every field of the options, in their order.
+void digest(detail::Fnv& h, const HarmonicOptions& o)
 {
-    if (legacy)
-    {
-        for (const index_t v : {legacy->MEOW_SIZE, legacy->PEEK_SIZE})
-            h.integer(static_cast<std::int64_t>(v));
-        h.integer(legacy->DAY_DELTA);
-    }
     for (const std::uint8_t v : {o.QA_FILL, o.QA_CLEAR, o.QA_WATER, o.QA_SHADOW, o.QA_SNOW,
                                  o.QA_CLOUD, o.QA_CIRRUS1, o.QA_CIRRUS2, o.QA_OCCLUSION})
         h.integer(v);
     h.integer(static_cast<std::int64_t>(o.CLEAR_OBSERVATION_THRESHOLD));
-    if (legacy)
-    {
-        for (const scalar_t v : {legacy->CLEAR_PCT_THRESHOLD, legacy->SNOW_PCT_THRESHOLD,
-                                 legacy->OUTLIER_THRESHOLD, legacy->CHANGE_THRESHOLD,
-                                 legacy->T_CONST, legacy->PEEK_REFERENCE_DAYS})
-            h.real(v);
-        h.integer(legacy->VARIOGRAM_MIN_LAG_DAYS);
-        h.integer(static_cast<std::int64_t>(legacy->RETRAIN_MIN_OBS));
-        h.real(legacy->RETRAIN_SPAN_FACTOR);
-        h.integer(static_cast<std::int64_t>(legacy->SEASONAL_RMSE_COUNT));
-        h.real(legacy->SEASONAL_RMSE_DIVISOR);
-        h.real(legacy->CHANGE_PROBABILITY);
-    }
     for (const scalar_t v : {o.THERMAL_SCALE, o.THERMAL_OFFSET, o.REFL_MIN, o.REFL_MAX})
         h.real(v);
     h.flag(o.REFL_MIN_INCLUSIVE);
@@ -172,29 +149,12 @@ void digest(detail::Fnv& h, const HarmonicOptions& o, const config::Legacy* lega
     h.real(o.MEDIAN_GREEN_FILTER);
     h.integer(static_cast<std::int64_t>(o.GREEN_FILTER_SCOPE));
     h.integer(o.STAT_ORD);
-    if (legacy)
-        for (const index_t v : {legacy->COEFFICIENT_MIN, legacy->COEFFICIENT_MID,
-                                legacy->COEFFICIENT_MAX, legacy->NUM_OBS_FACTOR})
-            h.integer(static_cast<std::int64_t>(v));
     h.integer(static_cast<std::int64_t>(o.NUM_BANDS));
     h.bands(o.DETECTION_BANDS);
-    if (legacy)
-        h.bands(legacy->TMASK_BANDS);
     h.bands(o.SATURATION_BANDS);
     for (const index_t v : {o.BLUE_IDX, o.GREEN_IDX, o.RED_IDX, o.NIR_IDX, o.SWIR1_IDX,
                             o.SWIR2_IDX, o.THERMAL_IDX, o.QA_IDX})
         h.integer(static_cast<std::int64_t>(v));
-}
-
-void digest(detail::Fnv& h, const LassoOptions& o)
-{
-    h.integer(static_cast<std::int64_t>(o.max_iter));
-    h.real(o.alpha);
-    h.real(o.tolerance);
-    h.real(o.coef_floor);
-    h.flag(o.fit_intercept);
-    h.flag(o.warm_start);
-    h.flag(o.unbiased_rmse);
 }
 
 void digest(detail::Fnv& h, const preprocess::ProcedurePlan& plan)
@@ -236,12 +196,8 @@ std::uint64_t options_digest(
 )
 {
     detail::Fnv h;
-    const std::optional<config::Legacy> legacy = config::recover(config);
-    digest(h, hoptions, legacy ? &*legacy : nullptr);
-    if (legacy)
-        digest(h, legacy->lasso);
-    else
-        h.integer(static_cast<std::int64_t>(config::digest(config)));
+    digest(h, hoptions);
+    h.integer(static_cast<std::int64_t>(config::digest(config)));
     for (const preprocess::ProcedurePlan* procedure :
          {&plan.standard, &plan.snow, &plan.insufficient_clear})
         digest(h, *procedure);

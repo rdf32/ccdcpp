@@ -183,7 +183,6 @@ add_library(
 
     src/ccd/ccd.cpp
     src/ccd/run/run.cpp
-    src/ccd/config/legacy.cpp
     src/ccd/config/params.cpp
     src/ccd/config/registry.cpp
     src/ccd/strategies/change_test/chi2.cpp

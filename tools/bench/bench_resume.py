@@ -49,8 +49,7 @@ n = int(np.searchsorted(dates, CUT))
 print(f"T={dates.size}; stored run on {n} dates up to {dt.date.fromordinal(int(dates[n - 1]))}")
 
 profile = presets.landsat_c2()
-lo = profile.options()[1]
-capped = profile.options()[0]
+capped = profile.options()
 capped.STAT_ORD = min(capped.STAT_ORD, int(dates[n - 1]))
 
 digest = hashlib.sha256()
@@ -78,7 +77,7 @@ for r0 in range(0, N, STRIP):
                                         resume_header=stored["resume_header"],
                                         segments={k: stored[k] for k in SEGMENTS})
     t2 = time.perf_counter()
-    full = ccdcpp.detect_cube_columns(dates, sp, qa, capped, lo, THREADS, profile=profile)
+    full = ccdcpp.detect_cube_columns(dates, sp, qa, capped, THREADS, profile=profile)
     t3 = time.perf_counter()
     t_first += t1 - tic
     t_resume += t2 - t1

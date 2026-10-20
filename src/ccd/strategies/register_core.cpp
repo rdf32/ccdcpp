@@ -1,5 +1,6 @@
 #include "ccd/strategies/register_core.hpp"
 
+
 #include <stdexcept>
 #include <string>
 
@@ -36,6 +37,19 @@ void register_core_strategies(config::Registry& registry)
     registry.add<OutlierRule, Floored>("floored");
     registry.add<SegmentFit, ModelFit>("model-fit");
     registry.add<EdgeFit, LassoEdges>("lasso");
+
+    // "ccdc": pyccd's algorithm, each strategy's defaults.
+    config::ConfigTree ccdc;
+    for (const auto& [stage, strategy] : std::initializer_list<std::pair<const char*, const char*>>{
+             {ModeRule::stage, "pyccd"}, {NoiseFloor::stage, "variogram"},
+             {StartSearch::stage, "pyccd"}, {WindowScreen::stage, "tmask"},
+             {StabilityFit::stage, "lasso"}, {StabilityRule::stage, "pyccd"},
+             {Lookback::stage, "pyccd"}, {MonitoringModel::stage, "lasso"},
+             {RefitSchedule::stage, "span-factor"}, {ChangeTest::stage, "chi2"},
+             {OutlierRule::stage, "floored"}, {SegmentFit::stage, "model-fit"},
+             {EdgeFit::stage, "lasso"}})
+        ccdc[stage] = {strategy, registry.defaults(stage, strategy)};
+    registry.add_preset("ccdc", std::move(ccdc));
 }
 
 const config::Registry& core_registry()

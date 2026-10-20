@@ -13,10 +13,9 @@ del sys
 
 from . import ccdcpp as _extension
 from . import presets
-from .config import OPTION_PARAMS, Config, config, strategies
+from .config import Config, config, strategies
 from .config import config as _config
 from .profiles import (
-    CADENCE_FIELDS,
     CELSIUS_HUNDREDTHS,
     DEFAULT_TRANSFORM,
     DN,

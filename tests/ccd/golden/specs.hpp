@@ -1,23 +1,25 @@
 #pragma once
 
-// A run's RunSpec from the input's options and 0.10's algorithm options
-// (config::Legacy): how the tests name the option variants they pin.
+// A run's RunSpec from the input's options and the algorithm's values the
+// tests vary (golden::Algorithm, algorithm.hpp).
 
 #include "ccd/ccd.hpp"
 #include "ccd/strategies/register_core.hpp"
+
+#include "algorithm.hpp"
 
 namespace golden
 {
 
 inline ccd::RunSpec spec_of(const ccd::HarmonicOptions& h,
-                            const ccd::config::Legacy& a = {},
+                            const golden::Algorithm& a = {},
                             ccd::QaTablePtr table = nullptr,
                             ccd::PreprocessPlanPtr plan = nullptr,
                             bool record = false)
 {
     ccd::RunSpec spec;
     spec.hoptions = h;
-    spec.config = ccd::config::legacy_config(a);
+    spec.config = golden::config_of(a);
     spec.qa_table = std::move(table);
     spec.plan = std::move(plan);
     spec.record = record;
@@ -31,16 +33,16 @@ inline ccd::RunSpec spec_of(const ccd::HarmonicOptions& h,
                             ccd::PreprocessPlanPtr plan = nullptr,
                             bool record = false)
 {
-    ccd::config::Legacy a;
+    golden::Algorithm a;
     a.lasso = lasso;
     return spec_of(h, a, std::move(table), std::move(plan), record);
 }
 
 // The strategies of that configuration, from the library's registry.
-inline ccd::Strategies strategies_of(const ccd::config::Legacy& a = {})
+inline ccd::Strategies strategies_of(const golden::Algorithm& a = {})
 {
     return ccd::strategies::build_strategies(ccd::strategies::library_registry(),
-                                             ccd::config::legacy_config(a));
+                                             golden::config_of(a));
 }
 
 } // namespace golden

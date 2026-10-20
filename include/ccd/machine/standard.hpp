@@ -108,7 +108,7 @@ enum class Exit : std::uint8_t
 {
     None,                 // still running
     TooFewObservations,   // Prepare: too few observations to start (the start
-                          // search's too_few(); pyccd: at most MEOW_SIZE)
+                          // search's too_few(); pyccd: at most meow_size)
     VariogramNaN,         // Prepare: a NaN in the variogram
     InitializeExhausted,  // Initialize: no stable window before the end
     PeekBeyondEnd,        // no full peek after the stable window
@@ -564,9 +564,8 @@ private:
 //
 // Detector
 //
-// The Standard change detector, the one a run uses for every pixel of a call
-// (another method's detector is a sibling class with the same call, and the
-// run picks one by its METHOD). Each pixel's procedure is chosen before
+// The change detector a run uses for every pixel of a call, whatever its
+// configuration (another procedure is other strategies). Each pixel's procedure is chosen before
 // it, by the run's mode (ModeRule); fit() then fits the pixel's processing
 // mask with this machine for Standard, and with the run's edge fit
 // (EdgeFit::whole_series()) for PermanentSnow and InsufficientClear.

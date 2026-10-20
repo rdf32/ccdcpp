@@ -13,6 +13,8 @@
 
 #include "ccd/ccd.hpp"
 
+#include "algorithm.hpp"
+
 #include "specs.hpp"
 #include "synthetic.hpp"
 #include "synthetic_bands.hpp"
@@ -54,7 +56,7 @@ struct Profile
     const char* name;
     std::vector<golden::BandSpec> specs;
     ccd::HarmonicOptions h;
-    ccd::config::Legacy a;   // the algorithm's options: Tmask bands, thresholds
+    golden::Algorithm a;   // the algorithm's options: Tmask bands, thresholds
 };
 
 inline const golden::BandSpec COASTAL = {400, 100, 25};
@@ -74,9 +76,9 @@ inline const golden::BandSpec THERMAL = {2950, 120, 15, true};
 inline const std::vector<golden::BandSpec> S2_SPECS =
     {BLUE, GREEN, RED, RE1, RE2, RE3, NIR, NIR8A, SWIR1, SWIR2};
 
-inline ccd::config::Legacy s2_algorithm()
+inline golden::Algorithm s2_algorithm()
 {
-    ccd::config::Legacy a;
+    golden::Algorithm a;
     a.TMASK_BANDS = {1, 8};
     return a;
 }
@@ -107,7 +109,7 @@ inline std::vector<Profile> profiles()
         h.SATURATION_BANDS = band_list(iota(7));
         h.GREEN_IDX = 2;
         h.THERMAL_IDX = 7;
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         a.TMASK_BANDS = {2, 5};
         out.push_back({"hls_l30_b8",
             {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, a});
@@ -120,7 +122,7 @@ inline std::vector<Profile> profiles()
         h.SATURATION_BANDS = band_list(iota(7));
         h.GREEN_IDX = 2;
         h.THERMAL_IDX = ccd::NO_BAND;
-        ccd::config::Legacy a;
+        golden::Algorithm a;
         a.TMASK_BANDS = {2, 5};
         out.push_back({"hls_b7",
             {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, a});
@@ -131,7 +133,7 @@ inline std::vector<Profile> profiles()
     {
         ccd::HarmonicOptions h = s2_layout();
         h.DETECTION_BANDS = {1, 2, 3, 4, 5, 6, 8, 9};
-        ccd::config::Legacy a = s2_algorithm();
+        golden::Algorithm a = s2_algorithm();
         a.CHANGE_THRESHOLD = chi2_quantile(8, 0.99);
         a.OUTLIER_THRESHOLD = chi2_quantile(8, 1.0 - 1e-6);
         out.push_back({"s2_b10_df8", S2_SPECS, h, a});

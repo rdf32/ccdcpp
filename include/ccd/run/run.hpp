@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "ccd/core/array_view.hpp"
-#include "ccd/config/legacy.hpp"
+#include "ccd/strategies/register_core.hpp"
 #include "ccd/config/registry.hpp"
 #include "ccd/input/harmonic.hpp"
 #include "ccd/input/mask/preprocess.hpp"
@@ -82,7 +82,7 @@ using CubeQa = std::variant<
 //   config              the algorithm: one strategy per stage by name, with
 //                       its parameters (config/registry.hpp), in the
 //                       library's registry with its extensions; the "ccdc"
-//                       preset by default (config::preset()). It is checked
+//                       preset by default (Registry::preset()). It is checked
 //                       when the run is built (names, parameters,
 //                       capabilities, band lists against the input's bands)
 //                       and is part of the resume digest
@@ -106,7 +106,7 @@ using CubeQa = std::variant<
 struct RunSpec
 {
     HarmonicOptions hoptions;
-    config::ConfigTree config = config::preset("ccdc");
+    config::ConfigTree config = strategies::library_registry().preset("ccdc");
     QaTablePtr qa_table = nullptr;
     PreprocessPlanPtr plan = nullptr;
     bool record = false;
