@@ -60,9 +60,9 @@ namespace config
 //   Celsius                    degrees Celsius, to the thermal row's unit
 //                              after the input's transform: c x 100 (hundredths
 //                              of a degree, pyccd's unit) times
-//                              reflectance_unit / 10000, so -93.2 and 70.7 are
-//                              -9320 and 7070 on Collection-1 DN and -0.932
-//                              and 0.707 on reflectance, exactly;
+//                              Input::thermal_unit / 10000, so -93.2 and 70.7
+//                              are -9320 and 7070 on Collection-1 DN and -0.932
+//                              and 0.707 on Celsius / 100, exactly;
 //   Bands                      band roles to the input's rows (rows as given);
 //   QaCodes                    QA code names ("fill", "clear", "water",
 //                              "shadow", "snow", "cloud", "cirrus1",

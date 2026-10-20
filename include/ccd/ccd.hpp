@@ -36,7 +36,7 @@ namespace ccd
 //   * the input has no "green" row;
 //   * saturation_bands holds a row not below `bands`, holds one twice, or
 //     holds the "thermal" row;
-//   * reflectance_unit is not a positive number.
+//   * reflectance_unit or thermal_unit is not a positive number.
 //
 // The message names the field and the counts or the value. The algorithm's
 // parameters are the configuration's, checked by their schemas and against

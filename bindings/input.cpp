@@ -91,7 +91,7 @@ void bind_input(py::module_& m)
     //
     //     i = ccdcpp.Input()
     //     i.reflectance_unit = 1.0
-    //     i.thermal_scale, i.thermal_offset = 1.0, 0.0
+    //     i.thermal_scale, i.thermal_offset, i.thermal_unit = 1.0, 0.0, 1.0
     //
     // See input.hpp for the measured equivalence and why plain Celsius is not
     // the physical unit.
@@ -101,15 +101,20 @@ void bind_input(py::module_& m)
         "The value one unit of reflectance has in the data (default 10000, "
         "Collection-1 DN; 1 for reflectance). The configuration's reflectance "
         "values (alpha, coef_floor, band_range's bounds, green_median's "
-        "offset) are multiplied by it, and its degrees Celsius are taken to "
-        "hundredths of a degree times reflectance_unit / 10000."
+        "offset) are multiplied by it."
     )
     .def_readwrite("thermal_scale", &ccd::Input::thermal_scale,
         "A procedure that transforms thermal reads thermal * thermal_scale + "
-        "thermal_offset (default 10, Kelvin x 10 to Celsius x 100): hundredths "
-        "of a degree Celsius times reflectance_unit / 10000.")
+        "thermal_offset (default 10, Kelvin x 10 to Celsius x 100), in the "
+        "unit thermal_unit names.")
     .def_readwrite("thermal_offset", &ccd::Input::thermal_offset,
         "See thermal_scale (default -27315).")
+    .def_readwrite("thermal_unit", &ccd::Input::thermal_unit,
+        "The value 100 degrees Celsius has in the thermal row after the "
+        "transform (default 10000, Celsius x 100; 1 for Celsius / 100). The "
+        "configuration's degrees Celsius c resolve to c * 100 * thermal_unit "
+        "/ 10000. It goes with the transform: Kelvin x 10 through (10, "
+        "-27315) is 10000, Celsius / 100 through the identity is 1.")
     .def_readwrite(
         "saturated", &ccd::Input::saturated,
         "The value a saturated observation holds, as the sensor writes it "

@@ -114,6 +114,7 @@ inline ccd::Input physical_input()
     h.reflectance_unit = 1.0;
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
+    h.thermal_unit = 1.0;
     h.saturated.reset();
     return h;
 }
@@ -169,6 +170,7 @@ inline ccd::Input c2_input()
     h.reflectance_unit = 1.0;
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
+    h.thermal_unit = 1.0;
     h.saturated.reset();
     return h;
 }
@@ -180,7 +182,7 @@ inline ccd::config::Config c2_config()
     c = with_shared(c, "coef_floor", real(1.0));
     c = with_steps(c, "band_range", "min", real(7273.0));
     c = with_steps(c, "band_range", "max", real(43636.0));
-    // Degrees Celsius: 1e8 x 100 x 1 / 10000 is 1e6.
+    // Degrees Celsius: 1e8 x 100 x thermal_unit 1 / 10000 is 1e6.
     c = with_steps(c, "thermal_range", "min", real(-1.0e8));
     c = with_steps(c, "thermal_range", "max", real(1.0e8));
     return with_steps(c, "green_median", "offset", real(400.0));

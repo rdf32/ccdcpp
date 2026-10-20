@@ -7,7 +7,8 @@ as today.
 - **`ccdcpp.Input` replaces `HarmonicOptions`** and holds the data's encoding only: the QA
   codes and the table that decodes raw QA (`qa_table`), a role per row (`roles`),
   `saturation_bands`, `reflectance_unit` (Collection-1 DN 10000, reflectance 1), the thermal
-  transform (`thermal_scale`, `thermal_offset`) and `saturated`. Every algorithm value of
+  transform (`thermal_scale`, `thermal_offset`, with `thermal_unit`, the value of 100 °C after
+  it) and `saturated`. Every algorithm value of
   0.10.0, `LassoOptions`' four, the bounds, the green filter and the statistics cutoff are the
   configuration's ([config.md](config.md)): `shared` values, `stage__parameter` parameters and
   the `preprocess` steps, in physical units.
@@ -43,7 +44,7 @@ as today.
 ### Profiles
 
 A `SensorProfile` describes the data: `name`, `band_names`, `roles`, `saturation`, `units`
-(`Units(reflectance_unit)`), `thermal` (`Thermal(scale, offset)`), `saturated`,
+(`Units(reflectance_unit)`), `thermal` (`Thermal(scale, offset, unit)`), `saturated`,
 `qa_table_builder` and `qa_table_options`. `profile.input()` is its `ccdcpp.Input`, QA table
 included.
 
@@ -76,7 +77,7 @@ out = ccdcpp.detect_cube_columns(dates, cube, codes, h_physical, lo, threads=4)
 # 1.0: the configuration is the same for every input; the input says the unit
 h = ccdcpp.Input()
 h.reflectance_unit = 1.0
-h.thermal_scale, h.thermal_offset = 1.0, 0.0
+h.thermal_scale, h.thermal_offset, h.thermal_unit = 1.0, 0.0, 1.0
 out = ccdcpp.detect_cube(dates, cube, codes, input=h, threads=4)   # or input=presets.landsat_c1_physical()
 ```
 

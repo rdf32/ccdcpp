@@ -108,6 +108,14 @@ void validate(const Input& input, index_t bands)
             "; it must be a positive number"
         );
     }
+
+    if (!(input.thermal_unit > 0) || !std::isfinite(input.thermal_unit))
+    {
+        throw std::invalid_argument(
+            "thermal_unit is " + config::number(input.thermal_unit) +
+            "; it must be a positive number"
+        );
+    }
 }
 
 void validate_dates(ArrayView<const std::int64_t, 1> dates)

@@ -109,12 +109,14 @@ struct Input
     // 10000 exactly, so a DN input runs pyccd's DN values bit for bit.
     //
     // The thermal transform (thermal_scale, thermal_offset) takes the thermal
-    // row to hundredths of a degree Celsius times reflectance_unit / 10000:
-    // Celsius x 100 on Collection-1 DN (Kelvin x 10 times 10 less 27315, the
-    // default), Celsius / 100 at reflectance_unit 1. A configuration's
-    // thermal bounds, in degrees Celsius, resolve to that unit: pyccd's
-    // -93.2 and 70.7 to -9320 and 7070 on DN and -0.932 and 0.707 on
-    // reflectance, exactly.
+    // row to a multiple of degrees Celsius, and thermal_unit says which: the
+    // value 100 degrees Celsius has after the transform. Celsius x 100 on
+    // Collection-1 DN (Kelvin x 10 times 10 less 27315, the default; 100
+    // degrees is 10000), Celsius / 100 on the physical-unit input (the
+    // identity transform; 100 degrees is 1). A configuration's thermal
+    // bounds, in degrees Celsius, resolve to that unit: c x 100 x
+    // thermal_unit / 10000, so pyccd's -93.2 and 70.7 are -9320 and 7070 on
+    // DN and -0.932 and 0.707 on the physical-unit input, exactly.
     //
     // THE PHYSICAL-UNIT INPUT
     //
@@ -220,6 +222,16 @@ struct Input
     // does an input without a "thermal" row.
     scalar_t thermal_scale  = KELVIN_SCALE;
     scalar_t thermal_offset = -KELVIN_OFFSET;
+
+    // The value 100 degrees Celsius has in the thermal row after the
+    // transform above: 10000 for the default (Celsius x 100), 1 for Celsius
+    // / 100. It and the transform are one fact, written together: a
+    // transform to Celsius x 100 goes with 10000, the identity on data
+    // already in Celsius / 100 with 1. validate() checks that it is a
+    // positive number; the transform cannot say which unit its input is in,
+    // so the pair's agreement is the writer's (each shipped profile's is
+    // tested).
+    scalar_t thermal_unit = 10000.0;
 
     // The value a saturated observation holds, as the sensor writes it:
     // 20000 in Collection-1 DN (the default), or none when the input does not

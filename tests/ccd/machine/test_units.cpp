@@ -203,6 +203,7 @@ ccd::Input physical_input()
 
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
+    h.thermal_unit = 1.0;
 
     return h;
 }

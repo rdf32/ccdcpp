@@ -121,7 +121,7 @@ bool flag(const ccd::config::Values& values, const char* name)
 // The values the reference chains read: the configuration's bounds, offset
 // and scope as written (physical), converted here to the input's units by
 // the rule input.hpp states -- reflectance times reflectance_unit, degrees
-// Celsius as hundredths of a degree times reflectance_unit / 10000 --
+// Celsius as hundredths of a degree times thermal_unit / 10000 --
 // independently of the registry's resolution.
 struct Bounds
 {
@@ -140,7 +140,8 @@ Bounds bounds_of(const Options& options)
     const ccd::config::Values& green =
         options.config.preprocess.at("insufficient_clear").steps.at(4).params;
     const scalar_t u = options.input.reflectance_unit;
-    const auto celsius = [u](double c) { return c * 100.0 * u / 10000.0; };
+    const scalar_t tu = options.input.thermal_unit;
+    const auto celsius = [tu](double c) { return c * 100.0 * tu / 10000.0; };
     return {
         {{number(band, "min") * u, flag(band, "min_inclusive")},
          {number(band, "max") * u, flag(band, "max_inclusive")}},
@@ -483,11 +484,12 @@ struct Unit
     scalar_t therm_lo, therm_hi;
     scalar_t green_filter;
     scalar_t reflectance_unit;
+    scalar_t thermal_unit;
 };
 
-const Unit DN = {"dn", 0.0, 10000.0, ccd::MIN_CELSIUS, ccd::MAX_CELSIUS, 400.0, 10000.0};
+const Unit DN = {"dn", 0.0, 10000.0, ccd::MIN_CELSIUS, ccd::MAX_CELSIUS, 400.0, 10000.0, 10000.0};
 const Unit PHYSICAL = {"phys", 0.0, 1.0,
-    ccd::MIN_CELSIUS / 10000.0, ccd::MAX_CELSIUS / 10000.0, 0.04, 1.0};
+    ccd::MIN_CELSIUS / 10000.0, ccd::MAX_CELSIUS / 10000.0, 0.04, 1.0, 1.0};
 
 scalar_t draw_value(golden::Rng& rng, scalar_t lo, scalar_t hi)
 {
@@ -560,6 +562,7 @@ Series random_series(golden::Rng& rng, const Unit& unit)
 
     ccd::Input& h = s.h.input;
     h.reflectance_unit = unit.reflectance_unit;
+    h.thermal_unit = unit.thermal_unit;
 
     // stat_ord before the series, inside it (often on an observation's
     // date), or after it.

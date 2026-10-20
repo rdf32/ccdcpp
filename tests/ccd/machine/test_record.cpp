@@ -357,6 +357,7 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         {"no saturated", [](auto& h) { h.saturated.reset(); }},
         {"thermal_scale", [](auto& h) { h.thermal_scale = 1.0; }},
         {"thermal_offset", [](auto& h) { h.thermal_offset = -2731.0; }},
+        {"thermal_unit", [](auto& h) { h.thermal_unit = 1.0; }},
     };
     for (const auto& [name, set] : input)
     {
@@ -511,7 +512,7 @@ TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)
 // struct of the plan needs one.
 TEST(OptionsDigest, TheInputIsTheOneItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::Input), 136u);
+    EXPECT_EQ(sizeof(ccd::Input), 144u);
 }
 
 //------------------------------------------------------------------------------

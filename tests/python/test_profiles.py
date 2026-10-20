@@ -154,6 +154,7 @@ def explicit_physical():
     h.reflectance_unit = 1.0
     h.thermal_scale = 1.0
     h.thermal_offset = 0.0
+    h.thermal_unit = 1.0
     h.saturated = None
     return h, PYCCD
 
@@ -667,7 +668,7 @@ class Bounds(unittest.TestCase):
             self.assertEqual(hash(u), hash(dataclasses.replace(u)))
         self.assertNotEqual(ccdcpp.DN, ccdcpp.REFLECTANCE)
         self.assertEqual(ccdcpp.Units(1.0), ccdcpp.REFLECTANCE)
-        self.assertEqual(ccdcpp.Thermal(1.0, 0.0), ccdcpp.CELSIUS_HUNDREDTHS)
+        self.assertEqual(ccdcpp.Thermal(1.0, 0.0, 1.0), ccdcpp.CELSIUS_HUNDREDTHS)
 
 
 class DateOrder(unittest.TestCase):
@@ -828,6 +829,29 @@ class Profiles(unittest.TestCase):
         self.assertEqual(h, p.input())
         h.reflectance_unit = 99.0
         self.assertEqual(p.input().reflectance_unit, 10000.0)
+
+    def test_thermal_unit_is_the_transform_of_100_celsius(self):
+        # Each preset's raw thermal value of 100 degrees Celsius, as its
+        # docstring states the input: Kelvin x 10 (373.15 K) on DN, degrees
+        # Celsius / 100 on the physical inputs. Through the thermal transform
+        # it is the input's thermal_unit, exactly; the presets without a
+        # thermal band have none to transform.
+        raw_100c = {"landsat_c1_dn": 3731.5, "landsat_c1_physical": 1.0,
+                    "landsat_c2": 1.0, "hls_l30": 1.0}
+        for preset in presets.__all__:
+            with self.subTest(preset=preset):
+                h = getattr(presets, preset)().input()
+                if preset not in raw_100c:
+                    self.assertEqual(h.index("thermal"), ccdcpp.NO_BAND)
+                    continue
+                self.assertEqual(raw_100c[preset] * h.thermal_scale + h.thermal_offset,
+                                 h.thermal_unit)
+        # The bounds it resolves, bit for bit: pyccd's -93.2 and 70.7 degrees.
+        for preset, (lo, hi) in {"landsat_c1_dn": (-9320.0, 7070.0),
+                                 "landsat_c2": (-0.932, 0.707)}.items():
+            with self.subTest(preset=preset):
+                step = ccdcpp.plan_of("ccdc", getattr(presets, preset)()).standard.chain[1]
+                self.assertEqual((step.min.hex(), step.max.hex()), (lo.hex(), hi.hex()))
 
     def test_saturated_reaches_the_input(self):
         for preset in presets.__all__:
@@ -1088,7 +1112,7 @@ _HLS = ["coastal", "blue", "green", "red", "nir", "swir1", "swir2"]
 EXPECTED = {
     "hls_l30": dict(
         PHYSICAL, roles=_HLS + ["thermal"], saturation_bands=[0, 1, 2, 3, 4, 5, 6],
-        thermal_scale=1.0, thermal_offset=0.0),
+        thermal_scale=1.0, thermal_offset=0.0, thermal_unit=1.0),
     "hls_s30": dict(PHYSICAL, roles=["coastal"] + _MSI, saturation_bands=list(range(11))),
     "hls": dict(PHYSICAL, roles=_HLS, saturation_bands=list(range(7))),
     "sentinel2_l2a": dict(PHYSICAL, roles=_MSI, saturation_bands=list(range(10))),

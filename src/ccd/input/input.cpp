@@ -43,6 +43,7 @@ bool operator==(const Input& a, const Input& b)
            a.qa_occlusion == b.qa_occlusion && a.roles == b.roles &&
            a.saturation_bands == b.saturation_bands && a.reflectance_unit == b.reflectance_unit &&
            a.thermal_scale == b.thermal_scale && a.thermal_offset == b.thermal_offset &&
+           a.thermal_unit == b.thermal_unit &&
            a.saturated == b.saturated;
 }
 
@@ -59,7 +60,7 @@ std::uint64_t digest(const Input& o)
     for (const std::string& role : o.roles)
         h.text(role);
     h.bands(o.saturation_bands);
-    for (const scalar_t v : {o.reflectance_unit, o.thermal_scale, o.thermal_offset})
+    for (const scalar_t v : {o.reflectance_unit, o.thermal_scale, o.thermal_offset, o.thermal_unit})
         h.real(v);
     h.flag(o.saturated.has_value());
     if (o.saturated)

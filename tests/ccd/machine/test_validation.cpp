@@ -283,6 +283,14 @@ TEST(Validation, LayoutRules)
         h.reflectance_unit = unit;
         expect_layout_error(h, 7, "reflectance_unit is");
     }
+
+    // So is the value of 100 degrees Celsius.
+    for (const double unit : {0.0, -1.0, std::nan(""), HUGE_VAL})
+    {
+        ccd::Input h;
+        h.thermal_unit = unit;
+        expect_layout_error(h, 7, "thermal_unit is");
+    }
 }
 
 // The configuration's cadence and change-probability parameters: zero or

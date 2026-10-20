@@ -58,17 +58,22 @@ class Units:
 
 @dataclass(frozen=True)
 class Thermal:
-    """The thermal band's transform.
+    """The thermal band's transform and the unit it lands on.
 
     scale, offset
         ``Input.thermal_scale``, ``Input.thermal_offset``: a procedure that
-        transforms thermal reads ``thermal * scale + offset``, hundredths of a
-        degree Celsius times ``reflectance_unit / 10000``. ``(1.0, 0.0)`` for
-        input already in that unit.
+        transforms thermal reads ``thermal * scale + offset``. ``(1.0, 0.0)``
+        for input already in the unit.
+    unit
+        ``Input.thermal_unit``: the value 100 degrees Celsius has after the
+        transform (10000 for Celsius x 100, 1 for Celsius / 100). The
+        configuration's thermal bounds in degrees Celsius resolve to
+        ``c * 100 * unit / 10000``.
     """
 
     scale: float
     offset: float
+    unit: float
 
 
 #: Collection 1 DN: reflectance x 10000 (``Input()`` defaults).
@@ -77,14 +82,14 @@ DN = Units(reflectance_unit=10000.0)
 #: Surface reflectance, 0..1: :data:`DN` divided by 10000.
 REFLECTANCE = Units(reflectance_unit=1.0)
 
-#: Thermal as Kelvin x 10, transformed to degrees Celsius x 100
-#: (``Input()`` defaults).
-KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0)
+#: Thermal as Kelvin x 10, transformed to degrees Celsius x 100, where 100
+#: degrees is 10000 (``Input()`` defaults).
+KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0, unit=10000.0)
 
-#: Thermal already in degrees Celsius / 100, the unit that shares the
-#: reflectance scale factor of 10000 with the optical bands (one Lasso alpha
-#: serves every band only if every band has the same scale).
-CELSIUS_HUNDREDTHS = Thermal(scale=1.0, offset=0.0)
+#: Thermal already in degrees Celsius / 100, where 100 degrees is 1: the unit
+#: that shares the reflectance scale factor of 10000 with the optical bands
+#: (one Lasso alpha serves every band only if every band has the same scale).
+CELSIUS_HUNDREDTHS = Thermal(scale=1.0, offset=0.0, unit=1.0)
 
 
 QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]
@@ -381,6 +386,7 @@ def _input_of(profile):
     if profile.thermal is not None:
         h.thermal_scale = profile.thermal.scale
         h.thermal_offset = profile.thermal.offset
+        h.thermal_unit = profile.thermal.unit
     if profile.qa_table_builder is not None:
         codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
         h.qa_table = _build_table(profile.qa_table_builder, codes, profile.qa_table_options)
