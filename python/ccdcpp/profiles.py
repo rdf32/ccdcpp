@@ -49,9 +49,9 @@ from .ccdcpp import CCD_MAX_BANDS, ROLES, Input, QaTable, qa_tables
 @dataclass(frozen=True)
 class Units:
     """The units of the reflective bands: reflectance r is held as
-    ``r * reflectance_scale + offset``.
+    ``r * scale + offset``.
 
-    reflectance_scale
+    scale
         ``Input.reflectance_scale``: the value one unit of reflectance has in
         the data (Collection-1 DN 10000, reflectance 1).
     offset
@@ -59,7 +59,7 @@ class Units:
         (0, the default, for both).
     """
 
-    reflectance_scale: float
+    scale: float
     offset: float = 0.0
 
 
@@ -84,10 +84,10 @@ class Thermal:
 
 
 #: Collection 1 DN: reflectance x 10000 (``Input()`` defaults).
-DN = Units(reflectance_scale=10000.0)
+DN = Units(scale=10000.0)
 
 #: Surface reflectance, 0..1: :data:`DN` divided by 10000.
-REFLECTANCE = Units(reflectance_scale=1.0)
+REFLECTANCE = Units(scale=1.0)
 
 #: Thermal as Kelvin x 10, transformed to degrees Celsius x 100, where 100
 #: degrees is 10000 (``Input()`` defaults).
@@ -376,7 +376,7 @@ def _build_table(builder: str, codes: tuple[int, ...],
 def _input_of(profile: SensorProfile) -> Input:
     h = Input(
         roles=list(profile.roles),
-        reflectance_scale=profile.units.reflectance_scale,
+        reflectance_scale=profile.units.scale,
         reflectance_offset=profile.units.offset,
         saturation_code=profile.saturation_code,
         thermal_saturation_code=profile.thermal_saturation_code,

@@ -65,7 +65,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   "ccdc" value), every row whose role is not thermal or other, in row order. `preprocess=`, `RunSpec::plan`, `default_plan()` and `validate_plan()` are gone;
   `plan_of()` (C++ and Python) returns the resolved plan for inspection.
 - **Profiles describe the data only**: a `SensorProfile` holds band names and roles, `units`
-  (`reflectance_scale`, `offset`), `thermal` (`scale`, `offset`, `at_100c`), `saturation_code`, `thermal_saturation_code` and the QA
+  (`scale`, `offset`), `thermal` (`scale`, `offset`, `at_100c`), `saturation_code`, `thermal_saturation_code` and the QA
   table builder; `CELSIUS_HUNDREDTHS` is `CELSIUS_OVER_100` (thermal in degrees Celsius / 100). `profile.input()` replaces `profile.options()` and carries the QA
   table (`profile.qa_table()` is gone); `config()`, `alpha`, `coef_floor`, `detection`,
   `tmask`, `cadence`, `stat_ord`, `green_filter_scope`, `preprocess` and the bounds of `Units`

@@ -670,6 +670,12 @@ class Bounds(unittest.TestCase):
         self.assertNotEqual(ccdcpp.DN, ccdcpp.REFLECTANCE)
         self.assertEqual(ccdcpp.Units(1.0), ccdcpp.REFLECTANCE)
         self.assertEqual(ccdcpp.Thermal(1.0, 0.0, 1.0), ccdcpp.CELSIUS_OVER_100)
+        # Units(scale, offset), as Thermal(scale, offset, at_100c): the Input's
+        # reflectance_scale and reflectance_offset.
+        h = presets.landsat_c1_dn().input()
+        self.assertEqual(ccdcpp.Units(scale=10000.0, offset=0.0), ccdcpp.DN)
+        self.assertEqual((h.reflectance_scale, h.reflectance_offset),
+                         (ccdcpp.DN.scale, ccdcpp.DN.offset))
 
 
 class DateOrder(unittest.TestCase):

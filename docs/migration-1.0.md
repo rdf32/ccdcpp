@@ -46,7 +46,7 @@ as today.
 ### Profiles
 
 A `SensorProfile` describes the data: `name`, `band_names`, `roles`, `units`
-(`Units(reflectance_scale, offset)`), `thermal` (`Thermal(scale, offset, at_100c)`), `saturation_code`, `thermal_saturation_code`,
+(`Units(scale, offset)`), `thermal` (`Thermal(scale, offset, at_100c)`), `saturation_code`, `thermal_saturation_code`,
 `qa_table_builder` and `qa_table_options`. `profile.input()` is its `ccdcpp.Input`, QA table
 included.
 

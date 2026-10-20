@@ -642,7 +642,7 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 ```
 
 - **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no band list can name them.
-- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_scale`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `at_100c`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_OVER_100`) or `None`, `saturation_code` and `thermal_saturation_code` the values a saturated observation holds in the reflective and the thermal rows, as stored, or `None`.
+- **Units and thermal**: `units` is a `ccdcpp.Units` (`scale`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `at_100c`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_OVER_100`) or `None`, `saturation_code` and `thermal_saturation_code` the values a saturated observation holds in the reflective and the thermal rows, as stored, or `None`.
 - **QA**: `qa_table_builder`, a `ccdcpp.qa_tables` builder name or `None` for codes; `qa_table_options`, keyword arguments for it of exactly the types `ccdcpp.QA_TABLE_OPTIONS` lists.
 - A profile that breaks a layout rule (an unknown or repeated role, no green band, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
 
