@@ -53,7 +53,7 @@ def keeps_snow():
 
 def keeps_snow_plan(h):
     """keeps_snow(), built on the bound classes."""
-    plan = ccdcpp.default_plan(h)
+    plan = ccdcpp.default_plan(h, tp.PYCCD)
     plan.standard.chain[0] = ccdcpp.Step.keep_qa([h.qa_clear, h.qa_water, h.qa_snow])
     return plan
 
@@ -137,11 +137,11 @@ class BoundClasses(unittest.TestCase):
 
     def test_equality_and_mutation(self):
         h = ccdcpp.Input()
-        plan = ccdcpp.default_plan(h)
-        self.assertEqual(plan, ccdcpp.default_plan(h))
+        plan = ccdcpp.default_plan(h, tp.PYCCD)
+        self.assertEqual(plan, ccdcpp.default_plan(h, tp.PYCCD))
         plan.standard.chain[0].codes = [0, 1, 3]
         self.assertEqual(plan.standard.chain[0].codes, [0, 1, 3])
-        self.assertNotEqual(plan, ccdcpp.default_plan(h))
+        self.assertNotEqual(plan, ccdcpp.default_plan(h, tp.PYCCD))
         self.assertEqual(plan, keeps_snow_plan(h))
         chain = ccdcpp.Chain([ccdcpp.Step.dedupe()])
         chain.append(ccdcpp.Step.keep_qa([0]))
@@ -151,8 +151,8 @@ class BoundClasses(unittest.TestCase):
             chain[2]
 
     def test_describe(self):
-        text = ccdcpp.default_plan(ccdcpp.Input()).describe()
-        self.assertEqual(text, repr(ccdcpp.default_plan(ccdcpp.Input())))
+        text = ccdcpp.default_plan(ccdcpp.Input(), tp.PYCCD).describe()
+        self.assertEqual(text, repr(ccdcpp.default_plan(ccdcpp.Input(), tp.PYCCD)))
         for line in ("standard", "  transform  band 6 <- x * 10 - 27315",
                      "  0  KeepQa codes {0, 1}", "  1  ThermalRange band 6, -9320 < x < 7070",
                      "  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000", "  3  Dedupe",
@@ -200,9 +200,9 @@ class DefaultPlan(unittest.TestCase):
     def test_written_default_equals_default(self):
         dn = presets.landsat_c1_dn()
         h = dn.input()
-        self.assertEqual(Preprocess().plan(dn), ccdcpp.default_plan(h))
-        self.assertEqual(written_default().plan(dn), ccdcpp.default_plan(h))
-        self.assertEqual(written_default_explicit().plan(dn), ccdcpp.default_plan(h))
+        self.assertEqual(Preprocess().plan(dn), ccdcpp.default_plan(h, tp.PYCCD))
+        self.assertEqual(written_default().plan(dn), ccdcpp.default_plan(h, tp.PYCCD))
+        self.assertEqual(written_default_explicit().plan(dn), ccdcpp.default_plan(h, tp.PYCCD))
         # Physical units: the identity transform is no transform.
         phys = presets.landsat_c1_physical()
         written = Preprocess(
@@ -254,8 +254,8 @@ class CustomPlan(unittest.TestCase):
     def test_standard_keeps_snow(self):
         dates, ref, qa = tp.reference_pixel()
         h = ccdcpp.Input()
-        base = EXT.detect(dates, ref, qa, h)
-        snowy = EXT.detect(dates, ref, qa, h, preprocess=keeps_snow_plan(h))
+        base = EXT.detect(dates, ref, qa, h, config=tp.PYCCD)
+        snowy = EXT.detect(dates, ref, qa, h, preprocess=keeps_snow_plan(h), config=tp.PYCCD)
         self.assertNotIn(54, [m["curve_qa"] for m in snowy["models"]])
         self.assertEqual(snow_kept(base, qa), 0)
         self.assertGreater(snow_kept(snowy, qa), 0)

@@ -184,7 +184,8 @@ TEST(Registry, RefusesAPresetRegisteredTwice)
 
 // The "ccdc" preset is written in physical terms; on the default Input
 // (Collection-1 DN, the Landsat rows) it resolves to pyccd's tree, every
-// value bit for bit as the preset held it in DN.
+// value bit for bit as pyccd holds it in DN. Its statistics cutoff is none,
+// where pyccd's is 2017-12-31.
 TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
 {
     using ccd::config::integer;
@@ -199,7 +200,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     EXPECT_EQ(preset.shared.at("green_filter"), real(0.04));
     EXPECT_EQ(preset.shared.at("change_probability"), real(0.99));
     EXPECT_EQ(preset.shared.at("outlier_probability"), real(1.0 - 1e-6));
-    EXPECT_EQ(preset.shared.at("stat_ord"), integer(736694));
+    EXPECT_EQ(preset.shared.at("stat_ord"), integer(ccd::config::NO_STAT_CUTOFF));
     EXPECT_EQ(preset.shared.at("detection_bands"),
               ccd::config::roles({"green", "red", "nir", "swir1", "swir2"}));
     EXPECT_EQ(preset.stages.at("window_screen").params.at("bands"),
@@ -271,7 +272,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     // cutoff, the green filter in DN, the scope.
     const ccd::config::Shared& shared = got.shared;
     EXPECT_EQ(shared.detection_bands, (ccd::BandList{1, 2, 3, 4, 5}));
-    EXPECT_EQ(shared.stat_ord, 736694);
+    EXPECT_EQ(shared.stat_ord, ccd::config::NO_STAT_CUTOFF);
     EXPECT_EQ(shared.green_filter, 400.0);
     EXPECT_EQ(shared.green_filter_scope, "stat_window");
     EXPECT_EQ(shared.alpha, 1.0);

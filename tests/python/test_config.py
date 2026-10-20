@@ -58,7 +58,8 @@ class Presets(unittest.TestCase):
         self.assertEqual(ccdcpp.config(), preset)
 
     def test_the_c1_dn_profile_writes_the_ccdc_preset(self):
-        self.assertEqual(ccdcpp.presets.landsat_c1_dn().config(), ccdcpp.config("ccdc"))
+        self.assertEqual(ccdcpp.presets.landsat_c1_dn().config(),
+                         ccdcpp.config("ccdc").replace(shared__stat_ord=736694))
 
     def test_the_preset_is_physical(self):
         shared = ccdcpp.config("ccdc").shared()
@@ -66,7 +67,7 @@ class Presets(unittest.TestCase):
         self.assertEqual(shared["green_filter"], 0.04)
         self.assertEqual(shared["change_probability"], 0.99)
         self.assertEqual(shared["outlier_probability"], 1.0 - 1e-6)
-        self.assertEqual(shared["stat_ord"], 736694)
+        self.assertEqual(shared["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
         self.assertEqual(shared["detection_bands"], ["green", "red", "nir", "swir1", "swir2"])
         self.assertEqual(ccdcpp.config("ccdc").params("window_screen")["bands"],
                          ["green", "swir1"])

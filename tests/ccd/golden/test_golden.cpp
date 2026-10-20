@@ -138,8 +138,8 @@ struct Options
 std::vector<Options> option_sets()
 {
     return {
-        {"dn", ccd::Input{}, golden::ccdc(), false},
-        {"phys", golden::physical_input(), golden::ccdc(), true},
+        {"dn", ccd::Input{}, golden::pyccd(), false},
+        {"phys", golden::physical_input(), golden::pyccd(), true},
     };
 }
 
@@ -183,13 +183,13 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "pyccd:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::Input{}, golden::ccdc()));
+                ccd::Input{}, golden::pyccd()));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
         golden::dump_pixel(dump, "pyccd:phys",
             run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_input(), golden::ccdc()));
+                golden::physical_input(), golden::pyccd()));
     }
     {
         // The reference pixel with saturation-band values on the bounds and a
@@ -200,19 +200,19 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "bounds:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::Input{}, golden::ccdc()));
+                ccd::Input{}, golden::pyccd()));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
         golden::dump_pixel(dump, "bounds:phys",
             run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_input(), golden::ccdc()));
+                golden::physical_input(), golden::pyccd()));
     }
     {
         const Pixel p = read_csv("test002_c2.csv");
         golden::dump_pixel(dump, "c2:c2",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                golden::c2_input(), golden::ccdc()));
+                golden::c2_input(), golden::pyccd()));
     }
 
     //--------------------------------------------------------------------------
@@ -408,7 +408,7 @@ TEST(Golden, CubeDtypesAndLayouts)
     const auto qas =
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {H, W, T});
     const ccd::Input h;
-    const ccd::config::Config config = golden::ccdc();
+    const ccd::config::Config config = golden::pyccd();
 
 
     const std::string reference = cube_dump(ccd::run_cube(

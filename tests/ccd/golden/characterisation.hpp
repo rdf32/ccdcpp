@@ -40,7 +40,7 @@ struct CharPixel
     std::vector<double> spectral;      // (7, T), band-major
     std::vector<std::uint8_t> qas;     // (T)
     ccd::Input h;
-    ccd::config::Config config = golden::ccdc();
+    ccd::config::Config config = golden::pyccd();
 };
 
 // What a pixel's spectral series is made of.

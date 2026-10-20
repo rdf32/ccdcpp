@@ -14,7 +14,7 @@ namespace golden
 {
 
 inline ccd::RunSpec spec_of(const ccd::Input& input,
-                            ccd::AlgorithmPtr algorithm = ccd::Algorithm::preset("ccdc"),
+                            ccd::AlgorithmPtr algorithm = pyccd_algorithm(),
                             ccd::QaTablePtr table = nullptr,
                             ccd::PreprocessPlanPtr plan = nullptr,
                             bool record = false)

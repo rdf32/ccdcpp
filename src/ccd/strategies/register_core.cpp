@@ -37,8 +37,8 @@ void register_core_strategies(config::Registry& registry)
     registry.add<EdgeFit, LassoEdges>("lasso");
 
     // "ccdc": pyccd's algorithm, in physical terms: the shared values'
-    // defaults (alpha 1e-4, probabilities, detection bands by role, stat_ord
-    // 2017-12-31) and each strategy's.
+    // defaults (alpha 1e-4, probabilities, detection bands by role, no
+    // statistics cutoff) and each strategy's.
     config::Config ccdc;
     ccdc.shared = config::shared_defaults();
     for (const auto& [stage, strategy] : std::initializer_list<std::pair<const char*, const char*>>{

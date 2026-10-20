@@ -6,12 +6,19 @@
 the CCDC phases, and each of its decisions is a **stage** decided by a named **strategy** with
 parameters; the "ccdc" configuration is pyccd's algorithm, each core strategy at its defaults.
 Every output is bit-identical to 0.10.0 (the same segments, coefficients, RMSEs and magnitudes)
-for a run with its 0.10.0 options moved to the configuration. A 0.10.0 resume record is refused,
+for a run with its 0.10.0 options moved to the configuration, its `STAT_ORD` included: the
+"ccdc" configuration has no statistics cutoff, where 0.10.0's Landsat default was 2017-12-31. A 0.10.0 resume record is refused,
 so the first run after upgrading is a full one. `docs/migration-1.0.md` maps every removed name
 to its replacement; `docs/config.md` describes the configuration.
 
 ### Changed
 
+- **The "ccdc" configuration has no statistics cutoff** (`shared.stat_ord` is
+  `NO_STAT_CUTOFF`): the procedure choice, the cadence, the variogram and the green median read
+  the whole series. 0.10.0 and pyccd stop them at 2017-12-31 (ordinal 736694), so a series with
+  observations after 2017 can give other outputs; `config("ccdc").replace(shared__stat_ord=736694)`
+  runs pyccd's cutoff, bit for bit as 0.10.0. A resumed run still freezes the statistics at the
+  first run's series end.
 - **`HarmonicOptions` holds the input's fields only**: the QA codes,
   `CLEAR_OBSERVATION_THRESHOLD`, the thermal transform and value ranges, the reflectance ranges,
   `MEDIAN_GREEN_FILTER`, `GREEN_FILTER_SCOPE`, `STAT_ORD`, `NUM_BANDS`, `DETECTION_BANDS`,

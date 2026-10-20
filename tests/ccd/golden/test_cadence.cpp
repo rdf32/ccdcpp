@@ -214,12 +214,12 @@ TEST(Cadence, DefaultsSpelledOutEqualDefault)
         const auto cube = golden::make_cube(c.seed, c.regime, c.H, c.W);
 
         EXPECT_EQ(
-            dump_cube(cube, ccd::Input{}, spelled_out(golden::ccdc()), false),
-            dump_cube(cube, ccd::Input{}, golden::ccdc(), false));
+            dump_cube(cube, ccd::Input{}, spelled_out(golden::pyccd()), false),
+            dump_cube(cube, ccd::Input{}, golden::pyccd(), false));
 
         EXPECT_EQ(
-            dump_cube(cube, golden::physical_input(), spelled_out(golden::ccdc()), true),
-            dump_cube(cube, golden::physical_input(), golden::ccdc(), true));
+            dump_cube(cube, golden::physical_input(), spelled_out(golden::pyccd()), true),
+            dump_cube(cube, golden::physical_input(), golden::pyccd(), true));
     }
 }
 
@@ -256,16 +256,16 @@ TEST(Cadence, PeekReferenceDays)
     EXPECT_EQ(ccd::adjust_peek(d85, 6, 16.0), 11u);
 
     const ccd::config::Config longer =
-        golden::with(golden::ccdc(), "change_test", "peek_reference_days", ccd::config::real(32.0));
+        golden::with(golden::pyccd(), "change_test", "peek_reference_days", ccd::config::real(32.0));
 
     // Eight disturbed observations fill a peek window of 6, not one of 12.
     const auto transient = make_pixel(300.0, 0.0, {{250, 258, 600.0}});
-    EXPECT_EQ(breaks(run(transient, golden::ccdc())), 1);
+    EXPECT_EQ(breaks(run(transient, golden::pyccd())), 1);
     EXPECT_EQ(breaks(run(transient, longer)), 0);
 
     // A lasting step is found by both, on the same day.
     const auto step = make_pixel(300.0, 0.0, {{250, T, 600.0}});
-    const auto at6 = run(step, golden::ccdc());
+    const auto at6 = run(step, golden::pyccd());
     const auto at12 = run(step, longer);
     ASSERT_EQ(breaks(at6), 1);
     ASSERT_EQ(breaks(at12), 1);
@@ -300,16 +300,16 @@ TEST(Cadence, VariogramMinLagDays)
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 60)[0], 40.0);  // lag 4, 64 days
 
     const ccd::config::Config shorter =
-        golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(10));
+        golden::with(golden::pyccd(), "noise_floor", "min_lag_days", ccd::config::integer(10));
     const ccd::config::Config longer =
-        golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(60));
+        golden::with(golden::pyccd(), "noise_floor", "min_lag_days", ccd::config::integer(60));
 
     const auto small = make_pixel(300.0, 0.0, {{250, T, 150.0}});
     EXPECT_EQ(breaks(run(small, shorter)), 1);
-    EXPECT_EQ(breaks(run(small, golden::ccdc())), 0);
+    EXPECT_EQ(breaks(run(small, golden::pyccd())), 0);
 
     const auto large = make_pixel(300.0, 0.0, {{250, T, 300.0}});
-    EXPECT_EQ(breaks(run(large, golden::ccdc())), 1);
+    EXPECT_EQ(breaks(run(large, golden::pyccd())), 1);
     EXPECT_EQ(breaks(run(large, longer)), 0);
 }
 
@@ -325,14 +325,14 @@ TEST(Cadence, RetrainSpanFactor)
     const auto drifting = make_pixel(0.0, 0.5, {});
 
     const ccd::config::Config often =
-        golden::with(golden::ccdc(), "refit", "factor", ccd::config::real(1.2));
+        golden::with(golden::pyccd(), "refit", "factor", ccd::config::real(1.2));
     EXPECT_EQ(breaks(run(drifting, often)), 0);
 
     std::int64_t previous = 0;
     for (const double factor : {1.33, 1.6, 2.0, 4.0})
     {
         const auto r =
-            run(drifting, golden::with(golden::ccdc(), "refit", "factor", ccd::config::real(factor)));
+            run(drifting, golden::with(golden::pyccd(), "refit", "factor", ccd::config::real(factor)));
         ASSERT_GE(breaks(r), 1) << "factor " << factor;
         if (previous != 0)
             EXPECT_LT(first_break(r), previous) << "factor " << factor;
@@ -351,7 +351,7 @@ TEST(Cadence, RetrainMinObs)
     std::size_t segments = 0;
     for (const std::int64_t count : {24, 48, 96, 200})
     {
-        ccd::config::Config c = golden::ccdc();
+        ccd::config::Config c = golden::pyccd();
         c.stages["refit"].params["factor"] = ccd::config::real(1e6);
         c.stages["refit"].params["min_obs"] = ccd::config::integer(count);
         c.stages["change_test"].params["model_rmse_up_to"] = ccd::config::integer(count);
@@ -378,32 +378,32 @@ TEST(Cadence, RetrainMinObs)
 TEST(Cadence, SeasonalRmseDivisor)
 {
     const ccd::config::Config larger =
-        golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(8.0));
+        golden::with(golden::pyccd(), "change_test", "seasonal_divisor", ccd::config::real(8.0));
     const ccd::config::Config smaller =
-        golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(2.0));
+        golden::with(golden::pyccd(), "change_test", "seasonal_divisor", ccd::config::real(2.0));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
-    EXPECT_EQ(breaks(run(small, golden::ccdc())), 0);
+    EXPECT_EQ(breaks(run(small, golden::pyccd())), 0);
     EXPECT_EQ(breaks(run(small, larger)), 1);
 
     const auto medium = make_pixel(0.0, 0.0, {{250, T, 60.0}});
-    EXPECT_EQ(breaks(run(medium, golden::ccdc())), 1);
+    EXPECT_EQ(breaks(run(medium, golden::pyccd())), 1);
     EXPECT_EQ(breaks(run(medium, smaller)), 0);
 }
 
 TEST(Cadence, SeasonalRmseCount)
 {
     const ccd::config::Config fewer =
-        golden::with(golden::ccdc(), "change_test", "seasonal_count", ccd::config::integer(6));
+        golden::with(golden::pyccd(), "change_test", "seasonal_count", ccd::config::integer(6));
     const ccd::config::Config more =
-        golden::with(golden::ccdc(), "change_test", "seasonal_count", ccd::config::integer(96));
+        golden::with(golden::pyccd(), "change_test", "seasonal_count", ccd::config::integer(96));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
-    EXPECT_EQ(breaks(run(small, golden::ccdc())), 0);
+    EXPECT_EQ(breaks(run(small, golden::pyccd())), 0);
     EXPECT_EQ(breaks(run(small, fewer)), 1);
 
     const auto medium = make_pixel(0.0, 0.0, {{250, T, 60.0}});
-    EXPECT_EQ(breaks(run(medium, golden::ccdc())), 1);
+    EXPECT_EQ(breaks(run(medium, golden::pyccd())), 1);
     EXPECT_EQ(breaks(run(medium, more)), 0);
 }
 
@@ -444,10 +444,10 @@ TEST(Cadence, ChangeProbability)
 TEST(Cadence, ChangeProbabilityThroughDetect)
 {
     const ccd::config::Config higher =
-        golden::with_shared(golden::ccdc(), "change_probability", ccd::config::real(0.999));
+        golden::with_shared(golden::pyccd(), "change_probability", ccd::config::real(0.999));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
-    const auto at99 = run(small, golden::ccdc());
+    const auto at99 = run(small, golden::pyccd());
     ASSERT_EQ(breaks(at99), 1);
     EXPECT_EQ(first_break(at99), small.dates[250]);
     EXPECT_EQ(breaks(run(small, higher)), 0);
@@ -494,7 +494,7 @@ TEST(PeekThreshold, DenseSeriesUsesAdjustedThreshold)
     const auto with_probability = [](ccd::config::Config c, double value)
     { return golden::with_shared(std::move(c), "change_probability", ccd::config::real(value)); };
 
-    ccd::config::Config fixed = golden::ccdc();
+    ccd::config::Config fixed = golden::pyccd();
     fixed.stages["change_test"].params["peek_size"] = ccd::config::integer(12);
     fixed.stages["change_test"].params["peek_reference_days"] = ccd::config::real(8.0);
     // adjust_change_threshold(12, 6, ...)'s probability, as it computes it.
@@ -509,11 +509,11 @@ TEST(PeekThreshold, DenseSeriesUsesAdjustedThreshold)
     const auto step = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
 
     std::string adjusted_dump, fixed_dump;
-    golden::dump_pixel(adjusted_dump, "step", run(step, golden::ccdc()));
+    golden::dump_pixel(adjusted_dump, "step", run(step, golden::pyccd()));
     golden::dump_pixel(fixed_dump, "step", run(step, fixed));
     EXPECT_EQ(adjusted_dump, fixed_dump);
 
-    const auto adjusted = run(step, golden::ccdc());
+    const auto adjusted = run(step, golden::pyccd());
     ASSERT_EQ(breaks(adjusted), 1);
     EXPECT_EQ(first_break(adjusted), step.dates[250]);
     EXPECT_EQ(breaks(run(step, unadjusted)), 0);
@@ -528,9 +528,9 @@ TEST(PeekThreshold, EachPixelStartsFromTheCallerConfiguration)
     const auto sparse = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 16);
 
     std::string alone;
-    golden::dump_pixel(alone, "sparse", run(sparse, golden::ccdc()));
+    golden::dump_pixel(alone, "sparse", run(sparse, golden::pyccd()));
 
-    const ccd::config::Config config = golden::ccdc();
+    const ccd::config::Config config = golden::pyccd();
     run(dense, config);
     std::string after;
     golden::dump_pixel(after, "sparse", run(sparse, config));
@@ -538,6 +538,6 @@ TEST(PeekThreshold, EachPixelStartsFromTheCallerConfiguration)
     EXPECT_EQ(golden::parameter<std::int64_t>(golden::resolved(config).stages, "change_test",
                                               "peek_size"),
               6);
-    EXPECT_EQ(config, golden::ccdc());
+    EXPECT_EQ(config, golden::pyccd());
 }
 

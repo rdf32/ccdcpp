@@ -107,7 +107,7 @@ struct Shared
     index_t coefficient_mid = 6;
     index_t coefficient_max = 8;
     index_t num_obs_factor = 3;
-    std::int64_t stat_ord = 736694;
+    std::int64_t stat_ord = NO_STAT_CUTOFF;
     double green_filter = 400.0;
     std::string green_filter_scope = "stat_window";
 };

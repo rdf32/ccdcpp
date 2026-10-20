@@ -710,7 +710,7 @@ insufficient_clear
   1  ThermalRange band 6, -9320 < x < 7070
   2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
   3  Dedupe
-  4  GreenMedian band 1, drop x >= median(dates <= 736694) + 400, scope StatWindow
+  4  GreenMedian band 1, drop x >= median(every date) + 400, scope StatWindow
   5  Dedupe
 ```
 

@@ -76,7 +76,7 @@ struct Record
     std::vector<double> spectral;   // (7, n)
     std::vector<std::uint8_t> qas;
     ccd::Input options;
-    ccd::config::Config config = golden::ccdc();   // the strategies' configuration
+    ccd::config::Config config = golden::pyccd();   // the strategies' configuration
     ccd::config::Resolved resolved = golden::resolved(config, options);
     const ccd::config::Shared& shared = resolved.shared;
     ccd::LassoOptions lasso_options;   // the kernels' solver, at the preset's values
@@ -380,7 +380,7 @@ TEST(StandardPrepare, ANaNVariogramIsDoneWithTheMaskOnly)
 {
     // One observation dated <= stat_ord: the statistics window's variogram
     // has no pair to difference, and is NaN.
-    Record r(40, ccd::config::Shared{}.stat_ord);
+    Record r(40, golden::PYCCD_STAT_ORD);
     EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Done);
     EXPECT_EQ(r.state.exit, Exit::VariogramNaN);
 

@@ -310,7 +310,7 @@ namespace
 
 std::uint64_t digest_of(
     const ccd::Input& h,
-    const ccd::config::Config& config = golden::ccdc(),
+    const ccd::config::Config& config = golden::pyccd(),
     const ccd::QaTable* table = nullptr)
 {
     const ccd::config::Resolved resolved = golden::resolved(config, h);
@@ -324,8 +324,8 @@ TEST(OptionsDigest, EqualOptionsEqualDigests)
     EXPECT_EQ(digest_of(ccd::Input{}), digest_of(ccd::Input{}));
     EXPECT_EQ(digest_of(golden::physical_input()), digest_of(golden::physical_input()));
     // A configuration that leaves its defaults out is the same run.
-    ccd::config::Config partial = golden::ccdc();
-    partial.shared.clear();
+    ccd::config::Config partial = golden::pyccd();
+    partial.shared = {{"stat_ord", partial.shared.at("stat_ord")}};
     partial.stages["refit"].params.clear();
     EXPECT_EQ(digest_of(ccd::Input{}, partial), digest_of(ccd::Input{}));
 }
@@ -334,8 +334,8 @@ TEST(OptionsDigest, EqualOptionsEqualDigests)
 TEST(OptionsDigest, TheConfigurationMoves)
 {
     const ccd::Input h;
-    ccd::config::Config tree = ccd::strategies::library_registry().preset("ccdc");
-    const auto plan = ccd::preprocess::default_plan(h, ccd::config::Shared{});
+    ccd::config::Config tree = golden::pyccd();
+    const auto plan = ccd::preprocess::default_plan(h, golden::shared_of());
     const std::uint64_t base = ccd::options_digest(golden::resolved(tree, h), plan, nullptr);
     EXPECT_EQ(base, digest_of(h));
     tree.stages["lookback"].params["peek"] = ccd::config::integer(6);
@@ -369,7 +369,7 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
     }
 
     // Every shared value, to another it accepts.
-    const ccd::config::Config preset = golden::ccdc();
+    const ccd::config::Config preset = golden::pyccd();
     for (const auto& [name, value] : preset.shared)
     {
         const ccd::config::Value moved = std::visit(

@@ -214,7 +214,7 @@ ccd::Input physical_input()
 // (in reflectance), which every Lasso stage reads.
 ccd::config::Config with_lasso(double alpha, double coef_floor)
 {
-    return golden::with_shared(golden::with_shared(golden::ccdc(), "alpha",
+    return golden::with_shared(golden::with_shared(golden::pyccd(), "alpha",
                                                    ccd::config::real(alpha)),
                                "coef_floor", ccd::config::real(coef_floor));
 }
@@ -234,7 +234,7 @@ ccd::FitResult run(
     const Observations& obs,
     std::vector<ccd::scalar_t> spectral,
     const ccd::Input& h,
-    const ccd::config::Config& config = golden::ccdc()
+    const ccd::config::Config& config = golden::pyccd()
 )
 {
     auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
@@ -464,7 +464,7 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     // moved observations, the exclusive one drops them, in both units.
     const auto filter_mask = [&obs](const std::vector<ccd::scalar_t>& spectral,
                                     const ccd::Input& h) {
-        const ccd::config::Shared shared = golden::shared_of(golden::ccdc(), h);
+        const ccd::config::Shared shared = golden::shared_of(golden::pyccd(), h);
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.T}),
@@ -683,7 +683,7 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     h.therm_min = ccd::MIN_CELSIUS / SCALE;     // thermal is K x 10 / SCALE
     h.therm_max = ccd::MAX_CELSIUS / SCALE;     // here, not Celsius -- see
                                                 // plain_divide's comment
-    const ccd::config::Shared shared = golden::shared_of(golden::ccdc(), h);
+    const ccd::config::Shared shared = golden::shared_of(golden::pyccd(), h);
     ASSERT_EQ(shared.green_filter, 0.04);
 
     const auto phys = run_insufficient_clear(obs, scaled, h, shared, physical_solver());

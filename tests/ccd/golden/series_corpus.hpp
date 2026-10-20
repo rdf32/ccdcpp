@@ -41,7 +41,7 @@ struct Series
     std::vector<double> spectral;   // (7, T), band-major
     std::vector<std::uint8_t> qas;
     ccd::Input h;
-    ccd::config::Config config = golden::ccdc();
+    ccd::config::Config config = golden::pyccd();
 
     // The configuration's statistics cutoff.
     std::int64_t stat_ord() const

@@ -205,10 +205,10 @@ TEST(Validation, LayoutRules)
     // A row >= B, in each list: the input's, and the configuration's
     // (against the input, when it is resolved).
     expect_config_error(
-        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 10})),
+        golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({1, 2, 10})),
         ten_band_layout(), "shared value 'detection_bands'", "holds band 10; the input has 10 bands");
     expect_config_error(
-        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({1, 12})),
+        golden::with(golden::pyccd(), "window_screen", "bands", ccd::config::bands({1, 12})),
         ten_band_layout(), "window_screen 'tmask'", "holds band 12; the input has 10 bands");
     {
         auto h = ten_band_layout();
@@ -218,10 +218,10 @@ TEST(Validation, LayoutRules)
 
     // Duplicates, in each list.
     expect_config_error(
-        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 6, 2})),
+        golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({1, 2, 6, 2})),
         ten_band_layout(), "shared value 'detection_bands'", "holds band 2 twice");
     expect_config_error(
-        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({8, 8})),
+        golden::with(golden::pyccd(), "window_screen", "bands", ccd::config::bands({8, 8})),
         ten_band_layout(), "window_screen 'tmask'", "holds band 8 twice");
     {
         auto h = ten_band_layout();
@@ -231,10 +231,10 @@ TEST(Validation, LayoutRules)
 
     // Empty detection or tmask list; an empty saturation list is allowed.
     expect_config_error(
-        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({})),
+        golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({})),
         ten_band_layout(), "shared value 'detection_bands'", "is empty");
     expect_config_error(
-        golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({})),
+        golden::with(golden::pyccd(), "window_screen", "bands", ccd::config::bands({})),
         ten_band_layout(), "window_screen 'tmask'", "is empty");
     {
         auto h = ten_band_layout();
@@ -297,7 +297,7 @@ TEST(Validation, CadenceRules)
     const auto expect_error = [](const std::string& stage, const std::string& name,
                                  ccd::config::Value value, const std::string& where,
                                  const std::string& what)
-    { expect_config_error(golden::with(golden::ccdc(), stage, name, value), ccd::Input{}, where, what); };
+    { expect_config_error(golden::with(golden::pyccd(), stage, name, value), ccd::Input{}, where, what); };
 
     for (const double days : {0.0, -16.0, nan})
         expect_error("change_test", "peek_reference_days", real(days),
@@ -323,7 +323,7 @@ TEST(Validation, CadenceRules)
 
     for (const double p : {0.0, 1.0, -0.5, 1.5, nan})
         for (const char* name : {"change_probability", "outlier_probability"})
-            expect_config_error(golden::with_shared(golden::ccdc(), name, real(p)), ccd::Input{},
+            expect_config_error(golden::with_shared(golden::pyccd(), name, real(p)), ccd::Input{},
                 std::string("shared parameter '") + name + "'", "it must be in (0, 1)");
 
     // A peek of 0 or 1 would leave a peek empty.
@@ -333,7 +333,7 @@ TEST(Validation, CadenceRules)
         "change_test 'chi2' parameter 'peek_size' is 1", "it must be at least 2");
 
     // The smallest accepted values.
-    ccd::config::Config c = golden::ccdc();
+    ccd::config::Config c = golden::pyccd();
     c.stages["change_test"].params["peek_size"] = integer(2);
     c.stages["change_test"].params["peek_reference_days"] = real(1e-9);
     c.stages["noise_floor"].params["min_lag_days"] = integer(1);
@@ -371,12 +371,12 @@ TEST(Validation, CoefficientRules)
                                  const std::string& what)
     {
         expect_config_error(
-            golden::with_shared(golden::ccdc(), name, ccd::config::integer(value)), ccd::Input{},
+            golden::with_shared(golden::pyccd(), name, ccd::config::integer(value)), ccd::Input{},
             "model 'lasso' ", what);
     };
 
     expect_config_error(
-        golden::with_shared(golden::ccdc(), "coefficient_min", ccd::config::integer(0)),
+        golden::with_shared(golden::pyccd(), "coefficient_min", ccd::config::integer(0)),
         ccd::Input{}, "shared parameter 'coefficient_min' is 0", "it must be at least 1");
     expect_error("coefficient_min", 7,
         "model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' "
@@ -389,8 +389,8 @@ TEST(Validation, CoefficientRules)
 
     // The extremes accepted: a count of 1 throughout (the trend and annual
     // basis, as 4, with 1 degree of freedom), and 8.
-    EXPECT_NO_THROW(golden::strategies_of(with_coefficients(golden::ccdc(), 1)));
-    EXPECT_NO_THROW(golden::strategies_of(with_coefficients(golden::ccdc(), 8)));
+    EXPECT_NO_THROW(golden::strategies_of(with_coefficients(golden::pyccd(), 1)));
+    EXPECT_NO_THROW(golden::strategies_of(with_coefficients(golden::pyccd(), 8)));
 }
 
 // The configuration is checked at the entry points too.
@@ -402,14 +402,14 @@ TEST(Validation, DetectRejectsACadenceParameter)
     const std::vector<std::uint8_t> qas(T, 0);
 
     const ccd::config::Config config =
-        golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(0.0));
+        golden::with(golden::pyccd(), "change_test", "seasonal_divisor", ccd::config::real(0.0));
 
     // The Algorithm refuses it as it is built.
     EXPECT_THROW(golden::algorithm(config), std::invalid_argument);
 
     // A configuration the input does not fit: at the entry points.
     const ccd::config::Config off_input =
-        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 9}));
+        golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({1, 2, 9}));
     const ccd::AlgorithmPtr algorithm = golden::algorithm(off_input);
     EXPECT_THROW(
         ccd::run_pixel(
@@ -503,7 +503,7 @@ TEST(Validation, EntryPointsRejectALayout)
 
     const ccd::Input h;
     const ccd::AlgorithmPtr off = golden::algorithm(
-        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 7})));
+        golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({1, 2, 7})));
 
     EXPECT_THROW(
         ccd::run_pixel(

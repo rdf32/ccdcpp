@@ -47,7 +47,7 @@ struct Profile
     const char* name;
     std::vector<golden::BandSpec> specs;
     ccd::Input h;
-    ccd::config::Config config = golden::ccdc();   // the detection bands
+    ccd::config::Config config = golden::pyccd();   // the detection bands
 
 };
 
@@ -85,7 +85,7 @@ inline std::vector<Profile> profiles()
     std::vector<Profile> out;
 
     // Sentinel-2-like: 10 bands, no thermal.
-    out.push_back({"s2_b10", S2_SPECS, s2_layout(), golden::ccdc()});
+    out.push_back({"s2_b10", S2_SPECS, s2_layout(), golden::pyccd()});
 
     // HLS L30-like: coastal, blue, green, red, nir, swir1, swir2, thermal.
     {
@@ -93,7 +93,7 @@ inline std::vector<Profile> profiles()
         h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
         h.saturation_bands = band_list(iota(7));
         out.push_back({"hls_l30_b8",
-            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, golden::ccdc()});
+            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, golden::pyccd()});
     }
 
     // HLS-like, 7 bands without thermal.
@@ -102,14 +102,14 @@ inline std::vector<Profile> profiles()
         h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2"};
         h.saturation_bands = band_list(iota(7));
         out.push_back({"hls_b7",
-            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, golden::ccdc()});
+            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, golden::pyccd()});
     }
 
     // Sentinel-2-like with the red edge in detection: df = 8, the thresholds
     // chi2(8)'s at the default probabilities.
     {
         const ccd::config::Config c = golden::with_shared(
-            golden::ccdc(), "detection_bands",
+            golden::pyccd(), "detection_bands",
             ccd::config::roles({"green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
                                 "swir1", "swir2"}));
         out.push_back({"s2_b10_df8", S2_SPECS, s2_layout(), c});

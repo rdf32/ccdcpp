@@ -93,14 +93,14 @@ PixelView view(
 struct Options
 {
     ccd::Input input;
-    ccd::config::Shared shared;
+    ccd::config::Shared shared = golden::shared_of();
 };
 
 // The physical-unit input's.
 Options physical_options()
 {
     const ccd::Input input = golden::physical_input();
-    return {input, golden::shared_of(golden::ccdc(), input)};
+    return {input, golden::shared_of(golden::pyccd(), input)};
 }
 
 pp::PreprocessPlan default_plan(const Options& options)
@@ -554,7 +554,7 @@ ccd::FitResult run_detect(
     const ccd::PreprocessPlanPtr& plan
 )
 {
-    return ccd::run_pixel(golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, plan),
+    return ccd::run_pixel(golden::spec_of(h, golden::pyccd_algorithm(), nullptr, plan),
                           px.dates, px.spectral, px.qas).result;
 }
 
@@ -715,7 +715,7 @@ TEST(CustomPlan, NullIsTheDefaultPlan)
     auto cube = [&](const ccd::PreprocessPlanPtr& given)
     {
         const ccd::CubeResult r = ccd::run_cube(
-            golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, given),
+            golden::spec_of(h, golden::pyccd_algorithm(), nullptr, given),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -836,7 +836,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     EXPECT_EQ(standard_changed, 0u);
 
     const ccd::CubeResult cube = ccd::run_cube(
-        golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, plan),
+        golden::spec_of(h, golden::pyccd_algorithm(), nullptr, plan),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -975,7 +975,7 @@ TEST(PlanValidation, EntryPointsReject)
 
     EXPECT_THROW(
         ccd::run_cube(
-            golden::spec_of(h, ccd::Algorithm::preset("ccdc"), nullptr, plan),
+            golden::spec_of(h, golden::pyccd_algorithm(), nullptr, plan),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),

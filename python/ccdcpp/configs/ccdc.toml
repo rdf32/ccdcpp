@@ -17,7 +17,7 @@ green_filter_scope = "stat_window"
 max_iter = 1000
 num_obs_factor = 3
 outlier_probability = 0.999999
-stat_ord = 736694
+stat_ord = 9223372036854775807
 tolerance = 0.0001
 
 [change_test]

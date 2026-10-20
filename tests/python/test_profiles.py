@@ -143,6 +143,10 @@ def to_physical(spectral):
     return s
 
 
+#: The "ccdc" preset with pyccd's statistics cutoff, 2017-12-31: what the Landsat profiles run.
+PYCCD = ccdcpp.config("ccdc").replace(shared__stat_ord=736694)
+
+
 def explicit_physical():
     """The physical-unit input written out, as the golden tests write it, and the
     configuration it runs: (Input, Config)."""
@@ -154,7 +158,7 @@ def explicit_physical():
     h.refl_max = 10000.0 / SCALE
     h.therm_min = -9320.0 / SCALE
     h.therm_max = 7070.0 / SCALE
-    return h, ccdcpp.config("ccdc")
+    return h, PYCCD
 
 
 def resolved(cfg, input=None):
@@ -232,7 +236,7 @@ class LandsatC1DN(unittest.TestCase):
         h = presets.landsat_c1_dn().input()
         cfg = presets.landsat_c1_dn().config()
         self.assertEqual(fields(h), fields(ccdcpp.Input()))
-        self.assertEqual(cfg, ccdcpp.config("ccdc"))
+        self.assertEqual(cfg, PYCCD)
         for threshold in (change_threshold, outlier_threshold):
             self.assertEqual(threshold(cfg, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
         self.assertGreater(len(fields(h)), 20)
@@ -1071,7 +1075,7 @@ class TenBand(unittest.TestCase):
         self.assertEqual((h.bands(), h.index("green"), h.index("thermal")), (8, 2, 7))
         shared = profile.config().resolve(h)["shared"]
         self.assertEqual(shared["detection_bands"], [2, 3, 4, 5, 6])
-        self.assertEqual(shared["stat_ord"], ccdcpp.config("ccdc").shared()["stat_ord"])
+        self.assertEqual(shared["stat_ord"], 736694)
         np.testing.assert_array_equal(profile.qa_table().codes,
                                       ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
 

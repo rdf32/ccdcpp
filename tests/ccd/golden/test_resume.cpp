@@ -520,7 +520,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
         for (const int threads : {1, 4})
         {
             const ccd::CubeResult stored = ccd::run_cube(
-                golden::spec_of(h, golden::ccdc(), nullptr, nullptr, true),
+                golden::spec_of(h, golden::pyccd(), nullptr, nullptr, true),
                 cut.dates(),
                 cut.block(),
                 cut.qa(),
@@ -579,7 +579,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     const CutCube cut(c, c.T / 2);
     const CutCube whole(c, c.T);
     const ccd::CubeResult stored = ccd::run_cube(
-        golden::spec_of(ccd::Input{}, golden::ccdc(), nullptr, nullptr, true),
+        golden::spec_of(ccd::Input{}, golden::pyccd(), nullptr, nullptr, true),
         cut.dates(),
         cut.block(),
         cut.qa(),

@@ -387,7 +387,7 @@ ccd::Input landsat_layout(ccd::Input h)
 ccd::config::Config by_rows()
 {
     return golden::with(
-        golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({1, 2, 3, 4, 5})),
+        golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({1, 2, 3, 4, 5})),
         "window_screen", "bands", ccd::config::bands({1, 4}));
 }
 
@@ -399,12 +399,12 @@ TEST(Bands, GenericLayoutEqualsDefault)
     {
         EXPECT_EQ(
             dump_series(s, landsat_layout(ccd::Input{}), by_rows()),
-            dump_series(s, ccd::Input{}, golden::ccdc()));
+            dump_series(s, ccd::Input{}, golden::pyccd()));
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
             dump_series(phys, landsat_layout(golden::physical_input()), by_rows()),
-            dump_series(phys, golden::physical_input(), golden::ccdc()));
+            dump_series(phys, golden::physical_input(), golden::pyccd()));
     }
 }
 
@@ -471,9 +471,9 @@ TEST(Bands, PermutationInvariantSevenBands)
 
     for (const auto& s : landsat_corpus())
     {
-        expect_permutation_invariant(s, ccd::Input{}, golden::ccdc(), perm);
+        expect_permutation_invariant(s, ccd::Input{}, golden::pyccd(), perm);
         expect_permutation_invariant(
-            to_physical(s), golden::physical_input(), golden::ccdc(), perm);
+            to_physical(s), golden::physical_input(), golden::pyccd(), perm);
     }
 }
 
@@ -517,15 +517,15 @@ TEST(Bands, InertBandsChangeNothingElse)
             const Series wide = with_inert_rows(s, k, 900 + k);
 
             EXPECT_EQ(
-                dump_series(wide, h, golden::ccdc(),
+                dump_series(wide, h, golden::pyccd(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(s, ccd::Input{}, golden::ccdc()));
+                dump_series(s, ccd::Input{}, golden::pyccd()));
 
             const Series phys = to_physical(s);
             EXPECT_EQ(
-                dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::ccdc(),
+                dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::pyccd(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(phys, golden::physical_input(), golden::ccdc()));
+                dump_series(phys, golden::physical_input(), golden::pyccd()));
         }
     }
 
@@ -604,26 +604,26 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
         const Series stripped = take_rows(s, optical);
         const std::string absent =
-            dump_series(stripped, no_thermal(ccd::Input{}), golden::ccdc());
+            dump_series(stripped, no_thermal(ccd::Input{}), golden::pyccd());
 
         EXPECT_EQ(
             absent,
-            dump_series(s, open_thermal(ccd::Input{}), golden::ccdc(), optical_only));
+            dump_series(s, open_thermal(ccd::Input{}), golden::pyccd(), optical_only));
 
         default_bounds_differ = default_bounds_differ ||
-            absent != dump_series(s, ccd::Input{}, golden::ccdc(), optical_only);
+            absent != dump_series(s, ccd::Input{}, golden::pyccd(), optical_only);
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
             dump_series(take_rows(phys, optical), no_thermal(golden::physical_input()),
-                golden::ccdc()),
+                golden::pyccd()),
             dump_series(phys, open_thermal(golden::physical_input()),
-                golden::ccdc(), optical_only));
+                golden::pyccd(), optical_only));
 
         for (std::size_t p = 0; p < s.N; ++p)
         {
             for (const auto& m : run_detect(stripped.dates, stripped.pixel(p), 6,
-                     stripped.qa(p), no_thermal(ccd::Input{}), golden::ccdc()).models)
+                     stripped.qa(p), no_thermal(ccd::Input{}), golden::pyccd()).models)
             {
                 if (m.curve_qa == ccd::CurveQA::PersistentSnow) ++coverage.snow;
                 else if (m.curve_qa == ccd::CurveQA::InsufficientClear) ++coverage.insufficient;

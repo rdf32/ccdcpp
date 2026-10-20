@@ -19,7 +19,8 @@
 namespace golden
 {
 
-// The default configuration: pyccd's algorithm, in physical terms.
+// The default configuration: pyccd's algorithm, in physical terms, with no
+// statistics cutoff.
 inline ccd::config::Config ccdc()
 {
     return ccd::strategies::library_registry().preset("ccdc");
@@ -44,31 +45,49 @@ inline ccd::config::Config with_shared(ccd::config::Config config, const std::st
     return config;
 }
 
+// pyccd's statistics cutoff, 2017-12-31: the pyccd references and the golden
+// fixtures ran with it.
+constexpr std::int64_t PYCCD_STAT_ORD = 736694;
+
+// The "ccdc" preset with pyccd's statistics cutoff: the configuration the
+// pyccd references and the golden fixtures ran.
+inline ccd::config::Config pyccd()
+{
+    return with_shared(ccdc(), "stat_ord", ccd::config::integer(PYCCD_STAT_ORD));
+}
+
 // `config` resolved against `input`, in the library's registry.
-inline ccd::config::Resolved resolved(const ccd::config::Config& config = ccdc(),
+inline ccd::config::Resolved resolved(const ccd::config::Config& config = pyccd(),
                                       const ccd::Input& input = ccd::Input{})
 {
     return ccd::strategies::library_registry().resolve(config, input);
 }
 
 // The strategies of `config` on `input`.
-inline ccd::Strategies strategies_of(const ccd::config::Config& config = ccdc(),
+inline ccd::Strategies strategies_of(const ccd::config::Config& config = pyccd(),
                                      const ccd::Input& input = ccd::Input{})
 {
     return resolved(config, input).strategies;
 }
 
 // The shared values of `config` on `input`.
-inline ccd::config::Shared shared_of(const ccd::config::Config& config = ccdc(),
+inline ccd::config::Shared shared_of(const ccd::config::Config& config = pyccd(),
                                      const ccd::Input& input = ccd::Input{})
 {
     return resolved(config, input).shared;
 }
 
 // An Algorithm of `config`.
-inline ccd::AlgorithmPtr algorithm(ccd::config::Config config = ccdc())
+inline ccd::AlgorithmPtr algorithm(ccd::config::Config config)
 {
     return std::make_shared<const ccd::Algorithm>(std::move(config));
+}
+
+// The Algorithm of pyccd(), built once.
+inline ccd::AlgorithmPtr pyccd_algorithm()
+{
+    static const ccd::AlgorithmPtr built = algorithm(pyccd());
+    return built;
 }
 
 // The value of parameter `name` of stage `stage` in a resolved tree, as a T
