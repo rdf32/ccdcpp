@@ -76,15 +76,15 @@ void check_qa(bool raw_qa, const QaTable* qa_table)
     if (raw_qa && qa_table == nullptr)
     {
         throw std::invalid_argument(
-            "qas is uint16, which holds raw QA values; pass a QaTable "
+            "qas is uint16, which holds raw QA values; give the input a QaTable "
             "(qa_table) to decode them, or pass uint8 QA codes"
         );
     }
 }
 
 // A resume's refusals: another record format or results version, another
-// input, configuration, plan or QA table, a series that ends before the
-// record's.
+// input (its QA table included), configuration or plan, a series that ends
+// before the record's.
 void check_resume(
     const ResumeHeader& from,
     std::uint64_t digest,
@@ -102,7 +102,7 @@ void check_resume(
             std::to_string(RESULTS_VERSION) + ": rerun in full");
     if (from.options_digest != digest)
         throw std::invalid_argument(
-            "the resume record was made with another input, configuration, plan or QA table");
+            "the resume record was made with another input, configuration or plan");
     if (dates.size() == 0 || dates(dates.size() - 1) < from.series_end)
         throw std::invalid_argument(
             "the series ends before the resume record's, on " +
@@ -412,7 +412,7 @@ Run::Run(
     : spec_(spec), dates_(dates), bands_(bands), timesteps_(timesteps), raw_qa_(raw_qa)
 {
     check_shapes(spec_.input, bands, timesteps, dates, qa_timesteps);
-    check_qa(raw_qa, spec_.qa_table.get());
+    check_qa(raw_qa, spec_.input.qa_table.get());
 
     if (!spec_.algorithm)
         throw std::invalid_argument("the run has no algorithm");
@@ -427,7 +427,7 @@ Run::Run(
     if (spec_.record || resume)
     {
         header_.options_digest =
-            options_digest(*resolved_, plan_, spec_.qa_table.get());
+            options_digest(*resolved_, plan_);
         header_.series_end = dates.size() > 0
             ? dates(dates.size() - 1)
             : std::numeric_limits<std::int64_t>::min();
@@ -483,7 +483,7 @@ PixelOutcome Run::pixel_typed(
 
     PixelOutcome out;
     bool continued = false;
-    const QaTable* table = spec_.qa_table.get();
+    const QaTable* table = spec_.input.qa_table.get();
 
     if (!resume_)
     {

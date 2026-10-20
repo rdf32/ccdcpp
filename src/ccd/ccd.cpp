@@ -161,8 +161,7 @@ void digest(detail::Fnv& h, const preprocess::ProcedurePlan& plan)
 
 std::uint64_t options_digest(
     const config::Resolved& resolved,
-    const preprocess::PreprocessPlan& plan,
-    const QaTable* qa_table
+    const preprocess::PreprocessPlan& plan
 )
 {
     detail::Fnv h;
@@ -170,10 +169,6 @@ std::uint64_t options_digest(
     for (const preprocess::ProcedurePlan* procedure :
          {&plan.standard, &plan.snow, &plan.insufficient_clear})
         digest(h, *procedure);
-    h.flag(qa_table != nullptr);
-    if (qa_table)
-        for (const std::uint8_t code : qa_table->code)
-            h.byte(code);
     return h.value();
 }
 

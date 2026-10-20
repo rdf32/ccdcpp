@@ -7,6 +7,7 @@
 #include "ccd/config/shared.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/input/input.hpp"
+#include "ccd/input/qa_table.hpp"
 
 namespace py = pybind11;
 
@@ -41,11 +42,12 @@ void bind_input(py::module_& m)
     py::class_<ccd::Input>(
         m,
         "Input",
-        "What the caller's data is: its QA codes, a role per row of the "
-        "spectral array, and its units. It holds no algorithm parameter: "
-        "those are the configuration's, resolved against the Input when a run "
-        "is built. The defaults are Landsat Collection-1 DN as pyccd consumes "
-        "it. ccdcpp.SensorProfile.input() builds one for a sensor."
+        "What the caller's data is: its QA codes and the table that decodes "
+        "its raw QA, a role per row of the spectral array, and its units. It "
+        "holds no algorithm parameter: those are the configuration's, "
+        "resolved against the Input when a run is built. The defaults are "
+        "Landsat Collection-1 DN as pyccd consumes it, QA as codes. "
+        "ccdcpp.SensorProfile.input() builds one for a sensor."
     )
     .def(py::init<>())
 
@@ -155,10 +157,21 @@ void bind_input(py::module_& m)
         "Informational; not read by ccdcpp (default 9).")
     .def_readwrite("qa_occlusion", &ccd::Input::qa_occlusion,
         "Informational; not read by ccdcpp (default 10).")
+    .def_property(
+        "qa_table",
+        [](const ccd::Input& self)
+        { return std::const_pointer_cast<ccd::QaTable>(self.qa_table); },
+        [](ccd::Input& self, std::shared_ptr<ccd::QaTable> table)
+        { self.qa_table = std::move(table); },
+        "The ccdcpp.QaTable that decodes raw uint8 or uint16 qas into the "
+        "qa_* codes (ccdcpp.qa_tables builds one with this input's codes), "
+        "or None (the default): qas are the codes, uint8."
+    )
 
     .def("__copy__", [](const ccd::Input& self) { return self; })
     .def("__deepcopy__", [](const ccd::Input& self, const py::dict&) { return self; })
-    .def("__eq__", [](const ccd::Input& a, const ccd::Input& b) { return a == b; })
+    .def("__eq__", [](const ccd::Input& a, const ccd::Input& b) { return a == b; },
+         py::is_operator())
     .def("__hash__", [](const ccd::Input& self) { return ccd::digest(self); })
     .def("digest", [](const ccd::Input& self) { return ccd::digest(self); },
          "A digest of every field: equal for equal inputs, on any platform.")

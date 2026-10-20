@@ -60,7 +60,7 @@ ccd::ArrayView<const std::uint8_t, 1> qas_of(const golden::CharPixel& p)
 ccd::PixelRun recorded(const golden::CharPixel& p)
 {
     return ccd::run_pixel(
-        golden::spec_of(p.h, p.config, nullptr, nullptr, true),
+        golden::spec_of(p.h, p.config, nullptr, true),
         dates_of(p),
         spectral_of(p),
         qas_of(p));
@@ -134,7 +134,7 @@ TEST(Record, TheHeaderNamesTheRun)
     const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
     EXPECT_EQ(r.header.options_digest,
               ccd::options_digest(resolved,
-                                  ccd::preprocess::default_plan(p.h, resolved.shared), nullptr));
+                                  ccd::preprocess::default_plan(p.h, resolved.shared)));
 }
 
 TEST(Record, EachExitAndItsSuspension)
@@ -310,11 +310,10 @@ namespace
 
 std::uint64_t digest_of(
     const ccd::Input& h,
-    const ccd::config::Config& config = golden::pyccd(),
-    const ccd::QaTable* table = nullptr)
+    const ccd::config::Config& config = golden::pyccd())
 {
     const ccd::config::Resolved resolved = golden::resolved(config, h);
-    return ccd::options_digest(resolved, ccd::preprocess::default_plan(h, resolved.shared), table);
+    return ccd::options_digest(resolved, ccd::preprocess::default_plan(h, resolved.shared));
 }
 
 } // namespace
@@ -336,12 +335,12 @@ TEST(OptionsDigest, TheConfigurationMoves)
     const ccd::Input h;
     ccd::config::Config tree = golden::pyccd();
     const auto plan = ccd::preprocess::default_plan(h, golden::shared_of());
-    const std::uint64_t base = ccd::options_digest(golden::resolved(tree, h), plan, nullptr);
+    const std::uint64_t base = ccd::options_digest(golden::resolved(tree, h), plan);
     EXPECT_EQ(base, digest_of(h));
     tree.stages["lookback"].params["peek"] = ccd::config::integer(6);
-    const std::uint64_t other = ccd::options_digest(golden::resolved(tree, h), plan, nullptr);
+    const std::uint64_t other = ccd::options_digest(golden::resolved(tree, h), plan);
     EXPECT_NE(other, base);
-    EXPECT_EQ(other, ccd::options_digest(golden::resolved(tree, h), plan, nullptr));
+    EXPECT_EQ(other, ccd::options_digest(golden::resolved(tree, h), plan));
 }
 
 TEST(OptionsDigest, EveryGroupOfFieldsMoves)
@@ -441,24 +440,27 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
     const ccd::Input h;
     const ccd::config::Resolved config = golden::resolved();
     const auto plan = ccd::preprocess::default_plan(h, config.shared);
-    const std::uint64_t base = ccd::options_digest(config, plan, nullptr);
-
+    const std::uint64_t base = ccd::options_digest(config, plan);
 
     auto other = plan;
     other.insufficient_clear.chain.steps[0].codes.set(2);
-    EXPECT_NE(ccd::options_digest(config, other, nullptr), base);
+    EXPECT_NE(ccd::options_digest(config, other), base);
 
     other = plan;
     other.standard.transform.reset();
-    EXPECT_NE(ccd::options_digest(config, other, nullptr), base);
+    EXPECT_NE(ccd::options_digest(config, other), base);
 
+    // The input's QA table, by its codes.
     const auto table = ccd::qa_tables::landsat_c2_qa_pixel(h);
-    const std::uint64_t with_table = ccd::options_digest(config, plan, table.get());
+    const std::uint64_t with_table = digest_of(golden::with_table(h, table));
     EXPECT_NE(with_table, base);
+    EXPECT_EQ(digest_of(golden::with_table(h, ccd::qa_tables::landsat_c2_qa_pixel(h))),
+              with_table);
 
-    ccd::QaTable changed = *table;
-    changed.code[21824] = changed.code[21824] == 0 ? 1 : 0;
-    EXPECT_NE(ccd::options_digest(config, plan, &changed), with_table);
+    ccd::QaTable::Codes changed = table->code;
+    changed[21824] = changed[21824] == 0 ? 1 : 0;
+    EXPECT_NE(digest_of(golden::with_table(h, std::make_shared<const ccd::QaTable>(changed))),
+              with_table);
 }
 
 // The digests name every field of these structs one by one (digest(Input),
@@ -468,7 +470,7 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 // for, and a test that fails here is a reminder, not a platform difference.
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::Input), 152u);
+    EXPECT_EQ(sizeof(ccd::Input), 168u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);
 }

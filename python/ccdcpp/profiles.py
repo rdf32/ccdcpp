@@ -6,9 +6,8 @@ which role each one plays. Its ``input()`` is the ``ccdcpp.Input`` of the
 data; the detection and Tmask lists are role names the configuration holds,
 resolved to rows against the input when a run is built, and the saturation
 list is resolved when the input is, so the same profile text holds for any
-band order. ``ccdcpp.detect``,
-``ccdcpp.detect_cube`` and ``ccdcpp.detect_cube_columns`` take one as
-``profile=``.
+band order. ``ccdcpp.detect`` and ``ccdcpp.detect_cube`` take one as
+``input=``.
 
 A new sensor is one constructor call; ``ccdcpp.presets`` writes its profiles
 that way. NOT SHIPPED: the profile below is an example of the shape, its
@@ -763,8 +762,10 @@ class SensorProfile:
         and shared: copy it (``copy.copy``) before changing it.
 
         Roles are the profile's; ``saturation`` becomes row indices, in its
-        own order. Every field the profile does not describe keeps its
-        ``Input()`` default.
+        own order; ``qa_table`` is the ``ccdcpp.QaTable`` of
+        ``qa_table_builder`` with ``qa_table_options``, built with the
+        input's codes, or None for pre-classified uint8 codes. Every field
+        the profile does not describe keeps its ``Input()`` default.
         """
         return _input_of(self)
 
@@ -796,21 +797,6 @@ class SensorProfile:
         if "window_screen" in cfg.stages() and "bands" in cfg.params("window_screen"):
             params["window_screen__bands"] = list(self.tmask)
         return cfg.replace(**params)
-
-    def qa_table(self, input=None):
-        """The ``ccdcpp.QaTable`` of ``qa_table_builder``, or None for
-        pre-classified input.
-
-        Built with the ``qa_*`` codes of ``input`` (default: this profile's
-        own), so pass the input the run uses, and with ``qa_table_options``
-        as keyword arguments. Tables are cached per builder, codes and
-        builder arguments, and are read-only.
-        """
-        if self.qa_table_builder is None:
-            return None
-        h = self.input() if input is None else input
-        codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
-        return _build_table(self.qa_table_builder, codes, self.qa_table_options)
 
     def preprocess_plan(self, input=None, config=None):
         """The ``ccdcpp.PreprocessPlan`` this profile runs, a new object.
@@ -912,6 +898,9 @@ def _input_of(profile):
         h.therm_min = profile.thermal.min
         h.therm_max = profile.thermal.max
         h.therm_min_inclusive, h.therm_max_inclusive = profile.thermal.inclusive
+    if profile.qa_table_builder is not None:
+        codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
+        h.qa_table = _build_table(profile.qa_table_builder, codes, profile.qa_table_options)
     return h
 
 

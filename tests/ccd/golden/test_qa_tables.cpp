@@ -27,7 +27,7 @@
 #include "specs.hpp"
 
 #include "ccd/ccd.hpp"
-#include "ccd/input/qa_table.hpp"
+#include "ccd/input/qa_tables.hpp"
 
 #include "golden.hpp"
 #include "synthetic.hpp"
@@ -169,7 +169,7 @@ std::string run_cube(
 )
 {
     return dump(ccd::run_cube(
-        golden::spec_of(h, golden::pyccd(), table),
+        golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, c.T}),
         ccd::ArrayView<const Qa, 3>::contiguous(qas.data(), {c.H, c.W, c.T}),
@@ -290,7 +290,7 @@ TEST(QaTables, DetectDecodes)
                 spectral,
                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T})).result);
             golden::dump_pixel(actual, "", ccd::run_pixel(
-                golden::spec_of(h, golden::pyccd(), table),
+                golden::spec_of(golden::with_table(h, table), golden::pyccd()),
                 dates,
                 spectral,
                 ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T})).result);
@@ -298,7 +298,7 @@ TEST(QaTables, DetectDecodes)
 
             // One Worker, reused across a run with a table and one without.
             ccd::Worker worker;
-            const ccd::Run with_table(golden::spec_of(h, golden::pyccd(), table), dates, 7, T, T, true);
+            const ccd::Run with_table(golden::spec_of(golden::with_table(h, table), golden::pyccd()), dates, 7, T, T, true);
             const ccd::Run without(golden::spec_of(h), dates, 7, T, T, false);
             std::string with_worker;
             golden::dump_pixel(with_worker, "", with_table.pixel(spectral, ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}), {}, worker).result);
@@ -373,7 +373,7 @@ TEST(QaTables, StridedRawQa)
             thw[t * H * W + p] = encode(s, c.qas[p * T + t], p * T + t);
 
     EXPECT_EQ(reference, dump(ccd::run_cube(
-        golden::spec_of(h, golden::pyccd(), table),
+        golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
         ccd::ArrayView<const std::uint16_t, 3>::strided(thw.data(), {H, W, T}, {W, 1, H * W}),
@@ -526,13 +526,13 @@ TEST(QaTables, Uint16NeedsATable)
     // With a table it runs, for every spectral type.
     const QaTablePtr table = ccd::qa_tables::hls_fmask(h);
     EXPECT_EQ(ccd::run_cube(
-        golden::spec_of(h, golden::pyccd(), table),
+        golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 2, 7, T}),
         qa3,
         1).pixels.size(), 2u);
     EXPECT_EQ(ccd::run_cube(
-        golden::spec_of(h, golden::pyccd(), table),
+        golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 2, 7, T}),
         qa3,

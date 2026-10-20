@@ -23,9 +23,21 @@ index_t Input::index(const std::string& role) const
     return it == roles.end() ? NO_BAND : static_cast<index_t>(it - roles.begin());
 }
 
+namespace
+{
+
+bool same_table(const QaTablePtr& a, const QaTablePtr& b)
+{
+    if (a == b)
+        return true;
+    return a && b && a->digest == b->digest && a->code == b->code;
+}
+
+} // namespace
+
 bool operator==(const Input& a, const Input& b)
 {
-    return a.qa_fill == b.qa_fill && a.qa_clear == b.qa_clear && a.qa_water == b.qa_water &&
+    return same_table(a.qa_table, b.qa_table) && a.qa_fill == b.qa_fill && a.qa_clear == b.qa_clear && a.qa_water == b.qa_water &&
            a.qa_shadow == b.qa_shadow && a.qa_snow == b.qa_snow && a.qa_cloud == b.qa_cloud &&
            a.qa_cirrus1 == b.qa_cirrus1 && a.qa_cirrus2 == b.qa_cirrus2 &&
            a.qa_occlusion == b.qa_occlusion && a.roles == b.roles &&
@@ -44,6 +56,9 @@ std::uint64_t digest(const Input& o)
     for (const std::uint8_t v : {o.qa_fill, o.qa_clear, o.qa_water, o.qa_shadow, o.qa_snow,
                                  o.qa_cloud, o.qa_cirrus1, o.qa_cirrus2, o.qa_occlusion})
         h.integer(v);
+    h.flag(o.qa_table != nullptr);
+    if (o.qa_table)
+        h.integer(static_cast<std::int64_t>(o.qa_table->digest));
     h.integer(static_cast<std::int64_t>(o.roles.size()));
     for (const std::string& role : o.roles)
         h.text(role);

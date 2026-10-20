@@ -1,4 +1,4 @@
-"""Sensor profiles, the Landsat presets and the profile= keyword.
+"""Sensor profiles, the Landsat presets and a profile as input=.
 
 usage: python test_profiles.py <module_dir> <source_dir> [unittest args]
 
@@ -202,29 +202,35 @@ CUBE_PHYS = to_physical(CUBE_DN)
 
 
 def every_entry(dates, spectral, qas, threads=8, **kw):
-    """{entry: output} for detect on every pixel, detect_cube, detect_cube_columns."""
+    """{entry: output} for detect on every pixel and detect_cube (its columns,
+    without the thread count)."""
     H, W = spectral.shape[:2]
     return {
         "detect": [ccdcpp.detect(dates, spectral[r, c], qas[r, c], **kw)
                    for r in range(H) for c in range(W)],
-        "detect_cube": ccdcpp.detect_cube(dates, spectral, qas, threads=threads, **kw),
-        "detect_cube_columns": without(
-            ccdcpp.detect_cube_columns(dates, spectral, qas, threads=threads, **kw), "threads"),
+        "detect_cube": without(
+            ccdcpp.detect_cube(dates, spectral, qas, threads=threads, **kw), "threads"),
     }
 
 
 def strip_band_names(outs):
     return {
         "detect": [without(o, "band_names") for o in outs["detect"]],
-        "detect_cube": outs["detect_cube"],
-        "detect_cube_columns": without(outs["detect_cube_columns"], "band_names"),
+        "detect_cube": without(outs["detect_cube"], "band_names"),
     }
+
+
+def with_table(input, table):
+    """A copy of ``input`` (a ccdcpp.Input) decoding its QA through ``table``."""
+    h = copy.copy(input)
+    h.qa_table = table
+    return h
 
 
 class Corpus(unittest.TestCase):
     def test_corpus_runs_every_procedure(self):
         h = ccdcpp.Input()
-        out = EXT.detect_cube_columns(DATES, CUBE_DN, CODES, h, 1)
+        out = EXT.detect_cube(DATES, CUBE_DN, CODES, input=h, threads=1)
         self.assertEqual(out["failures"], [])
         # Standard, PermanentSnow and InsufficientClear.
         self.assertTrue({8, 54, 44} <= set(out["curve_qa"].tolist()), out["curve_qa"])
@@ -240,40 +246,42 @@ class LandsatC1DN(unittest.TestCase):
         for threshold in (change_threshold, outlier_threshold):
             self.assertEqual(threshold(cfg, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
         self.assertGreater(len(fields(h)), 20)
-        self.assertIsNone(presets.landsat_c1_dn().qa_table())
+        self.assertIsNone(presets.landsat_c1_dn().input().qa_table)
 
     def test_output_is_the_unprofiled_output(self):
         h = ccdcpp.Input()
-        profiled = every_entry(DATES, CUBE_DN, CODES, profile=presets.landsat_c1_dn())
+        profiled = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn())
         plain = every_entry(DATES, CUBE_DN, CODES, input=h)
         assert_same(self, strip_band_names(profiled), plain)
 
 
 class LandsatPhysical(unittest.TestCase):
     def test_options_are_the_explicit_physical_options(self):
-        h, cfg = explicit_physical()
+        explicit, cfg = explicit_physical()
         for preset in (presets.landsat_c1_physical, presets.landsat_c2):
             with self.subTest(preset=preset.__name__):
+                # landsat_c2's input decodes raw QA_PIXEL.
+                h = with_table(explicit, preset().input().qa_table)
                 self.assertEqual(fields(preset().input()), fields(h))
                 self.assertEqual(preset().config(), cfg)
                 self.assertEqual(preset().config().resolve(preset().input()), cfg.resolve(h))
 
     def test_output_is_the_explicit_physical_output(self):
         h, cfg = explicit_physical()
-        profiled = every_entry(DATES, CUBE_PHYS, CODES, profile=presets.landsat_c1_physical())
+        profiled = every_entry(DATES, CUBE_PHYS, CODES, input=presets.landsat_c1_physical(),
+                               config=cfg)
         plain = every_entry(DATES, CUBE_PHYS, CODES, input=h, config=cfg)
         assert_same(self, strip_band_names(profiled), plain)
 
     def test_c2_raw_qa_pixel_is_the_decoded_codes(self):
         raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(CODES)
         profile = presets.landsat_c2()
-        np.testing.assert_array_equal(profile.qa_table().codes[raw], CODES)
-        decoded = every_entry(DATES, CUBE_PHYS, raw, profile=profile)
-        codes = every_entry(DATES, CUBE_PHYS, CODES, profile=profile, qa_table=None)
-        assert_same(self, decoded, codes)
-        h, cfg = explicit_physical()
-        assert_same(self, strip_band_names(decoded),
-                    every_entry(DATES, CUBE_PHYS, CODES, input=h, config=cfg))
+        np.testing.assert_array_equal(profile.input().qa_table.codes[raw], CODES)
+        decoded = every_entry(DATES, CUBE_PHYS, raw, input=profile)
+        codes = every_entry(DATES, CUBE_PHYS, CODES, input=with_table(profile.input(), None))
+        assert_same(self, strip_band_names(decoded), codes)
+        h, _ = explicit_physical()
+        assert_same(self, codes, every_entry(DATES, CUBE_PHYS, CODES, input=h))
 
     def test_presets_state_units_and_band_order(self):
         for preset in LANDSAT_PRESETS:
@@ -303,7 +311,7 @@ def unpermute(outs, order):
     def models(ms):
         return [dict(m, bands=[m["bands"][i] for i in inv]) for m in ms]
 
-    cols = dict(outs["detect_cube_columns"])
+    cols = dict(outs["detect_cube"])
     for key in ("intercept", "coefficients", "rmse", "magnitude"):
         cols[key] = np.ascontiguousarray(cols[key][:, inv])
     cols["band_names"] = tuple(cols["band_names"][i] for i in inv)
@@ -311,8 +319,7 @@ def unpermute(outs, order):
         "detect": [dict(o, models=models(o["models"]),
                         band_names=tuple(o["band_names"][i] for i in inv))
                    for o in outs["detect"]],
-        "detect_cube": [dict(p, models=models(p["models"])) for p in outs["detect_cube"]],
-        "detect_cube_columns": cols,
+        "detect_cube": cols,
     }
 
 
@@ -326,18 +333,18 @@ class Permutation(unittest.TestCase):
         self.assertEqual(h.index("thermal"), order.index(6))
         self.assertEqual(profile.config().resolve(h)["shared"]["detection_bands"],
                          [order.index(i) for i in (1, 2, 3, 4, 5)])
-        expected = every_entry(DATES, CUBE_DN, CODES, profile=base)
+        expected = every_entry(DATES, CUBE_DN, CODES, input=base)
         got = every_entry(DATES, np.ascontiguousarray(CUBE_DN[:, :, order]), CODES,
-                          profile=profile)
+                          input=profile)
         assert_same(self, unpermute(got, order), expected)
 
     def test_ten_bands(self):
         order = [9, 0, 8, 1, 7, 2, 6, 3, 5, 4]
         base = ten_band_profile()
         dates, cube, scl = ten_band_inputs()
-        expected = every_entry(dates, cube, scl, profile=base)
+        expected = every_entry(dates, cube, scl, input=base)
         got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), scl,
-                          profile=permuted(base, order))
+                          input=permuted(base, order))
         assert_same(self, unpermute(got, order), expected)
 
 
@@ -362,9 +369,8 @@ class Check(unittest.TestCase):
         d, s, q = DATES, CUBE_DN[:, :, :6], CODES
         profile = presets.landsat_c1_dn()
         calls = {
-            "detect": lambda: ccdcpp.detect(d, s[0, 0], q[0, 0], profile=profile),
-            "detect_cube": lambda: ccdcpp.detect_cube(d, s, q, profile=profile),
-            "detect_cube_columns": lambda: ccdcpp.detect_cube_columns(d, s, q, profile=profile),
+            "detect": lambda: ccdcpp.detect(d, s[0, 0], q[0, 0], input=profile),
+            "detect_cube": lambda: ccdcpp.detect_cube(d, s, q, input=profile),
         }
         for name, call in calls.items():
             with self.subTest(entry=name):
@@ -374,7 +380,7 @@ class Check(unittest.TestCase):
 
     def test_not_a_profile(self):
         with self.assertRaises(TypeError):
-            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], profile="landsat_c1_dn")
+            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], input="landsat_c1_dn")
 
     def test_construction(self):
         base = presets.landsat_c1_dn()
@@ -446,7 +452,7 @@ class QaTableOptionsField(unittest.TestCase):
         for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
             with self.subTest(preset=preset.__name__):
                 self.assertEqual(preset().qa_table_options, ())
-        np.testing.assert_array_equal(self.hls().qa_table().codes,
+        np.testing.assert_array_equal(self.hls().input().qa_table.codes,
                                       ccdcpp.qa_tables.hls_fmask().codes)
 
     def test_builder_arguments_reach_the_builder(self):
@@ -455,41 +461,33 @@ class QaTableOptionsField(unittest.TestCase):
                 p = self.hls(qa_table_options={"exclude_high_aerosol": aerosol})
                 h = p.input()
                 expected = ccdcpp.qa_tables.hls_fmask(h, exclude_high_aerosol=aerosol).codes
-                got = p.qa_table().codes
+                got = p.input().qa_table.codes
                 self.assertEqual(got.shape, ALL_VALUES.shape)
                 np.testing.assert_array_equal(got, expected)
         # The two tables differ exactly where the aerosol bits are 11 and no
         # higher-precedence bit (fill, cloud, adjacent, cirrus) is set.
-        on = self.hls(qa_table_options={"exclude_high_aerosol": True}).qa_table().codes
-        off = self.hls().qa_table().codes
+        on = self.hls(qa_table_options={"exclude_high_aerosol": True}).input().qa_table.codes
+        off = self.hls().input().qa_table.codes
         differs = np.flatnonzero(on != off)
         self.assertTrue(len(differs) > 0)
         self.assertTrue(((differs >> 6) == 3).all())
         self.assertEqual(int(on[192]), CLOUD)
         self.assertEqual(int(off[192]), CLEAR)
 
-    def test_follows_the_run_options(self):
-        p = self.hls(qa_table_options={"exclude_high_aerosol": True})
-        h = copy.copy(p.input())
-        h.qa_fill, h.qa_clear, h.qa_water = 200, 10, 11
-        h.qa_shadow, h.qa_snow, h.qa_cloud = 12, 13, 14
-        np.testing.assert_array_equal(p.qa_table(h).codes,
-                                      ccdcpp.qa_tables.hls_fmask(h, True).codes)
-
     def test_cached_by_value(self):
         a = self.hls(qa_table_options={"exclude_high_aerosol": True})
         b = self.hls(qa_table_options=(("exclude_high_aerosol", True),))
         self.assertEqual(a, b)
         self.assertEqual(hash(a), hash(b))
-        self.assertIs(a.qa_table(), b.qa_table())
-        self.assertIsNot(a.qa_table(), self.hls().qa_table())
+        self.assertIs(a.input().qa_table, b.input().qa_table)
+        self.assertIsNot(a.input().qa_table, self.hls().input().qa_table)
 
     def test_stored_sorted_hashable_picklable(self):
         p = self.hls(qa_table_options={"exclude_high_aerosol": True})
         self.assertEqual(p.qa_table_options, (("exclude_high_aerosol", True),))
         q = pickle.loads(pickle.dumps(p))
         self.assertEqual(q, p)
-        np.testing.assert_array_equal(q.qa_table().codes, p.qa_table().codes)
+        np.testing.assert_array_equal(q.input().qa_table.codes, p.input().qa_table.codes)
 
     def test_entry_points_use_the_profile_table(self):
         # Raw Fmask, with high aerosol on every third clear observation:
@@ -502,14 +500,16 @@ class QaTableOptionsField(unittest.TestCase):
         base = self.hls()
         screened = self.hls(qa_table_options={"exclude_high_aerosol": True})
         table = ccdcpp.qa_tables.hls_fmask(screened.input(), True)
-        got = every_entry(DATES, CUBE_PHYS, fmask, profile=screened)
-        assert_same(self, got, every_entry(DATES, CUBE_PHYS, fmask, profile=base, qa_table=table))
+        got = strip_band_names(every_entry(DATES, CUBE_PHYS, fmask, input=screened))
+        assert_same(self, got, every_entry(DATES, CUBE_PHYS, fmask,
+                                           input=with_table(base.input(), table)))
         codes = np.where(aerosol, np.uint8(CLOUD), CODES)
-        assert_same(self, got, every_entry(DATES, CUBE_PHYS, codes, profile=base, qa_table=None))
+        assert_same(self, got, every_entry(DATES, CUBE_PHYS, codes,
+                                           input=with_table(base.input(), None)))
         self.assertNotEqual(
-            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], profile=base)["processing_mask"]
+            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], input=base)["processing_mask"]
             .tobytes(),
-            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], profile=screened)["processing_mask"]
+            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], input=screened)["processing_mask"]
             .tobytes())
 
     def test_validation(self):
@@ -589,7 +589,7 @@ class QaTableOptionsField(unittest.TestCase):
                 self.assertEqual(p.qa_table_options, written)
                 self.assertEqual(p, profiles[0])
                 self.assertEqual(hash(p), hash(profiles[0]))
-                self.assertIs(p.qa_table(), profiles[0].qa_table())
+                self.assertIs(p.input().qa_table, profiles[0].input().qa_table)
                 self.assertIn("qa_table_options=(('exclude_high_aerosol', False),)", repr(p))
         for preset in (presets.hls_l30, presets.hls_s30, presets.hls):
             with self.subTest(preset=preset.__name__):
@@ -721,62 +721,26 @@ class DateOrder(unittest.TestCase):
         dates[3], dates[4] = dates[4], dates[3]
         profile = presets.landsat_c1_dn()
         with self.assertRaises(ValueError) as caught:
-            ccdcpp.detect(dates, CUBE_DN[0, 0], CODES[0, 0], profile=profile)
+            ccdcpp.detect(dates, CUBE_DN[0, 0], CODES[0, 0], input=profile)
         self.assertIn("dates must be non-decreasing", str(caught.exception))
-        for entry in (ccdcpp.detect_cube, ccdcpp.detect_cube_columns):
-            with self.subTest(entry=entry.__name__):
-                with self.assertRaises(ValueError):
-                    entry(dates, CUBE_DN, CODES, threads=1, profile=profile)
+        with self.assertRaises(ValueError):
+            ccdcpp.detect_cube(dates, CUBE_DN, CODES, threads=1, input=profile)
 
 
-class Overrides(unittest.TestCase):
-    def test_input_and_config_win(self):
-        h, cfg = ccdcpp.Input(), ccdcpp.config("ccdc")
-        got = every_entry(DATES, CUBE_DN, CODES, input=h, config=cfg,
-                          profile=presets.landsat_c1_physical())
-        assert_same(self, strip_band_names(got),
-                    every_entry(DATES, CUBE_DN, CODES, input=h))
-
-    def test_each_one_wins_alone(self):
+class ProfileAndConfig(unittest.TestCase):
+    def test_a_profile_is_its_input(self):
+        # input=profile runs profile.input(); config= is the configuration
+        # as given, the same with or without a profile.
         h_phys, cfg_phys = explicit_physical()
-        h_dn, cfg_dn = ccdcpp.Input(), ccdcpp.config("ccdc")
         s, q = CUBE_PHYS[0, 0], CODES[0, 0]
-        profile = presets.landsat_c1_dn()
-        assert_same(self, without(ccdcpp.detect(DATES, s, q, input=h_phys, profile=profile),
-                                  "band_names"),
-                    EXT.detect(DATES, s, q, h_phys, config=cfg_dn.to_dict()))
-        assert_same(self, without(ccdcpp.detect(DATES, s, q, config=cfg_phys, profile=profile),
-                                  "band_names"),
-                    EXT.detect(DATES, s, q, h_dn, config=cfg_phys.to_dict()))
-
-    def test_qa_table_wins(self):
-        raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(CODES)
         profile = presets.landsat_c1_physical()
-        table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
-        assert_same(self,
-                    every_entry(DATES, CUBE_PHYS, raw, profile=profile, qa_table=table),
-                    every_entry(DATES, CUBE_PHYS, CODES, profile=profile))
-        # None turns the profile's table off.
-        with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(DATES, CUBE_PHYS, raw, profile=presets.landsat_c2(), qa_table=None)
-
-    def test_table_follows_the_run_options(self):
-        h = copy.copy(presets.landsat_c2().input())
-        h.qa_fill, h.qa_clear, h.qa_water = 200, 10, 11
-        h.qa_shadow, h.qa_snow, h.qa_cloud = 12, 13, 14
-        profile = presets.landsat_c2()
-        np.testing.assert_array_equal(
-            profile.qa_table(h).codes, ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
-        self.assertIs(profile.qa_table(), presets.landsat_c2().qa_table())
-        raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(CODES)
-        renumbered = np.vectorize(
-            {FILL: 200, CLEAR: 10, WATER: 11, SHADOW: 12, SNOW: 13, CLOUD: 14}.get,
-            otypes=[np.uint8])(CODES)
-        assert_same(self,
-                    every_entry(DATES, CUBE_PHYS, raw, input=h, profile=profile),
-                    every_entry(DATES, CUBE_PHYS, renumbered, input=h,
-                                config=presets.landsat_c2().config(), profile=profile,
-                                qa_table=None))
+        for cfg in (ccdcpp.config("ccdc"), cfg_phys):
+            assert_same(self, without(ccdcpp.detect(DATES, s, q, input=profile, config=cfg),
+                                      "band_names"),
+                        EXT.detect(DATES, s, q, input=h_phys, config=cfg))
+        # The default is "ccdc", whatever the profile.
+        assert_same(self, ccdcpp.detect(DATES, s, q, input=profile),
+                    ccdcpp.detect(DATES, s, q, input=profile, config=ccdcpp.config("ccdc")))
 
 
 class BandNames(unittest.TestCase):
@@ -784,57 +748,48 @@ class BandNames(unittest.TestCase):
         h = ccdcpp.Input()
         names = presets.landsat_c1_dn().band_names
         plain = every_entry(DATES, CUBE_DN, CODES, input=h)
-        profiled = every_entry(DATES, CUBE_DN, CODES, profile=presets.landsat_c1_dn())
-        for out in plain["detect"] + [plain["detect_cube_columns"]]:
+        profiled = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn())
+        for out in plain["detect"] + [plain["detect_cube"]]:
             self.assertNotIn("band_names", out)
-        for out in profiled["detect"] + [profiled["detect_cube_columns"]]:
+        for out in profiled["detect"] + [profiled["detect_cube"]]:
             self.assertEqual(out["band_names"], names)
             self.assertIsInstance(out["band_names"], tuple)
-        for p in plain["detect_cube"] + profiled["detect_cube"]:
-            self.assertNotIn("band_names", p)
 
 
 class Unprofiled(unittest.TestCase):
-    """Without profile= the package entry points are the extension's."""
+    """With an Input the package entry points are the extension's."""
 
     def test_same_output_every_call_form(self):
         h = ccdcpp.Input()
         d, s, q = DATES, CUBE_DN, CODES
-        expected = without(EXT.detect_cube_columns(d, s, q, h, 1), "threads")
+        expected = without(EXT.detect_cube(d, s, q, input=h, threads=1), "threads")
         forms = {
             # The millworks nlcd plugin's call.
-            "keywords": lambda: ccdcpp.detect_cube_columns(
+            "keywords": lambda: ccdcpp.detect_cube(
                 dates=d, spectral=s, qas=q, input=h, threads=1),
-            "positional": lambda: ccdcpp.detect_cube_columns(d, s, q, h, 1),
-            "qa_table=None": lambda: ccdcpp.detect_cube_columns(d, s, q, h, 1, qa_table=None),
+            "positional": lambda: ccdcpp.detect_cube(d, s, q, input=h, threads=1),
             # "ccdc" is the run without config=.
-            "config='ccdc'": lambda: ccdcpp.detect_cube_columns(d, s, q, h, 1, config="ccdc"),
+            "config='ccdc'": lambda: ccdcpp.detect_cube(d, s, q, input=h, threads=1,
+                                                        config="ccdc"),
+            "config=Config": lambda: ccdcpp.detect_cube(d, s, q, input=h, threads=1,
+                                                        config=ccdcpp.config("ccdc")),
         }
         for name, call in forms.items():
             with self.subTest(form=name):
                 assert_same(self, without(call(), "threads"), expected)
-        assert_same(self, ccdcpp.detect_cube(d, s, q, h, 2),
-                    EXT.detect_cube(d, s, q, h, 2))
-        assert_same(self, ccdcpp.detect(d, s[0, 0], q[0, 0], h),
-                    EXT.detect(d, s[0, 0], q[0, 0], h))
+        assert_same(self, ccdcpp.detect(d, s[0, 0], q[0, 0], input=h),
+                    EXT.detect(d, s[0, 0], q[0, 0], input=h))
         raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(q)
-        table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
-        assert_same(self, ccdcpp.detect(d, s[0, 0], raw[0, 0], h, qa_table=table),
-                    EXT.detect(d, s[0, 0], raw[0, 0], h, qa_table=table))
+        decoding = with_table(h, ccdcpp.qa_tables.landsat_c2_qa_pixel())
+        assert_same(self, ccdcpp.detect(d, s[0, 0], raw[0, 0], input=decoding),
+                    EXT.detect(d, s[0, 0], raw[0, 0], input=decoding))
 
-    def test_signatures_keep_names_and_positions(self):
-        pixel = ["dates", "spectral", "qas", "input"]
-        cube = pixel + ["threads"]
-        common = ["qa_table", "preprocess", "profile", "band_names"]
-        for name, positional, keywords in (
-            ("detect", pixel, common + ["resume_record", "config", "trace"]),
-            ("detect_cube", cube, common + ["config"]),
-            ("detect_cube_columns", cube,
-             common + ["resume_record", "config", "trace_pixels"]),
-            ("resume", pixel,
-             ["resume", "resume_header", "models"] + common + ["config"]),
-            ("resume_cube_columns", cube,
-             ["resume", "resume_header", "segments"] + common + ["config"]),
+    def test_signatures(self):
+        positional = ["dates", "spectral", "qas"]
+        for name, keywords in (
+            ("detect", ["input", "config", "record", "resume", "band_names", "trace"]),
+            ("detect_cube", ["input", "config", "threads", "record", "resume", "band_names",
+                             "trace_pixels"]),
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
@@ -842,59 +797,56 @@ class Unprofiled(unittest.TestCase):
                 kinds = [p.kind for p in params.values()]
                 self.assertEqual(kinds, [inspect.Parameter.POSITIONAL_OR_KEYWORD] * len(positional)
                                  + [inspect.Parameter.KEYWORD_ONLY] * len(keywords))
+                self.assertIs(params["input"].default, inspect.Parameter.empty)
+                self.assertEqual(params["config"].default, "ccdc")
+                self.assertIs(params["record"].default, False)
+                self.assertIsNone(params["resume"].default)
                 self.assertIsNone(params["band_names"].default)
                 if "threads" in params:
                     self.assertEqual(params["threads"].default, 0)
-                if "resume_record" in params:
-                    self.assertIs(params["resume_record"].default, False)
-                self.assertIsNone(params["input"].default)
-                self.assertIsNone(params["config"].default)
+        for gone in ("detect_cube_columns", "resume", "resume_cube_columns"):
+            self.assertFalse(hasattr(ccdcpp, gone), gone)
 
     def test_config_is_keyword_only_and_defaults_to_ccdc(self):
-        # The algorithm is a ccdcpp.Config, given as config= and only by
-        # keyword. With or without a profile, config="ccdc" is the default
-        # run, and an unknown preset name is refused.
         h = ccdcpp.Input()
         d, s, q = DATES, CUBE_DN, CODES
         with self.assertRaises(TypeError):
-
-            ccdcpp.detect(d, s[0, 0], q[0, 0], h, ccdcpp.config("ccdc"))
-        profile = ccdcpp.presets.landsat_c1_dn()
-        assert_same(self, without(ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile,
-                                                             config="ccdc"), "threads"),
-                    without(ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile), "threads"))
+            ccdcpp.detect(d, s[0, 0], q[0, 0], h)
         with self.assertRaisesRegex(ValueError, "no configuration 'cdcc'"):
-            ccdcpp.detect(d, s[0, 0], q[0, 0], h, config="cdcc")
+            ccdcpp.detect(d, s[0, 0], q[0, 0], input=h, config="cdcc")
+        with self.assertRaises(TypeError):
+            ccdcpp.detect(d, s[0, 0], q[0, 0], input=h, config=ccdcpp.config("ccdc").to_dict())
 
-    def test_input_required_without_a_profile(self):
-        h = ccdcpp.Input()
+    def test_input_required(self):
         with self.assertRaises(TypeError):
             ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0])
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube_columns(DATES, CUBE_DN, CODES, config="ccdc")
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, config="ccdc")
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, threads=1)
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=None)
         # input alone is a whole call: the configuration defaults to "ccdc".
-        self.assertEqual(ccdcpp.detect_cube_columns(DATES, CUBE_DN, CODES, h, 1)["failures"], [])
+        self.assertEqual(ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+                                            threads=1)["failures"], [])
 
     def test_extension_errors_pass_through(self):
         h = ccdcpp.Input()
         with self.assertRaises(ValueError) as caught:
-            ccdcpp.detect(DATES, CUBE_DN[0, 0, :6], CODES[0, 0], h)
+            ccdcpp.detect(DATES, CUBE_DN[0, 0, :6], CODES[0, 0], input=h)
         self.assertIn("the input has 7", str(caught.exception))
         # The configuration's schemas, checked when the run is built.
         bad = ccdcpp.config("ccdc").replace(change_test__peek_size=1)
         with self.assertRaisesRegex(ValueError, "'peek_size' is 1; it must be at least 2"):
-            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], h, config=bad)
+            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], input=h, config=bad)
 
     def test_help_and_pickle(self):
-        for name in ("detect", "detect_cube", "detect_cube_columns"):
+        for name in ("detect", "detect_cube", "to_pixels"):
             with self.subTest(entry=name):
                 entry = getattr(ccdcpp, name)
                 self.assertEqual((entry.__module__, entry.__name__), ("ccdcpp", name))
                 text = pydoc.render_doc(entry)
-                for word in ("input", "config", "qa_table", "preprocess", "profile",
-                             "band_names"):
+                words = ("input", "config", "record", "resume", "band_names") \
+                    if name != "to_pixels" else ("detect_cube", "models")
+                for word in words:
                     self.assertIn(word, text)
                 self.assertIs(pickle.loads(pickle.dumps(entry)), entry)
         self.assertIn("SensorProfile", pydoc.render_doc(ccdcpp.SensorProfile))
@@ -1022,7 +974,8 @@ class TenBand(unittest.TestCase):
     def test_end_to_end(self):
         profile = ten_band_profile()
         dates, cube, scl = ten_band_inputs()
-        out = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=profile)
+        out = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
+                                 config=profile.config())
         self.assertEqual(out["failures"], [])
         self.assertEqual(out["num_bands"], 10)
         self.assertEqual(out["band_names"], profile.band_names)
@@ -1032,7 +985,7 @@ class TenBand(unittest.TestCase):
         self.assertEqual(out["coefficients"].shape, (n, 10, 7))
         self.assertTrue(np.isfinite(out["rmse"]).all())
 
-        one = ccdcpp.detect(dates, cube[1, 0], scl[1, 0], profile=profile)
+        one = ccdcpp.detect(dates, cube[1, 0], scl[1, 0], input=profile, config=profile.config())
         self.assertEqual(one["band_names"], profile.band_names)
         self.assertTrue(all(len(m["bands"]) == 10 for m in one["models"]))
 
@@ -1051,7 +1004,7 @@ class TenBand(unittest.TestCase):
             shared__stat_ord=None,
         )
         self.assertEqual(profile.config(), cfg)
-        self.assertEqual(profile.input(), h)
+        self.assertEqual(profile.input(), with_table(h, ccdcpp.qa_tables.sentinel2_scl(h)))
         r = cfg.resolve(h)
         self.assertEqual(r["shared"]["detection_bands"], [1, 2, 4, 7, 8, 9])
         self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], [1, 8])
@@ -1059,8 +1012,8 @@ class TenBand(unittest.TestCase):
                          {ccdcpp.chi2_quantile(0.99, 6)})
         table = ccdcpp.qa_tables.sentinel2_scl(h)
         assert_same(self,
-                    strip_band_names(every_entry(dates, cube, scl, profile=profile)),
-                    every_entry(dates, cube, scl, input=h, config=cfg, qa_table=table))
+                    strip_band_names(every_entry(dates, cube, scl, input=profile, config=cfg)),
+                    every_entry(dates, cube, scl, input=with_table(h, table), config=cfg))
 
     def test_documented_example_runs(self):
         # The profile in ccdcpp.profiles' docstring, which is not shipped.
@@ -1076,13 +1029,14 @@ class TenBand(unittest.TestCase):
         shared = profile.config().resolve(h)["shared"]
         self.assertEqual(shared["detection_bands"], [2, 3, 4, 5, 6])
         self.assertEqual(shared["stat_ord"], 736694)
-        np.testing.assert_array_equal(profile.qa_table().codes,
+        np.testing.assert_array_equal(profile.input().qa_table.codes,
                                       ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
 
     def test_stat_ord_matters_after_2017(self):
         dates, cube, scl = ten_band_inputs()
         landsat = dataclasses.replace(ten_band_profile(), stat_ord=736694)
-        out = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=landsat)
+        out = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=landsat,
+                                 config=landsat.config())
         self.assertNotEqual(set(out["curve_qa"].tolist()), {8})
 
 
@@ -1224,7 +1178,7 @@ class SensorPresets(unittest.TestCase):
             with self.subTest(preset=name):
                 h, cfg = preset().input(), preset().config()
                 expected, ecfg, table = hand_built(name)
-                self.assertEqual(fields(h), fields(expected))
+                self.assertEqual(fields(h), fields(with_table(expected, table)))
                 self.assertEqual(cfg, ecfg)
                 r = cfg.resolve(h)
                 self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], TMASK[name])
@@ -1237,7 +1191,7 @@ class SensorPresets(unittest.TestCase):
                 self.assertEqual(preset().qa_table_options,
                                  dict(sentinel2_l2a=()).get(
                                      name, (("exclude_high_aerosol", False),)))
-                np.testing.assert_array_equal(preset().qa_table().codes, table.codes)
+                np.testing.assert_array_equal(preset().input().qa_table.codes, table.codes)
                 for stage in ("start_search", "change_test", "noise_floor", "refit"):
                     self.assertEqual(cfg.params(stage), defaults.params(stage))
 
@@ -1358,11 +1312,11 @@ class SensorPresets(unittest.TestCase):
             with self.subTest(preset=name):
                 dates, cube, qa = preset_inputs(name)
                 h, cfg, table = hand_built(name)
-                profiled = every_entry(dates, cube, qa, threads=2, profile=preset())
+                profiled = every_entry(dates, cube, qa, threads=2, input=preset())
                 assert_same(self, strip_band_names(profiled),
-                            every_entry(dates, cube, qa, threads=2, input=h, config=cfg,
-                                        qa_table=table))
-                cols = profiled["detect_cube_columns"]
+                            every_entry(dates, cube, qa, threads=2,
+                                        input=with_table(h, table), config=cfg))
+                cols = profiled["detect_cube"]
                 self.assertEqual(cols["failures"], [])
                 self.assertEqual(cols["band_names"], BAND_NAMES[name])
                 self.assertEqual(set(cols["curve_qa"].tolist()), {8})  # Standard
@@ -1372,22 +1326,23 @@ class SensorPresets(unittest.TestCase):
         for preset, values, codes in ((presets.hls_l30, FMASK_VALUES, FMASK_CODES),
                                       (presets.sentinel2_l2a, SCL_ALL, SCL_CODES)):
             with self.subTest(preset=preset.__name__):
-                np.testing.assert_array_equal(preset().qa_table().codes[values], codes)
+                np.testing.assert_array_equal(preset().input().qa_table.codes[values], codes)
                 dates, cube, qa = preset_inputs(preset.__name__)
                 lookup = dict(zip(values.tolist(), codes.tolist()))
                 decoded = np.vectorize(lookup.get, otypes=[np.uint8])(qa)
                 assert_same(self,
-                            every_entry(dates, cube, qa, threads=2, profile=preset()),
-                            every_entry(dates, cube, decoded, threads=2, profile=preset(),
-                                        qa_table=None))
+                            strip_band_names(every_entry(dates, cube, qa, threads=2,
+                                                         input=preset())),
+                            every_entry(dates, cube, decoded, threads=2,
+                                        input=with_table(preset().input(), None)))
 
     def test_permutation(self):
         order = [10, 0, 9, 1, 8, 2, 7, 3, 6, 4, 5]
         base = presets.hls_s30()
         dates, cube, fmask = preset_inputs("hls_s30")
-        expected = every_entry(dates, cube, fmask, threads=2, profile=base)
+        expected = every_entry(dates, cube, fmask, threads=2, input=base)
         got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), fmask, threads=2,
-                          profile=permuted(base, order))
+                          input=permuted(base, order))
         assert_same(self, unpermute(got, order), expected)
 
 
@@ -1404,8 +1359,6 @@ class BandNamesCheck(unittest.TestCase):
         return {
             "detect": lambda: ccdcpp.detect(dates, cube[0, 0], qa[0, 0], **kw),
             "detect_cube": lambda: ccdcpp.detect_cube(dates, cube, qa, threads=2, **kw),
-            "detect_cube_columns": lambda: ccdcpp.detect_cube_columns(
-                dates, cube, qa, threads=2, **kw),
         }
 
     def test_profile_order_runs_unchanged(self):
@@ -1414,10 +1367,10 @@ class BandNamesCheck(unittest.TestCase):
         for preset, (dates, cube, qa) in runs:
             with self.subTest(preset=preset.__name__):
                 profile = preset()
-                expected = every_entry(dates, cube, qa, threads=2, profile=profile)
+                expected = every_entry(dates, cube, qa, threads=2, input=profile)
                 for names in (profile.band_names, list(profile.band_names),
                               np.array(profile.band_names)):
-                    assert_same(self, every_entry(dates, cube, qa, threads=2, profile=profile,
+                    assert_same(self, every_entry(dates, cube, qa, threads=2, input=profile,
                                                   band_names=names), expected)
 
     def test_refuses_a_misordered_sentinel2_stack(self):
@@ -1425,7 +1378,7 @@ class BandNamesCheck(unittest.TestCase):
         dates, cube, scl = preset_inputs("sentinel2_l2a")
         store = [profile.band_names.index(b) for b in S2_STORE_ORDER]
         stacked = np.ascontiguousarray(cube[:, :, store])
-        for name, call in self.entries(dates, stacked, scl, profile=profile,
+        for name, call in self.entries(dates, stacked, scl, input=profile,
                                        band_names=S2_STORE_ORDER).items():
             with self.subTest(entry=name):
                 with self.assertRaises(ValueError) as caught:
@@ -1437,15 +1390,15 @@ class BandNamesCheck(unittest.TestCase):
                 self.assertIn("reorder the band axis of spectral to B02, B03, B04, B05", message)
         # What the check prevents: without band_names the same stack runs,
         # B08 read as red edge 1, and gives another result.
-        silent = ccdcpp.detect_cube_columns(dates, stacked, scl, threads=2, profile=profile)
-        right = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=profile)
+        silent = ccdcpp.detect_cube(dates, stacked, scl, threads=2, input=profile)
+        right = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile)
         self.assertEqual(silent["failures"], [])
         self.assertNotEqual(str(without(silent, "threads")), str(without(right, "threads")))
         # Reordered by the names, it is the right run.
         order = [S2_STORE_ORDER.index(b) for b in profile.band_names]
-        assert_same(self, ccdcpp.detect_cube_columns(
+        assert_same(self, ccdcpp.detect_cube(
             dates, np.ascontiguousarray(stacked[:, :, order]), scl, threads=2,
-            profile=profile, band_names=tuple(np.array(S2_STORE_ORDER)[order])), right)
+            input=profile, band_names=tuple(np.array(S2_STORE_ORDER)[order])), right)
 
     def test_other_names_raise(self):
         profile = presets.hls_l30()
@@ -1461,14 +1414,14 @@ class BandNamesCheck(unittest.TestCase):
         for given, text in cases:
             with self.subTest(given=given):
                 with self.assertRaises(ValueError) as caught:
-                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], profile=profile,
+                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], input=profile,
                                   band_names=given)
                 self.assertIn(text, str(caught.exception))
                 self.assertIn("the profile has B01, B02", str(caught.exception))
         for given in ("B01B02B03B04B05B06B07B10", b"B01", ("B01",) * 7 + (10,)):
             with self.subTest(given=given):
                 with self.assertRaises(TypeError):
-                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], profile=profile,
+                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], input=profile,
                                   band_names=given)
 
     def test_needs_a_profile(self):
@@ -1479,7 +1432,7 @@ class BandNamesCheck(unittest.TestCase):
             with self.subTest(entry=name):
                 with self.assertRaises(TypeError) as caught:
                     call()
-                self.assertIn("needs profile=", str(caught.exception))
+                self.assertIn("pass input= a ccdcpp.SensorProfile", str(caught.exception))
 
     def test_check_takes_band_names(self):
         profile = presets.sentinel2_l2a()
@@ -1498,7 +1451,7 @@ class HlsInput(unittest.TestCase):
     def run_pixel(self, profile, dates, cube, fmask, keep=None):
         if keep is not None:
             dates, cube, fmask = dates[keep], cube[..., keep], fmask[..., keep]
-        return ccdcpp.detect(dates, np.ascontiguousarray(cube), fmask, profile=profile)
+        return ccdcpp.detect(dates, np.ascontiguousarray(cube), fmask, input=profile)
 
     def test_scale(self):
         dates, cube, _, raw = hls_inputs(8, thermal=True)
@@ -1574,8 +1527,8 @@ class Sentinel2Input(unittest.TestCase):
         dates, cube, scl, dn = s2_inputs()
         offset = np.where(dates >= S2_OFFSET_DATE, -1000, 0)
         np.testing.assert_array_equal(cube, (dn + offset) / 10000.0)
-        out = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2,
-                                         profile=presets.sentinel2_l2a())
+        out = ccdcpp.detect_cube(dates, cube, scl, threads=2,
+                                         input=presets.sentinel2_l2a())
         self.assertEqual(out["failures"], [])
         self.assertGreater(len(out["row"]), 4)
 
@@ -1583,8 +1536,8 @@ class Sentinel2Input(unittest.TestCase):
         # dn / 10000 without the offset: 0.1 too bright from 2022-01-25.
         dates, cube, scl, dn = s2_inputs(breaks=False)
         profile = presets.sentinel2_l2a()
-        corrected = ccdcpp.detect_cube_columns(dates, cube, scl, threads=2, profile=profile)
-        raw = ccdcpp.detect_cube_columns(dates, dn / 10000.0, scl, threads=2, profile=profile)
+        corrected = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile)
+        raw = ccdcpp.detect_cube(dates, dn / 10000.0, scl, threads=2, input=profile)
         # One segment per pixel without the jump; a break at the baseline
         # change with it.
         self.assertEqual(len(corrected["row"]), 4)
@@ -1602,7 +1555,7 @@ class Sentinel2Input(unittest.TestCase):
         dn[2, after] = 0
         offset = np.where(dates >= S2_OFFSET_DATE, -1000, 0)
         out = ccdcpp.detect(dates, (dn + offset) / 10000.0, scl[0, 0],
-                            profile=presets.sentinel2_l2a())
+                            input=presets.sentinel2_l2a())
         self.assertFalse(out["processing_mask"][before].any())
         self.assertFalse(out["processing_mask"][after].any())
         self.assertTrue(out["processing_mask"][clear[1::30]].all())

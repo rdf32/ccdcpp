@@ -12,7 +12,7 @@
 #include "ccd/config/registry.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/machine/fit.hpp"
-#include "ccd/input/qa_table.hpp"
+#include "ccd/input/qa_tables.hpp"
 #include "ccd/results/record.hpp"
 #include "ccd/input/mask/preprocess.hpp"
 #include "ccd/regression/lasso_solver.hpp"
@@ -65,16 +65,14 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates);
 //------------------------------------------------------------------------------
 
 // A fingerprint of everything besides the pixels that decides a run's
-// outputs: the input and the resolved configuration (Resolved::digest),
-// every field of the plan, and the QA table's codes (none when qa_table is
-// null). Equal ones give equal digests on every platform; unequal ones,
+// outputs: the input, its QA table's codes included, and the resolved
+// configuration (Resolved::digest), and every field of the plan. Equal ones give equal digests on every platform; unequal ones,
 // different digests but for a 64-bit collision. The shared stat_ord is in
 // it: a resumed run is given the first run's configuration, and caps the
 // cutoffs itself (ResumeHeader::statistics_end).
 std::uint64_t options_digest(
     const config::Resolved& resolved,
-    const preprocess::PreprocessPlan& plan,
-    const QaTable* qa_table
+    const preprocess::PreprocessPlan& plan
 );
 
 // A fingerprint of one pixel's input up to `through`: of each observation

@@ -263,12 +263,12 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
             const std::string at = s.name + " cut after " + std::to_string(T);
 
             const ccd::PixelRun stored = ccd::run_pixel(
-                golden::spec_of(s.h, s.config, nullptr, given, true),
+                golden::spec_of(s.h, s.config, given, true),
                 cut.date_view(),
                 cut.spectral_view(),
                 cut.qa_view());
             const ccd::PixelRun resumed = ccd::run_pixel(
-                golden::spec_of(s.h, s.config, nullptr, given),
+                golden::spec_of(s.h, s.config, given),
                 s.date_view(),
                 s.spectral_view(),
                 s.qa_view(),
@@ -286,7 +286,7 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
                         procedure->chain.steps[i].max_date =
                             std::min(procedure->chain.steps[i].max_date, T);
             const ccd::FitResult full = ccd::run_pixel(
-                golden::spec_of(s.h, capped, nullptr, capped_plan),
+                golden::spec_of(s.h, capped, capped_plan),
                 s.date_view(),
                 s.spectral_view(),
                 s.qa_view()).result;
@@ -520,7 +520,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
         for (const int threads : {1, 4})
         {
             const ccd::CubeResult stored = ccd::run_cube(
-                golden::spec_of(h, golden::pyccd(), nullptr, nullptr, true),
+                golden::spec_of(h, golden::pyccd(), nullptr, true),
                 cut.dates(),
                 cut.block(),
                 cut.qa(),
@@ -579,7 +579,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     const CutCube cut(c, c.T / 2);
     const CutCube whole(c, c.T);
     const ccd::CubeResult stored = ccd::run_cube(
-        golden::spec_of(ccd::Input{}, golden::pyccd(), nullptr, nullptr, true),
+        golden::spec_of(ccd::Input{}, golden::pyccd(), nullptr, true),
         cut.dates(),
         cut.block(),
         cut.qa(),
@@ -649,8 +649,8 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
         for (auto it = left.shared.begin(); it != left.shared.end();)
             it = shared.at(it->first) == it->second ? left.shared.erase(it) : std::next(it);
         ASSERT_NE(left, spelled) << s.name;
-        const ccd::RunSpec spelled_out = golden::spec_of(s.h, spelled, nullptr, nullptr, true);
-        const ccd::RunSpec left_out = golden::spec_of(s.h, left, nullptr, nullptr, true);
+        const ccd::RunSpec spelled_out = golden::spec_of(s.h, spelled, nullptr, true);
+        const ccd::RunSpec left_out = golden::spec_of(s.h, left, nullptr, true);
         const ccd::PixelRun a =
             ccd::run_pixel(spelled_out, s.date_view(), s.spectral_view(), s.qa_view());
         const ccd::PixelRun b =

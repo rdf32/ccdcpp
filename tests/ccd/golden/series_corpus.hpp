@@ -99,7 +99,7 @@ inline ccd::PixelRun recorded_at(const Series& s, std::int64_t stat_ord)
 {
     return ccd::run_pixel(
         golden::spec_of(s.h, with_shared(s.config, "stat_ord", ccd::config::integer(stat_ord)),
-                        nullptr, nullptr, true),
+                        nullptr, true),
         s.date_view(),
         s.spectral_view(),
         s.qa_view());

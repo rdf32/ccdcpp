@@ -1,8 +1,7 @@
-"""bench_synthetic.py <module_dir> <corpus.bin> <dtype: f64|u16> <entry: cols|cube> <threads> <reps>
+"""bench_synthetic.py <module_dir> <corpus.bin> <dtype: f64|u16> <threads> <reps>
 
 The synthetic timing of one build: the corpus of make_corpus.cpp tiled 2x2 (8000 pixels),
-through ccdcpp.detect_cube_columns ("cols") or ccdcpp.detect_cube ("cube") with the default
-input, `threads` threads, best of `reps` calls. Prints the best wall time of the call and its
+through ccdcpp.detect_cube with the default input, `threads` threads, best of `reps` calls. Prints the best wall time of the call and its
 time per pixel, and the file `import ccdcpp` loaded.
 
 `module_dir` is a directory from which `import ccdcpp` loads the build under test: the build
@@ -23,8 +22,8 @@ import ccdcpp  # noqa: E402
 if not os.path.realpath(ccdcpp.__file__).startswith(os.path.realpath(sys.argv[1]) + os.sep):
     sys.exit(f"{sys.argv[0]}: ccdcpp loaded from {ccdcpp.__file__}, not from {sys.argv[1]}")
 
-corpus, dtype, entry = sys.argv[2], sys.argv[3], sys.argv[4]
-threads, reps = int(sys.argv[5]), int(sys.argv[6])
+corpus, dtype = sys.argv[2], sys.argv[3]
+threads, reps = int(sys.argv[4]), int(sys.argv[5])
 
 with open(corpus, "rb") as f:
     H, W, T = np.frombuffer(f.read(24), dtype=np.uint64).astype(int)
@@ -40,18 +39,17 @@ for i in range(2):
 del spec
 
 h = ccdcpp.Input()
-fn = ccdcpp.detect_cube_columns if entry == "cols" else ccdcpp.detect_cube
 rss0 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 best = float("inf")
 for _ in range(reps):
     # A fresh float64 input per call, as a caller's buffer would be.
     s = src.copy() if (reps > 1 and dtype == "f64") else src
     t0 = time.perf_counter()
-    r = fn(dates, s, qas, h, threads)
+    r = ccdcpp.detect_cube(dates, s, qas, input=h, threads=threads)
     best = min(best, time.perf_counter() - t0)
     del r, s
 
 npx = qas.shape[0] * qas.shape[1]
-print(f"{entry} {dtype} t{threads}: {best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
+print(f"cube {dtype} t{threads}: {best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
       f"input {src.nbytes / 1e6:.0f} MB, maxrss_before_call {rss0 / 1e6:.0f} MB, "
       f"ccdcpp {ccdcpp.__file__}")

@@ -3,8 +3,8 @@
 ccdcpp against PyCCD on the same pixels, one thread each. Takes `pixels` pixels spread evenly
 over the corpus of make_corpus.cpp, plus any PyCCD-format CSV pixels given (day, the seven
 bands, the QA code per line, e.g. tests/ccd/machine/test_3657_3610_observations.csv). Each
-pixel runs once through PyCCD's ccd.detect and best of 5 through ccdcpp.detect with default
-input. Prints per-pixel times, the median and total of each and their ratio, and how many
+pixel runs once through PyCCD's ccd.detect and best of 5 through ccdcpp.detect with the default
+input and the "ccdc" configuration at PyCCD's statistics cutoff. Prints per-pixel times, the median and total of each and their ratio, and how many
 pixels gave the same segments (start, end and break days) in both: not all, since the 0.8.0
 fixes move some pixels on purpose (see CHANGELOG.md).
 
@@ -77,6 +77,8 @@ for path in sys.argv[5:]:
     pixels.append((os.path.basename(path), d[:, 0].astype(np.int64), d[:, 1:8].T, d[:, 8]))
 
 hopt = ccdcpp.Input()
+# The "ccdc" configuration with PyCCD's statistics cutoff, 2017-12-31.
+PYCCD = ccdcpp.config("ccdc").replace(shared__stat_ord=736694)
 
 
 def peak_mb():
@@ -102,7 +104,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
         if only != "ccdcpp":
             run_pyccd(d, s64, q8)
         if only != "pyccd":
-            ccdcpp.detect(d, s64, q8, hopt)
+            ccdcpp.detect(d, s64, q8, input=hopt, config=PYCCD)
         before = peak_mb()
         continue
     py = cpp = None
@@ -114,7 +116,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
         best = None
         for _ in range(5):
             t0 = time.perf_counter()
-            cpp = ccdcpp.detect(d, s64, q8, hopt)
+            cpp = ccdcpp.detect(d, s64, q8, input=hopt, config=PYCCD)
             el = time.perf_counter() - t0
             best = el if best is None else min(best, el)
         cpp_t.append(best)

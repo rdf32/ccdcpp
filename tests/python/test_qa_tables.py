@@ -124,6 +124,13 @@ def options():
     return ccdcpp.Input()
 
 
+def with_table(table):
+    """The default input decoding its raw QA through `table` (None: codes)."""
+    h = ccdcpp.Input()
+    h.qa_table = table
+    return h
+
+
 def assert_same(test, a, b, where="out"):
     """Exact, structural equality of entry point outputs."""
     if isinstance(a, dict):
@@ -277,10 +284,8 @@ class DecodedEqualsCodes(unittest.TestCase):
     def setUpClass(cls):
         cls.dates, cls.spectral, cls.codes = synthetic()
         h = options()
-        cls.columns = ccdcpp.detect_cube_columns(
-            cls.dates, cls.spectral, cls.codes, h, threads=1)
-        cls.pixels = ccdcpp.detect_cube(
-            cls.dates, cls.spectral, cls.codes, h, threads=1)
+        cls.columns = ccdcpp.detect_cube(
+            cls.dates, cls.spectral, cls.codes, input=h, threads=1)
         assert cls.columns["failures"] == []
         assert len(cls.columns["row"]) > cls.codes.shape[0] * cls.codes.shape[1]
         # PermanentSnow, InsufficientClear and Standard all ran.
@@ -297,68 +302,56 @@ class DecodedEqualsCodes(unittest.TestCase):
         # (H, W, T) seen through (T, H, W) storage.
         yield "strided", np.moveaxis(np.ascontiguousarray(np.moveaxis(raw, 2, 0)), 0, 2)
 
-    def test_detect_cube_columns(self):
-        h = options()
+    def test_detect_cube(self):
         for name in SCHEMES:
-            table = build(name)
+            h = with_table(build(name))
             for kind, raw in self.raw_inputs(name):
                 for threads in (1, 8):
                     with self.subTest(name=name, qas=kind, threads=threads):
                         before = raw.copy()
-                        out = ccdcpp.detect_cube_columns(
-                            self.dates, self.spectral, raw, h, threads, qa_table=table)
+                        out = ccdcpp.detect_cube(
+                            self.dates, self.spectral, raw, input=h, threads=threads)
                         out.pop("threads")
                         expected = dict(self.columns)
                         expected.pop("threads")
                         assert_same(self, out, expected)
                         np.testing.assert_array_equal(raw, before)
 
-    def test_detect_cube(self):
-        h = options()
-        for name in SCHEMES:
-            table = build(name)
-            for kind, raw in self.raw_inputs(name):
-                with self.subTest(name=name, qas=kind):
-                    out = ccdcpp.detect_cube(
-                        self.dates, self.spectral, raw, h, threads=8, qa_table=table)
-                    assert_same(self, out, self.pixels)
-
     def test_detect(self):
         h = options()
         H, W, _ = self.codes.shape
         for name in SCHEMES:
-            table = build(name)
+            decoding = with_table(build(name))
             raw = encode(name, self.codes)
             for r in range(H):
                 for c in range(W):
                     with self.subTest(name=name, pixel=(r, c)):
                         expected = ccdcpp.detect(
-                            self.dates, self.spectral[r, c], self.codes[r, c], h)
+                            self.dates, self.spectral[r, c], self.codes[r, c], input=h)
                         assert_same(self, ccdcpp.detect(
-                            self.dates, self.spectral[r, c], raw[r, c], h,
-                            qa_table=table), expected)
+                            self.dates, self.spectral[r, c], raw[r, c], input=decoding),
+                            expected)
                         if name in NARROW:
                             assert_same(self, ccdcpp.detect(
                                 self.dates, self.spectral[r, c], raw[r, c].astype(np.uint8),
-                                h, qa_table=table), expected)
+                                input=decoding), expected)
 
     def test_uint16_spectral(self):
         h = options()
         spectral = np.clip(self.spectral, 0, 65535).astype(np.uint16)
-        reference = ccdcpp.detect_cube_columns(
-            self.dates, spectral, self.codes, h, threads=2)
-        out = ccdcpp.detect_cube_columns(
-            self.dates, spectral, encode("landsat_c2_qa_pixel", self.codes), h, threads=2,
-            qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel())
+        reference = ccdcpp.detect_cube(
+            self.dates, spectral, self.codes, input=h, threads=2)
+        out = ccdcpp.detect_cube(
+            self.dates, spectral, encode("landsat_c2_qa_pixel", self.codes),
+            input=with_table(ccdcpp.qa_tables.landsat_c2_qa_pixel()), threads=2)
         assert_same(self, out, reference)
 
     def test_uint8_codes_through_an_identity_table(self):
-        h = options()
         identity = np.full(65536, FILL, dtype=np.uint8)
         identity[:256] = np.arange(256, dtype=np.uint8)
-        out = ccdcpp.detect_cube_columns(
-            self.dates, self.spectral, self.codes, h, threads=2,
-            qa_table=ccdcpp.QaTable(identity))
+        out = ccdcpp.detect_cube(
+            self.dates, self.spectral, self.codes,
+            input=with_table(ccdcpp.QaTable(identity)), threads=2)
         out.pop("threads")
         expected = dict(self.columns)
         expected.pop("threads")
@@ -370,14 +363,12 @@ class Validation(unittest.TestCase):
         self.dates, self.spectral, codes = synthetic(1, 2)
         self.codes = codes
         self.raw = encode("landsat_c2_qa_pixel", codes)
-        self.h = options()
 
-    def entries(self, qas, **kw):
-        d, s, h = self.dates, self.spectral, self.h
+    def entries(self, qas, table=None):
+        d, s, h = self.dates, self.spectral, with_table(table)
         return {
-            "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], h, **kw),
-            "detect_cube": lambda: ccdcpp.detect_cube(d, s, qas, h, 1, **kw),
-            "detect_cube_columns": lambda: ccdcpp.detect_cube_columns(d, s, qas, h, 1, **kw),
+            "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], input=h),
+            "detect_cube": lambda: ccdcpp.detect_cube(d, s, qas, input=h, threads=1),
         }
 
     def test_uint16_without_a_table(self):
@@ -387,10 +378,6 @@ class Validation(unittest.TestCase):
                     call()
                 self.assertIn("uint16", str(caught.exception))
                 self.assertIn("qa_table", str(caught.exception))
-        for name, call in self.entries(self.raw, qa_table=None).items():
-            with self.subTest(entry=name, qa_table=None):
-                with self.assertRaises(TypeError):
-                    call()
 
     def test_table_of_the_wrong_type(self):
         wrong = (
@@ -401,23 +388,31 @@ class Validation(unittest.TestCase):
             1,
         )
         for value in wrong:
-            for name, call in self.entries(self.raw, qa_table=value).items():
-                with self.subTest(entry=name, qa_table=type(value).__name__):
-                    with self.assertRaises(TypeError):
-                        call()
+            with self.subTest(qa_table=type(value).__name__):
+                with self.assertRaises(TypeError):
+                    options().qa_table = value
 
-    def test_table_is_keyword_only(self):
+    def test_the_input_is_keyword_only(self):
+        with self.assertRaises(TypeError):
+            ccdcpp.detect_cube(self.dates, self.spectral, self.raw, options())
+        with self.assertRaises(TypeError):
+            ccdcpp.detect(self.dates, self.spectral[0, 0], self.raw[0, 0], options())
+
+    def test_the_table_is_part_of_the_input(self):
         table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
-        with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(
-                self.dates, self.spectral, self.raw, self.h, 1, table)
-        with self.assertRaises(TypeError):
-            ccdcpp.detect(
-                self.dates, self.spectral[0, 0], self.raw[0, 0], self.h, table)
+        h = with_table(table)
+        self.assertEqual(h, with_table(ccdcpp.qa_tables.landsat_c2_qa_pixel()))
+        self.assertNotEqual(h, options())
+        self.assertNotEqual(h.digest(), options().digest())
+        self.assertEqual(h.digest(), with_table(ccdcpp.QaTable(table.codes)).digest())
+        changed = table.codes
+        changed[21824] = CLOUD
+        self.assertNotEqual(h, with_table(ccdcpp.QaTable(changed)))
+        self.assertIsNone(options().qa_table)
 
     def test_unsafe_qa_dtype_with_a_table(self):
         table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
-        for name, call in self.entries(self.raw.astype(np.int64), qa_table=table).items():
+        for name, call in self.entries(self.raw.astype(np.int64), table).items():
             with self.subTest(entry=name):
                 with self.assertRaises(TypeError):
                     call()

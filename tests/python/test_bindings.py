@@ -46,8 +46,8 @@ def cube(bands, timesteps, dtype=np.float64, dates=None, qas=None):
 
 
 def options():
-    """The default input, as the entry points' positional tail."""
-    return (ccdcpp.Input(),)
+    """The default input, as the entry points' keyword."""
+    return {"input": ccdcpp.Input()}
 
 
 def preset(**changes):
@@ -83,8 +83,8 @@ class BandCount(unittest.TestCase):
         for bands in (6, 8):
             with self.subTest(bands=bands):
                 self.assert_band_error(
-                    lambda: ccdcpp.detect(*inputs(bands, 40), *options()), bands)
-        ccdcpp.detect(*inputs(7, 40), *options())
+                    lambda: ccdcpp.detect(*inputs(bands, 40), **options()), bands)
+        ccdcpp.detect(*inputs(7, 40), **options())
 
     def test_detect_cube(self):
         for dtype in (np.float64, np.float32, np.uint16):
@@ -92,20 +92,9 @@ class BandCount(unittest.TestCase):
                 with self.subTest(dtype=dtype, bands=bands):
                     self.assert_band_error(
                         lambda: ccdcpp.detect_cube(
-                            *cube(bands, 40, dtype), *options(), threads=1),
+                            *cube(bands, 40, dtype), **options(), threads=1),
                         bands)
-        self.assertEqual(
-            len(ccdcpp.detect_cube(*cube(7, 40), *options(), threads=1)), 6)
-
-    def test_detect_cube_columns(self):
-        for dtype in (np.float64, np.float32, np.uint16):
-            for bands in (6, 8):
-                with self.subTest(dtype=dtype, bands=bands):
-                    self.assert_band_error(
-                        lambda: ccdcpp.detect_cube_columns(
-                            *cube(bands, 40, dtype), *options(), threads=1),
-                        bands)
-        out = ccdcpp.detect_cube_columns(*cube(7, 40), *options(), threads=1)
+        out = ccdcpp.detect_cube(*cube(7, 40), **options(), threads=1)
         self.assertEqual(out["pixels_total"], 6)
         self.assertEqual(out["failures"], [])
 
@@ -195,28 +184,23 @@ class BandLayout(unittest.TestCase):
         args = noisy(7, 120)
         by_rows = preset(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5])
         self.assertEqual(
-            repr(ccdcpp.detect(*args, h, config=by_rows)),
-            repr(ccdcpp.detect(*args, *options())))
+            repr(ccdcpp.detect(*args, input=h, config=by_rows)),
+            repr(ccdcpp.detect(*args, **options())))
 
     def test_outputs_follow_the_band_count(self):
         h, cfg = ten_band_layout(), ten_band_config()
         d, s, q = noisy(10, 120)
-        out = ccdcpp.detect(d, s, q, h, config=cfg)
+        out = ccdcpp.detect(d, s, q, input=h, config=cfg)
         self.assertEqual(out["num_bands"], 10)
         self.assertGreater(len(out["models"]), 0)
         for m in out["models"]:
             self.assertEqual(len(m["bands"]), 10)
 
-        self.assertEqual(ccdcpp.detect(*noisy(7, 120), *options())["num_bands"], 7)
+        self.assertEqual(ccdcpp.detect(*noisy(7, 120), **options())["num_bands"], 7)
 
         cube_s = np.broadcast_to(s, (2, 3, 10, 120)).copy()
         cube_q = np.zeros((2, 3, 120), dtype=np.uint8)
-        pixels = ccdcpp.detect_cube(d, cube_s, cube_q, h, threads=1, config=cfg)
-        for p in pixels:
-            for m in p["models"]:
-                self.assertEqual(len(m["bands"]), 10)
-
-        cols = ccdcpp.detect_cube_columns(d, cube_s, cube_q, h, threads=1, config=cfg)
+        cols = ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=cfg)
         n = len(cols["row"])
         self.assertGreater(n, 0)
         self.assertEqual(cols["num_bands"], 10)
@@ -243,12 +227,9 @@ class LayoutValidation(unittest.TestCase):
         cube_s = np.broadcast_to(s, (2, 3, bands, 40)).copy()
         cube_q = np.zeros((2, 3, 40), dtype=np.uint8)
         calls = {
-            "detect": lambda: ccdcpp.detect(d, s, q, h, config=config),
+            "detect": lambda: ccdcpp.detect(d, s, q, input=h, config=config),
             "detect_cube":
-                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, h, threads=1, config=config),
-            "detect_cube_columns":
-                lambda: ccdcpp.detect_cube_columns(d, cube_s, cube_q, h, threads=1,
-                                                   config=config),
+                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=config),
         }
         for name, call in calls.items():
             with self.subTest(entry=name, expected=expected):
@@ -326,7 +307,7 @@ class LayoutValidation(unittest.TestCase):
 
     def test_empty_saturation_list_is_allowed(self):
         h = self.broken(saturation_bands=[])
-        ccdcpp.detect(*inputs(10, 40), h, config=ten_band_config())
+        ccdcpp.detect(*inputs(10, 40), input=h, config=ten_band_config())
 
 
 class CadenceParameters(unittest.TestCase):
@@ -358,7 +339,7 @@ class CadenceParameters(unittest.TestCase):
     INPUT_FIELDS = {
         "roles", "saturation_bands", "bands", "index", "digest", "reflectance_unit",
         "qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud",
-        "qa_cirrus1", "qa_cirrus2", "qa_occlusion",
+        "qa_cirrus1", "qa_cirrus2", "qa_occlusion", "qa_table",
         "thermal_scale", "thermal_offset", "refl_min", "refl_max", "refl_min_inclusive",
         "refl_max_inclusive", "therm_min", "therm_max", "therm_min_inclusive",
         "therm_max_inclusive",
@@ -424,8 +405,8 @@ class CadenceParameters(unittest.TestCase):
                         for (stage, name), value in self.DEFAULTS.items()})
         for args in (noisy(7, 120), noisy(7, 400, seed=3)):
             self.assertEqual(
-                repr(ccdcpp.detect(*args, ccdcpp.Input(), config=cfg)),
-                repr(ccdcpp.detect(*args, *options())))
+                repr(ccdcpp.detect(*args, input=ccdcpp.Input(), config=cfg)),
+                repr(ccdcpp.detect(*args, **options())))
 
     def test_peek_reference_days_reaches_the_procedure(self):
         # Eight disturbed observations fill the default peek window of 6 at a
@@ -440,7 +421,7 @@ class CadenceParameters(unittest.TestCase):
         q = np.zeros(500, dtype=np.uint8)
 
         def breaks(config):
-            out = ccdcpp.detect(d, s, q, ccdcpp.Input(), config=config)
+            out = ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
         self.assertEqual(breaks(None), 1)
@@ -473,7 +454,7 @@ class BoundFlags(unittest.TestCase):
         h = ccdcpp.Input()
         for name, value in flags.items():
             setattr(h, name, value)
-        return ccdcpp.detect(d, s, q, h)["processing_mask"][:len(values)].tolist()
+        return ccdcpp.detect(d, s, q, input=h)["processing_mask"][:len(values)].tolist()
 
     def test_reflectance_bounds(self):
         values = [0.0, 10000.0, -1.0, 10001.0]
@@ -537,7 +518,7 @@ class GreenFilterScope(unittest.TestCase):
     def detect_mask(self, pixel, scope):
         config = preset(shared__stat_ord=self.STAT_ORD,
                         shared__green_filter_scope=self.NAMES[scope.name])
-        out = ccdcpp.detect(*pixel, ccdcpp.Input(), config=config)
+        out = ccdcpp.detect(*pixel, input=ccdcpp.Input(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]
 
@@ -566,14 +547,13 @@ class TimestepMismatch(unittest.TestCase):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
             with self.subTest(dates=dates, qas=qas):
                 with self.assertRaises(RuntimeError):
-                    ccdcpp.detect(*inputs(7, 40, dates=dates, qas=qas), *options())
+                    ccdcpp.detect(*inputs(7, 40, dates=dates, qas=qas), **options())
 
     def test_cubes(self):
-        for entry in (ccdcpp.detect_cube, ccdcpp.detect_cube_columns):
-            for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
-                with self.subTest(entry=entry.__name__, dates=dates, qas=qas):
-                    with self.assertRaises(RuntimeError):
-                        entry(*cube(7, 40, dates=dates, qas=qas), *options(), threads=1)
+        for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
+            with self.subTest(dates=dates, qas=qas):
+                with self.assertRaises(RuntimeError):
+                    ccdcpp.detect_cube(*cube(7, 40, dates=dates, qas=qas), **options(), threads=1)
 
 
 class DateOrder(unittest.TestCase):
@@ -587,7 +567,7 @@ class DateOrder(unittest.TestCase):
         for at in (0, 20, 38):
             with self.subTest(at=at):
                 with self.assertRaises(ValueError) as caught:
-                    ccdcpp.detect(self.swapped(d, at), s, q, *options())
+                    ccdcpp.detect(self.swapped(d, at), s, q, **options())
                 self.assertIn("dates must be non-decreasing", str(caught.exception))
                 self.assertIn(f"dates[{at + 1}] = {d[at]} follows dates[{at}] = {d[at + 1]}",
                               str(caught.exception))
@@ -595,26 +575,26 @@ class DateOrder(unittest.TestCase):
     def test_raw_qa(self):
         d, s, _ = inputs(7, 40)
         raw = np.zeros(40, dtype=np.uint16)
-        table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
+        h = ccdcpp.Input()
+        h.qa_table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
         with self.assertRaises(ValueError):
-            ccdcpp.detect(self.swapped(d, 5), s, raw, *options(), qa_table=table)
+            ccdcpp.detect(self.swapped(d, 5), s, raw, input=h)
 
     def test_cubes(self):
-        for entry in (ccdcpp.detect_cube, ccdcpp.detect_cube_columns):
-            for dtype in (np.float64, np.float32, np.uint16):
-                with self.subTest(entry=entry.__name__, dtype=dtype.__name__):
-                    d, spectral, q = cube(7, 40, dtype=dtype)
-                    with self.assertRaises(ValueError) as caught:
-                        entry(self.swapped(d, 7), spectral, q, *options(), threads=1)
-                    self.assertIn("dates must be non-decreasing", str(caught.exception))
+        for dtype in (np.float64, np.float32, np.uint16):
+            with self.subTest(dtype=dtype.__name__):
+                d, spectral, q = cube(7, 40, dtype=dtype)
+                with self.assertRaises(ValueError) as caught:
+                    ccdcpp.detect_cube(self.swapped(d, 7), spectral, q, **options(), threads=1)
+                self.assertIn("dates must be non-decreasing", str(caught.exception))
 
     def test_equal_dates_are_deduplicated(self):
         d, s, q = inputs(7, 40)
         d[11] = d[12] = d[10]
-        mask = ccdcpp.detect(d, s, q, *options())["processing_mask"]
+        mask = ccdcpp.detect(d, s, q, **options())["processing_mask"]
         self.assertEqual(mask[10:13].tolist(), [1, 0, 0])
         _, spectral, qc = cube(7, 40)
-        out = ccdcpp.detect_cube_columns(d, spectral, qc, *options(), threads=1)
+        out = ccdcpp.detect_cube(d, spectral, qc, **options(), threads=1)
         self.assertEqual(out["failures"], [])
 
 

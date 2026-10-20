@@ -3,9 +3,9 @@
 An annual update of the bench cell (bench_cell.py's: h024v013 chunk 00030008, 500 x 500,
 1984-2023), timed and checked. Per strip of `strip` rows:
 
-  1. the stored run: detect_cube_columns(resume_record=True) on the dates before `cut`;
-  2. the update: resume_cube_columns() on every date, from 1's record and segments;
-  3. the full run: detect_cube_columns() on every date, stat_ord capped at 1's last date.
+  1. the stored run: detect_cube(record=True) on the dates before `cut`;
+  2. the update: detect_cube(resume=) on every date, from 1's output;
+  3. the full run: detect_cube() on every date, stat_ord capped at 1's last date.
 
 2 must equal 3 column for column (every segment array, bit for bit); the script counts the
 pixels where they differ and exits non-zero if any do. It reports each step's detect time
@@ -49,8 +49,8 @@ n = int(np.searchsorted(dates, CUT))
 print(f"T={dates.size}; stored run on {n} dates up to {dt.date.fromordinal(int(dates[n - 1]))}")
 
 profile = presets.landsat_c2()
-capped = profile.config().replace(
-    shared__stat_ord=min(profile.config().shared()["stat_ord"], int(dates[n - 1])))
+capped = ccdcpp.config("ccdc").replace(
+    shared__stat_ord=min(ccdcpp.config("ccdc").shared()["stat_ord"], int(dates[n - 1])))
 
 digest = hashlib.sha256()
 t_first = t_resume = t_full = 0.0
@@ -69,16 +69,12 @@ for r0 in range(0, N, STRIP):
     del opt, t
 
     tic = time.perf_counter()
-    stored = ccdcpp.detect_cube_columns(dates[:n], sp[..., :n], qa[..., :n], threads=THREADS,
-                                        profile=profile, resume_record=True)
+    stored = ccdcpp.detect_cube(dates[:n], sp[..., :n], qa[..., :n], input=profile,
+                                threads=THREADS, record=True)
     t1 = time.perf_counter()
-    update = ccdcpp.resume_cube_columns(dates, sp, qa, threads=THREADS, profile=profile,
-                                        resume=stored["resume"],
-                                        resume_header=stored["resume_header"],
-                                        segments={k: stored[k] for k in SEGMENTS})
+    update = ccdcpp.detect_cube(dates, sp, qa, input=profile, threads=THREADS, resume=stored)
     t2 = time.perf_counter()
-    full = ccdcpp.detect_cube_columns(dates, sp, qa, threads=THREADS, profile=profile,
-                                      config=capped)
+    full = ccdcpp.detect_cube(dates, sp, qa, input=profile, config=capped, threads=THREADS)
     t3 = time.perf_counter()
     t_first += t1 - tic
     t_resume += t2 - t1

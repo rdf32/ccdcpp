@@ -7,6 +7,7 @@
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/core/types.hpp"
+#include "ccd/input/qa_table.hpp"
 
 namespace ccd
 {
@@ -15,10 +16,11 @@ namespace ccd
 //
 // Input
 //
-// What the caller's data is: its QA codes, the role of each row of the
-// spectral array, and its units. It holds no algorithm parameter: those are
-// the configuration's (config/registry.hpp), written in physical terms and
-// resolved against an Input when a run is built (Registry::resolve()).
+// What the caller's data is: its QA codes and the table that decodes its raw
+// QA, the role of each row of the spectral array, and its units. It holds no
+// algorithm parameter: those are the configuration's (config/registry.hpp),
+// written in physical terms and resolved against an Input when a run is
+// built (Registry::resolve()).
 //
 // This struct contains no computation; validate() (ccd.hpp) checks it
 // against the input's band count once per call.
@@ -62,6 +64,11 @@ struct Input
     std::uint8_t qa_cirrus1   = 8;
     std::uint8_t qa_cirrus2   = 9;
     std::uint8_t qa_occlusion = 10;
+
+    // Decodes the raw QA values of `qas` (uint8 or uint16) into the codes
+    // above (qa_table.hpp), built with this input's codes (qa_tables.hpp);
+    // null, the default: `qas` are the codes, uint8.
+    QaTablePtr qa_table;
 
     //--------------------------------------------------------------------------
     // Band layout
@@ -237,8 +244,8 @@ struct Input
 bool operator==(const Input& a, const Input& b);
 inline bool operator!=(const Input& a, const Input& b) { return !(a == b); }
 
-// A digest of every field of `input`: equal for equal inputs, on any
-// platform.
+// A digest of every field of `input`, its QA table's codes included: equal
+// for equal inputs, on any platform.
 std::uint64_t digest(const Input& input);
 
 } // namespace ccd

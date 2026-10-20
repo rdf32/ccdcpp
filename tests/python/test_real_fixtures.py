@@ -118,7 +118,7 @@ def preset_input(preset, pixel, apply_offset=True):
 def run(preset, pixel, **kw):
     dates, spectral, qa, names = preset_input(preset, pixel, **kw)
     return ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                         profile=getattr(presets, preset)(), band_names=names)
+                         input=getattr(presets, preset)(), band_names=names)
 
 
 def as_stored(out):
@@ -284,7 +284,7 @@ class Findings(unittest.TestCase):
                     others = others[:-1]  # B10, thermal bounds
                 coastal_only = ((spectral[names.index("B01")] <= 0)
                                 & ((others > 0) & (others < 1)).all(axis=0)
-                                & np.isin(getattr(presets, preset)().qa_table().codes[qa],
+                                & np.isin(getattr(presets, preset)().input().qa_table.codes[qa],
                                           (ccdcpp.Input().qa_clear,
                                            ccdcpp.Input().qa_water)))
                 self.assertEqual(int(coastal_only.sum()), count)
@@ -293,7 +293,7 @@ class Findings(unittest.TestCase):
                 unscreened = dataclasses.replace(
                     profile, saturation=tuple(r for r in profile.saturation if r != "coastal"))
                 other = ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                                      profile=unscreened, band_names=names)
+                                      input=unscreened, band_names=names)
                 self.assertNotEqual(as_stored(other), as_stored(out))
 
     def test_s2_store_order_is_refused(self):
@@ -302,7 +302,7 @@ class Findings(unittest.TestCase):
         rows = [names.index(b) for b in store]
         with self.assertRaises(ValueError):
             ccdcpp.detect(dates, np.ascontiguousarray(spectral[rows]), scl,
-                          profile=presets.sentinel2_l2a(), band_names=store)
+                          input=presets.sentinel2_l2a(), band_names=store)
 
 
 if __name__ == "__main__":

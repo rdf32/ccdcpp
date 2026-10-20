@@ -16,7 +16,6 @@
 #include "ccd/run/algorithm.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/standard.hpp"
-#include "ccd/input/qa_table.hpp"
 #include "ccd/results/record.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/regression/lasso_solver.hpp"
@@ -32,7 +31,7 @@ namespace ccd
 //
 //   Run      built once per call from a RunSpec, the dates and the input's
 //            layout: everything checked (the input against the band count,
-//            the dates, the plan, a QA table for raw QA, a resume header
+//            the dates, the plan, the input's QA table for raw QA, a resume header
 //            against this run), and everything every pixel shares (the
 //            algorithm resolved for the input, the plan, the resume header
 //            and its capped shared values). Immutable: one Run serves every
@@ -81,13 +80,12 @@ using CubeQa = std::variant<
 //
 // What a call runs.
 //
-//   input               the input's description (validate() checks it)
+//   input               the input's description, its QA table included
+//                       (validate() checks it)
 //   algorithm           the algorithm (run/algorithm.hpp): a configuration
 //                       checked when the Algorithm was built, resolved
 //                       against `input` once per Algorithm and input; the
 //                       "ccdc" preset's by default. Part of the resume digest
-//   qa_table            decodes raw QA; null: `qas` are the codes. Required
-//                       for uint16 QA.
 //   plan                the preprocessing plan; null: default_plan(input,
 //                       the resolved shared values)
 //   record              also return each pixel's resume record and the
@@ -108,7 +106,6 @@ struct RunSpec
 {
     Input input;
     AlgorithmPtr algorithm = Algorithm::preset("ccdc");
-    QaTablePtr qa_table = nullptr;
     PreprocessPlanPtr plan = nullptr;
     bool record = false;
     bool keep_masks = true;
@@ -235,11 +232,12 @@ struct Worker
 // The constructor checks, before any pixel, and throws std::invalid_argument,
 // in this order, on: an input that fails validate() for `bands`; `dates` or
 // the QA without `timesteps` entries; dates that fail validate_dates(); raw
-// (uint16) QA without a QA table; a configuration the input does not fit
-// (Algorithm::for_input()); a plan that fails preprocess::validate(); and
-// for a resume (`resume` not null), a header of another record format or
-// results version, made with another input, configuration, plan or QA table
-// (by options_digest()), or for a series that ends before the stored one.
+// (uint16) QA without the input's QA table; a configuration the input does
+// not fit (Algorithm::for_input()); a plan that fails preprocess::validate();
+// and for a resume (`resume` not null), a header of another record format or
+// results version, made with another input (its QA table included),
+// configuration or plan (by options_digest()), or for a series that ends
+// before the stored one.
 //
 // pixel() throws std::invalid_argument for a resume on a prior with fewer
 // stored segments than its record's final ones.
@@ -330,7 +328,7 @@ private:
 // `spectral` is read, never written: the plan's transform (by default the
 // Standard procedure's thermal transform, Input::thermal_scale/
 // thermal_offset) is applied to a private copy. Any strides. The QA is the
-// codes (uint8) or raw values decoded through RunSpec::qa_table (uint8 or
+// codes (uint8) or raw values decoded through the input's qa_table (uint8 or
 // uint16). Throws what Run and Run::pixel throw.
 //
 // With `resume`, continues that stored run on the whole of a longer series

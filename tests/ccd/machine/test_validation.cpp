@@ -697,7 +697,7 @@ TEST(Validation, DetectRejectsUnsortedDates)
     const auto spectral = make_spectral<double>(7, 40);
     const std::vector<std::uint16_t> raw(40, 0);
     EXPECT_THROW(ccd::run_pixel(
-        [] { ccd::RunSpec r; r.qa_table = std::make_shared<ccd::QaTable>(); return r; }(),
+        [] { ccd::RunSpec r; r.input.qa_table = std::make_shared<const ccd::QaTable>(ccd::QaTable::Codes{}); return r; }(),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {40}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, 40}),
         ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {40})), std::invalid_argument);

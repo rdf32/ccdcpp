@@ -1,8 +1,9 @@
-"""bench_cell.py <ccdcpp_package_parent> <cube.zarr> [threads=8] [strip=50]
+"""bench_cell.py <ccdcpp_package_parent> <cube.zarr> [threads=8] [strip=50] [stat_ord]
 
 The real-cell timing of the ccdcpp state-machine refactor: a 500 x 500 cell of a Landsat C2
-ARD cube, through detect_cube_columns with profile=presets.landsat_c2() (raw QA_PIXEL decoded
-by the Landsat C2 table), `threads` threads, in strips of `strip` rows as the nlcd plugin runs
+ARD cube, through detect_cube with input=presets.landsat_c2() (raw QA_PIXEL decoded by the
+Landsat C2 table) and the "ccdc" configuration (with its shared stat_ord set to `stat_ord`, an
+ordinal day, when given: 736694 is pyccd's 2017-12-31), `threads` threads, in strips of `strip` rows as the nlcd plugin runs
 it. The refactor's cell is h024v013 chunk 00030008 (rows 4000-4499, cols 1500-1999 of the
 tile), 1984-2023, all 2473 dates.
 
@@ -11,7 +12,7 @@ and QA_PIXEL, and `landsat-c2ard-bt`, (rows, cols, 1, T) uint16 ST, with the ISO
 `time` attribute of `landsat-c2ard-sr`; the cell is rows 4000-4499, cols 1500-1999 of it.
 
 The cell is read once (uint16) before any timing. Each strip is converted to landsat_c2 units
-(float64) outside the timed region; only the detect_cube_columns calls are timed, and their sum
+(float64) outside the timed region; only the detect_cube calls are timed, and their sum
 is the number reported. The outputs of every strip are hashed in key order, so two builds that
 print the same fingerprint gave byte-identical results on all 250,000 pixels.
 
@@ -44,6 +45,8 @@ from ccdcpp import presets  # noqa: E402
 CUBE = sys.argv[2]
 THREADS = int(sys.argv[3]) if len(sys.argv) > 3 else 8
 STRIP = int(sys.argv[4]) if len(sys.argv) > 4 else 50
+CONFIG = (ccdcpp.config("ccdc").replace(shared__stat_ord=int(sys.argv[5])) if len(sys.argv) > 5
+          else ccdcpp.config("ccdc"))
 R0, C0, N = 4000, 1500, 500
 
 print("ccdcpp", ccdcpp.__version__, ccdcpp.__file__, "numpy", np.__version__, "zarr", zarr.__version__)
@@ -73,7 +76,7 @@ for r0 in range(0, N, STRIP):
     qa = np.ascontiguousarray(s[r0:r1, :, 6])
     del opt, t
     tic = time.perf_counter()
-    out = ccdcpp.detect_cube_columns(dates, sp, qa, threads=THREADS, profile=profile)
+    out = ccdcpp.detect_cube(dates, sp, qa, input=profile, config=CONFIG, threads=THREADS)
     toc = time.perf_counter()
     t_det += toc - tic
     print(f"  rows {r0}-{r1 - 1}: convert {tic - t_conv:.1f} s, detect {toc - tic:.1f} s", flush=True)

@@ -203,6 +203,7 @@ add_library(
     src/ccd/strategies/start_search/pyccd.cpp
     src/ccd/strategies/window_screen/tmask.cpp
     src/ccd/input/qa_table.cpp
+    src/ccd/input/qa_tables.cpp
     src/ccd/results/diagnostics.cpp
     ${PROJECT_BINARY_DIR}/generated/register_extensions.cpp
     ${CCD_EXTENSION_SOURCES}

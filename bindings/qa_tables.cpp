@@ -6,7 +6,7 @@
 #include <string>
 
 #include "ccd/input/input.hpp"
-#include "ccd/input/qa_table.hpp"
+#include "ccd/input/qa_tables.hpp"
 
 namespace py = pybind11;
 
@@ -16,8 +16,7 @@ namespace py = pybind11;
 // Python holds a table as std::shared_ptr<ccd::QaTable>, the holder pybind11
 // needs; the class exposes no way to write to it, so it is as read-only as
 // the std::shared_ptr<const QaTable> the core takes, and the conversion
-// between the two is a pointer copy. detect, detect_cube and
-// detect_cube_columns take it as qa_table=.
+// between the two is a pointer copy. An Input holds one as its qa_table.
 //------------------------------------------------------------------------------
 
 namespace
@@ -46,9 +45,9 @@ std::shared_ptr<ccd::QaTable> from_codes(const py::object& obj)
         );
     }
 
-    auto table = std::make_shared<ccd::QaTable>();
-    std::copy(codes.data(), codes.data() + ccd::QA_TABLE_SIZE, table->code.begin());
-    return table;
+    ccd::QaTable::Codes copy;
+    std::copy(codes.data(), codes.data() + ccd::QA_TABLE_SIZE, copy.begin());
+    return std::make_shared<ccd::QaTable>(copy);
 }
 
 } // namespace
@@ -61,9 +60,10 @@ void bind_qa_tables(py::module_& m)
         m,
         "QaTable",
         "A lookup from raw QA values to the QA codes detect reads: entry v "
-        "is the code of raw value v, for every uint16 v. Pass one as "
-        "qa_table= to decode a raw uint8 or uint16 qas array per pixel. "
-        "Build one with ccdcpp.qa_tables, or from 65,536 uint8 codes."
+        "is the code of raw value v, for every uint16 v. An Input holds one "
+        "as its qa_table to decode a raw uint8 or uint16 qas array per pixel. "
+        "Build one with ccdcpp.qa_tables, or from 65,536 uint8 codes. "
+        "Immutable."
     )
     .def(
         py::init(&from_codes),
@@ -80,7 +80,15 @@ void bind_qa_tables(py::module_& m)
             );
         },
         "A copy of the (65536,) uint8 codes."
-    );
+    )
+    .def_property_readonly(
+        "digest",
+        [](const ccd::QaTable& t) { return t.digest; },
+        "A digest of the codes: equal for equal tables, on any platform."
+    )
+    .def("__eq__", [](const ccd::QaTable& a, const ccd::QaTable& b)
+         { return a.digest == b.digest && a.code == b.code; }, py::is_operator())
+    .def("__hash__", [](const ccd::QaTable& t) { return t.digest; });
 
     py::module_ sub = m.def_submodule(
         "qa_tables",
