@@ -264,6 +264,16 @@ class Runs(unittest.TestCase):
         d, s, q = pixel()
         with self.assertRaisesRegex(TypeError, "a ccdcpp.Config or a preset's name"):
             ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=ccdcpp.config().to_dict())
+        path = os.path.join(_PACKAGE, "configs", "ccdc.toml")
+        with self.assertRaisesRegex(TypeError, "not a path; pass ccdcpp.config"):
+            ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=path)
+
+    def test_a_config_is_checked_and_compiled_when_built(self):
+        with self.assertRaisesRegex(ValueError, "refit 'span-factor' parameter 'factor' is 0"):
+            ccdcpp.config("ccdc").replace(refit__factor=0.0)
+        cfg = ccdcpp.config("ccdc")
+        self.assertIs(cfg._algorithm, ccdcpp.config("ccdc")._algorithm)
+        self.assertIsInstance(cfg._algorithm, ccdcpp.ccdcpp.Algorithm)
 
     def test_a_configuration_changes_the_run(self):
         d, s, q = pixel()

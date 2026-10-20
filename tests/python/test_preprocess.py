@@ -347,30 +347,43 @@ class Replace(unittest.TestCase):
 
 
 class Validation(unittest.TestCase):
-    def test_refused_when_compiled(self):
-        # The run compiles the configuration (Config._algorithm) and refuses it there.
-        d, s, q = DATES, CUBE_DN[0, 0], CODES[0, 0]
-        h = ccdcpp.Input()
+    def test_refused_when_built(self):
+        # Building a Config compiles it (Registry::check()) and refuses it there.
+        def without_snow():
+            tree = CCDC.to_dict()
+            del tree["preprocess"]["snow"]
+            return ccdcpp.Config(tree)
+
+        def with_codes():
+            tree = CCDC.to_dict()
+            tree["preprocess"]["snow"]["steps"][0]["codes"] = ["clear", "cirrus"]
+            return ccdcpp.Config(tree)
+
+        def with_max_date():
+            tree = CCDC.to_dict()
+            tree["preprocess"]["insufficient_clear"]["steps"][4]["max_date"] = 1
+            return ccdcpp.Config(tree)
+
         cases = {
-            "not a preprocessing step": CCDC.replace(preprocess__snow=[{"step": "smooth"}]),
+            "not a preprocessing step": lambda: CCDC.replace(preprocess__snow=[{"step": "smooth"}]),
             "green_median.* parameter 'scope' is 'some'":
-                CCDC.replace(preprocess__green_median__scope="some"),
-            "at most 8": CCDC.replace(preprocess__snow=[Dedupe()] * 9),
-            "must be followed by a Dedupe": CCDC.replace(preprocess__snow=[KeepQa(), AddQa()]),
+                lambda: CCDC.replace(preprocess__green_median__scope="some"),
+            "at most 8": lambda: CCDC.replace(preprocess__snow=[Dedupe()] * 9),
+            "no 'snow' procedure": without_snow,
+            "'cirrus', which is not a QA code name": with_codes,
+            "green_median.* 'max_date' is the shared value 'stat_ord'": with_max_date,
         }
-        tree = CCDC.to_dict()
-        del tree["preprocess"]["snow"]
-        cases["no 'snow' procedure"] = ccdcpp.Config(tree)
-        tree = CCDC.to_dict()
-        tree["preprocess"]["snow"]["steps"][0]["codes"] = ["clear", "cirrus"]
-        cases["'cirrus', which is not a QA code name"] = ccdcpp.Config(tree)
-        tree = CCDC.to_dict()
-        tree["preprocess"]["insufficient_clear"]["steps"][4]["max_date"] = 1
-        cases["green_median.* 'max_date' is the shared value 'stat_ord'"] = ccdcpp.Config(tree)
-        for message, cfg in cases.items():
+        for message, build in cases.items():
             with self.subTest(message=message):
                 with self.assertRaisesRegex(ValueError, message):
-                    ccdcpp.detect(d, s, q, input=h, config=cfg)
+                    build()
+        # What needs the input's band count is refused when the run resolves the
+        # configuration against it.
+        d, s, q = DATES, CUBE_DN[0, 0], CODES[0, 0]
+        h = ccdcpp.Input()
+        no_dedupe = CCDC.replace(preprocess__snow=[KeepQa(), AddQa()])
+        with self.assertRaisesRegex(ValueError, "must be followed by a Dedupe"):
+            ccdcpp.detect(d, s, q, input=h, config=no_dedupe)
         # A band the input lacks, against the input.
         with self.assertRaisesRegex(ValueError, "'coastal', which the input does not have"):
             ccdcpp.plan_of(CCDC.replace(preprocess__band_range__bands=["coastal"]), h)

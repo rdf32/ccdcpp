@@ -323,8 +323,7 @@ ccd::AlgorithmPtr algorithm_from_python(const py::object& config)
         return ccd::Algorithm::preset("ccdc");
     if (py::isinstance<ccd::Algorithm>(config))
         return config.cast<std::shared_ptr<ccd::Algorithm>>();
-    // A ccdcpp.Config holds its compiled Algorithm (a property of its class:
-    // compiling it may raise, which an instance's hasattr would hide).
+    // A ccdcpp.Config holds its compiled Algorithm, built with it.
     if (py::hasattr(py::type::of(config), "_algorithm"))
         return config.attr("_algorithm").cast<std::shared_ptr<ccd::Algorithm>>();
     if (!py::isinstance<py::dict>(config))

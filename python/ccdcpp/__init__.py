@@ -1,3 +1,4 @@
+import os as _os
 import sys
 
 from .ccdcpp import *
@@ -14,6 +15,7 @@ del sys
 from . import ccdcpp as _extension
 from . import presets
 from .config import Config, config, shared_values, steps, strategies
+from .config import _NAMED
 from .config import config as _config
 from .ccdcpp import Input
 from .preprocess import (
@@ -68,11 +70,18 @@ def _input(entry, input, spectral, band_names):
 
 
 def _configuration(entry, config):
-    """config= as a ccdcpp.Config: itself, or the preset of that name."""
+    """config= as a ccdcpp.Config: itself, or the preset of that name (built once)."""
+    if isinstance(config, str):
+        named = _NAMED.get(config)
+        if named is not None:
+            return named
+        if config.endswith(".toml") or _os.sep in config:
+            raise TypeError(
+                f"{entry}(): config is a ccdcpp.Config or a preset's name, not a path; "
+                f"pass ccdcpp.config({config!r}), built once")
+        return _config(config)
     if isinstance(config, Config):
         return config
-    if isinstance(config, str):
-        return _config(config)
     raise TypeError(
         f"{entry}(): config is a ccdcpp.Config or a preset's name, not "
         f"{type(config).__name__}; ccdcpp.config() reads a file or a dict")
@@ -134,8 +143,8 @@ def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=N
     """
     h, profile = _input("detect", input, spectral, band_names)
     cfg = _configuration("detect", config)
-    out = _extension.detect(dates, spectral, qas, input=h, config=cfg, record=record,
-                            resume=resume, trace=trace)
+    out = _extension.detect(dates, spectral, qas, input=h, config=cfg._algorithm,
+                            record=record, resume=resume, trace=trace)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -189,8 +198,9 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
     """
     h, profile = _input("detect_cube", input, spectral, band_names)
     cfg = _configuration("detect_cube", config)
-    out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg, threads=threads,
-                                 record=record, resume=resume, trace_pixels=trace_pixels)
+    out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
+                                 threads=threads, record=record, resume=resume,
+                                 trace_pixels=trace_pixels)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -202,7 +212,7 @@ def plan_of(config, input):
     input, the QA code names as its codes, the bands by role as its rows, the bounds in its
     units. For inspection: ``print(ccdcpp.plan_of("ccdc", ccdcpp.Input()))``."""
     h = input.input() if isinstance(input, SensorProfile) else input
-    return _extension.plan_of(_configuration("plan_of", config), h)
+    return _extension.plan_of(_configuration("plan_of", config)._algorithm, h)
 
 
 def to_pixels(out):

@@ -1,14 +1,14 @@
 """The algorithm's configuration: the shared values, for each stage the strategy that
 decides it and that strategy's parameters, and each procedure's preprocessing.
 
-A ``Config`` is immutable. It holds a dict ``{"shared": {name: value}, "stages": {stage:
+A ``Config`` is immutable, and checked and compiled when it is built. It holds a dict ``{"shared": {name: value}, "stages": {stage:
 {"strategy": name, "params": {name: value}}}, "preprocess": {procedure: {"thermal_transform":
 bool, "steps": [{"step": name, name: value, ...}, ...]}}}``; a value is a bool, an int, a
 float, a str, a list of names (band roles, QA code names) or a list of ints (band rows, QA
 codes). Pass it as ``config=`` to
-``ccdcpp.detect`` and the other entry points: it is checked when it is first run (unknown
-stages, strategies, parameters or shared values, values out of range, what a strategy needs from
-another) and resolved against each input it runs on (band roles against the input's rows). A
+``ccdcpp.detect`` and ``ccdcpp.detect_cube``: it is checked when it is built (unknown stages,
+strategies, steps, parameters or shared values, values out of range, what a strategy needs from
+another) and resolved against each input it runs on once (band roles against the input's rows). A
 resume record of a configured run continues only under the same configuration.
 
     import ccdcpp
@@ -216,9 +216,11 @@ def _set_step(tree, procedures, step, param, value):
 
 
 class Config:
-    """An algorithm configuration (see the module's documentation)."""
+    """An algorithm configuration (see the module's documentation). Building one checks it
+    (ValueError for what a run would refuse on any input) and compiles it once: every call
+    that runs it reuses the compilation, and its resolution against each input it meets."""
 
-    __slots__ = ("_tree", "_compiled")
+    __slots__ = ("_tree", "_algorithm")
 
     def __init__(self, tree):
         if isinstance(tree, Config):
@@ -251,18 +253,11 @@ class Config:
             "stages": clean,
             "preprocess": {str(k): _chain(v, f"preprocess {k}") for k, v in preprocess.items()},
         })
-        object.__setattr__(self, "_compiled", None)
+        # The compiled configuration (an _extension.Algorithm): what the entry points run.
+        object.__setattr__(self, "_algorithm", _extension.Algorithm(self._tree))
 
     def __setattr__(self, name, value):
         raise AttributeError("a Config is immutable; replace() returns a changed copy")
-
-    @property
-    def _algorithm(self):
-        """The compiled configuration (an _extension.Algorithm), built on first use: what the
-        entry points run. ValueError for what it refuses."""
-        if self._compiled is None:
-            object.__setattr__(self, "_compiled", _extension.Algorithm(self._tree))
-        return self._compiled
 
     def stages(self):
         """The stage names, sorted."""
