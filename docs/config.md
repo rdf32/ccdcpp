@@ -170,6 +170,16 @@ PixelRun run = run_pixel(spec, dates, spectral, qas);
 preprocess::PreprocessPlan plan = plan_of(config, spec.input);  // for inspection
 ```
 
+Three types hold a configuration. `config::Config` is the data: the `shared` values, the
+`stages` and the `preprocess` chains, as written, a value you edit. `ccd::Algorithm` is its
+compiled form: built once from a `Config` (checked by the schemas then), immutable, shared by
+every call and thread, and caching its resolution per input (`for_input()`: resolved and built
+the first time it meets an input, reused for every equal one). `RunSpec::algorithm` takes an
+`Algorithm`, so a call resolves nothing it has resolved before. The Python `ccdcpp.Config`
+holds both: the data (`params()`, `shared()`, `to_toml()`, `replace()`) and the `Algorithm`
+compiled from it when it is built, which every `detect` and `detect_cube` with that `Config`
+runs.
+
 `strategies::library_registry().names()` lists the strategies, `.schemas()` their parameters,
 `.step_schemas()` the preprocessing steps' and `.presets()` the named configurations (`ccdc`,
 and any an extension registers with `Registry::add_preset()`).
