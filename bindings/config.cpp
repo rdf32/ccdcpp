@@ -249,6 +249,7 @@ const char* unit_name(ccd::config::Unit unit)
         case ccd::config::Unit::Observations: return "observations";
         case ccd::config::Unit::Days:         return "days";
         case ccd::config::Unit::Reflectance:  return "reflectance";
+        case ccd::config::Unit::ReflectanceDelta: return "reflectance_delta";
         case ccd::config::Unit::Celsius:      return "celsius";
         case ccd::config::Unit::Bands:        return "bands";
         case ccd::config::Unit::QaCodes:      return "qa_codes";

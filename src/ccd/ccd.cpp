@@ -109,6 +109,14 @@ void validate(const Input& input, index_t bands)
         );
     }
 
+    if (!std::isfinite(input.reflectance_offset))
+    {
+        throw std::invalid_argument(
+            "reflectance_offset is " + config::number(input.reflectance_offset) +
+            "; it must be a finite number"
+        );
+    }
+
     if (!(input.thermal_unit > 0) || !std::isfinite(input.thermal_unit))
     {
         throw std::invalid_argument(

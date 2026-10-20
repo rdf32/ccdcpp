@@ -21,7 +21,7 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >   `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
 >   decoder of raw QA, or none), `roles`, `saturation_bands`, `reflectance_unit`
->   (Collection-1 DN 10000, reflectance 1), `thermal_scale`/`thermal_offset` with
+>   and `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and 0), `thermal_scale`/`thermal_offset` with
 >   `thermal_unit` (the value of 100 °C after the transform) and `saturated`.
 >   `input=` takes an `Input` or a `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
@@ -100,8 +100,11 @@ the configuration as a preset file; a `Config` pickles, so it can go to worker p
 A configuration's values are physical: the shared `alpha` and `coef_floor`, band_range's bounds
 and green_median's offset in reflectance, thermal_range's bounds in degrees Celsius, the change
 and outlier thresholds as probabilities, bands by role and QA codes by name. A run resolves them
-against its input once: reflectance times the input's `reflectance_unit` (Collection-1 DN 10000,
-reflectance 1), degrees Celsius to the thermal row's unit, roles to rows, names to codes.
+against its input once: a reflectance level (unit `reflectance`, band_range's bounds) as
+`r * reflectance_unit + reflectance_offset`, a reflectance difference (unit `reflectance_delta`:
+`alpha`, `coef_floor`, green_median's offset) as `r * reflectance_unit` (Collection-1 DN 10000
+and 0, reflectance 1 and 0), degrees Celsius `c` as `c * 100 * thermal_unit / 10000`, roles to
+rows, names to codes.
 `cfg.resolve(input)` shows the values a run uses; `ccdcpp.plan_of(cfg, input)` the
 preprocessing plan.
 

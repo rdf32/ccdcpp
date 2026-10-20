@@ -242,7 +242,7 @@ class Strategies(unittest.TestCase):
         self.assertEqual((chi2["change_threshold"]["source"], chi2["change_threshold"]["from"]),
                          ("chi2", "change_probability"))
         shared = {v["name"]: v for v in ccdcpp.shared_values()}
-        self.assertEqual(shared["alpha"]["unit"], "reflectance")
+        self.assertEqual(shared["alpha"]["unit"], "reflectance_delta")
         self.assertEqual(shared["alpha"]["default"], 1e-4)
 
 

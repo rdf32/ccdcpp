@@ -110,7 +110,7 @@ std::optional<Step> BandRange::make(const Params& params, const Input& input)
 const std::vector<Field<GreenMedian::Params>>& GreenMedian::schema()
 {
     static const std::vector<Field<Params>> s = {
-        {"offset", &Params::offset, Unit::Reflectance, config::any(),
+        {"offset", &Params::offset, Unit::ReflectanceDelta, config::any(),
          "the green above the median an observation is dropped at", Source::Own, nullptr,
          config::real(0.04)},
         {"scope", &Params::scope, Unit::None, config::any(),

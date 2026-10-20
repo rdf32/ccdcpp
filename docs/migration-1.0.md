@@ -6,7 +6,8 @@ as today.
 
 - **`ccdcpp.Input` replaces `HarmonicOptions`** and holds the data's encoding only: the QA
   codes and the table that decodes raw QA (`qa_table`), a role per row (`roles`),
-  `saturation_bands`, `reflectance_unit` (Collection-1 DN 10000, reflectance 1), the thermal
+  `saturation_bands`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
+  reflectance 1 and 0), the thermal
   transform (`thermal_scale`, `thermal_offset`, with `thermal_unit`, the value of 100 °C after
   it) and `saturated`. Every algorithm value of
   0.10.0, `LassoOptions`' four, the bounds, the green filter and the statistics cutoff are the
@@ -44,7 +45,7 @@ as today.
 ### Profiles
 
 A `SensorProfile` describes the data: `name`, `band_names`, `roles`, `saturation`, `units`
-(`Units(reflectance_unit)`), `thermal` (`Thermal(scale, offset, unit)`), `saturated`,
+(`Units(reflectance_unit, offset)`), `thermal` (`Thermal(scale, offset, unit)`), `saturated`,
 `qa_table_builder` and `qa_table_options`. `profile.input()` is its `ccdcpp.Input`, QA table
 included.
 

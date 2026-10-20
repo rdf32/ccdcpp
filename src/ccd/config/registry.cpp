@@ -49,15 +49,28 @@ std::optional<double> number_of(const Value& value)
 }
 
 // `value` of a field in `unit`, as the input holds it (Unit): a reflectance
-// times input->reflectance_unit, degrees Celsius in the thermal row's unit
-// (input->thermal_unit), a band list by role as the input's rows, QA code
-// names as its codes. Without an input (a check), the value as written, and
-// none for a list by name once its names are known ones. `at` names the
-// field in messages.
+// level times input->reflectance_unit plus input->reflectance_offset, a
+// reflectance difference times input->reflectance_unit, degrees Celsius in
+// the thermal row's unit (input->thermal_unit), a band list by role as the
+// input's rows, QA code names as its codes. Without an input (a check), the
+// value as written, and none for a list by name once its names are known
+// ones. `at` names the field in messages.
 std::optional<Value> convert(Unit unit, const Value& value, const std::string& at,
                              const Input* input)
 {
     if (unit == Unit::Reflectance && input)
+    {
+        // Two statements, so the product is rounded before the offset is
+        // added (no fused multiply-add): at offset 0 a level is the product
+        // itself (but for -0, which becomes +0).
+        if (const auto v = number_of(value))
+        {
+            const double scaled = *v * input->reflectance_unit;
+            return real(scaled + input->reflectance_offset);
+        }
+        return value;
+    }
+    if (unit == Unit::ReflectanceDelta && input)
     {
         if (const auto v = number_of(value))
             return real(*v * input->reflectance_unit);

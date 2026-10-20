@@ -99,9 +99,17 @@ void bind_input(py::module_& m)
     .def_readwrite(
         "reflectance_unit", &ccd::Input::reflectance_unit,
         "The value one unit of reflectance has in the data (default 10000, "
-        "Collection-1 DN; 1 for reflectance). The configuration's reflectance "
-        "values (alpha, coef_floor, band_range's bounds, green_median's "
-        "offset) are multiplied by it."
+        "Collection-1 DN; 1 for reflectance): reflectance r is held as r * "
+        "reflectance_unit + reflectance_offset. The configuration's "
+        "reflectance levels (band_range's bounds) resolve that way, its "
+        "differences (alpha, coef_floor, green_median's offset) times "
+        "reflectance_unit only."
+    )
+    .def_readwrite(
+        "reflectance_offset", &ccd::Input::reflectance_offset,
+        "The data's value of reflectance 0 (default 0). Collection-2 DN, r = "
+        "DN * 2.75e-5 - 0.2, is reflectance_unit 1 / 2.75e-5 and "
+        "reflectance_offset 0.2 / 2.75e-5."
     )
     .def_readwrite("thermal_scale", &ccd::Input::thermal_scale,
         "A procedure that transforms thermal reads thermal * thermal_scale + "

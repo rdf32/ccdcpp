@@ -41,6 +41,9 @@
 //   GreenMedianFilterIsAUnitConstant   the green filter, which `detect` on
 //                               this pixel cannot reach at all
 //
+// and Collection2DnResolvesReflectanceZeroToOne, the encoding with an
+// offset: reflectance levels take it, differences do not.
+//
 // Input is the same pyccd reference pixel test_standard.cpp uses, so a failure
 // here and a failure there point at the same 443 observations.
 //
@@ -676,6 +679,44 @@ TEST(Units, BoundsAreUnitConstants)
 // for this procedure too, and the green filter at its DN value, 400.0, breaks
 // it.
 //------------------------------------------------------------------------------
+
+// Collection-2 DN describes itself with a scale and an offset. Its surface
+// reflectance is r = DN x 2.75e-5 - 0.2, so DN = r / 2.75e-5 + 0.2 /
+// 2.75e-5: reflectance_unit 1 / 2.75e-5 (36363.63...) and
+// reflectance_offset 0.2 / 2.75e-5 (7272.72...), each one double division.
+// band_range's levels 0 and 1 resolve to 0 x unit + offset, the offset
+// itself, and 1 x unit + offset, 43636.36...: on integer DN the range keeps
+// 7273 to 43636, the values whose reflectance is in (0, 1) (DN 7273 is
+// 7.5e-6, DN 43636 is 0.99999). The differences -- alpha, coef_floor, the
+// green median's offset -- are reflectance_unit times their value, with no
+// offset.
+TEST(Units, Collection2DnResolvesReflectanceZeroToOne)
+{
+    ccd::Input h;
+    h.reflectance_unit = 1.0 / 2.75e-5;
+    h.reflectance_offset = 0.2 / 2.75e-5;
+
+    const ccd::preprocess::PreprocessPlan plan = golden::plan_of(golden::pyccd(), h);
+    const ccd::preprocess::Step& band = plan.standard.chain[2];
+    ASSERT_EQ(band.kind, ccd::preprocess::StepKind::BandRange);
+    EXPECT_EQ(band.range.lo.value, h.reflectance_offset);
+    const double one = 1.0 * h.reflectance_unit;
+    EXPECT_EQ(band.range.hi.value, one + h.reflectance_offset);
+    EXPECT_GT(band.range.lo.value, 7272.0);
+    EXPECT_LT(band.range.lo.value, 7273.0);
+    EXPECT_GT(band.range.hi.value, 43636.0);
+    EXPECT_LT(band.range.hi.value, 43637.0);
+    for (const double dn : {7273.0, 43636.0})
+        EXPECT_TRUE(ccd::filter::in_range(dn, band.range)) << dn;
+    for (const double dn : {7272.0, 43637.0})
+        EXPECT_FALSE(ccd::filter::in_range(dn, band.range)) << dn;
+
+    // The differences carry no offset.
+    EXPECT_EQ(plan.insufficient_clear.chain[4].green_offset, 0.04 * h.reflectance_unit);
+    const ccd::config::Resolved r = golden::resolved(golden::pyccd(), h);
+    EXPECT_EQ(r.shared.alpha, 1e-4 * h.reflectance_unit);
+    EXPECT_EQ(r.shared.coef_floor, 1e-4 * h.reflectance_unit);
+}
 
 TEST(Units, GreenMedianFilterIsAUnitConstant)
 {

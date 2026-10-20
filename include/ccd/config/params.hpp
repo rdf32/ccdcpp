@@ -38,7 +38,7 @@ namespace config
 //         static const std::vector<config::Field<Params>> s = {
 //             {"min_obs", &Params::min_obs, Unit::Observations, at_least(1), "..."},
 //             {"factor",  &Params::factor,  Unit::None, greater_than(0), "..."},
-//             {"alpha",   &Params::alpha,   Unit::Reflectance, at_least(0), "...",
+//             {"alpha",   &Params::alpha,   Unit::ReflectanceDelta, at_least(0), "...",
 //              Source::Shared, "alpha"},
 //         };
 //         return s;
@@ -56,7 +56,14 @@ namespace config
 // against an input converts it:
 //
 //   None, Observations, Days   unchanged;
-//   Reflectance                times Input::reflectance_unit;
+//   Reflectance                a reflectance level (a bound of the data's
+//                              values): r x Input::reflectance_unit +
+//                              Input::reflectance_offset, the data's value
+//                              of reflectance r;
+//   ReflectanceDelta           a difference or magnitude of reflectance (the
+//                              Lasso's alpha and coef_floor, the green
+//                              median's offset): times
+//                              Input::reflectance_unit only;
 //   Celsius                    degrees Celsius, to the thermal row's unit
 //                              after the input's transform: c x 100 (hundredths
 //                              of a degree, pyccd's unit) times
@@ -74,6 +81,7 @@ enum class Unit : std::uint8_t
     Observations,
     Days,
     Reflectance,
+    ReflectanceDelta,
     Celsius,
     Bands,
     QaCodes

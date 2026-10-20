@@ -46,14 +46,19 @@ from .ccdcpp import CCD_MAX_BANDS, ROLES, Input, qa_tables
 
 @dataclass(frozen=True)
 class Units:
-    """The units of the reflective bands.
+    """The units of the reflective bands: reflectance r is held as
+    ``r * reflectance_unit + offset``.
 
     reflectance_unit
         ``Input.reflectance_unit``: the value one unit of reflectance has in
         the data (Collection-1 DN 10000, reflectance 1).
+    offset
+        ``Input.reflectance_offset``: the data's value of reflectance 0
+        (0, the default, for both).
     """
 
     reflectance_unit: float
+    offset: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -382,6 +387,7 @@ def _input_of(profile):
     h.roles = list(profile.roles)
     h.saturation_bands = [profile.index(r) for r in profile.saturation]
     h.reflectance_unit = profile.units.reflectance_unit
+    h.reflectance_offset = profile.units.offset
     h.saturated = profile.saturated
     if profile.thermal is not None:
         h.thermal_scale = profile.thermal.scale

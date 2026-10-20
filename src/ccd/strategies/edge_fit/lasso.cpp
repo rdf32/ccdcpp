@@ -34,12 +34,12 @@ const std::vector<config::Field<LassoEdges::Params>>& LassoEdges::schema()
          "kept observations a whole-series curve needs"},
         {"max_iter", &Params::max_iter, Unit::None, config::at_least(0),
          "coordinate descent sweeps at most", config::Source::Shared, "max_iter"},
-        {"alpha", &Params::alpha, Unit::Reflectance, config::at_least(0),
+        {"alpha", &Params::alpha, Unit::ReflectanceDelta, config::at_least(0),
          "the L1 penalty", config::Source::Shared, "alpha"},
         {"tolerance", &Params::tolerance, Unit::None, config::at_least(0),
          "a sweep whose largest update is at most this times max(largest coefficient, "
          "coef_floor) checks the duality gap", config::Source::Shared, "tolerance"},
-        {"coef_floor", &Params::coef_floor, Unit::Reflectance, config::at_least(0),
+        {"coef_floor", &Params::coef_floor, Unit::ReflectanceDelta, config::at_least(0),
          "the least coefficient size the tolerance scales", config::Source::Shared, "coef_floor"},
     };
     return s;

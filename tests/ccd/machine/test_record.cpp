@@ -353,6 +353,7 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         {"roles", [](auto& h) { h.roles[0] = "coastal"; }},
         {"saturation_bands", [](auto& h) { h.saturation_bands = {0, 1, 2, 3, 4}; }},
         {"reflectance_unit", [](auto& h) { h.reflectance_unit = 1.0; }},
+        {"reflectance_offset", [](auto& h) { h.reflectance_offset = 0.5; }},
         {"saturated", [](auto& h) { h.saturated = 65535.0; }},
         {"no saturated", [](auto& h) { h.saturated.reset(); }},
         {"thermal_scale", [](auto& h) { h.thermal_scale = 1.0; }},
@@ -512,7 +513,7 @@ TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)
 // struct of the plan needs one.
 TEST(OptionsDigest, TheInputIsTheOneItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::Input), 144u);
+    EXPECT_EQ(sizeof(ccd::Input), 152u);
 }
 
 //------------------------------------------------------------------------------

@@ -284,7 +284,15 @@ TEST(Validation, LayoutRules)
         expect_layout_error(h, 7, "reflectance_unit is");
     }
 
-    // So is the value of 100 degrees Celsius.
+    // The value of reflectance 0 is a finite number.
+    for (const double offset : {std::nan(""), HUGE_VAL, -HUGE_VAL})
+    {
+        ccd::Input h;
+        h.reflectance_offset = offset;
+        expect_layout_error(h, 7, "reflectance_offset is");
+    }
+
+    // The value of 100 degrees Celsius is a positive number.
     for (const double unit : {0.0, -1.0, std::nan(""), HUGE_VAL})
     {
         ccd::Input h;

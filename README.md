@@ -14,7 +14,7 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
 >   decoder of raw QA, or none), `roles`, `saturation_bands`, `reflectance_unit`
->   (Collection-1 DN 10000, reflectance 1), `thermal_scale`/`thermal_offset` with
+>   and `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and 0), `thermal_scale`/`thermal_offset` with
 >   `thermal_unit` (the value of 100 °C after the transform) and `saturated`.
 >   `input=` takes an `Input` or a `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
@@ -447,7 +447,8 @@ The input says only how to read the data. The configuration says what to do with
 
 | Input field | Default | Read by |
 |-------|---------|---------|
-| `reflectance_unit` | `10000.0` | every reflectance value of the configuration (the Lasso's `alpha` and `coef_floor`, `band_range`'s bounds, `green_median`'s offset) is multiplied by it |
+| `reflectance_unit` | `10000.0` | reflectance `r` is held as `r * reflectance_unit + reflectance_offset`: the configuration's reflectance levels (`band_range`'s bounds) resolve that way, its differences (the Lasso's `alpha` and `coef_floor`, `green_median`'s offset) are multiplied by `reflectance_unit` only |
+| `reflectance_offset` | `0.0` | the data's value of reflectance 0; Collection-2 DN (`r = DN * 2.75e-5 - 0.2`) is `reflectance_unit = 1 / 2.75e-5`, `reflectance_offset = 0.2 / 2.75e-5` |
 | `thermal_scale`, `thermal_offset` | `10.0`, `-27315.0` | the thermal transform, `thermal * scale + offset`, of a procedure whose chain sets `thermal_transform` (Standard in `ccdc`) |
 | `thermal_unit` | `10000.0` | the value 100 °C has after the transform (Celsius x 100: 10000; Celsius / 100: 1); `thermal_range`'s bounds, in degrees Celsius, resolve to `c * 100 * thermal_unit / 10000` |
 | `saturated` | `20000.0` | the value a saturated observation holds, or `None`; no public step reads it |
@@ -642,7 +643,7 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 ```
 
 - **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no band list can name them. The saturation list keeps the order the profile gives.
-- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None`, `saturated` the value a saturated observation holds or `None`.
+- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None`, `saturated` the value a saturated observation holds or `None`.
 - **QA**: `qa_table_builder`, a `ccdcpp.qa_tables` builder name or `None` for codes; `qa_table_options`, keyword arguments for it of exactly the types `ccdcpp.QA_TABLE_OPTIONS` lists.
 - A profile that breaks a layout rule (an unknown or repeated role, a saturation role the profile lacks, no green band, thermal in the saturation list, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
 

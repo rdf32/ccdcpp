@@ -101,12 +101,14 @@ struct Input
     // configuration says what to do with them, in physical units, and a run
     // translates once (Registry::resolve()).
     //
-    // reflectance_unit is the value one unit of reflectance has in the data:
-    // 10000 for Collection-1 DN (the default), 1 for reflectance. Every
-    // configuration value in reflectance (the Lasso's alpha and coef_floor,
-    // band_range's bounds, green_median's offset) is multiplied by it; 1e-4 x
-    // 10000, 0.04 x 10000, 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0 and
-    // 10000 exactly, so a DN input runs pyccd's DN values bit for bit.
+    // Reflectance r is held as r x reflectance_unit + reflectance_offset:
+    // 10000 and 0 for Collection-1 DN (the default), 1 and 0 for
+    // reflectance. A configuration's reflectance levels (band_range's
+    // bounds) resolve the same way; its reflectance differences and
+    // magnitudes (the Lasso's alpha and coef_floor, green_median's offset)
+    // are multiplied by reflectance_unit only. 1e-4 x 10000, 0.04 x 10000,
+    // 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0 and 10000 exactly, so a DN
+    // input runs pyccd's DN values bit for bit.
     //
     // The thermal transform (thermal_scale, thermal_offset) takes the thermal
     // row to a multiple of degrees Celsius, and thermal_unit says which: the
@@ -210,6 +212,11 @@ struct Input
     // out which of the three shapes it is.
     //--------------------------------------------------------------------------
     scalar_t reflectance_unit = 10000.0;
+
+    // The data's value of reflectance 0 (see reflectance_unit): 0 by
+    // default. Collection-2 DN, r = DN x 2.75e-5 - 0.2, is reflectance_unit
+    // 1 / 2.75e-5 and reflectance_offset 0.2 / 2.75e-5.
+    scalar_t reflectance_offset = 0.0;
 
     // Applied to the thermal row of Run::pixel's per-pixel copy before a
     // procedure whose configuration sets thermal_transform runs:
