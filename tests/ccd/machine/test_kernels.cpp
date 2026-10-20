@@ -39,7 +39,7 @@
 
 #include "ccd/core/constants.hpp"
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/kernels.hpp"
 #include "ccd/input/masked_series.hpp"
@@ -116,7 +116,7 @@ struct MaskedPixel
         : pixel(read_csv(path)), options(options_)
     {
         const index_t T = pixel.dates.size();
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(pixel.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(pixel.spectral.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(pixel.qas.data(), {T}),

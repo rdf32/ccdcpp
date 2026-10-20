@@ -1,6 +1,5 @@
 #include "ccd/regression/harmonic_basis.hpp"
 
-#include <cmath>
 
 namespace ccd
 {
@@ -13,40 +12,17 @@ void HarmonicBasis::build(
     samples_ = n;
     columns_.resize(CCD_MAX_COEFS * n);
 
-    const scalar_t omega = 2.0 * PI / AVG_DAYS_YR;
+    for (index_t i = 0; i < n; ++i)
+    {
+        const HarmonicTerms h = harmonic_terms(dates(i), num_coefficients);
 
-    for (index_t i = 0; i < n; ++i) {
-
-        const scalar_t t =
-            static_cast<scalar_t>(
-                dates(i)
-            );
-        const scalar_t wt = omega * t;
-
-        columns_[0 * n + i] = t;
-        columns_[1 * n + i] = std::cos(wt);
-        columns_[2 * n + i] = std::sin(wt);
-
-        columns_[3 * n + i] = scalar_t{0};
-        columns_[4 * n + i] = scalar_t{0};
-        columns_[5 * n + i] = scalar_t{0};
-        columns_[6 * n + i] = scalar_t{0};
-
-        if (num_coefficients >= 6) {
-            const scalar_t w2t =
-                static_cast<scalar_t>(2.0) * wt;
-
-            columns_[3 * n + i] = std::cos(w2t);
-            columns_[4 * n + i] = std::sin(w2t);
-        }
-
-        if (num_coefficients >= 8) {
-            const scalar_t w3t =
-                static_cast<scalar_t>(3.0) * wt;
-
-            columns_[5 * n + i] = std::cos(w3t);
-            columns_[6 * n + i] = std::sin(w3t);
-        }
+        columns_[0 * n + i] = static_cast<scalar_t>(dates(i));
+        columns_[1 * n + i] = h.cos1;
+        columns_[2 * n + i] = h.sin1;
+        columns_[3 * n + i] = h.cos2;
+        columns_[4 * n + i] = h.sin2;
+        columns_[5 * n + i] = h.cos3;
+        columns_[6 * n + i] = h.sin3;
     }
 }
 

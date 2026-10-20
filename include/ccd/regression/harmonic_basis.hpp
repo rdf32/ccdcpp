@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -16,7 +17,10 @@ namespace ccd
 //
 // The design matrix of CCDC's harmonic model over a set of dates, shared by
 // every regression on that model: the Lasso fits read it through
-// LassoWorkspace, the peek predictions read it directly.
+// LassoWorkspace, the peek predictions read it directly. Its harmonic
+// columns are harmonic_terms() of each date, the one place they are
+// computed, which any other fit on the model (a least-squares one, a sum of
+// rows) uses for its rows too.
 //
 // A model with q coefficients (q = 4, 6 or 8) is
 //
@@ -48,6 +52,36 @@ namespace ccd
 // storage keeps its capacity across build().
 //
 //==============================================================================
+
+// The harmonic terms of a num_coefficients-coefficient model at ordinal day
+// `day`, the basis' columns 1 to 6: cos(wt), sin(wt), cos(2wt), sin(2wt),
+// cos(3wt), sin(3wt) with w = 2 pi / AVG_DAYS_YR, the harmonics above the
+// model's 0, as the basis holds them bit for bit. The time column is the
+// caller's (the basis' is the day itself).
+struct HarmonicTerms
+{
+    scalar_t cos1, sin1, cos2 = 0, sin2 = 0, cos3 = 0, sin3 = 0;
+};
+
+inline HarmonicTerms harmonic_terms(std::int64_t day, index_t num_coefficients = 8)
+{
+    const scalar_t omega = 2.0 * PI / AVG_DAYS_YR;
+    const scalar_t wt = omega * static_cast<scalar_t>(day);
+    HarmonicTerms h{std::cos(wt), std::sin(wt)};
+    if (num_coefficients >= 6)
+    {
+        const scalar_t w2t = static_cast<scalar_t>(2.0) * wt;
+        h.cos2 = std::cos(w2t);
+        h.sin2 = std::sin(w2t);
+    }
+    if (num_coefficients >= 8)
+    {
+        const scalar_t w3t = static_cast<scalar_t>(3.0) * wt;
+        h.cos3 = std::cos(w3t);
+        h.sin3 = std::sin(w3t);
+    }
+    return h;
+}
 
 class HarmonicBasis
 {

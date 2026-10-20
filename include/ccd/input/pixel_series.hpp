@@ -18,29 +18,19 @@ namespace ccd
 
 //==============================================================================
 //
-// HarmonicWorkspace
+// PixelSeries
 //
-// Immutable workspace describing one pixel.
+// One pixel's data, as a run reads it: its dates, its (B, T) values (the
+// run's per-pixel copy, or the caller's array when it needs no conversion)
+// and its QA codes, all views, and the run's Input and resolved shared values
+// by reference. It holds no copy of either and computes nothing: the masks,
+// the harmonic bases, the QA statistics and the fits are the procedures'.
 //
-// Represents a single pixel time series with multiple bands / features/
-
-// Stores immutable observations together with reusable scratch
-// buffers used during harmonic fitting. The workspace itself
-// contains no fitting logic.
-//
-// Responsibilities:
-//
-//  • Validate input arrays
-//  • Store dates
-//  • Store spectral observations
-//  • Store QA observations
-//
-// Everything derived from these inputs (processing masks, harmonic basis,
-// quality statistics, etc.) is computed elsewhere.
+// MaskedData is the masked copy of a series' dates and values (apply_mask()).
 //
 //==============================================================================
 
-class HarmonicWorkspace
+class PixelSeries
 {
 public:
 
@@ -48,12 +38,12 @@ public:
     // Constructor
     //----------------------------------------------------------------------
 
-    // The workspace refers to `input` and `shared` (the run's resolved shared
+    // The series refers to `input` and `shared` (the run's resolved shared
     // values), as it refers to the arrays, and never writes them: what a
     // procedure derives per pixel (the Standard procedure's adjusted peek and
     // change threshold) it keeps in its own records. Both must outlive the
-    // workspace.
-    HarmonicWorkspace(
+    // series.
+    PixelSeries(
         ArrayView<const std::int64_t, 1> dates,
         ArrayView<const scalar_t, 2> spectral,
         ArrayView<const std::uint8_t, 1> qas,
@@ -70,10 +60,10 @@ public:
         validate();
     }
 
-    // A temporary would not outlive the workspace.
-    HarmonicWorkspace(ArrayView<const std::int64_t, 1>, ArrayView<const scalar_t, 2>,
+    // A temporary would not outlive the series.
+    PixelSeries(ArrayView<const std::int64_t, 1>, ArrayView<const scalar_t, 2>,
                       ArrayView<const std::uint8_t, 1>, Input&&, const config::Shared&) = delete;
-    HarmonicWorkspace(ArrayView<const std::int64_t, 1>, ArrayView<const scalar_t, 2>,
+    PixelSeries(ArrayView<const std::int64_t, 1>, ArrayView<const scalar_t, 2>,
                       ArrayView<const std::uint8_t, 1>, const Input&, config::Shared&&) = delete;
 
     //----------------------------------------------------------------------
@@ -185,13 +175,13 @@ struct MaskedData
 };
 
 MaskedData apply_mask(
-    const HarmonicWorkspace& workspace,
+    const PixelSeries& series,
     const ProcessingMask& mask
 );
 
 // apply_mask() into `out`, reusing its storage.
 void apply_mask(
-    const HarmonicWorkspace& workspace,
+    const PixelSeries& series,
     const ProcessingMask& mask,
     MaskedData& out
 );

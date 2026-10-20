@@ -11,7 +11,7 @@ namespace ccd
 
 FitResult fit_whole_series(
     PixelProcedure procedure,
-    const HarmonicWorkspace& hworkspace,
+    const PixelSeries& series,
     ProcessingMask mask,
     index_t min_observations,
     index_t num_coefficients,
@@ -37,7 +37,7 @@ FitResult fit_whole_series(
     // Mask dates, spectral given ProcessingMask
     //----------------------------------------------------------
     MaskedData masked_data =
-        apply_mask(hworkspace, mask);
+        apply_mask(series, mask);
 
     const auto masked_dates =
         masked_data.dates_view();
@@ -50,8 +50,8 @@ FitResult fit_whole_series(
     //----------------------------------------------------------
     FitResult results;
     ChangeModel result;
-    result.start_day = hworkspace.dates()(0);
-    result.end_day   = hworkspace.dates()(hworkspace.dates().size() - 1);
+    result.start_day = series.dates()(0);
+    result.end_day   = series.dates()(series.dates().size() - 1);
     result.break_day = result.end_day;
 
     result.observation_count = mask.count();

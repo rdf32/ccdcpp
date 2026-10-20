@@ -9,7 +9,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/input/pmask.hpp"
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/regression/robust_solver.hpp"

@@ -1,4 +1,4 @@
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 
 #include <stdexcept>
 
@@ -7,23 +7,23 @@ namespace ccd
 {
 
 MaskedData apply_mask(
-    const HarmonicWorkspace& workspace,
+    const PixelSeries& series,
     const ProcessingMask& mask
 )
 {   
     MaskedData out;
-    apply_mask(workspace, mask, out);
+    apply_mask(series, mask, out);
     return out;
 }
 
 void apply_mask(
-    const HarmonicWorkspace& workspace,
+    const PixelSeries& series,
     const ProcessingMask& mask,
     MaskedData& out
 )
 {   
-    const auto dates    = workspace.dates();
-    const auto spectral = workspace.spectral();
+    const auto dates    = series.dates();
+    const auto spectral = series.spectral();
 
     const index_t count = mask.count();
     const index_t bands = spectral.extent(0);

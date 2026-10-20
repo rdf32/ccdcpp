@@ -46,7 +46,7 @@
 #include <gtest/gtest.h>
 
 #include "ccd/config/registry.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/kernels.hpp"
 #include "ccd/strategies/model.hpp"

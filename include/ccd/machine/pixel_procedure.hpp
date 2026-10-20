@@ -3,7 +3,7 @@
 #include "ccd/core/types.hpp"
 #include "ccd/input/pmask.hpp"
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/preprocess.hpp"
 #include "ccd/input/quality.hpp"
 
@@ -65,11 +65,11 @@ struct PixelMode
 // kept observations and so no segment.
 //
 // `procedure` is PermanentSnow or InsufficientClear; `mask` is that
-// procedure's processing mask over hworkspace's series, built by the
+// procedure's processing mask over series's series, built by the
 // caller (Run::pixel builds it with the procedure's filter chain).
 FitResult fit_whole_series(
     PixelProcedure procedure,
-    const HarmonicWorkspace& hworkspace,
+    const PixelSeries& series,
     ProcessingMask mask,
     index_t min_observations,
     index_t num_coefficients,

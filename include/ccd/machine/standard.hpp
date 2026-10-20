@@ -289,11 +289,11 @@ struct State
     // Where the segment loop stopped (set with every Exit).
     Suspended suspended;
 
-    // Starts a pixel: Prepare, no exit, the series of `workspace` that
+    // Starts a pixel: Prepare, no exit, the series of `pixel` that
     // `mask` keeps, the cursor at 0, no segments and none carried, the
     // cadence and Initialize's criteria cleared, no extension trained, no
     // suspension.
-    void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);
+    void reset(const PixelSeries& pixel, ProcessingMask mask);
 
     // The pixel's result once Done: the segments (none after an early exit)
     // and the processing mask. Moves them out.
@@ -314,7 +314,7 @@ std::string summary(const State& state);
 struct Context
 {
     const config::Shared& shared;
-    const HarmonicWorkspace& pixel;
+    const PixelSeries& pixel;
     // The run's strategies, one per stage (strategies/stages.hpp).
     const Strategies& strategies;
     // Where the pixel reports what it does (results/diagnostics.hpp).
@@ -527,14 +527,14 @@ class Procedure
 
 public:
     //----------------------------------------------------------------------
-    // Fits the observations of hworkspace that `mask` keeps (the Standard
+    // Fits the observations of series that `mask` keeps (the Standard
     // procedure's processing mask over its series, built by the caller:
     // Run::pixel builds it with the procedure's filter chain), through
     // standard::run(). The result carries the mask, after an early exit
     // too.
     //----------------------------------------------------------------------
     FitResult run(
-        const HarmonicWorkspace& hworkspace,
+        const PixelSeries& series,
         ProcessingMask mask,
         const Strategies& strategies,
         Observe observe = {},
@@ -543,7 +543,7 @@ public:
 
     // run() from where a stored run stopped (standard::resume()).
     FitResult resume(
-        const HarmonicWorkspace& hworkspace,
+        const PixelSeries& series,
         ProcessingMask mask,
         const Strategies& strategies,
         const Suspended& from,
@@ -580,12 +580,12 @@ class Detector
 {
 public:
 
-    // Fits the observations of `hworkspace` that `mask` keeps (with the
+    // Fits the observations of `series` that `mask` keeps (with the
     // mode's extra mask steps applied) with the mode's procedure:
     // Procedure::run() with its cap, or the edge fit's whole_series().
     FitResult fit(
         const PixelMode& mode,
-        const HarmonicWorkspace& hworkspace,
+        const PixelSeries& series,
         ProcessingMask mask,
         const Strategies& strategies,
         Observe observe = {}
@@ -594,7 +594,7 @@ public:
     // The Standard machine from where a stored run stopped (Procedure::
     // resume()).
     FitResult resume(
-        const HarmonicWorkspace& hworkspace,
+        const PixelSeries& series,
         ProcessingMask mask,
         const Strategies& strategies,
         const Suspended& from,

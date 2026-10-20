@@ -10,7 +10,7 @@
 //     mask().count(); each drop moves the caller's window by the one rule
 //     (a bound above the dropped position moves down by one); a rejected
 //     Tmask removal changes nothing.
-//   * HarmonicWorkspace: refers to the caller's input and shared values and
+//   * PixelSeries: refers to the caller's input and shared values and
 //     gives only const access to them.
 //
 //==============================================================================
@@ -24,7 +24,7 @@
 
 #include <gtest/gtest.h>
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/machine/standard.hpp"
@@ -55,9 +55,9 @@ struct Pixel
                 spectral[b * T + t] = 1000.0 * b + t;
     }
 
-    ccd::HarmonicWorkspace workspace() const
+    ccd::PixelSeries workspace() const
     {
-        return ccd::HarmonicWorkspace(
+        return ccd::PixelSeries(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {B, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
@@ -77,7 +77,7 @@ ccd::ProcessingMask thinned(index_t T)
 
 // The MaskedSeries invariant: the same observations apply_mask() gives for its
 // mask, in the same order, and size() == mask().count().
-void expect_in_step(const ccd::HarmonicWorkspace& ws, const ccd::MaskedSeries& s)
+void expect_in_step(const ccd::PixelSeries& ws, const ccd::MaskedSeries& s)
 {
     const ccd::MaskedData expected = ccd::apply_mask(ws, s.mask());
 
@@ -285,7 +285,7 @@ TEST(Variogram, ReadsAndUsable)
 // The workspace refers to the caller's input and shared values, cannot be
 // built from a temporary, and gives only const access: nothing below
 // Run::pixel can write them.
-TEST(HarmonicWorkspace, RefersToTheCallersInputConstOnly)
+TEST(PixelSeries, RefersToTheCallersInputConstOnly)
 {
     const Pixel px(10);
     const auto ws = px.workspace();
@@ -295,13 +295,13 @@ TEST(HarmonicWorkspace, RefersToTheCallersInputConstOnly)
     using Dates = ccd::ArrayView<const std::int64_t, 1>;
     using Spectral = ccd::ArrayView<const double, 2>;
     using Qas = ccd::ArrayView<const std::uint8_t, 1>;
-    static_assert(!std::is_constructible_v<ccd::HarmonicWorkspace,
+    static_assert(!std::is_constructible_v<ccd::PixelSeries,
         Dates, Spectral, Qas, ccd::Input&&, const ccd::config::Shared&>);
-    static_assert(!std::is_constructible_v<ccd::HarmonicWorkspace,
+    static_assert(!std::is_constructible_v<ccd::PixelSeries,
         Dates, Spectral, Qas, const ccd::Input&, ccd::config::Shared&&>);
     static_assert(std::is_same_v<
-        decltype(std::declval<ccd::HarmonicWorkspace&>().input()), const ccd::Input&>);
+        decltype(std::declval<ccd::PixelSeries&>().input()), const ccd::Input&>);
     static_assert(std::is_same_v<
-        decltype(std::declval<ccd::HarmonicWorkspace&>().shared()),
+        decltype(std::declval<ccd::PixelSeries&>().shared()),
         const ccd::config::Shared&>);
 }

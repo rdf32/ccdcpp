@@ -18,7 +18,7 @@
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/machine/fit.hpp"
@@ -344,7 +344,7 @@ TEST(CCD, DetectStandard)
 
     const ccd::Input hoptions;
     const ccd::config::Shared hshared;
-    ccd::HarmonicWorkspace hworkspace(
+    ccd::PixelSeries series(
         dates,
         spectral,
         qas,
@@ -361,8 +361,8 @@ TEST(CCD, DetectStandard)
 
     ccd::standard::Procedure fit_procedure;
     ccd::FitResult result = fit_procedure.run(
-        hworkspace,
-        golden::chain_mask(hworkspace, "standard", golden::ccdc()),
+        series,
+        golden::chain_mask(series, "standard", golden::ccdc()),
         golden::strategies_of()
     );
 

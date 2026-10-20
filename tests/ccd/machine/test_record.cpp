@@ -204,7 +204,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
                 block[a.band * T + t] = block[a.band * T + t] * a.scale + a.offset;
         }
         ccd::MaskedSeries series;
-        const ccd::HarmonicWorkspace ws(
+        const ccd::PixelSeries ws(
             dates_of(p), ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
             qas_of(p), p.h, shared);
         series.reset(ws, r.result.mask);

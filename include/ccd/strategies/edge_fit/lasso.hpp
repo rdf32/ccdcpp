@@ -42,7 +42,7 @@ struct LassoEdges final : EdgeFit
     ChangeModel catch_window(ArrayView<const std::int64_t, 1> dates,
                              ArrayView<const scalar_t, 2> spectral, const Window& window,
                              CurveQA curve_qa, Scratch& scratch) const override;
-    FitResult whole_series(PixelProcedure procedure, const HarmonicWorkspace& pixel,
+    FitResult whole_series(PixelProcedure procedure, const PixelSeries& pixel,
                            ProcessingMask mask, Scratch& scratch) const override;
 
 private:

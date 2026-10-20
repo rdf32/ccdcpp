@@ -8,7 +8,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/input/pmask.hpp"
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/machine/fit.hpp"
 
 namespace ccd
@@ -43,8 +43,8 @@ class MaskedSeries
 {
 public:
 
-    // The observations of `workspace` that `mask` keeps.
-    void reset(const HarmonicWorkspace& workspace, ProcessingMask mask);
+    // The observations of `pixel` that `mask` keeps.
+    void reset(const PixelSeries& pixel, ProcessingMask mask);
 
     index_t size() const
     {

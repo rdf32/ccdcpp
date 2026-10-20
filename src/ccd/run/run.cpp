@@ -258,7 +258,7 @@ ArrayView<const scalar_t, 2> pixel_values(
 // Step 4. The processing mask: the procedure's chain over the pixel.
 ProcessingMask build_mask(
     const preprocess::Chain& chain,
-    const HarmonicWorkspace& pixel
+    const PixelSeries& pixel
 )
 {
     ProcessingMask mask;
@@ -357,7 +357,7 @@ FitResult run_steps(
 
     const preprocess::ProcedurePlan& steps = procedure_plan(procedure, plan);
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
-    const HarmonicWorkspace pixel(dates, values, qas, input, shared);
+    const PixelSeries pixel(dates, values, qas, input, shared);
     LOG_DEBUG("initial spectral: " << pixel.spectral());
 
     ProcessingMask mask = build_mask(steps.chain, pixel);

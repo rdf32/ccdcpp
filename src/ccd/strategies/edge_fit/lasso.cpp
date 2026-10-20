@@ -64,7 +64,7 @@ ChangeModel LassoEdges::catch_window(ArrayView<const std::int64_t, 1> dates,
                          s.solver);
 }
 
-FitResult LassoEdges::whole_series(PixelProcedure procedure, const HarmonicWorkspace& pixel,
+FitResult LassoEdges::whole_series(PixelProcedure procedure, const PixelSeries& pixel,
                                    ProcessingMask mask, Scratch& scratch) const
 {
     EdgeScratch& s = static_cast<EdgeScratch&>(scratch);

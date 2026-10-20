@@ -10,7 +10,7 @@
 #include "ccd/input/pmask.hpp"
 #include "ccd/core/types.hpp"
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/input/quality.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
@@ -457,7 +457,7 @@ struct EdgeFit
     virtual ChangeModel catch_window(ArrayView<const std::int64_t, 1> dates,
                                      ArrayView<const scalar_t, 2> spectral, const Window& window,
                                      CurveQA curve_qa, Scratch& scratch) const = 0;
-    virtual FitResult whole_series(PixelProcedure procedure, const HarmonicWorkspace& pixel,
+    virtual FitResult whole_series(PixelProcedure procedure, const PixelSeries& pixel,
                                    ProcessingMask mask, Scratch& scratch) const = 0;
 };
 

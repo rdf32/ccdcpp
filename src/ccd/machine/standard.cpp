@@ -162,12 +162,12 @@ const char* to_string(Exit exit)
     return "?";
 }
 
-void State::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
+void State::reset(const PixelSeries& pixel, ProcessingMask mask)
 {
     phase = Phase::Prepare;
     exit = Exit::None;
 
-    series.reset(workspace, std::move(mask));
+    series.reset(pixel, std::move(mask));
     cursor = Cursor{};
     segments.clear();
     carried = 0;
@@ -1161,7 +1161,7 @@ FitResult resume(
 }
 
 FitResult Procedure::resume(
-    const HarmonicWorkspace& hworkspace,
+    const PixelSeries& series,
     ProcessingMask mask,
     const Strategies& strategies,
     const Suspended& from,
@@ -1169,13 +1169,13 @@ FitResult Procedure::resume(
     Observe observe,
     bool carried_change
 ) {
-    const Context context{hworkspace.shared(), hworkspace, strategies, observe};
+    const Context context{series.shared(), series, strategies, observe};
     return standard::resume(context, state_, std::move(mask), from, excluded_days,
                             carried_change);
 }
 
 FitResult Detector::resume(
-    const HarmonicWorkspace& hworkspace,
+    const PixelSeries& series,
     ProcessingMask mask,
     const Strategies& strategies,
     const Suspended& from,
@@ -1184,20 +1184,20 @@ FitResult Detector::resume(
     bool carried_change
 )
 {
-    return procedure_.resume(hworkspace, std::move(mask), strategies, from,
+    return procedure_.resume(series, std::move(mask), strategies, from,
                              excluded_days, observe, carried_change);
 }
 
 FitResult Procedure::run(
-    const HarmonicWorkspace& hworkspace,
+    const PixelSeries& series,
     ProcessingMask mask,
     const Strategies& strategies,
     Observe observe,
     index_t max_coefficients
 ) {
     const Context context{
-        hworkspace.shared(),
-        hworkspace,
+        series.shared(),
+        series,
         strategies,
         observe,
         max_coefficients
@@ -1214,7 +1214,7 @@ const Suspended& Procedure::suspended() const
 
 FitResult Detector::fit(
     const PixelMode& mode,
-    const HarmonicWorkspace& hworkspace,
+    const PixelSeries& series,
     ProcessingMask mask,
     const Strategies& strategies,
     Observe observe
@@ -1223,12 +1223,12 @@ FitResult Detector::fit(
     if (mode.procedure == PixelProcedure::Standard)
     {
         LOG_DEBUG("Standard");
-        return procedure_.run(hworkspace, std::move(mask), strategies, observe,
+        return procedure_.run(series, std::move(mask), strategies, observe,
                               mode.max_coefficients);
     }
 
     return strategies.edge_fit->whole_series(
-        mode.procedure, hworkspace, std::move(mask),
+        mode.procedure, series, std::move(mask),
         edges_.get(strategies.edge_fit, [](const EdgeFit& e) { return e.make_scratch(); }));
 }
 

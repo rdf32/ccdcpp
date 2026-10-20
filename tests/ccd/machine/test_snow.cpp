@@ -13,7 +13,7 @@
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
 
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 
 #include "ccd/machine/fit.hpp"
 #include "ccd/input/mask/filter.hpp"
@@ -352,7 +352,7 @@ TEST(CCD, DetectSnow)
 
     const ccd::Input hoptions;
     const ccd::config::Shared hshared;
-    ccd::HarmonicWorkspace hworkspace(
+    ccd::PixelSeries series(
         dates,
         spectral,
         qas,
@@ -366,8 +366,8 @@ TEST(CCD, DetectSnow)
 
     ccd::FitResult result = ccd::fit_whole_series(
         ccd::PixelProcedure::PermanentSnow,
-        hworkspace,
-        golden::chain_mask(hworkspace, "snow", golden::ccdc()),
+        series,
+        golden::chain_mask(series, "snow", golden::ccdc()),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(

@@ -65,10 +65,10 @@ void clear_position(
 
 } // namespace
 
-void MaskedSeries::reset(const HarmonicWorkspace& workspace, ProcessingMask mask)
+void MaskedSeries::reset(const PixelSeries& pixel, ProcessingMask mask)
 {
     mask_ = std::move(mask);
-    apply_mask(workspace, mask_, kept_);
+    apply_mask(pixel, mask_, kept_);
 }
 
 index_t MaskedSeries::count_until(std::int64_t day) const

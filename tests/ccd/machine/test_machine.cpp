@@ -42,7 +42,7 @@
 #include "../golden/specs.hpp"
 
 #include "ccd/ccd.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/preprocess.hpp"
 #include "ccd/machine/machine.hpp"
@@ -81,7 +81,7 @@ struct Record
     const ccd::config::Shared& shared = resolved.shared;
     ccd::LassoOptions lasso_options;   // the kernels' solver, at the preset's values
 
-    ccd::HarmonicWorkspace workspace;
+    ccd::PixelSeries workspace;
     ccd::LassoWorkspace lasso{0};
     ccd::LassoSolver solver;
     ccd::Strategies strategies;
@@ -1337,7 +1337,7 @@ MachineRun run_machine(const golden::CharPixel& p)
             block[affine.band * T + t] = block[affine.band * T + t] * affine.scale + affine.offset;
     }
 
-    const ccd::HarmonicWorkspace workspace(
+    const ccd::PixelSeries workspace(
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
@@ -1474,7 +1474,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
             for (index_t t = 0; t < T; ++t)
                 block[affine.band * T + t] = block[affine.band * T + t] * affine.scale + affine.offset;
         }
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
@@ -1561,7 +1561,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
             for (index_t t = 0; t < T; ++t)
                 block[affine.band * T + t] = block[affine.band * T + t] * affine.scale + affine.offset;
         }
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),

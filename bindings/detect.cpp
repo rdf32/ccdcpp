@@ -13,7 +13,7 @@
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
 #include "ccd/ccd.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/input/mask/preprocess.hpp"

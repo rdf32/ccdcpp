@@ -24,7 +24,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/input/pmask.hpp"
 
 #include "../golden/config.hpp"
@@ -266,7 +266,7 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
             "band_range", "max_inclusive", ccd::config::flag(mode.hi_inclusive));
 
         const ccd::config::Shared shared = golden::shared_of(config);
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {B, T}),
@@ -293,7 +293,7 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
             "thermal_range", "max_inclusive", ccd::config::flag(mode.hi_inclusive));
 
         const ccd::config::Shared shared = golden::shared_of(config);
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {B, T}),
@@ -349,7 +349,7 @@ struct Series
         const ccd::config::Config config = config_with(scope);
         const ccd::config::Shared shared = golden::shared_of(config);
 
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {7, T}),
@@ -434,7 +434,7 @@ TEST(GreenScope, StandardFilterIgnoresIt)
         const ccd::Input h;
         const ccd::config::Config config = config_with(scope);
         const ccd::config::Shared shared = golden::shared_of(config);
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(s.dates.data(), {s.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 s.spectral.data(), {7, s.T}),

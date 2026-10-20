@@ -93,7 +93,7 @@
 #include "ccd/ccd.hpp"
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
@@ -301,7 +301,7 @@ ccd::FitResult run_insufficient_clear(
         obs.qas.data(), {obs.T});
 
     const ccd::config::Shared shared = golden::shared_of(config, h);
-    ccd::HarmonicWorkspace hworkspace(dates, spec, qas, h, shared);
+    ccd::PixelSeries series(dates, spec, qas, h, shared);
     const ccd::config::ConfigTree tree = golden::resolved().stages;
 
     ccd::LassoSolver solver(lo);
@@ -309,8 +309,8 @@ ccd::FitResult run_insufficient_clear(
 
     return ccd::fit_whole_series(
         ccd::PixelProcedure::InsufficientClear,
-        hworkspace,
-        golden::chain_mask(hworkspace, "insufficient_clear", config),
+        series,
+        golden::chain_mask(series, "insufficient_clear", config),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(tree, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(
@@ -472,7 +472,7 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     const auto filter_mask = [&obs](const std::vector<ccd::scalar_t>& spectral,
                                     const ccd::Input& h, const ccd::config::Config& config) {
         const ccd::config::Shared shared = golden::shared_of(config, h);
-        const ccd::HarmonicWorkspace workspace(
+        const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.T}),

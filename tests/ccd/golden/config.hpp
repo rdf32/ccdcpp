@@ -13,7 +13,7 @@
 #include <variant>
 
 #include "ccd/config/registry.hpp"
-#include "ccd/input/harmonic.hpp"
+#include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/preprocess.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/run/algorithm.hpp"
@@ -160,7 +160,7 @@ inline const ccd::preprocess::ProcedurePlan& procedure_of(
 // The processing mask of procedure `procedure`'s chain in `config`, resolved
 // against the workspace's input, over its spectral block as it is (no
 // transform applied).
-inline ccd::ProcessingMask chain_mask(const ccd::HarmonicWorkspace& workspace,
+inline ccd::ProcessingMask chain_mask(const ccd::PixelSeries& workspace,
                                       const std::string& procedure,
                                       const ccd::config::Config& config = pyccd())
 {
