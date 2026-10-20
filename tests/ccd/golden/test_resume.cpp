@@ -649,7 +649,7 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
             ccd::run_pixel(left_out, s.date_view(), s.spectral_view(), s.qa_view());
 
         EXPECT_EQ(dump(a.result), dump(b.result)) << s.name;
-        EXPECT_EQ(a.header.options_digest, b.header.options_digest) << s.name;
+        EXPECT_EQ(a.header.digest, b.header.digest) << s.name;
     }
 
     const std::vector<Series> all = golden::synthetic_series();

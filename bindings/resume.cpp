@@ -103,7 +103,7 @@ py::dict header_to_python(const ccd::ResumeHeader& header)
     py::dict d;
     d["format"] = header.format;
     d["results_version"] = header.results_version;
-    d["options_digest"] = header.options_digest;
+    d["digest"] = header.digest;
     d["series_end"] = header.series_end;
     d["statistics_end"] = header.statistics_end;
     return d;
@@ -115,7 +115,7 @@ ccd::ResumeHeader header_from_python(const py::dict& d)
     ccd::ResumeHeader header;
     header.format = count_of<std::uint16_t>(d, "format", what);
     header.results_version = count_of<std::uint32_t>(d, "results_version", what);
-    header.options_digest = bits_of(d, "options_digest", what);
+    header.digest = bits_of(d, "digest", what);
     header.series_end = field(d, "series_end", what).cast<std::int64_t>();
     header.statistics_end = field(d, "statistics_end", what).cast<std::int64_t>();
     return header;

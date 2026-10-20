@@ -7,7 +7,7 @@
 //     written before it, the provisional one after it, the window at the
 //     series end) and its excluded days are the filter mask less the
 //     result's.
-//   * OptionsDigest.*: equal options, equal digests; a change to any group
+//   * Digest.*: equal options, equal digests; a change to any group
 //     of fields, the plan or the QA table, a different one.
 //   * InputFingerprint.*: what the fingerprint reads and what it leaves out.
 //
@@ -132,7 +132,7 @@ TEST(Record, TheHeaderNamesTheRun)
     EXPECT_EQ(r.header.series_end, p.dates.back());
     EXPECT_EQ(r.header.statistics_end, p.dates.back());
     const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
-    EXPECT_EQ(r.header.options_digest, resolved.digest);
+    EXPECT_EQ(r.header.digest, resolved.digest);
 }
 
 TEST(Record, EachExitAndItsSuspension)
@@ -302,7 +302,7 @@ TEST(Record, TheExcludedDaysAreTheMachinesDrops)
 }
 
 //------------------------------------------------------------------------------
-// OptionsDigest
+// Digest
 //------------------------------------------------------------------------------
 
 namespace
@@ -317,7 +317,7 @@ std::uint64_t digest_of(
 
 } // namespace
 
-TEST(OptionsDigest, EqualOptionsEqualDigests)
+TEST(Digest, EqualOptionsEqualDigests)
 {
     EXPECT_EQ(digest_of(ccd::Input{}), digest_of(ccd::Input{}));
     EXPECT_EQ(digest_of(golden::physical_input()), digest_of(golden::physical_input()));
@@ -329,7 +329,7 @@ TEST(OptionsDigest, EqualOptionsEqualDigests)
 }
 
 // The configuration is in the digest: the preset's, and another's.
-TEST(OptionsDigest, TheConfigurationMoves)
+TEST(Digest, TheConfigurationMoves)
 {
     const ccd::Input h;
     ccd::config::Config tree = golden::pyccd();
@@ -341,7 +341,7 @@ TEST(OptionsDigest, TheConfigurationMoves)
     EXPECT_EQ(other, golden::resolved(tree, h).digest);
 }
 
-TEST(OptionsDigest, EveryGroupOfFieldsMoves)
+TEST(Digest, EveryGroupOfFieldsMoves)
 {
     const std::uint64_t base = digest_of(ccd::Input{});
 
@@ -438,7 +438,7 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
     EXPECT_GE(parameters, 15u);
 }
 
-TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)
+TEST(Digest, ThePreprocessingAndTheQaTableMove)
 {
     const ccd::Input h;
     const std::uint64_t base = digest_of(h);
@@ -514,7 +514,7 @@ TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)
 // fails here is a reminder, not a platform difference. The configuration's
 // part of the digest is of its values by name, preprocessing included, so no
 // struct of the plan needs one.
-TEST(OptionsDigest, TheInputIsTheOneItWasWrittenFor)
+TEST(Digest, TheInputIsTheOneItWasWrittenFor)
 {
     EXPECT_EQ(sizeof(ccd::Input), 112u);
 }

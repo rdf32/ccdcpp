@@ -67,7 +67,7 @@ struct AddQa
 // thermal_range: keep only the observations whose thermal row lies within
 // (min, max), in degrees Celsius resolved to the row's unit after the
 // input's transform; a procedure without the transform tests the row as the
-// input holds it (see input.hpp's "Units" block). An input without a
+// input holds it (see docs/units.md). An input without a
 // "thermal" row skips it.
 struct ThermalRange
 {

@@ -35,7 +35,7 @@ A profile for another sensor is a :class:`ccdcpp.SensorProfile` call; the
 module docstring of ``ccdcpp.profiles`` has an example.
 """
 from .profiles import (
-    CELSIUS_HUNDREDTHS,
+    CELSIUS_OVER_100,
     DN,
     KELVIN_TENTHS,
     REFLECTANCE,
@@ -96,7 +96,7 @@ def landsat_c1_physical():
     return SensorProfile(
         name="landsat_c1_physical",
         units=REFLECTANCE,
-        thermal=CELSIUS_HUNDREDTHS,
+        thermal=CELSIUS_OVER_100,
         **_LANDSAT,
     )
 
@@ -115,7 +115,7 @@ def landsat_c2():
     return SensorProfile(
         name="landsat_c2",
         units=REFLECTANCE,
-        thermal=CELSIUS_HUNDREDTHS,
+        thermal=CELSIUS_OVER_100,
         qa_table_builder="landsat_c2_qa_pixel",
         **_LANDSAT,
     )
@@ -177,7 +177,7 @@ def hls_l30():
         name="hls_l30",
         band_names=("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10"),
         roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"),
-        thermal=CELSIUS_HUNDREDTHS,
+        thermal=CELSIUS_OVER_100,
         qa_table_builder="hls_fmask",
         **_PHYSICAL,
     )

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <list>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -29,7 +31,10 @@ namespace ccd
 // strategies the first time it sees that input, and returns the same
 // Resolved for every later call on an equal input (by its digest, then
 // field by field), behind a mutex. A run takes its Resolved from it, so a
-// call resolves and builds nothing it has done before.
+// call resolves and builds nothing it has done before. The cache holds the
+// CACHE_CAPACITY inputs used last: one more evicts the least recently used,
+// which a later call on it resolves again (a run that holds its Resolved
+// keeps it alive).
 //
 // Algorithm::preset(name) gives the shared, built-once Algorithm of a preset
 // of the library's registry.
@@ -39,6 +44,9 @@ namespace ccd
 class Algorithm
 {
 public:
+
+    // The inputs whose resolutions an Algorithm keeps.
+    static constexpr std::size_t CACHE_CAPACITY = 16;
 
     // Throws std::invalid_argument for what Registry::check() refuses.
     // `registry` must outlive the Algorithm (the library's does).
@@ -54,7 +62,7 @@ public:
     const config::Registry& registry() const { return *registry_; }
 
     // The configuration resolved against `input` (Registry::resolve()),
-    // cached per input. Throws what Registry::resolve() throws; `input` must
+    // cached per input, the CACHE_CAPACITY used last. Throws what Registry::resolve() throws; `input` must
     // pass validate() (ccd.hpp).
     std::shared_ptr<const config::Resolved> for_input(const Input& input) const;
 
@@ -63,9 +71,18 @@ private:
     config::Config config_;
     const config::Registry* registry_;
 
+    // One cached resolution: the input's digest, the input, and what it
+    // resolved to.
+    struct Cached
+    {
+        std::uint64_t key;
+        Input input;
+        std::shared_ptr<const config::Resolved> resolved;
+    };
+
     mutable std::mutex mutex_;
-    mutable std::multimap<std::uint64_t, std::pair<Input, std::shared_ptr<const config::Resolved>>>
-        resolved_;
+    // Most recently used first; at most CACHE_CAPACITY.
+    mutable std::list<Cached> resolved_;
 };
 
 using AlgorithmPtr = std::shared_ptr<const Algorithm>;

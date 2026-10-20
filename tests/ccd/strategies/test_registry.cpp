@@ -1235,6 +1235,38 @@ TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
         "parameter 'codes' holds 256; a code must be in [0, 255]");
 }
 
+// An Algorithm resolves an input once and keeps the CACHE_CAPACITY inputs
+// used last; one more evicts the least recently used, which resolves again
+// to an equal Resolved.
+TEST(Algorithm, CachesTheInputsUsedLast)
+{
+    const ccd::Algorithm algorithm(golden::ccdc());
+    const auto input = [](int i)
+    {
+        ccd::Input h;
+        h.qa_occlusion = static_cast<std::uint8_t>(20 + i);
+        return h;
+    };
+    const auto first = algorithm.for_input(input(0));
+    EXPECT_EQ(algorithm.for_input(input(0)), first);
+
+    // Inputs 1..CAPACITY - 1 fill the cache; input 0, used again, stays.
+    const int capacity = static_cast<int>(ccd::Algorithm::CACHE_CAPACITY);
+    std::vector<std::shared_ptr<const ccd::config::Resolved>> held;
+    for (int i = 1; i < capacity; ++i)
+        held.push_back(algorithm.for_input(input(i)));
+    EXPECT_EQ(algorithm.for_input(input(0)), first);
+    EXPECT_EQ(algorithm.for_input(input(1)), held[0]);
+
+    // One more evicts the least recently used: input 2.
+    const auto extra = algorithm.for_input(input(capacity));
+    EXPECT_EQ(algorithm.for_input(input(0)), first);
+    const auto again = algorithm.for_input(input(2));
+    EXPECT_NE(again, held[1]);
+    EXPECT_EQ(again->digest, held[1]->digest);
+    EXPECT_NE(extra->digest, first->digest);
+}
+
 // What an Algorithm refuses in the preprocessing when it is built, before
 // any input.
 TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)

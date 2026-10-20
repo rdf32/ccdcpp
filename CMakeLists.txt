@@ -501,9 +501,10 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
-    # The preprocessing plan: default_plan() against the hand-written
-    # chains, custom plans through run_pixel(), plan validation, and a
-    # microbenchmark of apply(). See tests/ccd/machine/test_preprocess.cpp.
+    # The preprocessing plan: the "ccdc" plan (plan_of()) against the
+    # hand-written chains, custom plans through run_pixel(), plan
+    # validation, and a microbenchmark of apply(). See
+    # tests/ccd/machine/test_preprocess.cpp.
     add_executable(
         test_preprocess
 

@@ -350,13 +350,13 @@ TEST(CCD, DetectSnow)
         {data.dates.size()}
     );
 
-    const ccd::Input hoptions;
+    const ccd::Input input;
     const ccd::config::Shared hshared;
     ccd::PixelSeries series(
         dates,
         spectral,
         qas,
-        hoptions,
+        input,
         hshared
     );
 

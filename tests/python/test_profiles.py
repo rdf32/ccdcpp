@@ -663,12 +663,12 @@ class Bounds(unittest.TestCase):
 
     def test_units_hashable_and_picklable(self):
         for u in (ccdcpp.DN, ccdcpp.REFLECTANCE, ccdcpp.KELVIN_TENTHS,
-                  ccdcpp.CELSIUS_HUNDREDTHS):
+                  ccdcpp.CELSIUS_OVER_100):
             self.assertEqual(pickle.loads(pickle.dumps(u)), u)
             self.assertEqual(hash(u), hash(dataclasses.replace(u)))
         self.assertNotEqual(ccdcpp.DN, ccdcpp.REFLECTANCE)
         self.assertEqual(ccdcpp.Units(1.0), ccdcpp.REFLECTANCE)
-        self.assertEqual(ccdcpp.Thermal(1.0, 0.0, 1.0), ccdcpp.CELSIUS_HUNDREDTHS)
+        self.assertEqual(ccdcpp.Thermal(1.0, 0.0, 1.0), ccdcpp.CELSIUS_OVER_100)
 
 
 class DateOrder(unittest.TestCase):

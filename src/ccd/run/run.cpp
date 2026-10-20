@@ -100,7 +100,7 @@ void check_resume(
             "the resume record's results version is " +
             std::to_string(from.results_version) + "; this ccdcpp's is " +
             std::to_string(RESULTS_VERSION) + ": rerun in full");
-    if (from.options_digest != digest)
+    if (from.digest != digest)
         throw std::invalid_argument(
             "the resume record was made with another input or configuration");
     if (dates.size() == 0 || dates(dates.size() - 1) < from.series_end)
@@ -421,7 +421,7 @@ Run::Run(
 
     if (spec_.record || resume)
     {
-        header_.options_digest = resolved_->digest;
+        header_.digest = resolved_->digest;
         header_.series_end = dates.size() > 0
             ? dates(dates.size() - 1)
             : std::numeric_limits<std::int64_t>::min();
@@ -430,7 +430,7 @@ Run::Run(
 
     if (resume)
     {
-        check_resume(*resume, header_.options_digest, dates);
+        check_resume(*resume, header_.digest, dates);
         header_.statistics_end = resume->statistics_end;
         resume_ = *resume;
         // A resumed run reruns what it does not continue under the stored

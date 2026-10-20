@@ -184,7 +184,7 @@ def nlcd_blanked(columns):
 
 class Cube(unittest.TestCase):
 
-    def test_resume_cube_columns_equals_the_capped_full_run(self):
+    def test_resume_cube_equals_the_capped_full_run(self):
         dates, spectral, qas = cube(range(12), 3, 4)
         for cut in (CUT_2010, CUT_2019):
             n = upto(dates, cut)

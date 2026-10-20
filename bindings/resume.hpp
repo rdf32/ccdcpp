@@ -3,7 +3,7 @@
 // The resume record as Python data (bindings/resume.cpp): the header as a
 // dict, one pixel's record as a dict, a cube's records as named columns in
 // raster order, and the stored segments a resume takes back, in the shapes
-// detect() and detect_cube_columns() return them.
+// detect() and detect_cube() return them.
 
 #include <cstdint>
 #include <vector>
@@ -34,7 +34,7 @@ py::dict record_columns(
 );
 
 // What run_cube()'s resume reads: the header, record_columns()'s dict and
-// detect_cube_columns()'s segment columns.
+// detect_cube()'s segment columns.
 ccd::CubeResumeFrom cube_from_python(
     const py::dict& header,
     const py::dict& records,

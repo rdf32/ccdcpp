@@ -9,22 +9,23 @@ segment reports. Each stage is decided by a **strategy** chosen by name, with pa
 stage its strategy and that strategy's parameters, and for every procedure its
 **preprocessing**: the steps that build the processing mask.
 
-> **Step 5 state.** The input says only how to read the data. The configuration says what to do
-> with it, in physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN
-> check, exactly as today.
+> The input says only how to read the data. The configuration says what to do with it, in
+> physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
+> exactly as today.
 >
 > - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False,
 >   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, input,
 >   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
->   masks=False)`, which returns columns (with `masks=True` also every pixel's processing mask,
->   one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel. `resume=` is an earlier
->   call's output made with `record=True`. C++: `ccd::run_pixel` / `ccd::run_cube` with
->   `RunSpec{input, algorithm, record, ...}`.
-> - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
->   decoder of raw QA, or none), `roles`, `reflectance_unit` and
->   `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and 0), `thermal_scale`/`thermal_offset` with
->   `thermal_unit` (the value of 100 °C after the transform) and `saturated`.
->   `input=` takes an `Input` or a `SensorProfile`; a profile describes the data only.
+>   masks=False)`, which returns columns (with `masks=True` also every pixel's processing
+>   mask, one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
+>   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::run_pixel` /
+>   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
+> - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
+>   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
+>   or none), `roles`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
+>   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_unit` (the value of
+>   100 °C after the transform) and `saturated`. `input=` takes an `Input` or a
+>   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
 >   probabilities, bands by role, QA codes by name). It is checked and compiled when built and
@@ -32,8 +33,6 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >   `config=` is a `Config` or a preset's name.
 > - **"ccdc" has no statistics cutoff**; pyccd's is
 >   `ccdcpp.config("ccdc").replace(shared__stat_ord=736694)`.
->
-> Some sections below still describe earlier details; the full documentation comes later.
 
 The input (`ccdcpp.Input`, or a `SensorProfile` that builds one) says how to read the data. The
 configuration is the algorithm, in physical units, and means the same on every input. A run
@@ -107,7 +106,7 @@ against its input once: a reflectance level (unit `reflectance`, band_range's bo
 and 0, reflectance 1 and 0), degrees Celsius `c` as `c * 100 * thermal_unit / 10000`, roles to
 rows, names to codes.
 `cfg.resolve(input)` shows the values a run uses; `ccdcpp.plan_of(cfg, input)` the
-preprocessing plan.
+preprocessing plan. [units.md](units.md) has the input's units and the physical-unit input.
 
 ### Preprocessing
 
@@ -227,6 +226,6 @@ extension directory (CMake's `CCD_EXTENSIONS`; see
 ## Resume records
 
 A record carries the digest of the input (its QA table included) and the resolved configuration
-(`ResumeHeader::options_digest`, the resolution's digest): it continues only under the same
+(`ResumeHeader::digest`, the resolution's digest): it continues only under the same
 ones, and a resume under another input or configuration raises `ValueError` before any pixel
 runs.

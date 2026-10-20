@@ -29,14 +29,18 @@ std::shared_ptr<const config::Resolved> Algorithm::for_input(const Input& input)
     const std::uint64_t key = digest(input);
 
     const std::lock_guard<std::mutex> lock(mutex_);
-    const auto [first, last] = resolved_.equal_range(key);
-    for (auto it = first; it != last; ++it)
-        if (it->second.first == input)
-            return it->second.second;
+    for (auto it = resolved_.begin(); it != resolved_.end(); ++it)
+        if (it->key == key && it->input == input)
+        {
+            resolved_.splice(resolved_.begin(), resolved_, it);
+            return it->resolved;
+        }
 
     auto resolved =
         std::make_shared<const config::Resolved>(registry_->resolve(config_, input));
-    resolved_.emplace(key, std::make_pair(input, resolved));
+    resolved_.push_front(Cached{key, input, resolved});
+    if (resolved_.size() > CACHE_CAPACITY)
+        resolved_.pop_back();
     return resolved;
 }
 

@@ -49,7 +49,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   reflectance_offset`, reflectance differences (`alpha`, `coef_floor`, the green median's
   offset) as `r * reflectance_unit`, degrees Celsius `c` as `c * 100 * thermal_unit / 10000`, bands are named by role and QA codes by name, all when the run resolves the
   configuration against its input, once per input (`ccd::Algorithm`, which caches the
-  resolution).
+  resolutions of the 16 inputs used last).
 - **The preprocessing chain is part of the configuration**: a `preprocess` section holds, per
   procedure (`standard`, `snow`, `insufficient_clear`), whether it applies the input's thermal
   transform and its steps (`keep_qa`, `add_qa`, `thermal_range` in degrees Celsius,
@@ -58,8 +58,9 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   parameters, and `SATURATION_BANDS` is `band_range`'s `bands`: roles, or `"reflective"` (the
   "ccdc" value), every row whose role is not thermal or other, in row order. `preprocess=`, `RunSpec::plan`, `default_plan()` and `validate_plan()` are gone;
   `plan_of(config, input)` (C++ and Python) returns the resolved plan for inspection.
-- **Profiles describe the data only**: a `SensorProfile` holds band names and roles, `units` (`reflectance_unit`), `thermal` (`scale`, `offset`), `saturated`
-  and the QA table builder. `profile.input()` replaces `profile.options()` and carries the QA
+- **Profiles describe the data only**: a `SensorProfile` holds band names and roles, `units`
+  (`reflectance_unit`, `offset`), `thermal` (`scale`, `offset`, `unit`), `saturated` and the QA
+  table builder; `CELSIUS_HUNDREDTHS` is `CELSIUS_OVER_100` (thermal in degrees Celsius / 100). `profile.input()` replaces `profile.options()` and carries the QA
   table (`profile.qa_table()` is gone); `config()`, `alpha`, `coef_floor`, `detection`,
   `tmask`, `cadence`, `stat_ord`, `green_filter_scope`, `preprocess` and the bounds of `Units`
   and `Thermal` are gone. The default configuration is "ccdc", with or without a profile; a
@@ -67,7 +68,8 @@ removed name to its replacement; `docs/config.md` describes the configuration.
 - **The resume digest** is of the input (its QA table included) and the resolved configuration
   (its preprocessing included), so a 0.10.0 record is refused ("the resume record was made
   with another input or configuration") before any pixel runs; rerun the detection once with
-  `record=True` to store new records. `RESULTS_VERSION` stays 2.
+  `record=True` to store new records. The header's `options_digest` is `digest`
+  (`ResumeHeader::digest`, `resume_header["digest"]`). `RESULTS_VERSION` stays 2.
 - **Checks.** `validate()` checks the input; the configuration's parameter schemas check the
   algorithm when it is compiled (`ccd::Algorithm`, `ccdcpp.Config`), with `std::invalid_argument` (`ValueError` in Python) naming
   stage, strategy and parameter: `PEEK_SIZE is 1; it must be at least 2` is `change_test 'chi2'
@@ -89,14 +91,16 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   a `PixelRun` (result, record, status, header), `run_cube` a `CubeResult` as before.
   Underneath, a `ccd::Run` is built once per call and a `ccd::Worker` per thread; `Run::pixel`
   is the per-pixel pipeline as named steps. Gone from `ccd.hpp`: `Recorded` and `Resumed` (both
-  `PixelRun`), `DetectScratch` (`Worker`), `options_digest()` (the header's digest is the
+  `PixelRun`), `DetectScratch` (`Worker`), `options_digest()` (the header's `digest` is the
   resolution's), and the debugging helpers `Clock`, `elapsed_ms` and `print_change_model(s)`;
   `ccd.hpp` no longer includes `<iostream>`, `<chrono>`, `<string>` or `<vector>`.
 - **Python: two calls.** `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc",
   record=False, resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *,
   input, config="ccdc", threads=0, record=False, resume=None, band_names=None,
-  trace_pixels=None)`, which returns the columns 0.10.0's `detect_cube_columns` returned, names
-  and dtypes unchanged; `ccdcpp.to_pixels(out)` reads them per pixel. `input=` is a
+  trace_pixels=None, masks=False)`, which returns the columns 0.10.0's `detect_cube_columns`
+  returned, names and dtypes unchanged (with `masks=True` also `processing_mask`, every pixel's
+  mask in one `(H * W, T)` uint8 array, and `width`); `ccdcpp.to_pixels(out)` reads them per
+  pixel. `input=` is a
   `ccdcpp.Input` or a `SensorProfile`; `config=` a `ccdcpp.Config` or a preset's name.
   `resume=` is an earlier call's output made with `record=True` (replacing `resume_record=`),
   refused unless the input and configuration match. `profile=`, `hoptions=`, `qa_table=`,

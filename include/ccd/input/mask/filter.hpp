@@ -110,8 +110,8 @@ void remove_duplicate_dates(
 // row is tested as `spectral` holds it AT THE POINT THIS RUNS -- transformed
 // in a procedure that applies the transform (pyccd's Standard), the caller's
 // own unit in one that does not (pyccd's PermanentSnow and
-// InsufficientClear). See the "Units" block in input.hpp for why that
-// asymmetry is deliberate.
+// InsufficientClear). See docs/units.md for why that asymmetry is
+// deliberate.
 //
 //------------------------------------------------------------------------------
 

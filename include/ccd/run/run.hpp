@@ -239,6 +239,9 @@ struct Worker
 // pixel() throws std::invalid_argument for a resume on a prior with fewer
 // stored segments than its record's final ones.
 //
+// A Run reads the `spec` and the `dates` it was built with, without a copy:
+// they must outlive it (a temporary spec is refused at compile time).
+//
 //------------------------------------------------------------------------------
 class Run
 {
@@ -252,7 +255,15 @@ public:
         bool raw_qa,
         const ResumeHeader* resume = nullptr);
 
-    // The call's header: options digest, series end, statistics cutoff (for
+    Run(RunSpec&& spec,
+        ArrayView<const std::int64_t, 1> dates,
+        index_t bands,
+        index_t timesteps,
+        index_t qa_timesteps,
+        bool raw_qa,
+        const ResumeHeader* resume = nullptr) = delete;
+
+    // The call's header: digest, series end, statistics cutoff (for
     // a resume the stored run's), with RunSpec::record or a resume.
     const ResumeHeader& header() const { return header_; }
 
@@ -270,8 +281,8 @@ public:
     // and raw (uint16) QA only when the Run was built for it (run_pixel and
     // run_cube see to both; std::invalid_argument otherwise).
     //
-    // A Run reads the `dates` it was built with on every pixel: they must
-    // outlive it.
+    // A Run reads the `spec` and `dates` it was built with on every pixel:
+    // they must outlive it.
     //
     // A resume continues the pixel from its record when its input up to the
     // stored series end is the stored run's and the machine stopped where it
@@ -294,7 +305,7 @@ private:
                                 int, const CubeResumeFrom*);
 
 
-    RunSpec spec_;
+    const RunSpec& spec_;
     ArrayView<const std::int64_t, 1> dates_;
     index_t bands_;
     index_t timesteps_;

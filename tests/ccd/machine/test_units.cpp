@@ -430,7 +430,7 @@ TEST(Units, PhysicalUnitsAreEquivalent)
     EXPECT_LT(worst, 1e-9)
         << "worst relative difference after x" << SCALE << " is " << worst
         << " -- an absolute threshold has been missed somewhere; see the"
-           " \"Units\" block in input.hpp";
+           " guards in docs/units.md";
 }
 
 //------------------------------------------------------------------------------
@@ -763,6 +763,6 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     EXPECT_TRUE(moved)
         << "green_median offset=400.0 at reflectance scale changed nothing"
            " even through the procedure that reads it. If that is now true,"
-           " this value has no guard anywhere -- say so in input.hpp"
+           " this value has no guard anywhere -- say so in docs/units.md"
            " rather than deleting the test";
 }

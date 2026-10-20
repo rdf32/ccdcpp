@@ -298,8 +298,11 @@ TEST(QaTables, DetectDecodes)
 
             // One Worker, reused across a run with a table and one without.
             ccd::Worker worker;
-            const ccd::Run with_table(golden::spec_of(golden::with_table(h, table), golden::pyccd()), dates, 7, T, T, true);
-            const ccd::Run without(golden::spec_of(h), dates, 7, T, T, false);
+            const ccd::RunSpec table_spec =
+                golden::spec_of(golden::with_table(h, table), golden::pyccd());
+            const ccd::RunSpec codes_spec = golden::spec_of(h);
+            const ccd::Run with_table(table_spec, dates, 7, T, T, true);
+            const ccd::Run without(codes_spec, dates, 7, T, T, false);
             std::string with_worker;
             golden::dump_pixel(with_worker, "", with_table.pixel(spectral, ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}), {}, worker).result);
             EXPECT_EQ(expected, with_worker) << s.name << " pixel " << p;
@@ -497,7 +500,8 @@ TEST(QaTables, Uint16NeedsATable)
     };
 
     expect_refused([&] { ccd::run_pixel(golden::spec_of(h), dates, pixel, qa1); });
-    expect_refused([&] { ccd::Run(golden::spec_of(h), dates, 7, T, T, true); });
+    const ccd::RunSpec codes = golden::spec_of(h);
+    expect_refused([&] { ccd::Run(codes, dates, 7, T, T, true); });
 
     const std::vector<float> f32(c.spectral.begin(), c.spectral.end());
     std::vector<std::uint16_t> u16(c.spectral.size());

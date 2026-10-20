@@ -45,7 +45,7 @@ struct ResumeHeader
 
     // The run's input and resolved configuration (config::Resolved::digest:
     // the QA table and the preprocessing included).
-    std::uint64_t options_digest = 0;
+    std::uint64_t digest = 0;
 
     // The last date of the series the run saw (the end of its input, fill
     // included).

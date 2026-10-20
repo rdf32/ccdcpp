@@ -12,7 +12,7 @@ A new sensor is one constructor call; ``ccdcpp.presets`` writes its profiles
 that way. NOT SHIPPED: the profile below is an example of the shape, its
 values are not validated, and ccdcpp.presets does not contain it::
 
-    from ccdcpp import CELSIUS_HUNDREDTHS, REFLECTANCE, SensorProfile
+    from ccdcpp import CELSIUS_OVER_100, REFLECTANCE, SensorProfile
 
     def landsat_oli_c2():
         # Landsat 8/9 Collection 2 Level-2 with the coastal band, in the
@@ -25,7 +25,7 @@ values are not validated, and ccdcpp.presets does not contain it::
             roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2",
                    "thermal"),
             units=REFLECTANCE,
-            thermal=CELSIUS_HUNDREDTHS,
+            thermal=CELSIUS_OVER_100,
             qa_table_builder="landsat_c2_qa_pixel",
         )
 
@@ -92,7 +92,7 @@ KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0, unit=10000.0)
 #: Thermal already in degrees Celsius / 100, where 100 degrees is 1: the unit
 #: that shares the reflectance scale factor of 10000 with the optical bands
 #: (one Lasso alpha serves every band only if every band has the same scale).
-CELSIUS_HUNDREDTHS = Thermal(scale=1.0, offset=0.0, unit=1.0)
+CELSIUS_OVER_100 = Thermal(scale=1.0, offset=0.0, unit=1.0)
 
 
 QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]

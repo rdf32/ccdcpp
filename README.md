@@ -2,22 +2,23 @@
 
 ccdcpp is a C++17 implementation of the Continuous Change Detection and Classification (CCDC) algorithm, with Python bindings through pybind11. It reproduces the USGS LCMAP PyCCD algorithm and its outputs, doing what PyCCD's code intends where the code does otherwise (every such difference is listed under [Differences from pyccd](#differences-from-pyccd)), and runs one pixel about 200 times faster than PyCCD in about half the process memory. A run takes one pixel or a whole image cube, in parallel with OpenMP, and can be continued when new observations arrive instead of rerun.
 
-> **Step 5 state.** The input says only how to read the data. The configuration says what to do
-> with it, in physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN
-> check, exactly as today.
+> The input says only how to read the data. The configuration says what to do with it, in
+> physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
+> exactly as today.
 >
 > - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False,
 >   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, input,
 >   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
->   masks=False)`, which returns columns (with `masks=True` also every pixel's processing mask,
->   one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel. `resume=` is an earlier
->   call's output made with `record=True`. C++: `ccd::run_pixel` / `ccd::run_cube` with
->   `RunSpec{input, algorithm, record, ...}`.
-> - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
->   decoder of raw QA, or none), `roles`, `reflectance_unit` and
->   `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and 0), `thermal_scale`/`thermal_offset` with
->   `thermal_unit` (the value of 100 °C after the transform) and `saturated`.
->   `input=` takes an `Input` or a `SensorProfile`; a profile describes the data only.
+>   masks=False)`, which returns columns (with `masks=True` also every pixel's processing
+>   mask, one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
+>   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::run_pixel` /
+>   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
+> - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
+>   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
+>   or none), `roles`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
+>   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_unit` (the value of
+>   100 °C after the transform) and `saturated`. `input=` takes an `Input` or a
+>   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
 >   probabilities, bands by role, QA codes by name). It is checked and compiled when built and
@@ -25,8 +26,6 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   `config=` is a `Config` or a preset's name.
 > - **"ccdc" has no statistics cutoff**; pyccd's is
 >   `ccdcpp.config("ccdc").replace(shared__stat_ord=736694)`.
->
-> Some sections below still describe earlier details; the full documentation comes later.
 
 ## Contents
 
@@ -411,7 +410,7 @@ ccdcpp recreates pyccd. Where pyccd's code does not do what it evidently intends
 - **Green median filter.** pyccd's `insufficient_clear_filter` computes the green mask for the observations up to its statistics cutoff and applies it with `standard_mask[standard_mask][:n] &= green_mask` (`ccd/qa.py`), which writes into a copy, so the filter drops nothing. ccdcpp applies it, with the `StatWindow` scope by default.
 - **Seasonal RMSE ties.** pyccd's `find_closest_doy` (`ccd/change.py`) takes the 24 fit-window observations closest in day of year to the last peek date with `np.argsort(d_yr)[:num]`, which is not a stable sort. Observations a multiple of 1461 days apart are exactly equally distant, so which of the tied observations are kept depends on the sort. ccdcpp breaks ties in window order, so the seasonal RMSE, and with it the change magnitudes, can differ on dense series.
 
-On the synthetic corpus, with pyccd patched for these four (the convergence test as `|x0 - x| > tol`, a stable date sort, the green mask written through `standard_mask[np.flatnonzero(standard_mask)[:n]] &= green_mask`, and `np.argsort(d_yr, kind="stable")` in `find_closest_doy`), ccdcpp's defaults, with the Standard procedure as pyccd's, match pyccd to 1e-6 on every InsufficientClear pixel (175 in DN) and on every pixel where a saturation-band value on a bound reaches the saturation filter (106, and the golden test's bounds pixel); with the green filter left unpatched, `Off` matches on the same 175. One more difference is kept on purpose: an undefined raw QA value decodes to fill where pyccd raises (see [QA Input](#qa-input)). One pyccd quirk is kept for parity: the PermanentSnow and InsufficientClear procedures test the untransformed thermal band against the Celsius bounds (their chains in `ccdc` do not set `thermal_transform`; see `include/ccd/input/input.hpp`).
+On the synthetic corpus, with pyccd patched for these four (the convergence test as `|x0 - x| > tol`, a stable date sort, the green mask written through `standard_mask[np.flatnonzero(standard_mask)[:n]] &= green_mask`, and `np.argsort(d_yr, kind="stable")` in `find_closest_doy`), ccdcpp's defaults, with the Standard procedure as pyccd's, match pyccd to 1e-6 on every InsufficientClear pixel (175 in DN) and on every pixel where a saturation-band value on a bound reaches the saturation filter (106, and the golden test's bounds pixel); with the green filter left unpatched, `Off` matches on the same 175. One more difference is kept on purpose: an undefined raw QA value decodes to fill where pyccd raises (see [QA Input](#qa-input)). One pyccd quirk is kept for parity: the PermanentSnow and InsufficientClear procedures test the untransformed thermal band against the Celsius bounds (their chains in `ccdc` do not set `thermal_transform`; see [docs/units.md](docs/units.md)).
 
 The Standard procedure (`ccd/procedures.py`) is pyccd's with five such corrections, each checked against Zhu's MATLAB reference, TrendSeasonalFit, and each in one function of the state machine (see [CCDC as a state machine](docs/ccdc-state-machine.md)):
 
@@ -454,7 +453,7 @@ The input says only how to read the data. The configuration says what to do with
 | `thermal_unit` | `10000.0` | the value 100 °C has after the transform (Celsius x 100: 10000; Celsius / 100: 1); `thermal_range`'s bounds, in degrees Celsius, resolve to `c * 100 * thermal_unit / 10000` |
 | `saturated` | `None` | the value a saturated observation holds (Collection-1 DN: 20000), or `None`; no public step reads it |
 
-The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is reflectance with Celsius / 100 thermal and the identity transform (the measured equivalence is in `include/ccd/input/input.hpp`). The bounds and the green median filter are steps of the configuration's preprocessing, in physical units ([Preprocessing](#preprocessing)):
+The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is reflectance with Celsius / 100 thermal and the identity transform (the measured equivalence is in [docs/units.md](docs/units.md)). The bounds and the green median filter are steps of the configuration's preprocessing, in physical units ([Preprocessing](#preprocessing)):
 
 | Step parameter | `ccdc` | |
 |-------|---------|---------|
@@ -617,7 +616,7 @@ High aerosol is flagged on about half the HLS observations; treating it as cloud
 A sensor is one `SensorProfile` call; `python/ccdcpp/presets.py` writes its profiles that way. **Not shipped:** this Landsat 8/9 Collection 2 profile with the coastal band shows the shape; its values are not validated.
 
 ```python
-from ccdcpp import CELSIUS_HUNDREDTHS, REFLECTANCE, SensorProfile
+from ccdcpp import CELSIUS_OVER_100, REFLECTANCE, SensorProfile
 
 def landsat_oli_c2():
     return SensorProfile(
@@ -625,7 +624,7 @@ def landsat_oli_c2():
         band_names=("SR_B1", "SR_B2", "SR_B3", "SR_B4", "SR_B5", "SR_B6", "SR_B7", "ST_B10"),
         roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"),
         units=REFLECTANCE,
-        thermal=CELSIUS_HUNDREDTHS,
+        thermal=CELSIUS_OVER_100,
         qa_table_builder="landsat_c2_qa_pixel",
     )
 
@@ -640,7 +639,7 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 ```
 
 - **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no band list can name them.
-- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None`, `saturated` the value a saturated observation holds or `None`.
+- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_OVER_100`) or `None`, `saturated` the value a saturated observation holds or `None`.
 - **QA**: `qa_table_builder`, a `ccdcpp.qa_tables` builder name or `None` for codes; `qa_table_options`, keyword arguments for it of exactly the types `ccdcpp.QA_TABLE_OPTIONS` lists.
 - A profile that breaks a layout rule (an unknown or repeated role, no green band, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
 

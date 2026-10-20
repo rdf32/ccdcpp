@@ -32,7 +32,7 @@ from .preprocess import (
     ThermalRange,
 )
 from .profiles import (
-    CELSIUS_HUNDREDTHS,
+    CELSIUS_OVER_100,
     DN,
     KELVIN_TENTHS,
     QA_TABLE_OPTIONS,
@@ -183,7 +183,7 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
         the next resume reruns it. The record columns must cover the cube in
         raster order, each of its length and shape (ValueError otherwise); a
         record that does not fit its pixel's series is that pixel's failure.
-        resume_header["options_digest"] and resume["input_fingerprint"] are
+        resume_header["digest"] and resume["input_fingerprint"] are
         uint64 (store them unsigned, or as int64 bits: both are read back).
     trace_pixels
         (row, col) pairs whose runs to return step by step, as detect()'s

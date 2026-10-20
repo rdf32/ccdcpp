@@ -102,7 +102,7 @@ inline void dump_pixel(
 // Option sets the corpus is run under.
 //------------------------------------------------------------------------------
 
-// The physical-unit input of input.hpp: data pre-divided by 10000, and
+// The physical-unit input of docs/units.md: data pre-divided by 10000, and
 // reflectance its unit, so the configuration's reflectance values (the
 // Lasso's alpha and coefficient floor, the bounds, the green filter) are its
 // own, and its thermal bounds are degrees Celsius / 100.

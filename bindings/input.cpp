@@ -171,8 +171,8 @@ void bind_input(py::module_& m)
     //     i = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0,
     //                      thermal_offset=0.0, thermal_unit=1.0)
     //
-    // See input.hpp for the measured equivalence and why plain Celsius is not
-    // the physical unit.
+    // See docs/units.md for the measured equivalence and why plain Celsius
+    // is not the physical unit.
     //--------------------------------------------------------------------------
     .def_readonly(
         "reflectance_unit", &ccd::Input::reflectance_unit,

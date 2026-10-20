@@ -116,96 +116,11 @@ struct Input
     // thermal_unit / 10000, so pyccd's -93.2 and 70.7 are -9320 and 7070 on
     // DN and -0.932 and 0.707 on the physical-unit input, exactly.
     //
-    // THE PHYSICAL-UNIT INPUT
-    //
-    // One divisor, 10000, applied to every band:
-    //
-    //     reflectance_unit = 1.0
-    //     thermal_scale = 1.0       thermal_offset = 0.0    (identity)
-    //
-    // with the caller's array pre-divided by 10000:
-    //
-    //     optical  DN / 10000                  -> reflectance 0..1
-    //     thermal  (K*10 - 27315) / 10000      -> degrees Celsius / 100
-    //
-    // The coefficients then come out in those same units: no descaling pass
-    // on the way out, at any scale, for any band.
-    //
-    // MEASURED, on the pyccd reference pixel in
-    // tests/ccd/machine/test_3657_3610_observations.csv (443 observations,
-    // 5 segments): against the DN input, this input reproduces the
-    // processing mask bit for bit, the same 5 segments with identical
-    // start/end/break days, observation counts and curve_qa, change
-    // probabilities equal to 0.0e+00 absolute, and every coefficient,
-    // intercept, rmse and magnitude equal after multiplying by 10000 to a
-    // worst relative difference of 4.4e-13. It is the same fit.
-    //
-    // WHY DEGREES CELSIUS ITSELF IS NOT THE PHYSICAL UNIT
-    //
-    // The Lasso's alpha is ONE value shared by all the band fits, and it is
-    // an absolute soft-threshold, so the equivalence holds only if every
-    // band shares one scale factor. Optical DN is 10000x reflectance; the DN
-    // thermal path lands on Celsius x 100, so plain Celsius would be a 100x
-    // factor -- two scales, one alpha. Measured on the same pixel, the
-    // Celsius variant leaves the six optical bands exact (1e-13) and breaks
-    // thermal alone: 2 extra nonzero coefficients, rmse off by 1.7e-2
-    // relative, intercept by 4.0e-2. Celsius/100 is the unit the downstream
-    // change-detection archive already stores.
-    //
-    // Two more things are worth knowing before changing any of these.
-    //
-    // 1. The two collection variants of the saturation bound are ONE
-    //    predicate. Collection-1's (0, 10000) and Collection-2's
-    //    (7273, 43636) both mean "reflectance in (0, 1)" -- C2 surface
-    //    reflectance is DN * 2.75e-5 - 0.2, which maps 7273 -> 0.0000 and
-    //    43636 -> 1.0000. In physical units there is no collection branch.
-    //
-    // 2. thermal_range's bounds are in the transformed unit, and "ccdc"
-    //    transforms for the Standard procedure ONLY (its preprocess
-    //    section's thermal_transform). That asymmetry is pyccd's:
-    //    kelvin_to_celsius() is called inside standard_procedure() while
-    //    snow_procedure_filter() applies filter_thermal_celsius() to values
-    //    nothing converted. On a DN input the PermanentSnow and
-    //    InsufficientClear procedures therefore test Kelvin x 10 against
-    //    Celsius x 100 bounds, and since Kelvin x 10 is ~2200..3300,
-    //    comfortably inside [-9320, 7070], the filter rejects nothing a
-    //    sensor records there. It is preserved deliberately: ccdcpp is a
-    //    recreation of pyccd and the regression references encode it.
-    //
-    //    On the physical-unit input thermal is already Celsius / 100 for
-    //    every procedure, so PermanentSnow and InsufficientClear test
-    //    converted values against converted bounds, as Standard does, and
-    //    the filter is live there: a clear or water observation outside
-    //    (-93.20, 70.70) degrees Celsius is dropped (PermanentSnow then adds
-    //    back every snow observation regardless). The DN input keeps that
-    //    observation. On those two procedures the two inputs agree only
-    //    while no clear or water observation's thermal value is out of
-    //    range; the equivalence measured above is on a Standard pixel.
-    //
-    // tests/ccd/machine/test_units.cpp asserts the equivalence and then, one
-    // value at a time, that leaving it behind is DETECTED. The three shapes
-    // of detection there are not interchangeable:
-    //
-    //   reflectance_unit     caught by the equivalence test directly: it
-    //                        scales alpha (which moves the segment count)
-    //                        and coef_floor (which leaves sparsity identical,
-    //                        so only the value comparison catches it).
-    //   the bounds           NOT caught by it. The physical bounds are
-    //                        narrower, so leaving them at the DN value merely
-    //                        loosens a screen, and a screen that rejects
-    //                        nothing is indistinguishable from a correct one.
-    //                        The guard runs them the other way -- DN input,
-    //                        physical bound -- where the mask empties and the
-    //                        pixel returns 0 segments instead of 5.
-    //   the green filter     unreachable through run_pixel() on the
-    //                        reference pixel, which takes the Standard
-    //                        procedure; "ccdc" runs the green median filter
-    //                        in the InsufficientClear chain only. Its guard
-    //                        fits the InsufficientClear procedure directly
-    //                        (ccd::fit_whole_series).
-    //
-    // If you add a unit-bearing field, add its guard in that file and work
-    // out which of the three shapes it is.
+    // docs/units.md has the physical-unit input (reflectance and degrees
+    // Celsius / 100) and its measured equivalence with DN, why degrees
+    // Celsius itself is not the unit, Collection 2, the thermal range on the
+    // procedures without the transform, and the guards of every unit-bearing
+    // value (tests/ccd/machine/test_units.cpp).
     //--------------------------------------------------------------------------
     scalar_t reflectance_unit = 10000.0;
 
