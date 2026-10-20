@@ -1,6 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
+#include <algorithm>
 #include <array>
 #include <map>
 #include <memory>
@@ -523,9 +524,16 @@ static py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures
 // parquet file contains no per-row Python object at all. ccdcpp.to_pixels()
 // turns them into per-pixel dicts.
 //
-// The processing mask is deliberately absent: it is the single largest
-// allocation and the change-detection schema this feeds has no column for
-// it; detect() returns it per pixel.
+// The processing mask is absent unless asked for (masks=True): it is the
+// single largest allocation, T bytes per pixel, and the change-detection
+// schema this feeds has no column for it. Asked for, it is one more array,
+// one row per pixel of the cube in raster order (not per segment), and
+// "width", the cube's W, which finds a pixel's row:
+//
+//   processing_mask       uint8 [H * W, T]  row r * W + c: pixel (r, c)'s
+//                                           mask, 1 where the observation is
+//                                           kept; zeros for a failed pixel
+//   width                 int              W
 //
 // Two passes: count segments, allocate, fill. Counting is cheap (it is a
 // vector size per pixel) and it is the only way to allocate exactly once.
@@ -567,7 +575,7 @@ static py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures
 // must derive the count from curve_qa and must not test values against zero.
 //------------------------------------------------------------------------------
 
-static py::dict cube_columns(const ccd::CubeResult& cube, const CubeInput& views)
+static py::dict cube_columns(const ccd::CubeResult& cube, const CubeInput& views, bool masks)
 {
     std::size_t n = 0;
     std::size_t with_segments = 0;
@@ -656,6 +664,23 @@ static py::dict cube_columns(const ccd::CubeResult& cube, const CubeInput& views
     output["pixels_total"] =
         static_cast<std::int64_t>(views.H) * static_cast<std::int64_t>(views.W);
     output["pixels_with_segments"] = static_cast<std::int64_t>(with_segments);
+
+    if (masks)
+    {
+        const auto T = static_cast<py::ssize_t>(views.T);
+        py::array_t<std::uint8_t> mask_arr(
+            std::vector<py::ssize_t>{static_cast<py::ssize_t>(views.H * views.W), T});
+        std::uint8_t* const mask_v = mask_arr.mutable_data();
+        std::fill(mask_v, mask_v + mask_arr.size(), std::uint8_t{0});
+        for (const auto& pixel : cube.pixels)
+        {
+            const auto& mask = pixel.result.mask.data();
+            std::copy(mask.begin(), mask.end(),
+                      mask_v + (pixel.row * views.W + pixel.col) * views.T);
+        }
+        output["processing_mask"] = mask_arr;
+        output["width"] = views.W;
+    }
     return output;
 }
 
@@ -668,7 +693,8 @@ static py::dict detect_cube_wrapper(
     int threads,
     bool record,
     py::object resume,
-    py::object trace_pixels
+    py::object trace_pixels,
+    bool masks
 )
 {
     const CubeInput views = check_cube(dates, spectral, qas, input);
@@ -676,7 +702,7 @@ static py::dict detect_cube_wrapper(
     ccd::RunSpec spec;
     spec.input = input;
     spec.algorithm = algorithm_from_python(config);
-    spec.keep_masks = false;   // no column holds the mask
+    spec.keep_masks = masks;   // no column holds the mask without masks=True
     spec.record = record;
 
     std::optional<ccd::CubeResumeFrom> from;
@@ -718,7 +744,7 @@ static py::dict detect_cube_wrapper(
         cube = run_cube(views, spec, threads, from ? &*from : nullptr);
     }
 
-    py::dict output = cube_columns(cube, views);
+    py::dict output = cube_columns(cube, views, masks);
     if (record || from)
     {
         output["resume"] = record_columns(cube, views.H, views.W, views.B, from.has_value());
@@ -780,6 +806,7 @@ void bind_detect(py::module_& m)
         py::arg("record") = false,
         py::arg("resume") = py::none(),
         py::arg("trace_pixels") = py::none(),
+        py::arg("masks") = false,
         "CCD on every pixel of a cube, as columns (see ccdcpp.detect_cube)."
     );
     m.def("resume_schema", &resume_schema);

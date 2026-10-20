@@ -106,6 +106,41 @@ class BandCount(unittest.TestCase):
         out = ccdcpp.detect_cube(*cube(7, 40), **options(), threads=1)
         self.assertEqual(out["pixels_total"], 6)
         self.assertEqual(out["failures"], [])
+        self.assertNotIn("processing_mask", out)
+        self.assertNotIn("width", out)
+
+    def test_detect_cube_masks_are_detects(self):
+        # A 2 x 3 cube of noisy pixels with clouds, fill and snow scattered
+        # through them, and one pixel all fill (no segment).
+        H, W, T = 2, 3, 120
+        rng = np.random.default_rng(5)
+        spectral = np.empty((H, W, 7, T))
+        qas = np.zeros((H, W, T), dtype=np.uint8)
+        for r in range(H):
+            for c in range(W):
+                d, spectral[r, c], _ = noisy(7, T, seed=10 * r + c)
+                qas[r, c] = rng.choice([0, 0, 0, 0, 1, 3, 4, 255], T)
+        qas[1, 2] = 255
+        for threads in (1, 3):
+            with self.subTest(threads=threads):
+                out = ccdcpp.detect_cube(d, spectral, qas, **options(), threads=threads,
+                                         masks=True)
+                mask = out["processing_mask"]
+                self.assertEqual((mask.dtype, mask.shape), (np.uint8, (H * W, T)))
+                self.assertTrue(mask.flags.c_contiguous)
+                self.assertEqual(out["width"], W)
+                self.assertFalse(mask[1 * W + 2].any())
+                for r in range(H):
+                    for c in range(W):
+                        one = ccdcpp.detect(d, spectral[r, c], qas[r, c], **options())
+                        np.testing.assert_array_equal(mask[r * W + c],
+                                                      one["processing_mask"])
+                # The columns are those without masks.
+                plain = ccdcpp.detect_cube(d, spectral, qas, **options(), threads=threads)
+                self.assertEqual(set(out) - set(plain), {"processing_mask", "width"})
+                for key in plain:
+                    if hasattr(plain[key], "dtype"):
+                        np.testing.assert_array_equal(out[key], plain[key])
 
 
 TEN_ROLES = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",

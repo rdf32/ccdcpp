@@ -151,7 +151,7 @@ def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=N
 
 
 def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record=False,
-                resume=None, band_names=None, trace_pixels=None):
+                resume=None, band_names=None, trace_pixels=None, masks=False):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     dates
@@ -187,6 +187,11 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
     trace_pixels
         (row, col) pairs whose runs to return step by step, as detect()'s
         trace, in "traces": {(row, col): [event, ...]}.
+    masks
+        True to also return "processing_mask", every pixel's processing mask
+        as detect() returns it, in one contiguous uint8 array (H * W, T): row
+        r * W + c is pixel (r, c)'s (zeros for a failed pixel), with "width",
+        W. T bytes per pixel, kept while the cube runs.
 
     Returns a dict of arrays with one entry per segment: row, col,
     start_day, end_day, break_day, curve_qa, observation_count,
@@ -200,7 +205,7 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
     cfg = _configuration("detect_cube", config)
     out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
-                                 trace_pixels=trace_pixels)
+                                 trace_pixels=trace_pixels, masks=masks)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -218,11 +223,13 @@ def plan_of(config, input):
 def to_pixels(out):
     """detect_cube()'s columns as one dict per pixel with a segment, in raster
     order: {"row", "col", "models"}, the models as detect() returns them (each
-    with a bands list in row order, every value the column's). A pixel with no
-    segment has no entry, as it has no row in the columns."""
+    with a bands list in row order, every value the column's), and with
+    masks=True its "processing_mask" (its row of the cube's array). A pixel
+    with no segment has no entry, as it has no row in the columns."""
     pixels = []
     n = len(out["row"])
     B = int(out["num_bands"])
+    masks = out.get("processing_mask")
     i = 0
     while i < n:
         row, col = int(out["row"][i]), int(out["col"][i])
@@ -243,5 +250,8 @@ def to_pixels(out):
                 } for b in range(B)],
             })
             i += 1
-        pixels.append({"row": row, "col": col, "models": models})
+        pixel = {"row": row, "col": col, "models": models}
+        if masks is not None:
+            pixel["processing_mask"] = masks[row * int(out["width"]) + col]
+        pixels.append(pixel)
     return pixels

@@ -745,7 +745,7 @@ class Unprofiled(unittest.TestCase):
         for name, keywords in (
             ("detect", ["input", "config", "record", "resume", "band_names", "trace"]),
             ("detect_cube", ["input", "config", "threads", "record", "resume", "band_names",
-                             "trace_pixels"]),
+                             "trace_pixels", "masks"]),
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
@@ -783,6 +783,21 @@ class Unprofiled(unittest.TestCase):
         # input alone is a whole call: the configuration defaults to "ccdc".
         self.assertEqual(ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
                                             threads=1)["failures"], [])
+
+    def test_cube_masks_per_pixel(self):
+        H, W = CUBE_DN.shape[:2]
+        out = ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(),
+                                 threads=2, masks=True)
+        self.assertEqual(out["processing_mask"].shape, (H * W, len(DATES)))
+        pixels = ccdcpp.to_pixels(out)
+        self.assertGreater(len(pixels), 0)
+        for p in pixels:
+            one = ccdcpp.detect(DATES, CUBE_DN[p["row"], p["col"]], CODES[p["row"], p["col"]],
+                                input=presets.landsat_c1_dn())
+            np.testing.assert_array_equal(p["processing_mask"], one["processing_mask"])
+            self.assertEqual(p["models"], one["models"])
+        self.assertNotIn("processing_mask", ccdcpp.to_pixels(
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=ccdcpp.Input(), threads=2))[0])
 
     def test_extension_errors_pass_through(self):
         h = ccdcpp.Input()

@@ -8,8 +8,9 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >
 > - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False,
 >   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, input,
->   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None)`,
->   which returns columns; `ccdcpp.to_pixels(out)` reads them per pixel. `resume=` is an earlier
+>   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
+>   masks=False)`, which returns columns (with `masks=True` also every pixel's processing mask,
+>   one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel. `resume=` is an earlier
 >   call's output made with `record=True`. C++: `ccd::run_pixel` / `ccd::run_cube` with
 >   `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
@@ -135,7 +136,7 @@ print(sorted(k for k in cols if not k.startswith("pixels")))
 ['band_names', 'break_day', 'change_probability', 'coefficients', 'col', 'curve_qa', 'end_day', 'failures', 'intercept', 'magnitude', 'num_bands', 'observation_count', 'rmse', 'row', 'start_day', 'threads']
 ```
 
-`threads=0` (the default) uses the OpenMP runtime's thread count. A pixel that raises does not stop the cube: it is listed in `failures` with its row, column and message.
+`threads=0` (the default) uses the OpenMP runtime's thread count. A pixel that raises does not stop the cube: it is listed in `failures` with its row, column and message. The columns hold no processing mask; `masks=True` adds `processing_mask`, every pixel's mask as `detect` returns it in one contiguous `(H * W, T)` uint8 array (row `r * W + c` for pixel `(r, c)`, zeros for a failed one), and `width`, W; `to_pixels` then gives each pixel its row.
 
 ## From C++
 

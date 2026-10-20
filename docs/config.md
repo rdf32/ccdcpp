@@ -15,8 +15,9 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >
 > - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False,
 >   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, input,
->   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None)`,
->   which returns columns; `ccdcpp.to_pixels(out)` reads them per pixel. `resume=` is an earlier
+>   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
+>   masks=False)`, which returns columns (with `masks=True` also every pixel's processing mask,
+>   one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel. `resume=` is an earlier
 >   call's output made with `record=True`. C++: `ccd::run_pixel` / `ccd::run_cube` with
 >   `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
