@@ -30,7 +30,7 @@ stage its strategy and that strategy's parameters, and for every procedure its
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
 >   probabilities, bands by role, QA codes by name). It is checked and compiled when built and
->   resolved once per input; `ccdcpp.plan_of(config, input)` shows the resolved preprocessing.
+>   resolved once per input; `ccdcpp.plan_of(config, encoding)` shows the resolved preprocessing.
 >   `config=` is a `Config` or a preset's name.
 > - **"ccdc" has no statistics cutoff**; pyccd's is
 >   `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)`.
@@ -106,7 +106,7 @@ against its input once: a reflectance level (unit `reflectance`, band_range's bo
 `alpha`, `coef_floor`, green_median's offset) as `r * reflectance_scale` (Collection-1 DN 10000
 and 0, reflectance 1 and 0), degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, roles to
 rows, names to codes.
-`cfg.resolve(input)` shows the values a run uses; `ccdcpp.plan_of(cfg, input)` the
+`cfg.resolve(encoding)` shows the values a run uses; `ccdcpp.plan_of(cfg, encoding)` the
 preprocessing plan. [units.md](units.md) has the input's units and the physical-unit input.
 
 ### Preprocessing

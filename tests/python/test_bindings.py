@@ -74,10 +74,10 @@ def preset(**changes):
     return tree
 
 
-def resolved(config=None, input=None):
-    """The configuration resolved against the input (default Input())."""
+def resolved(config=None, encoding=None):
+    """The configuration resolved against the encoding (default Input())."""
     return ccdcpp._config_resolve(preset() if config is None else config,
-                                  ccdcpp.Input() if input is None else input)
+                                  ccdcpp.Input() if encoding is None else encoding)
 
 
 class BandCount(unittest.TestCase):

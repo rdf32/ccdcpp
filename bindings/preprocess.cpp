@@ -25,7 +25,7 @@ namespace pp = ccd::preprocess;
 // classes, for inspection.
 //
 // A plan is a configuration's preprocess section resolved against an input:
-// plan_of(config, input) returns it. The classes are read-only copies; plans
+// plan_of() returns it. The classes are read-only copies; plans
 // compare with == field by field; describe() and repr() print them one step
 // a line.
 //------------------------------------------------------------------------------
@@ -370,11 +370,11 @@ void bind_preprocess(py::module_& m)
 
     m.def(
         "plan_of",
-        [](const py::object& config, const ccd::Input& input)
-        { return algorithm_from_python(config)->for_input(input)->plan; },
+        [](const py::object& config, const ccd::Input& encoding)
+        { return algorithm_from_python(config)->for_input(encoding)->plan; },
         py::arg("config"),
-        py::arg("input"),
-        "The PreprocessPlan `config` runs on `input` (`config` as detect "
+        py::arg("encoding"),
+        "The PreprocessPlan `config` runs on `encoding` (`config` as detect "
         "takes it): its preprocess section resolved against the input, the "
         "QA code names as its codes, the bands by role as its rows, the "
         "bounds in its units; a thermal_range step is left out of an input "

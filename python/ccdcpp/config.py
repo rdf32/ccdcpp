@@ -378,16 +378,16 @@ class Config:
             entry["params"][param] = _value(value, known[param])
         return Config(tree)
 
-    def check(self, input: _extension.Input | None = None) -> None:
-        """Raises ValueError for what a run would refuse; with ``input`` (a ccdcpp.Input),
+    def check(self, encoding: _extension.Input | None = None) -> None:
+        """Raises ValueError for what a run would refuse; with ``encoding`` (a ccdcpp.Input),
         what it refuses against that input too (a role it lacks, a row off its bands)."""
-        _extension._config_check(self._tree, input)
+        _extension._config_check(self._tree, encoding)
 
-    def resolve(self, input: _extension.Input) -> dict[str, Any]:
-        """The configuration resolved against ``input`` (a ccdcpp.Input), as the run runs it:
-        {"stages", "shared", "preprocess", "digest"}, every value in the input's units, rows
-        and codes."""
-        return self._algorithm.resolve(input)
+    def resolve(self, encoding: _extension.Input) -> dict[str, Any]:
+        """The configuration resolved against ``encoding`` (a ccdcpp.Input), as the run runs
+        it: {"stages", "shared", "preprocess", "digest"}, every value in the input's units,
+        rows and codes."""
+        return self._algorithm.resolve(encoding)
 
     def hash(self) -> int:
         """The configuration's digest: equal for equal configurations, on any platform."""

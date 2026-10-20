@@ -32,7 +32,7 @@ transform (10, -27315) to Celsius x 100, `thermal_at_100c` 10000), "ccdc" resolv
 | `alpha` 1e-4 | 1.0 | difference: `r * 10000` |
 | `green_median` offset +0.04 | +400 | difference: `r * 10000` |
 
-`ccdcpp.plan_of(config, input)` shows the resolved preprocessing and `Config.resolve(input)`
+`ccdcpp.plan_of(config, encoding)` shows the resolved preprocessing and `Config.resolve(encoding)`
 every resolved value.
 
 ## The encoding

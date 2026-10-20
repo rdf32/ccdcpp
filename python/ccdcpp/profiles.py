@@ -102,7 +102,7 @@ CELSIUS_OVER_100 = Thermal(scale=1.0, offset=0.0, at_100c=1.0)
 QaTableOptions = Mapping[str, object] | tuple[tuple[str, object], ...]
 
 #: The keyword arguments each ``ccdcpp.qa_tables`` builder takes beyond
-#: ``input``, as its binding declares them: builder -> {name: (type,
+#: ``encoding``, as its binding declares them: builder -> {name: (type,
 #: default)}. ``SensorProfile.qa_table_options`` is checked against it.
 QA_TABLE_OPTIONS: Mapping[str, Mapping[str, tuple[type, object]]] = MappingProxyType({
     "landsat_c2_qa_pixel": MappingProxyType({}),
@@ -150,7 +150,7 @@ class SensorProfile:
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
     qa_table_options
-        Keyword arguments of ``qa_table_builder`` beyond the input, as a
+        Keyword arguments of ``qa_table_builder`` beyond the encoding, as a
         mapping or ``(name, value)`` pairs; empty (the default) for none.
         ``{"exclude_high_aerosol": True}`` makes ``hls_fmask`` decode high
         aerosol as cloud. Each name and the type of its value are those

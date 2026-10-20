@@ -40,7 +40,7 @@ as today.
 | `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)` |
 | `qa_table=t` | the input's `qa_table`: `h.replace(qa_table=t)` (a profile's `input()` carries its table) |
 | `preprocess=plan` | the configuration's `preprocess` section (`Config.replace(preprocess__...=)`) |
-| `default_plan(h)` | `ccdcpp.plan_of(config, input)` |
+| `default_plan(h)` | `ccdcpp.plan_of(config, encoding)` |
 | `ccdcpp.LassoOptions`, the `loptions` argument | the shared `alpha`, `coef_floor`, `max_iter`, `tolerance` |
 
 ### Profiles

@@ -155,17 +155,17 @@ def explicit_physical():
     return h, PYCCD
 
 
-def resolved(cfg, input=None):
-    """``cfg``'s stages resolved against ``input`` (default ccdcpp.Input())."""
-    return cfg.resolve(ccdcpp.Input() if input is None else input)["stages"]
+def resolved(cfg, encoding=None):
+    """``cfg``'s stages resolved against ``encoding`` (default ccdcpp.Input())."""
+    return cfg.resolve(ccdcpp.Input() if encoding is None else encoding)["stages"]
 
 
-def change_threshold(cfg, input=None):
-    return resolved(cfg, input)["change_test"]["params"]["change_threshold"]
+def change_threshold(cfg, encoding=None):
+    return resolved(cfg, encoding)["change_test"]["params"]["change_threshold"]
 
 
-def outlier_threshold(cfg, input=None):
-    return resolved(cfg, input)["outlier"]["params"]["threshold"]
+def outlier_threshold(cfg, encoding=None):
+    return resolved(cfg, encoding)["outlier"]["params"]["threshold"]
 
 
 # The parameters one shared value fills in, as a run resolves them.
@@ -181,11 +181,11 @@ GROUPS = {
 }
 
 
-def option_params(cfg, name, input=None):
+def option_params(cfg, name, encoding=None):
     """{(stage, parameter): value} of group ``name`` (GROUPS) in ``cfg`` resolved
-    against ``input``, or of one ``stage__parameter``."""
+    against ``encoding``, or of one ``stage__parameter``."""
     pairs = GROUPS.get(name) or (tuple(name.split("__", 1)),)
-    stages = resolved(cfg, input)
+    stages = resolved(cfg, encoding)
     return {(stage, param): stages[stage]["params"][param]
             for stage, param in pairs
             if stage in stages and param in stages[stage]["params"]}
@@ -214,16 +214,16 @@ def strip_band_names(outs):
     }
 
 
-def band_range_rows(input, config="ccdc"):
-    """The rows the Standard chain's band_range step tests on ``input``."""
-    (step,) = [s for s in ccdcpp.plan_of(config, input).standard.chain
+def band_range_rows(encoding, config="ccdc"):
+    """The rows the Standard chain's band_range step tests on ``encoding``."""
+    (step,) = [s for s in ccdcpp.plan_of(config, encoding).standard.chain
                if s.kind == ccdcpp.StepKind.BandRange]
     return step.bands
 
 
-def with_table(input, table):
-    """``input`` (a ccdcpp.Input) decoding its QA through ``table``."""
-    return input.replace(qa_table=table)
+def with_table(encoding, table):
+    """``encoding`` (a ccdcpp.Input) decoding its QA through ``table``."""
+    return encoding.replace(qa_table=table)
 
 
 class Corpus(unittest.TestCase):
@@ -545,7 +545,7 @@ class QaTableOptionsField(unittest.TestCase):
             with self.subTest(builder=builder):
                 signature = getattr(ccdcpp.qa_tables, builder).__doc__.splitlines()[0]
                 self.assertEqual(signature.count(": "), 1 + len(declared), signature)
-                self.assertIn(f"{builder}(input: ", signature)
+                self.assertIn(f"{builder}(encoding: ", signature)
                 for name, (kind, default) in declared.items():
                     self.assertIn(f"{name}: {kind.__name__} = {default!r}", signature)
 

@@ -245,12 +245,12 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     return out
 
 
-def plan_of(config: Config | str, input: Input | SensorProfile) -> PreprocessPlan:
+def plan_of(config: Config | str, encoding: Input | SensorProfile) -> PreprocessPlan:
     """The ccdcpp.PreprocessPlan ``config`` (a ccdcpp.Config or a preset's name) runs on
-    ``input`` (a ccdcpp.Input or a SensorProfile): its preprocess section resolved against the
-    input, the QA code names as its codes, the bands by role as its rows, the bounds in its
+    ``encoding`` (a ccdcpp.Input or a SensorProfile): its preprocess section resolved against
+    the input, the QA code names as its codes, the bands by role as its rows, the bounds in its
     units. For inspection: ``print(ccdcpp.plan_of("ccdc", ccdcpp.Input()))``."""
-    h = input.input() if isinstance(input, SensorProfile) else input
+    h = encoding.input() if isinstance(encoding, SensorProfile) else encoding
     return _extension.plan_of(_configuration("plan_of", config)._algorithm, h)
 
 

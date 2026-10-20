@@ -63,7 +63,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   `REFL_*`, `THERM_*`, `MEDIAN_GREEN_FILTER` and `GREEN_FILTER_SCOPE` are those steps'
   parameters, and `SATURATION_BANDS` is `band_range`'s `bands`: roles, or `"reflective"` (the
   "ccdc" value), every row whose role is not thermal or other, in row order. `preprocess=`, `RunSpec::plan`, `default_plan()` and `validate_plan()` are gone;
-  `plan_of(config, input)` (C++ and Python) returns the resolved plan for inspection.
+  `plan_of()` (C++ and Python) returns the resolved plan for inspection.
 - **Profiles describe the data only**: a `SensorProfile` holds band names and roles, `units`
   (`reflectance_scale`, `offset`), `thermal` (`scale`, `offset`, `at_100c`), `saturation_code`, `thermal_saturation_code` and the QA
   table builder; `CELSIUS_HUNDREDTHS` is `CELSIUS_OVER_100` (thermal in degrees Celsius / 100). `profile.input()` replaces `profile.options()` and carries the QA
@@ -221,7 +221,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   `preprocess::CustomStep`.
 - **The configuration from Python**: `ccdcpp.Config` (immutable, compiled when built;
   `stages()`, `strategy()`, `params()`, `shared()`, `preprocess()`, `replace(shared__name=,
-  stage__param=, stage="strategy", preprocess__...=)`, `check(input)`, `resolve(input)`,
+  stage__param=, stage="strategy", preprocess__...=)`, `check(encoding)`, `resolve(encoding)`,
   `hash()`, `to_dict()`, `to_toml()`), `ccdcpp.config(source)` (a preset's name, built once; a
   TOML file with `extends`; a dict; `ccdcpp/configs/ccdc.toml`), `ccdcpp.strategies()`,
   `ccdcpp.shared_values()` and `ccdcpp.steps()`, and the step classes `KeepQa`, `AddQa`,

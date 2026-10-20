@@ -23,7 +23,7 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
 >   probabilities, bands by role, QA codes by name). It is checked and compiled when built and
->   resolved once per input; `ccdcpp.plan_of(config, input)` shows the resolved preprocessing.
+>   resolved once per input; `ccdcpp.plan_of(config, encoding)` shows the resolved preprocessing.
 >   `config=` is a `Config` or a preset's name.
 > - **"ccdc" has no statistics cutoff**; pyccd's is
 >   `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)`.
@@ -501,10 +501,10 @@ True
 
 | Builder | Product | Validated for production |
 |---------|---------|--------------------------|
-| `landsat_c2_qa_pixel(input)` | Landsat Collection 2 `QA_PIXEL` (uint16) | yes |
-| `landsat_c1_pixel_qa(input)` | Landsat Collection 1 `pixel_qa` (uint16) | yes |
-| `hls_fmask(input, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | decode checked on real data: all 43 values present (38 in L30, 43 in S30) match the HLS v2.0 User Guide (T16SGC, 2020–2023) |
-| `sentinel2_scl(input)` | Sentinel-2 L2A `SCL` (uint8) | decode checked on real data: every class present (0, 2–11) matches SentiWiki (T16SGC, 2020–2023) |
+| `landsat_c2_qa_pixel(encoding)` | Landsat Collection 2 `QA_PIXEL` (uint16) | yes |
+| `landsat_c1_pixel_qa(encoding)` | Landsat Collection 1 `pixel_qa` (uint16) | yes |
+| `hls_fmask(encoding, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | decode checked on real data: all 43 values present (38 in L30, 43 in S30) match the HLS v2.0 User Guide (T16SGC, 2020–2023) |
+| `sentinel2_scl(encoding)` | Sentinel-2 L2A `SCL` (uint8) | decode checked on real data: every class present (0, 2–11) matches SentiWiki (T16SGC, 2020–2023) |
 
 Each builder writes the `qa_*` codes of the `Input` it is given, so build the table from the input the run uses. Each decodes most-excluding first: fill, then cloud, then shadow, then snow, then water, then clear.
 
@@ -648,7 +648,7 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 
 ## Preprocessing
 
-Before a procedure fits a pixel it builds the processing mask, the observations it fits: the input's thermal transform of the pixel's private copy where the procedure's chain asks for it, then a chain of filter steps run in order. The configuration's `preprocess` section holds one chain per procedure, `standard`, `snow` (PermanentSnow) and `insufficient_clear`, its steps by name with parameters in physical units; each pixel runs the one of the procedure it takes. `ccdcpp.plan_of(config, input)` is the resolved plan, in the input's codes, rows and units. The steps (`ccdcpp.steps()` lists their parameters):
+Before a procedure fits a pixel it builds the processing mask, the observations it fits: the input's thermal transform of the pixel's private copy where the procedure's chain asks for it, then a chain of filter steps run in order. The configuration's `preprocess` section holds one chain per procedure, `standard`, `snow` (PermanentSnow) and `insufficient_clear`, its steps by name with parameters in physical units; each pixel runs the one of the procedure it takes. `ccdcpp.plan_of(config, encoding)` is the resolved plan, in the input's codes, rows and units. The steps (`ccdcpp.steps()` lists their parameters):
 
 | Step | Effect |
 |------|--------|
