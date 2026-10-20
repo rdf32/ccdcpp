@@ -136,11 +136,12 @@ class SensorProfile:
         A :class:`Thermal`, or None for an input without a thermal band
         (no ``"thermal"`` role, which skips the transform and the thermal
         range).
-    saturated
-        ``Input.saturated``: the value a saturated observation holds, as the
-        sensor writes it, or None (the default) when the profile does not
-        declare one. A step or strategy that reads it refuses an input
-        without one.
+    saturated, thermal_saturated
+        ``Input.saturated``, ``Input.thermal_saturated``: the value a
+        saturated observation holds in the reflective rows and in the thermal
+        row, as the data stores it (before any transform), or None (the
+        default) when the profile does not declare one. A step or strategy
+        that reads one refuses an input without it.
     qa_table_builder
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
@@ -170,14 +171,16 @@ class SensorProfile:
     units: Units
     thermal: Optional[Thermal] = None
     saturated: Optional[float] = None
+    thermal_saturated: Optional[float] = None
     qa_table_builder: Optional[str] = None
     qa_table_options: QaTableOptions = field(default=())
 
     def __post_init__(self):
         for name in ("band_names", "roles"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
-        if self.saturated is not None:
-            object.__setattr__(self, "saturated", float(self.saturated))
+        for name in ("saturated", "thermal_saturated"):
+            if getattr(self, name) is not None:
+                object.__setattr__(self, name, float(getattr(self, name)))
         object.__setattr__(self, "qa_table_options", self._canonical_qa_table_options())
         self._validate()
 
@@ -367,6 +370,7 @@ def _input_of(profile):
         reflectance_unit=profile.units.reflectance_unit,
         reflectance_offset=profile.units.offset,
         saturated=profile.saturated,
+        thermal_saturated=profile.thermal_saturated,
     )
     if profile.thermal is not None:
         h = h.replace(thermal_scale=profile.thermal.scale,

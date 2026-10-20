@@ -54,6 +54,7 @@ const std::vector<std::pair<const char*, Setter>>& input_fields()
         {"thermal_offset", set_member<scalar_t, &Input::thermal_offset>},
         {"thermal_unit", set_member<scalar_t, &Input::thermal_unit>},
         {"saturated", set_member<std::optional<scalar_t>, &Input::saturated>},
+        {"thermal_saturated", set_member<std::optional<scalar_t>, &Input::thermal_saturated>},
     };
     return fields;
 }
@@ -203,10 +204,17 @@ void bind_input(py::module_& m)
         "-27315) is 10000, Celsius / 100 through the identity is 1.")
     .def_readonly(
         "saturated", &ccd::Input::saturated,
-        "The value a saturated observation holds, as the sensor writes it "
-        "(20000 in Collection-1 DN), or None (the default) when the input "
-        "does not declare one. A step or strategy that reads it refuses an "
-        "input without one."
+        "The value a saturated observation holds in the reflective rows, as "
+        "the data stores it (before any transform; 20000 in Collection-1 DN), "
+        "or None (the default) when the input does not declare one. Codes are "
+        "compared on the raw stored values. A step or strategy that reads it "
+        "refuses an input without one."
+    )
+    .def_readonly(
+        "thermal_saturated", &ccd::Input::thermal_saturated,
+        "The value a saturated observation holds in the thermal row, as the "
+        "data stores it (before the thermal transform; 20000 in Collection-1 "
+        "DN), or None (the default)."
     )
 
     //--------------------------------------------------------------------------

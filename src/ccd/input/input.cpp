@@ -45,7 +45,7 @@ bool operator==(const Input& a, const Input& b)
            a.reflectance_offset == b.reflectance_offset &&
            a.thermal_scale == b.thermal_scale && a.thermal_offset == b.thermal_offset &&
            a.thermal_unit == b.thermal_unit &&
-           a.saturated == b.saturated;
+           a.saturated == b.saturated && a.thermal_saturated == b.thermal_saturated;
 }
 
 std::uint64_t digest(const Input& o)
@@ -63,9 +63,12 @@ std::uint64_t digest(const Input& o)
     for (const scalar_t v : {o.reflectance_unit, o.reflectance_offset, o.thermal_scale,
                              o.thermal_offset, o.thermal_unit})
         h.real(v);
-    h.flag(o.saturated.has_value());
-    if (o.saturated)
-        h.real(*o.saturated);
+    for (const std::optional<scalar_t>& code : {o.saturated, o.thermal_saturated})
+    {
+        h.flag(code.has_value());
+        if (code)
+            h.real(*code);
+    }
     return h.value();
 }
 

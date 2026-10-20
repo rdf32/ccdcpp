@@ -17,7 +17,8 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
 >   or none), `roles`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
 >   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_unit` (the value of
->   100 °C after the transform) and `saturated`. `input=` takes an `Input` or a
+>   100 °C after the transform) and the saturation codes `saturated` and `thermal_saturated`
+>   (stored values). `input=` takes an `Input` or a
 >   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
@@ -451,7 +452,7 @@ The input says only how to read the data. The configuration says what to do with
 | `reflectance_offset` | `0.0` | the data's value of reflectance 0; Collection-2 DN (`r = DN * 2.75e-5 - 0.2`) is `reflectance_unit = 1 / 2.75e-5`, `reflectance_offset = 0.2 / 2.75e-5` |
 | `thermal_scale`, `thermal_offset` | `10.0`, `-27315.0` | the thermal transform, `thermal * scale + offset`, of a procedure whose chain sets `thermal_transform` (Standard in `ccdc`) |
 | `thermal_unit` | `10000.0` | the value 100 °C has after the transform (Celsius x 100: 10000; Celsius / 100: 1); `thermal_range`'s bounds, in degrees Celsius, resolve to `c * 100 * thermal_unit / 10000` |
-| `saturated` | `None` | the value a saturated observation holds (Collection-1 DN: 20000), or `None`; no public step reads it |
+| `saturated`, `thermal_saturated` | `None`, `None` | the value a saturated observation holds in the reflective rows and in the thermal row, as the data stores it (before any transform; Collection-1 DN: 20000 and 20000), or `None`; no public step reads them |
 
 The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is reflectance with Celsius / 100 thermal and the identity transform (the measured equivalence is in [docs/units.md](docs/units.md)). The bounds and the green median filter are steps of the configuration's preprocessing, in physical units ([Preprocessing](#preprocessing)):
 
@@ -561,7 +562,7 @@ A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises
 
 ## Sensor Profiles
 
-A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the units, the thermal transform, the value a saturated observation holds and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `input=` takes one wherever it takes a `ccdcpp.Input`.
+A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the units, the thermal transform, the values a saturated observation holds and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `input=` takes one wherever it takes a `ccdcpp.Input`.
 
 - `profile.input()` is its `ccdcpp.Input`, the QA table included, built once per profile and shared (copy it before changing it).
 - `spectral` is checked against the profile's band count (`ValueError`), and only the count. `band_names=` (keyword only, only with a profile) names the rows as the caller holds them; a stack in another order then raises `ValueError` naming the first row that differs, before anything runs. A Sentinel-2 store that keeps B08 with the 10 m bands is refused by `sentinel2_l2a()` this way rather than having B08 read as red edge 1.
@@ -582,7 +583,7 @@ A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: th
 | `hls()` | reflectance 0..1 (`B* * 0.0001`), L30 and S30 | none | raw `Fmask` (uint8) | yes, with a caveat: Fmask over bright surfaces (T16SGC, 2020–2023) |
 | `sentinel2_l2a()` | reflectance 0..1 (`(DN + BOA_ADD_OFFSET) / 10000`) | none | raw `SCL` (uint8) | validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled |
 
-`landsat_c1_dn().input()` is `ccdcpp.Input(saturated=20000.0)`, field for field: the defaults with the value a Collection-1 saturated observation holds, which the other presets do not declare. `landsat_c1_physical()` has `reflectance_unit` 1 and the identity thermal transform, so the configuration's values resolve to the DN ones divided by 10000: the same fit, with coefficients in the input's units. `landsat_c2()` reads the same way (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL`.
+`landsat_c1_dn().input()` is `ccdcpp.Input(saturated=20000.0, thermal_saturated=20000.0)`, field for field: the defaults with the values a Collection-1 saturated observation holds, which the other presets do not declare (theirs are not verified). `landsat_c1_physical()` has `reflectance_unit` 1 and the identity thermal transform, so the configuration's values resolve to the DN ones divided by 10000: the same fit, with coefficients in the input's units. `landsat_c2()` reads the same way (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL`.
 
 The HLS and Sentinel-2 presets read reflectance and degrees Celsius / 100 as `landsat_c1_physical()` does and saturation-screen every optical row; with `ccdc` they detect change on green, red, nir, swir1 and swir2 with the chi-squared(5) thresholds, use green and swir1 for Tmask, have no statistics cutoff and keep pyccd's cadence values.
 
@@ -639,7 +640,7 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 ```
 
 - **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no band list can name them.
-- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_OVER_100`) or `None`, `saturated` the value a saturated observation holds or `None`.
+- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_OVER_100`) or `None`, `saturated` and `thermal_saturated` the values a saturated observation holds in the reflective and the thermal rows, as stored, or `None`.
 - **QA**: `qa_table_builder`, a `ccdcpp.qa_tables` builder name or `None` for codes; `qa_table_options`, keyword arguments for it of exactly the types `ccdcpp.QA_TABLE_OPTIONS` lists.
 - A profile that breaks a layout rule (an unknown or repeated role, no green band, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
 

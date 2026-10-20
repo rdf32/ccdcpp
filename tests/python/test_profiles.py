@@ -239,7 +239,8 @@ class Corpus(unittest.TestCase):
 class LandsatC1DN(unittest.TestCase):
     def test_options_are_the_defaults_field_by_field(self):
         h = presets.landsat_c1_dn().input()
-        self.assertEqual(fields(h), fields(ccdcpp.Input(saturated=20000.0)))
+        self.assertEqual(fields(h), fields(ccdcpp.Input(saturated=20000.0,
+                                                        thermal_saturated=20000.0)))
         for threshold in (change_threshold, outlier_threshold):
             self.assertEqual(threshold(PYCCD, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
         self.assertGreater(len(fields(h)), 14)
@@ -875,20 +876,26 @@ class Profiles(unittest.TestCase):
             with self.subTest(preset=preset):
                 p = getattr(presets, preset)()
                 expected = 20000.0 if preset == "landsat_c1_dn" else None
-                self.assertEqual(p.saturated, expected)
-                self.assertEqual(p.input().saturated, expected)
+                for name in ("saturated", "thermal_saturated"):
+                    self.assertEqual(getattr(p, name), expected)
+                    self.assertEqual(getattr(p.input(), name), expected)
         self.assertIsNone(ccdcpp.Input().saturated)
-        p = dataclasses.replace(presets.landsat_c1_physical(), saturated=2)
-        self.assertEqual(p.saturated, 2.0)
-        self.assertEqual(p.input().saturated, 2.0)
-        # In the input's equality and digest.
+        self.assertIsNone(ccdcpp.Input().thermal_saturated)
+        p = dataclasses.replace(presets.landsat_c1_physical(), saturated=2, thermal_saturated=3)
+        self.assertEqual((p.saturated, p.thermal_saturated), (2.0, 3.0))
+        self.assertEqual((p.input().saturated, p.input().thermal_saturated), (2.0, 3.0))
+        # In the input's equality and digest, each on its own.
         h = ccdcpp.Input()
-        for value in (20000.0, 65535.0):
-            with self.subTest(saturated=value):
-                other = ccdcpp.Input(saturated=value)
-                self.assertEqual(other.saturated, value)
-                self.assertNotEqual(other, h)
-                self.assertNotEqual(other.digest(), h.digest())
+        for name in ("saturated", "thermal_saturated"):
+            for value in (20000.0, 65535.0):
+                with self.subTest(name=name, value=value):
+                    other = ccdcpp.Input(**{name: value})
+                    self.assertEqual(getattr(other, name), value)
+                    self.assertNotEqual(other, h)
+                    self.assertNotEqual(other.digest(), h.digest())
+        self.assertNotEqual(ccdcpp.Input(saturated=1.0), ccdcpp.Input(thermal_saturated=1.0))
+        self.assertNotEqual(ccdcpp.Input(saturated=1.0).digest(),
+                            ccdcpp.Input(thermal_saturated=1.0).digest())
         self.assertEqual(copy.copy(h), h)
 
     def test_a_denser_cadence_and_no_cutoff_are_a_configuration(self):

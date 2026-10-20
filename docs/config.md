@@ -24,7 +24,8 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
 >   or none), `roles`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
 >   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_unit` (the value of
->   100 °C after the transform) and `saturated`. `input=` takes an `Input` or a
+>   100 °C after the transform) and the saturation codes `saturated` and `thermal_saturated`
+>   (stored values). `input=` takes an `Input` or a
 >   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,

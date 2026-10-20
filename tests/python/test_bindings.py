@@ -403,7 +403,7 @@ class CadenceParameters(unittest.TestCase):
     # The Input's fields: the data's band layout, QA codes and units.
     INPUT_FIELDS = {
         "roles", "bands", "index", "digest", "replace", "reflectance_unit",
-        "reflectance_offset", "saturated",
+        "reflectance_offset", "saturated", "thermal_saturated",
         "qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud",
         "qa_cirrus1", "qa_cirrus2", "qa_occlusion", "qa_table",
         "thermal_scale", "thermal_offset", "thermal_unit",
