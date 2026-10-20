@@ -2,7 +2,7 @@
 #pragma once
 
 // ccdcpp's C++ API: the checks every call makes, the resume record's
-// fingerprint, and (run/run.hpp) the entry points run_pixel and run_cube.
+// fingerprint, and (run/run.hpp) the entry points detect and detect_cube.
 
 #include <cstdint>
 

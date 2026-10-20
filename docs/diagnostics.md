@@ -49,7 +49,7 @@ Each event is a dict:
 
 The whole-series pixels (insufficient clear, permanent snow) take no machine and report
 nothing. A resumed pixel reports from its Prepare on, then from where the stored run stopped.
-`run_pixel` observes its one pixel whatever `RunSpec::observe` holds.
+`detect` observes its one pixel whatever `RunSpec::observe` holds.
 
 ## From C++
 
@@ -58,16 +58,16 @@ nothing. A resumed pixel reports from its Prepare on, then from where the stored
 #include "ccd/run/run.hpp"
 
 ccd::RunSpec spec;
-spec.input = input;                // ccd::Input, the data's encoding
+spec.encoding = input;             // ccd::Input, the data's encoding
 spec.observer = std::make_shared<ccd::TextObserver>(std::cerr);
-ccd::run_pixel(spec, dates, spectral, qas);
+ccd::detect(spec, dates, spectral, qas);
 // pixel 0: transition Prepare -> Initialize window (0, 12) prev_break 0 n 302
 // pixel 0: transition Initialize -> Extend window (0, 12) prev_break 0 n 302
 // pixel 0: test 724929 no change [0.689656, 3.20607, 0.835624, 2.40568, 0.562177, 1.86732]
 // ...
 
 spec.observe = {120 * W + 37};     // a cube run: only these pixels (row * W + col)
-ccd::run_cube(spec, dates, cube, qas, 8);
+ccd::detect_cube(spec, dates, cube, qas, 8);
 ```
 
 An `Observer` implements one call, `event(pixel, const ObserverEvent&)`; in a cube run it is

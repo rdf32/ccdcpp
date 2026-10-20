@@ -2,7 +2,7 @@
 
 //==============================================================================
 //
-// Canonical text form of run_pixel() output, for bit-exact comparison.
+// Canonical text form of detect() output, for bit-exact comparison.
 //
 // Every floating point field is written with "%a" (hexfloat), so two dumps are
 // byte-equal exactly when every value is bit-equal. The processing mask is

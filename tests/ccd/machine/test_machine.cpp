@@ -18,9 +18,9 @@
 //   * Whole pixels stepped by hand: every self-transition is one decision,
 //     and the result is the driven machine's.
 //   * Exits: standard::run() on the characterization pixels that end the
-//     segment loop each way, with the same preprocessing ccd::run_pixel() runs,
+//     segment loop each way, with the same preprocessing ccd::detect() runs,
 //     against the Exit the run leaves in the record. The result of each run
-//     is also checked against run_pixel()'s, field for field.
+//     is also checked against detect()'s, field for field.
 //   * the mode's choose(): the clear percentage first, then the snow
 //     percentage, each threshold on its >= side; Detector::fit(): the
 //     machine for Standard, the shared whole-series fit for the others.
@@ -1313,7 +1313,7 @@ TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
 // Exits on whole pixels
 //------------------------------------------------------------------------------
 
-// standard::run() on a characterization pixel, preprocessed as run_pixel() does
+// standard::run() on a characterization pixel, preprocessed as detect() does
 // for the Standard procedure: the plan's transform on a copy, its chain for
 // the mask.
 struct MachineRun
@@ -1363,7 +1363,7 @@ MachineRun run_machine(const golden::CharPixel& p)
 ccd::FitResult run_detect(const golden::CharPixel& p)
 {
     const std::size_t T = p.dates.size();
-    return ccd::run_pixel(
+    return ccd::detect(
         golden::spec_of(p.h, p.config),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),

@@ -13,7 +13,7 @@
 //                     and observations dated after statistics_end, in DN and in
 //                     physical units, under every GreenFilterScope and every
 //                     combination of the four inclusive flags.
-//   CustomPlan.*      configurations whose chains change what run_pixel()
+//   CustomPlan.*      configurations whose chains change what detect()
 //                     does: a Standard chain that keeps snow, and the thermal
 //                     transform on every procedure; the chains written out
 //                     step by step are the preset's.
@@ -630,14 +630,14 @@ std::string dump(const ccd::FitResult& r)
     return out;
 }
 
-// run_pixel() under `config`.
+// detect() under `config`.
 ccd::FitResult run_detect(
     const PixelView& px,
     const ccd::Input& h,
     const ccd::config::Config& config = golden::pyccd()
 )
 {
-    return ccd::run_pixel(golden::spec_of(h, config), px.dates, px.spectral, px.qas).result;
+    return ccd::detect(golden::spec_of(h, config), px.dates, px.spectral, px.qas).result;
 }
 
 } // namespace
@@ -877,7 +877,7 @@ TEST(CcdcPlan, ApplyResetsTheMask)
 
 // The "ccdc" chains written out step by step, every parameter spelled out
 // in physical terms, are the preset's: the same plan, and the same output
-// through run_pixel() and run_cube().
+// through detect() and detect_cube().
 TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
 {
     using ccd::config::flag;
@@ -926,7 +926,7 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
 
     auto cube = [&](const ccd::config::Config& config)
     {
-        const ccd::CubeResult r = ccd::run_cube(
+        const ccd::CubeOutput r = ccd::detect_cube(
             golden::spec_of(h, config),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
@@ -1050,7 +1050,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     EXPECT_GT(other_changed, 0u);
     EXPECT_EQ(standard_changed, 0u);
 
-    const ccd::CubeResult cube = ccd::run_cube(
+    const ccd::CubeOutput cube = ccd::detect_cube(
         golden::spec_of(h, everywhere),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
@@ -1172,8 +1172,8 @@ TEST(PlanValidation, ChainOverCapacity)
 }
 
 // A configuration whose plan validate() refuses (an add_qa without its
-// dedupe) is refused when it is resolved, before any pixel: run_pixel() and
-// run_cube() throw rather than landing in CubeResult::failures.
+// dedupe) is refused when it is resolved, before any pixel: detect() and
+// detect_cube() throw rather than landing in CubeOutput::failures.
 TEST(PlanValidation, EntryPointsReject)
 {
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 2, 2);
@@ -1187,7 +1187,7 @@ TEST(PlanValidation, EntryPointsReject)
     EXPECT_THROW(run_detect(px, h, bad), std::invalid_argument);
 
     EXPECT_THROW(
-        ccd::run_cube(
+        ccd::detect_cube(
             golden::spec_of(h, bad),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),

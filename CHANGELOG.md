@@ -86,18 +86,20 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   bands`. A `MEOW_SIZE` of 0, a NaN change or outlier threshold, and negative or NaN Lasso
   constants (`alpha`, `tolerance`, `coef_floor`) ran in 0.10.0 and are refused
   (`model 'lasso' parameter 'alpha' is -1; it must be at least 0`).
-- **The C++ entry points are `ccd::run_pixel` and `ccd::run_cube`** (`include/ccd/run/run.hpp`),
-  replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
-  overloads. A call runs one `ccd::RunSpec` `{input, algorithm, record, keep_masks, observer,
-  observe}`; `algorithm` is a compiled configuration (`ccd::Algorithm`,
+- **The C++ entry points are `ccd::detect` and `ccd::detect_cube`** (`include/ccd/run/run.hpp`),
+  the Python calls' names, replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube`
+  and `resume_cube` overloads. A call runs one `ccd::RunSpec` `{encoding, algorithm, record,
+  masks, observer, observe}`; `masks` (default false, as Python's) keeps each pixel's processing
+  mask, which `keep_masks` kept by default; `algorithm` is a compiled configuration (`ccd::Algorithm`,
   `include/ccd/run/algorithm.hpp`: checked when built, resolved and built once per input), the
   "ccdc" preset's (`Algorithm::preset("ccdc")`) by default. The values and QA are views of any
   supported element type (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`), dispatched
-  once per call; a resume is an argument (`PixelResume`, `CubeResumeFrom`). `run_pixel` returns
-  a `PixelRun` (result, record, status, header), `run_cube` a `CubeResult` as before.
+  once per call; a resume is an argument (`PixelResume`, `CubeResumeFrom`). `detect` returns
+  a `PixelOutput` (result, record, status, header), `detect_cube` a `CubeOutput` (`CubeResult`'s
+  fields).
   Underneath, a `ccd::Run` is built once per call and a `ccd::Worker` per thread; `Run::pixel`
   is the per-pixel pipeline as named steps. Gone from `ccd.hpp`: `Recorded` and `Resumed` (both
-  `PixelRun`), `DetectScratch` (`Worker`), `options_digest()` (the header's `digest` is the
+  `PixelOutput`), `DetectScratch` (`Worker`), `options_digest()` (the header's `digest` is the
   resolution's), and the debugging helpers `Clock`, `elapsed_ms` and `print_change_model(s)`;
   `ccd.hpp` no longer includes `<iostream>`, `<chrono>`, `<string>` or `<vector>`.
 - **Python: two calls.** `ccdcpp.detect(dates, spectral, qas, *, encoding, config="ccdc",
@@ -245,7 +247,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
 ### Fixed
 
 - A build without OpenMP compiles: the run includes `<omp.h>` only under `_OPENMP` and runs
-  the cube on one thread otherwise (`CubeResult::threads` is 1).
+  the cube on one thread otherwise (`CubeOutput::threads` is 1).
 
 ## 0.10.0 - 2026-10-17
 

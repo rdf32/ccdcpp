@@ -1424,7 +1424,7 @@ TEST(Preprocess, ARegistryAddsAStepType)
 
     const auto run = [&](const ccd::config::Config& config)
     {
-        return ccd::run_pixel(
+        return ccd::detect(
                    golden::spec_of(ccd::Input{}, std::make_shared<const ccd::Algorithm>(config, r)),
                    ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
                    ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),

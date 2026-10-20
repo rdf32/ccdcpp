@@ -328,9 +328,10 @@ static py::dict detect_wrapper(
         static_cast<const ccd::scalar_t*>(spectral_buf.ptr), {bands, timesteps});
 
     ccd::RunSpec spec;
-    spec.input = input;
+    spec.encoding = input;
     spec.algorithm = algorithm_from_python(config);
     spec.record = record;
+    spec.masks = true;   // detect returns the processing mask
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
     spec.observer = recording;
 
@@ -338,21 +339,21 @@ static py::dict detect_wrapper(
     // Run CCD without the GIL
     //----------------------------------------------------------------------
 
-    ccd::PixelRun run;
+    ccd::PixelOutput run;
     {
         py::gil_scoped_release release;
 
         const ccd::PixelResume* prior = from ? &*from : nullptr;
         if (raw16)
-            run = ccd::run_pixel(spec, dates_view, spectral_view,
-                                 ccd::ArrayView<const std::uint16_t, 1>::contiguous(
-                                     static_cast<const std::uint16_t*>(qas_buf.ptr), {timesteps}),
-                                 prior);
+            run = ccd::detect(spec, dates_view, spectral_view,
+                              ccd::ArrayView<const std::uint16_t, 1>::contiguous(
+                                  static_cast<const std::uint16_t*>(qas_buf.ptr), {timesteps}),
+                              prior);
         else
-            run = ccd::run_pixel(spec, dates_view, spectral_view,
-                                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(
-                                     static_cast<const std::uint8_t*>(qas_buf.ptr), {timesteps}),
-                                 prior);
+            run = ccd::detect(spec, dates_view, spectral_view,
+                              ccd::ArrayView<const std::uint8_t, 1>::contiguous(
+                                  static_cast<const std::uint8_t*>(qas_buf.ptr), {timesteps}),
+                              prior);
     }
 
     py::dict output;
@@ -388,7 +389,7 @@ static py::dict detect_wrapper(
 // `spectral` is taken as it is when it is float64, float32 or uint16 in native
 // byte order with non-negative strides -- any layout, C-contiguous or not --
 // and read through a strided ArrayView. Each pixel is converted to float64
-// inside run_cube, per thread, so a uint16 cube is never widened as a whole.
+// inside detect_cube, per thread, so a uint16 cube is never widened as a whole.
 // Anything else is converted to a C-contiguous float64 array first, under
 // numpy safe casting. `qas` is uint8 under the same two rules, or uint8 or
 // uint16 with the input's table; see accept_qas().
@@ -399,7 +400,7 @@ static py::dict detect_wrapper(
 
 // The element type of CubeInput::spectral, read while the GIL is held:
 // testing a py::array's dtype creates and releases Python objects, which
-// run_cube cannot do.
+// detect_cube cannot do.
 enum class SpectralType
 {
     Float64,
@@ -467,14 +468,14 @@ static CubeInput check_cube(
 }
 
 //------------------------------------------------------------------------------
-// run_cube on a checked input: its spectral and QA dtypes as the views
-// ccd::run_cube dispatches on.
+// ccd::detect_cube on a checked input: its spectral and QA dtypes as the views
+// it dispatches on.
 //
 // Called with the GIL released: it only reads buffers that `in` keeps alive,
 // and touches no Python object.
 //------------------------------------------------------------------------------
 
-static ccd::CubeResult run_cube(
+static ccd::CubeOutput detect_views(
     const CubeInput& in,
     const ccd::RunSpec& spec,
     int threads,
@@ -494,7 +495,7 @@ static ccd::CubeResult run_cube(
         ? ccd::CubeQa(strided_view<std::uint16_t, 3>(in.qas))
         : ccd::CubeQa(strided_view<std::uint8_t, 3>(in.qas));
 
-    return ccd::run_cube(spec, dates, spectral, qas, threads, from);
+    return ccd::detect_cube(spec, dates, spectral, qas, threads, from);
 }
 
 //------------------------------------------------------------------------------
@@ -573,7 +574,7 @@ static py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures
 // must derive the count from curve_qa and must not test values against zero.
 //------------------------------------------------------------------------------
 
-static py::dict cube_columns(const ccd::CubeResult& cube, const CubeInput& views, bool masks)
+static py::dict cube_columns(const ccd::CubeOutput& cube, const CubeInput& views, bool masks)
 {
     std::size_t n = 0;
     std::size_t with_segments = 0;
@@ -697,9 +698,9 @@ static py::dict detect_cube_wrapper(
     const CubeInput views = check_cube(dates, spectral, qas, input);
 
     ccd::RunSpec spec;
-    spec.input = input;
+    spec.encoding = input;
     spec.algorithm = algorithm_from_python(config);
-    spec.keep_masks = masks;   // no column holds the mask without masks=True
+    spec.masks = masks;
     spec.record = record;
 
     std::optional<ccd::CubeResumeFrom> from;
@@ -735,10 +736,10 @@ static py::dict detect_cube_wrapper(
         }
     }
 
-    ccd::CubeResult cube;
+    ccd::CubeOutput cube;
     {
         py::gil_scoped_release release;
-        cube = run_cube(views, spec, threads, from ? &*from : nullptr);
+        cube = detect_views(views, spec, threads, from ? &*from : nullptr);
     }
 
     py::dict output = cube_columns(cube, views, masks);

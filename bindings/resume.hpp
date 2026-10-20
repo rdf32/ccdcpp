@@ -26,14 +26,14 @@ std::vector<ccd::ChangeModel> segments_from_python(const py::list& models);
 // The records of a cube's H x W pixels, raster order; a pixel that failed has
 // a default record. With `status`, also each pixel's ResumeStatus.
 py::dict record_columns(
-    const ccd::CubeResult& cube,
+    const ccd::CubeOutput& cube,
     ccd::index_t H,
     ccd::index_t W,
     ccd::index_t B,
     bool status
 );
 
-// What run_cube()'s resume reads: the header, record_columns()'s dict and
+// What detect_cube()'s resume reads: the header, record_columns()'s dict and
 // detect_cube()'s segment columns.
 ccd::CubeResumeFrom cube_from_python(
     const py::dict& header,

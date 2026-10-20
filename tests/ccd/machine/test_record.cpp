@@ -1,8 +1,8 @@
 //==============================================================================
 //
-// The resume record (include/ccd/results/record.hpp): what run_pixel() with RunSpec::record writes.
+// The resume record (include/ccd/results/record.hpp): what detect() with RunSpec::record writes.
 //
-//   * Record.*: the result is run_pixel()'s, bit for bit; the header names the
+//   * Record.*: the result is detect()'s, bit for bit; the header names the
 //     run; each pixel's suspension agrees with its output (the segments
 //     written before it, the provisional one after it, the window at the
 //     series end) and its excluded days are the filter mask less the
@@ -57,9 +57,9 @@ ccd::ArrayView<const std::uint8_t, 1> qas_of(const golden::CharPixel& p)
     return ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {p.qas.size()});
 }
 
-ccd::PixelRun recorded(const golden::CharPixel& p)
+ccd::PixelOutput recorded(const golden::CharPixel& p)
 {
-    return ccd::run_pixel(
+    return ccd::detect(
         golden::spec_of(p.h, p.config, true),
         dates_of(p),
         spectral_of(p),
@@ -68,7 +68,7 @@ ccd::PixelRun recorded(const golden::CharPixel& p)
 
 ccd::FitResult detected(const golden::CharPixel& p)
 {
-    return ccd::run_pixel(golden::spec_of(p.h, p.config), dates_of(p), spectral_of(p), qas_of(p)).result;
+    return ccd::detect(golden::spec_of(p.h, p.config), dates_of(p), spectral_of(p), qas_of(p)).result;
 }
 
 std::string dump(const ccd::FitResult& r)
@@ -125,7 +125,7 @@ TEST(Record, TheHeaderNamesTheRun)
 {
     const auto all = golden::characterisation_pixels();
     const golden::CharPixel& p = all.front();
-    const ccd::PixelRun r = recorded(p);
+    const ccd::PixelOutput r = recorded(p);
 
     EXPECT_EQ(r.header.format, ccd::RESUME_FORMAT);
     EXPECT_EQ(r.header.results_version, ccd::RESULTS_VERSION);
@@ -151,7 +151,7 @@ TEST(Record, EachExitAndItsSuspension)
         EXPECT_EQ(recorded(pixel(all, name)).record.standard.exit, exit) << name;
 
     // Not Standard: nothing for the machine to resume.
-    const ccd::PixelRun snow = recorded(pixel(all, "select_snow_at_threshold"));
+    const ccd::PixelOutput snow = recorded(pixel(all, "select_snow_at_threshold"));
     EXPECT_EQ(snow.record.procedure, ccd::PixelProcedure::PermanentSnow);
     EXPECT_EQ(snow.record.standard.exit, Exit::None);
     EXPECT_TRUE(snow.record.excluded_days.empty());
@@ -161,7 +161,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
 {
     for (const auto& p : golden::characterisation_pixels())
     {
-        const ccd::PixelRun r = recorded(p);
+        const ccd::PixelOutput r = recorded(p);
         const ccd::standard::Suspended& s = r.record.standard;
         if (r.record.procedure != ccd::PixelProcedure::Standard)
             continue;
@@ -243,7 +243,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
     // prev_break is the last change's break, as a masked position.
     for (const auto& p : golden::characterisation_pixels())
     {
-        const ccd::PixelRun r = recorded(p);
+        const ccd::PixelOutput r = recorded(p);
         const ccd::standard::Suspended& s = r.record.standard;
         if (r.record.procedure != ccd::PixelProcedure::Standard || s.final_segments == 0 ||
             r.result.models[s.final_segments - 1].change_probability != 1.0)
@@ -264,7 +264,7 @@ TEST(Record, TheExcludedDaysAreTheMachinesDrops)
 {
     for (const auto& p : golden::characterisation_pixels())
     {
-        const ccd::PixelRun r = recorded(p);
+        const ccd::PixelOutput r = recorded(p);
         if (r.record.procedure != ccd::PixelProcedure::Standard)
             continue;
 

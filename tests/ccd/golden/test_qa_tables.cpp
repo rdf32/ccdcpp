@@ -6,8 +6,8 @@
 // as passing the decoded codes as uint8. These tests take the golden corpus's
 // QA codes, encode each one into a raw value of each product -- cycling
 // through several raw values per code, flag combinations that exercise the
-// precedence among them -- and compare run_cube() on the raw values plus
-// the table with run_cube() on the codes, exactly, as hexfloat dumps.
+// precedence among them -- and compare detect_cube() on the raw values plus
+// the table with detect_cube() on the codes, exactly, as hexfloat dumps.
 //
 // The corpus uses code 8 (QA_CIRRUS1) beside the six classes. The procedures
 // read no code but QA_FILL, QA_CLEAR, QA_WATER, QA_SNOW and QA_CLOUD, so 8 is
@@ -146,7 +146,7 @@ std::uint16_t encode(const Scheme& s, std::uint8_t code, std::size_t i)
 // Runs and dumps.
 //------------------------------------------------------------------------------
 
-std::string dump(const ccd::CubeResult& cube)
+std::string dump(const ccd::CubeOutput& cube)
 {
     EXPECT_TRUE(cube.failures.empty());
 
@@ -160,7 +160,7 @@ std::string dump(const ccd::CubeResult& cube)
 }
 
 template<typename Qa>
-std::string run_cube(
+std::string detect_cube(
     const golden::Cube& c,
     const std::vector<Qa>& qas,
     const Input& h,
@@ -168,7 +168,7 @@ std::string run_cube(
     const QaTablePtr& table
 )
 {
-    return dump(ccd::run_cube(
+    return dump(ccd::detect_cube(
         golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, c.T}),
@@ -222,7 +222,7 @@ TEST(QaTables, DecodedEqualsPreDecoded)
         const golden::Cube c =
             golden::make_cube(spec.seed, spec.regime, spec.H, spec.W);
 
-        const std::string reference = run_cube(c, c.qas, h, 1, nullptr);
+        const std::string reference = detect_cube(c, c.qas, h, 1, nullptr);
         ASSERT_FALSE(reference.empty());
 
         for (const auto& s : schemes())
@@ -240,13 +240,13 @@ TEST(QaTables, DecodedEqualsPreDecoded)
 
             for (int threads : {1, 8})
             {
-                EXPECT_EQ(reference, run_cube(c, raw, h, threads, table))
+                EXPECT_EQ(reference, detect_cube(c, raw, h, threads, table))
                     << s.name << " uint16 " << spec.name << " threads=" << threads;
 
                 if (s.narrow)
                 {
                     const std::vector<std::uint8_t> raw8(raw.begin(), raw.end());
-                    EXPECT_EQ(reference, run_cube(c, raw8, h, threads, table))
+                    EXPECT_EQ(reference, detect_cube(c, raw8, h, threads, table))
                         << s.name << " uint8 " << spec.name << " threads=" << threads;
                 }
             }
@@ -257,7 +257,7 @@ TEST(QaTables, DecodedEqualsPreDecoded)
 }
 
 //------------------------------------------------------------------------------
-// run_pixel() on one pixel, raw plus table, against the codes.
+// detect() on one pixel, raw plus table, against the codes.
 //------------------------------------------------------------------------------
 
 TEST(QaTables, DetectDecodes)
@@ -284,12 +284,12 @@ TEST(QaTables, DetectDecodes)
                 raw[t] = encode(s, codes[t], t);
 
             std::string expected, actual;
-            golden::dump_pixel(expected, "", ccd::run_pixel(
+            golden::dump_pixel(expected, "", ccd::detect(
                 golden::spec_of(h),
                 dates,
                 spectral,
                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T})).result);
-            golden::dump_pixel(actual, "", ccd::run_pixel(
+            golden::dump_pixel(actual, "", ccd::detect(
                 golden::spec_of(golden::with_table(h, table), golden::pyccd()),
                 dates,
                 spectral,
@@ -326,12 +326,12 @@ TEST(QaTables, HonourTheOptionsCodes)
     const Input defaults;
     const Input h = renumbered();
 
-    const std::string reference = run_cube(c, c.qas, defaults, 2, nullptr);
+    const std::string reference = detect_cube(c, c.qas, defaults, 2, nullptr);
 
     std::vector<std::uint8_t> codes(c.qas.size());
     for (std::size_t i = 0; i < codes.size(); ++i)
         codes[i] = read_as(c.qas[i], h);
-    EXPECT_EQ(reference, run_cube(c, codes, h, 2, nullptr));
+    EXPECT_EQ(reference, detect_cube(c, codes, h, 2, nullptr));
 
     for (const auto& s : schemes())
     {
@@ -341,7 +341,7 @@ TEST(QaTables, HonourTheOptionsCodes)
         for (std::size_t i = 0; i < raw.size(); ++i)
             raw[i] = encode(s, c.qas[i], i);
 
-        EXPECT_EQ(reference, run_cube(c, raw, h, 2, table)) << s.name;
+        EXPECT_EQ(reference, detect_cube(c, raw, h, 2, table)) << s.name;
 
         // Every entry is one of the six codes.
         for (std::size_t v = 0; v < ccd::QA_TABLE_SIZE; ++v)
@@ -368,14 +368,14 @@ TEST(QaTables, StridedRawQa)
     const Scheme s = schemes()[0];
     const QaTablePtr table = s.build(h);
 
-    const std::string reference = run_cube(c, c.qas, h, 2, nullptr);
+    const std::string reference = detect_cube(c, c.qas, h, 2, nullptr);
 
     std::vector<std::uint16_t> thw(H * W * T);
     for (std::size_t p = 0; p < H * W; ++p)
         for (std::size_t t = 0; t < T; ++t)
             thw[t * H * W + p] = encode(s, c.qas[p * T + t], p * T + t);
 
-    EXPECT_EQ(reference, dump(ccd::run_cube(
+    EXPECT_EQ(reference, dump(ccd::detect_cube(
         golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
@@ -499,7 +499,7 @@ TEST(QaTables, Uint16NeedsATable)
         }
     };
 
-    expect_refused([&] { ccd::run_pixel(golden::spec_of(h), dates, pixel, qa1); });
+    expect_refused([&] { ccd::detect(golden::spec_of(h), dates, pixel, qa1); });
     const ccd::RunSpec codes = golden::spec_of(h);
     expect_refused([&] { ccd::Run(codes, dates, 7, T, T, true); });
 
@@ -508,19 +508,19 @@ TEST(QaTables, Uint16NeedsATable)
     for (std::size_t i = 0; i < u16.size(); ++i)
         u16[i] = static_cast<std::uint16_t>(std::max(0.0, c.spectral[i]));
 
-    expect_refused([&] { ccd::run_cube(
+    expect_refused([&] { ccd::detect_cube(
         golden::spec_of(h),
         dates,
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {1, 2, 7, T}),
         qa3,
         1); });
-    expect_refused([&] { ccd::run_cube(
+    expect_refused([&] { ccd::detect_cube(
         golden::spec_of(h),
         dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 2, 7, T}),
         qa3,
         1); });
-    expect_refused([&] { ccd::run_cube(
+    expect_refused([&] { ccd::detect_cube(
         golden::spec_of(h),
         dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 2, 7, T}),
@@ -529,13 +529,13 @@ TEST(QaTables, Uint16NeedsATable)
 
     // With a table it runs, for every spectral type.
     const QaTablePtr table = ccd::qa_tables::hls_fmask(h);
-    EXPECT_EQ(ccd::run_cube(
+    EXPECT_EQ(ccd::detect_cube(
         golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 2, 7, T}),
         qa3,
         1).pixels.size(), 2u);
-    EXPECT_EQ(ccd::run_cube(
+    EXPECT_EQ(ccd::detect_cube(
         golden::spec_of(golden::with_table(h, table), golden::pyccd()),
         dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 2, 7, T}),

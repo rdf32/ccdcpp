@@ -6,12 +6,12 @@
 // the Standard procedure's transitions many times and a few never. The pixels
 // of characterisation.hpp are built for the transitions, guards and rules
 // that the corpus misses, and for the boundaries of the procedure
-// choice. Their run_pixel() output is pinned, byte for byte, in
+// choice. Their detect() output is pinned, byte for byte, in
 // transitions_fixture.txt. A change meant to keep the output reproduces it
 // exactly; a change meant to move it moves only the pixels it is meant to,
 // and says which.
 //
-// Everything here goes through ccd::run_pixel(), the public entry point, and
+// Everything here goes through ccd::detect(), the public entry point, and
 // reads only its result, so the tests hold whatever the procedure's insides
 // become, and stay valid beside a second change-detection procedure.
 //
@@ -204,7 +204,7 @@ ccd::FitResult run_detect(const golden::CharPixel& p)
     // A private copy: the reference output is the one a fresh buffer gives.
     std::vector<double> block = p.spectral;
 
-    return ccd::run_pixel(
+    return ccd::detect(
         golden::spec_of(p.h, p.config),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<double, 2>::contiguous(block.data(), {7, T}),

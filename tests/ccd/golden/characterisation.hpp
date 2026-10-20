@@ -4,7 +4,7 @@
 //
 // Characterization pixels for the Standard procedure's state machine.
 //
-// Each pixel is built so that run_pixel() takes one transition, guard or rule
+// Each pixel is built so that detect() takes one transition, guard or rule
 // of the Standard procedure that the synthetic golden corpus does not reach
 // (or reaches only in Python): see test_transitions.cpp for which pixel takes
 // which path and why. The pixels are a deterministic function of their

@@ -337,7 +337,7 @@ config.stages["refit"].params["factor"] = config::real(2.0);
 // rows, thresholds, the preprocessing plan) once, and part of its resume records' digest.
 RunSpec spec;
 spec.algorithm = std::make_shared<const Algorithm>(config);
-PixelRun run = run_pixel(spec, dates, spectral, qas);
+PixelOutput run = detect(spec, dates, spectral, qas);
 
 // A value out of range is refused when the Algorithm is built:
 config.stages["refit"].params["factor"] = config::real(0.0);
@@ -424,7 +424,7 @@ that guard is final.
 That guard is where the record stops: `standard::Suspended` (`standard.hpp`) is captured by
 every route into EndCatch and by the early exits, before anything after the guard writes. It
 holds the exit, the cursor, the fit window's end, a pending grow, the last peek test's
-coefficient count and magnitudes, and the final segment count. `ccd::run_pixel()` with `RunSpec::record`
+coefficient count and magnitudes, and the final segment count. `ccd::detect()` with `RunSpec::record`
 returns it inside a `PixelRecord`, with the pixel's input fingerprint and the days the machine dropped
 (`include/ccd/results/record.hpp`).
 
@@ -441,7 +441,7 @@ returns it inside a `PixelRecord`, with the pixel's input fingerprint and the da
    provisional segment again when the series still ends there.
 
 `State::carried` counts the stored final segments, which come before the new ones, so
-StartCatch stays the first segment's. A resume (`run_pixel()` or `run_cube()` with the stored
+StartCatch stays the first segment's. A resume (`detect()` or `detect_cube()` with the stored
 run) keeps the stored final segments as given
 and returns the complete result, equal bit for bit to the run on the whole series
 (`ResumeEqualsTheFullRun.*`, `tests/ccd/golden/test_resume.cpp`). A pixel whose stored input

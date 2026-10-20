@@ -502,7 +502,7 @@ if(CCD_BUILD_TESTS)
     )
 
     # The preprocessing plan: the "ccdc" plan (plan_of()) against the
-    # hand-written chains, custom plans through run_pixel(), plan
+    # hand-written chains, custom plans through detect(), plan
     # validation, and a microbenchmark of apply(). See
     # tests/ccd/machine/test_preprocess.cpp.
     add_executable(
@@ -657,7 +657,7 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
-    # The bit-exact gate: run_pixel() and run_cube() against a committed
+    # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
     add_executable(
         test_golden
@@ -753,7 +753,7 @@ if(CCD_BUILD_TESTS)
             CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
     )
 
-    # The resume record: what run_pixel() with RunSpec::record writes. See
+    # The resume record: what detect() with RunSpec::record writes. See
     # tests/ccd/machine/test_record.cpp.
     add_executable(
         test_record
@@ -1044,7 +1044,7 @@ if(CCD_BUILD_TESTS)
 
 endif()
 
-# The golden check's driver: dumps every output of run_pixel() and run_cube()
+# The golden check's driver: dumps every output of detect() and detect_cube()
 # on the synthetic corpus and the CSV pixels (tools/linux-compare/README.md).
 # Its one source is tools/linux-compare/golden_driver.cpp, which
 # linux-compare also compiles against older trees by hand.

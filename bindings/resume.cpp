@@ -93,7 +93,7 @@ ccd::BandFit band_from_python(const py::dict& b)
     return fit;
 }
 
-// record_columns()' status of a pixel that failed (CubeResult::failures).
+// record_columns()' status of a pixel that failed (CubeOutput::failures).
 constexpr std::uint8_t STATUS_FAILED = 2;
 
 } // namespace
@@ -183,7 +183,7 @@ std::vector<ccd::ChangeModel> segments_from_python(const py::list& models)
 }
 
 py::dict record_columns(
-    const ccd::CubeResult& cube,
+    const ccd::CubeOutput& cube,
     index_t H,
     index_t W,
     index_t B,

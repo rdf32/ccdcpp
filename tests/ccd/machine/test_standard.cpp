@@ -496,7 +496,7 @@ TEST(CCD, DetectStandardHalfDayMedianGap)
 
     const ccd::Input input;
 
-    const auto result = ccd::run_pixel(
+    const auto result = ccd::detect(
         golden::spec_of(input),
         dates,
         spectral,

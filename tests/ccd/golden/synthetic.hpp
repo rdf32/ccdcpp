@@ -17,8 +17,8 @@
 //              snow, unflagged cloud-like spikes (tmask / Extend
 //              outliers), saturated and out-of-range thermal values, and
 //              sometimes long fill gaps that leave too few observations.
-//   Snow       snow-dominated QA, so run_pixel() takes PermanentSnow.
-//   Cloudy     cloud-dominated QA, so run_pixel() takes InsufficientClear.
+//   Snow       snow-dominated QA, so detect() takes PermanentSnow.
+//   Cloudy     cloud-dominated QA, so detect() takes InsufficientClear.
 //
 // Values are Collection-1 DN: six optical bands as reflectance x 10000 and the
 // thermal band as Kelvin x 10. Fill observations carry -9999 in every band.

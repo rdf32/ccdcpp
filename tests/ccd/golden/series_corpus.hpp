@@ -83,21 +83,21 @@ struct Series
     }
 };
 
-// run_pixel() on `s` with the shared statistics_end at `statistics_end`.
+// detect() on `s` with the shared statistics_end at `statistics_end`.
 inline ccd::FitResult detect_at(const Series& s, std::int64_t statistics_end)
 {
-    return ccd::run_pixel(
+    return ccd::detect(
         golden::spec_of(s.h, with_shared(s.config, "statistics_end", ccd::config::integer(statistics_end))),
         s.date_view(),
         s.spectral_view(),
         s.qa_view()).result;
 }
 
-// run_pixel() with RunSpec::record on `s` with the shared statistics_end at
+// detect() with RunSpec::record on `s` with the shared statistics_end at
 // `statistics_end`.
-inline ccd::PixelRun recorded_at(const Series& s, std::int64_t statistics_end)
+inline ccd::PixelOutput recorded_at(const Series& s, std::int64_t statistics_end)
 {
-    return ccd::run_pixel(
+    return ccd::detect(
         golden::spec_of(s.h, with_shared(s.config, "statistics_end", ccd::config::integer(statistics_end)),
                         true),
         s.date_view(),

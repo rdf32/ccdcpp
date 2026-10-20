@@ -11,8 +11,8 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
 >   masks=False)`, which returns columns (with `masks=True` also every pixel's processing
 >   mask, one `(H, W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
->   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::run_pixel` /
->   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
+>   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::detect` /
+>   `ccd::detect_cube` with `RunSpec{encoding, algorithm, record, masks, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
 >   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
 >   or none), `roles`, `reflectance_scale` and `reflectance_offset` (Collection-1 DN 10000 and 0,
@@ -53,7 +53,7 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 - **Diagnostics**: every transition, change test, dropped observation and segment of the pixels you name, as rows for pandas, without changing the output ([Diagnostics](#diagnostics)).
 - **Resume**: a stored run continued on new observations, equal bit for bit to a full rerun, at about a third of its time ([Resuming a run](#resuming-a-run)).
 - **Custom preprocessing**: the filters that build the processing mask are part of the configuration, in physical units ([Preprocessing](#preprocessing)).
-- **A C++ API** of two calls, `ccd::run_pixel` and `ccd::run_cube`, and a CMake build.
+- **A C++ API** of two calls, `ccd::detect` and `ccd::detect_cube`, and a CMake build.
 
 # Quick start
 
@@ -142,7 +142,7 @@ print(sorted(k for k in cols if not k.startswith("pixels")))
 
 ## From C++
 
-The C++ API is two calls in `include/ccd/run/run.hpp`, `ccd::run_pixel` and `ccd::run_cube`. What a call runs is a `ccd::RunSpec`: the input (`ccd::Input`, its QA table included), the compiled configuration (`ccd::Algorithm`, the `ccdc` preset unless you give one), and optionally an observer and whether to return resume records. The arrays are `ccd::ArrayView`s over your memory (any strides; float64, float32 or uint16 values; uint8 or uint16 QA). Link the CMake target `ccd_core`.
+The C++ API is two calls in `include/ccd/run/run.hpp`, `ccd::detect` and `ccd::detect_cube`. What a call runs is a `ccd::RunSpec`: the encoding (`ccd::Input`, its QA table included), the compiled configuration (`ccd::Algorithm`, the `ccdc` preset unless you give one), and optionally an observer, whether to return resume records and whether to return the processing masks (`masks`, off by default, as in Python). The arrays are `ccd::ArrayView`s over your memory (any strides; float64, float32 or uint16 values; uint8 or uint16 QA). Link the CMake target `ccd_core`.
 
 ```cpp
 #include <cstdint>
@@ -159,7 +159,7 @@ void one_pixel(const std::vector<std::int64_t>& dates,
     const std::size_t T = dates.size();
 
     ccd::RunSpec spec;   // Collection-1 DN input, the "ccdc" configuration
-    ccd::PixelRun run = ccd::run_pixel(spec,
+    ccd::PixelOutput run = ccd::detect(spec,
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}));
@@ -175,7 +175,7 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
 {
     const std::size_t T = dates.size();
 
-    ccd::CubeResult r = ccd::run_cube(ccd::RunSpec{},
+    ccd::CubeOutput r = ccd::detect_cube(ccd::RunSpec{},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(cube.data(), {H, W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
@@ -188,7 +188,7 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
 }
 ```
 
-`run_pixel` returns a `ccd::PixelRun` (`result`, and with `RunSpec::record` or a resume, `record`, `status` and `header`); `run_cube` a `ccd::CubeResult` (`pixels` in raster order, `failures`, `threads`, `header`). Both throw `std::invalid_argument` before any pixel runs on an input, dates or a configuration they refuse.
+`detect` returns a `ccd::PixelOutput` (`result`, its `mask` with `RunSpec::masks`, and with `RunSpec::record` or a resume, `record`, `status` and `header`); `detect_cube` a `ccd::CubeOutput` (`pixels` in raster order, `failures`, `threads`, `header`). Both throw `std::invalid_argument` before any pixel runs on an input, dates or a configuration they refuse.
 
 # Configuring the algorithm
 
@@ -317,7 +317,7 @@ True
 - **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene) is rerun in full, and its status says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed). A scene the pixel's QA marks fill does not count as a change.
 - **A record that does not match the call is refused** (`ValueError`): another record format or results version (`ccdcpp.RESULTS_VERSION` changes whenever a release changes outputs), another input (its QA table included) or configuration, a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
 - The record is plain columns (`ccdcpp.resume_schema()` gives their dtypes); the caller stores them beside its segments.
-- One pixel: `detect(..., record=True)` and `detect(..., resume=stored)`. C++: `ccd::run_pixel` and `ccd::run_cube` with `RunSpec::record`, and the stored run as their `resume` argument (a `ccd::PixelResume`, a `ccd::CubeResumeFrom`; `include/ccd/results/record.hpp`).
+- One pixel: `detect(..., record=True)` and `detect(..., resume=stored)`. C++: `ccd::detect` and `ccd::detect_cube` with `RunSpec::record`, and the stored run as their `resume` argument (a `ccd::PixelResume`, a `ccd::CubeResumeFrom`; `include/ccd/results/record.hpp`).
 
 ```python
 n = int(np.searchsorted(dates, date(2019, 1, 1).toordinal()))
@@ -745,7 +745,7 @@ ccd::RunSpec spec_with_snow(const ccd::Input& input)
     config.preprocess["standard"].steps[0].params["codes"] = cfg::names({"clear", "water", "snow"});
 
     ccd::RunSpec spec;
-    spec.input = input;
+    spec.encoding = input;
     spec.algorithm = std::make_shared<const ccd::Algorithm>(config);
     return spec;   // ccd::plan_of(config, input) is the plan it runs
 }

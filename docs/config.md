@@ -18,8 +18,8 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
 >   masks=False)`, which returns columns (with `masks=True` also every pixel's processing
 >   mask, one `(H, W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
->   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::run_pixel` /
->   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
+>   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::detect` /
+>   `ccd::detect_cube` with `RunSpec{encoding, algorithm, record, masks, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
 >   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
 >   or none), `roles`, `reflectance_scale` and `reflectance_offset` (Collection-1 DN 10000 and 0,
@@ -164,10 +164,10 @@ config::Config config = strategies::library_registry().preset("ccdc");
 config.shared["change_probability"] = config::real(0.95);
 config.stages["refit"].params["factor"] = config::real(2.0);
 
-RunSpec spec;                        // spec.input is Collection-1 DN, spec.algorithm "ccdc"
+RunSpec spec;                        // spec.encoding is Collection-1 DN, spec.algorithm "ccdc"
 spec.algorithm = std::make_shared<const Algorithm>(config);   // checked here
-PixelRun run = run_pixel(spec, dates, spectral, qas);
-preprocess::PreprocessPlan plan = plan_of(config, spec.input);  // for inspection
+PixelOutput run = detect(spec, dates, spectral, qas);
+preprocess::PreprocessPlan plan = plan_of(config, spec.encoding);  // for inspection
 ```
 
 Three types hold a configuration. `config::Config` is the data: the `shared` values, the

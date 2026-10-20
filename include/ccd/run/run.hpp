@@ -41,7 +41,7 @@ namespace ccd
 //   Run::pixel(input, worker)
 //            one pixel through the steps below, in order.
 //
-// run_pixel() and run_cube() do this for one pixel and for a cube; they are
+// detect() and detect_cube() do this for one pixel and for a cube; they are
 // the whole entry point.
 //
 // The steps of one pixel:
@@ -80,32 +80,34 @@ using CubeQa = std::variant<
 //
 // What a call runs.
 //
-//   input               the input's description, its QA table included
+//   encoding            the input's encoding, its QA table included
 //                       (validate() checks it)
 //   algorithm           the algorithm (run/algorithm.hpp): a configuration
 //                       checked when the Algorithm was built, resolved
-//                       against `input` once per Algorithm and input; the
+//                       against `encoding` once per Algorithm and input; the
 //                       "ccdc" preset's by default. Part of the resume digest
 //   record              also return each pixel's resume record and the
 //                       call's header
-//   keep_masks          false drops each pixel's processing mask (T bytes
-//                       per pixel) once it is done; FitResult::mask is empty
+//   masks               also return each pixel's processing mask (T bytes
+//                       per pixel), FitResult::mask; without it the mask is
+//                       dropped once the pixel is done and FitResult::mask
+//                       is empty
 //   observer, observe   where the observed pixels report each step
-//                       (results/diagnostics.hpp): run_pixel's pixel, or
-//                       run_cube's pixels at the flat indices `observe`
+//                       (results/diagnostics.hpp): detect's pixel, or
+//                       detect_cube's pixels at the flat indices `observe`
 //                       (row * W + col; empty: every pixel). With
 //                       CCD_OBSERVE=OFF nothing is reported
 //
-// A resume is an input of the call (run_pixel's and run_cube's `resume`),
+// A resume is an input of the call (detect's and detect_cube's `resume`),
 // not part of what it runs.
 //
 //------------------------------------------------------------------------------
 struct RunSpec
 {
-    Input input;
+    Input encoding;
     AlgorithmPtr algorithm = Algorithm::preset("ccdc");
     bool record = false;
-    bool keep_masks = true;
+    bool masks = false;
     std::shared_ptr<Observer> observer = nullptr;
     std::vector<index_t> observe;
 };
@@ -155,7 +157,7 @@ struct PixelResult
 // An exception cannot propagate out of an OpenMP parallel region -- the
 // runtime terminates the process. So a single bad time series would take
 // down a whole cube, losing every other pixel's result and printing nothing
-// useful. run_cube catches per pixel instead and records the failure here.
+// useful. detect_cube catches per pixel instead and records the failure here.
 //
 // The message is std::exception::what() copied at catch time. Copying a string
 // inside the region is safe; letting the exception escape is not.
@@ -171,7 +173,7 @@ struct CubeFailure
 
 //==============================================================================
 //
-// Everything run_cube learned about one cube.
+// Everything detect_cube learned about one cube.
 //
 // `failures` is deliberately not a bare count: a caller reporting "12,000
 // pixels failed" wants to say WHY, and the addresses are what make a failure
@@ -187,7 +189,7 @@ struct CubeFailure
 //
 //==============================================================================
 
-struct CubeResult
+struct CubeOutput
 {
     std::vector<PixelResult> pixels;
     std::vector<CubeFailure> failures;
@@ -278,8 +280,8 @@ public:
     // One pixel through the steps of the file comment. Without a resume
     // `prior` is ignored; with one it is required (std::invalid_argument
     // without it). The input must have the run's band and timestep counts,
-    // and raw (uint16) QA only when the Run was built for it (run_pixel and
-    // run_cube see to both; std::invalid_argument otherwise).
+    // and raw (uint16) QA only when the Run was built for it (detect and
+    // detect_cube see to both; std::invalid_argument otherwise).
     //
     // A Run reads the `spec` and `dates` it was built with on every pixel:
     // they must outlive it.
@@ -301,7 +303,7 @@ private:
                              const PixelPrior& prior, Worker& worker) const;
 
     template<typename Value, typename Qa>
-    friend CubeResult cube_loop(const Run&, ArrayView<const Value, 4>, ArrayView<const Qa, 3>,
+    friend CubeOutput cube_loop(const Run&, ArrayView<const Value, 4>, ArrayView<const Qa, 3>,
                                 int, const CubeResumeFrom*);
 
 
@@ -343,7 +345,7 @@ private:
 // The returned header is the run's (RunSpec::record or a resume).
 //
 //------------------------------------------------------------------------------
-struct PixelRun
+struct PixelOutput
 {
     FitResult result;
     PixelRecord record;
@@ -351,7 +353,7 @@ struct PixelRun
     ResumeHeader header;
 };
 
-PixelRun run_pixel(
+PixelOutput detect(
     const RunSpec& spec,
     ArrayView<const std::int64_t, 1> dates,
     const PixelSpectral& spectral,
@@ -359,7 +361,7 @@ PixelRun run_pixel(
     const PixelResume* resume = nullptr
 );
 
-inline PixelRun run_pixel(
+inline PixelOutput detect(
     const RunSpec& spec,
     ArrayView<const std::int64_t, 1> dates,
     const PixelSpectral& spectral,
@@ -367,7 +369,7 @@ inline PixelRun run_pixel(
     const PixelResume& resume
 )
 {
-    return run_pixel(spec, dates, spectral, qas, &resume);
+    return detect(spec, dates, spectral, qas, &resume);
 }
 
 //------------------------------------------------------------------------------
@@ -380,9 +382,9 @@ inline PixelRun run_pixel(
 // caller embedding this in a scheduler cannot otherwise honour its own
 // allocation without setting an environment variable before the shared
 // library is imported. A build without OpenMP runs one thread whatever the
-// count, and CubeResult::threads says 1.
+// count, and CubeOutput::threads says 1.
 //
-// This never throws on account of a pixel; see CubeResult::failures. It
+// This never throws on account of a pixel; see CubeOutput::failures. It
 // throws, before any pixel runs, std::runtime_error on a QA cube that is not
 // (H, W, T), and std::invalid_argument on what Run throws on and for a resume
 // on records or segment lists that are not H x W.
@@ -396,11 +398,11 @@ inline PixelRun run_pixel(
 //
 // `resume`, the stored call: its header and each pixel's record and stored
 // segments in raster order. Every pixel's result is then the complete one,
-// with its record and status; CubeResult::header is this call's. A pixel with
+// with its record and status; CubeOutput::header is this call's. A pixel with
 // fewer stored segments than its record's final ones is a CubeFailure.
 //
 //------------------------------------------------------------------------------
-CubeResult run_cube(
+CubeOutput detect_cube(
     const RunSpec& spec,
     ArrayView<const std::int64_t, 1> dates,
     const CubeSpectral& spectral,

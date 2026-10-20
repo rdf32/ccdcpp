@@ -69,7 +69,7 @@ class Observer
 public:
     virtual ~Observer() = default;
 
-    // An event of pixel `pixel` (run_pixel: 0; run_cube: row * W + col).
+    // An event of pixel `pixel` (detect: 0; detect_cube: row * W + col).
     // Called from the thread running that pixel: an observer of a cube run
     // is called from several threads at once.
     virtual void event(index_t pixel, const ObserverEvent& e) = 0;

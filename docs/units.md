@@ -142,6 +142,6 @@ leaving it behind is detected. The three shapes of detection there are not inter
 |---|---|
 | `reflectance_scale` | by the equivalence test directly: it scales alpha (which moves the segment count) and coef_floor (which leaves sparsity identical, so only the value comparison catches it) |
 | the bounds | not by it. The physical bounds are narrower, so leaving them at the DN value merely loosens a screen, and a screen that rejects nothing is indistinguishable from a correct one. The guard runs them the other way, DN input with the physical bound, where the mask empties and the pixel returns 0 segments instead of 5 |
-| the green filter | unreachable through `run_pixel()` on the reference pixel, which takes the Standard procedure; `ccdc` runs the green median filter in the InsufficientClear chain only. Its guard fits the InsufficientClear procedure directly (`ccd::fit_whole_series`) |
+| the green filter | unreachable through `detect()` on the reference pixel, which takes the Standard procedure; `ccdc` runs the green median filter in the InsufficientClear chain only. Its guard fits the InsufficientClear procedure directly (`ccd::fit_whole_series`) |
 
 A new unit-bearing field gets its guard in that file, with the shape of detection worked out.

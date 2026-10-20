@@ -413,12 +413,12 @@ Run::Run(
 )
     : spec_(spec), dates_(dates), bands_(bands), timesteps_(timesteps), raw_qa_(raw_qa)
 {
-    check_shapes(spec_.input, bands, timesteps, dates, qa_timesteps);
-    check_qa(raw_qa, spec_.input.qa_table.get());
+    check_shapes(spec_.encoding, bands, timesteps, dates, qa_timesteps);
+    check_qa(raw_qa, spec_.encoding.qa_table.get());
 
     if (!spec_.algorithm)
         throw std::invalid_argument("the run has no algorithm");
-    resolved_ = spec_.algorithm->for_input(spec_.input);
+    resolved_ = spec_.algorithm->for_input(spec_.encoding);
 
 
     if (spec_.record || resume)
@@ -479,7 +479,7 @@ PixelOutcome Run::pixel_typed(
 
     PixelOutcome out;
     bool continued = false;
-    const QaTable* table = spec_.input.qa_table.get();
+    const QaTable* table = spec_.encoding.qa_table.get();
 
     if (!resume_)
     {
@@ -489,10 +489,10 @@ PixelOutcome Run::pixel_typed(
             request.record = &out.record;
             request.through = header_.series_end;
         }
-        out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
+        out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.encoding,
                                           shared_, resolved_->strategies, worker, request,
                                           continued);
-        if (!spec_.keep_masks)
+        if (!spec_.masks)
             out.result.mask = ProcessingMask();
         return out;
     }
@@ -510,7 +510,7 @@ PixelOutcome Run::pixel_typed(
 
     const std::uint64_t fingerprint = detail::fingerprint_of<Value>(
         dates_, spectral, decode_qa<Qa>(qa, table, worker.qas),
-        spec_.input.qa_fill, resume_->series_end);
+        spec_.encoding.qa_fill, resume_->series_end);
 
     out.status = fingerprint == from.input_fingerprint
         ? ResumeStatus::Resumed
@@ -527,7 +527,7 @@ PixelOutcome Run::pixel_typed(
     request.continue_from = continues ? &from : nullptr;
     const index_t carried = from.standard.final_segments;
     request.carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
-    out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
+    out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.encoding,
                                       shared_, resolved_->strategies, worker, request, continued);
 
     // The machine may still not continue (a stored drop on a date the plan
@@ -540,7 +540,7 @@ PixelOutcome Run::pixel_typed(
             stored.begin(),
             stored.begin() + from.standard.final_segments);
     }
-    if (!spec_.keep_masks)
+    if (!spec_.masks)
         out.result.mask = ProcessingMask();
     return out;
 }
@@ -566,7 +566,7 @@ PixelOutcome Run::pixel(
 // Entry points
 //==============================================================================
 
-PixelRun run_pixel(
+PixelOutput detect(
     const RunSpec& spec,
     ArrayView<const std::int64_t, 1> dates,
     const PixelSpectral& spectral,
@@ -593,7 +593,7 @@ PixelRun run_pixel(
     worker.observe = Observe{spec.observer.get(), 0};
     PixelOutcome outcome = run.pixel(spectral, qas, prior, worker);
 
-    PixelRun out;
+    PixelOutput out;
     out.result = std::move(outcome.result);
     out.record = std::move(outcome.record);
     out.status = outcome.status;
@@ -604,7 +604,7 @@ PixelRun run_pixel(
 
 // The cube loop for one pair of element types.
 template<typename Value, typename Qa>
-CubeResult cube_loop(
+CubeOutput cube_loop(
     const Run& run,
     ArrayView<const Value, 4> spectral,       // (H,W,B,T)
     ArrayView<const Qa, 3> qas,               // (H,W,T)
@@ -679,7 +679,7 @@ CubeResult cube_loop(
             // still come back.
             //
             // Nothing is swallowed -- every catch lands in
-            // CubeResult::failures, and it is the caller's job to surface the
+            // CubeOutput::failures, and it is the caller's job to surface the
             // count.
             //------------------------------------------------------------------
             try
@@ -728,7 +728,7 @@ CubeResult cube_loop(
     //----------------------------------------------------------------------
     // Collect, in raster order
     //----------------------------------------------------------------------
-    CubeResult merged;
+    CubeOutput merged;
     merged.threads = used;
 
     std::size_t total = 0;
@@ -774,7 +774,7 @@ CubeResult cube_loop(
 
 
 
-CubeResult run_cube(
+CubeOutput detect_cube(
     const RunSpec& spec,
     ArrayView<const std::int64_t, 1> dates,
     const CubeSpectral& spectral,
@@ -784,7 +784,7 @@ CubeResult run_cube(
 )
 {
     return std::visit(
-        [&](auto s, auto q) -> CubeResult
+        [&](auto s, auto q) -> CubeOutput
         {
             using Value = std::remove_const_t<typename decltype(s)::value_type>;
             using Qa = std::remove_const_t<typename decltype(q)::value_type>;

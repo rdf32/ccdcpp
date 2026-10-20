@@ -1,7 +1,8 @@
 #pragma once
 
 // A run's RunSpec from the input and the algorithm the tests vary
-// (config.hpp), and an input with a QA table.
+// (config.hpp), with the processing masks the dumps hold, and an input with a
+// QA table.
 
 #include <utility>
 
@@ -18,9 +19,10 @@ inline ccd::RunSpec spec_of(const ccd::Input& input,
                             bool record = false)
 {
     ccd::RunSpec spec;
-    spec.input = input;
+    spec.encoding = input;
     spec.algorithm = std::move(algorithm);
     spec.record = record;
+    spec.masks = true;
     return spec;
 }
 

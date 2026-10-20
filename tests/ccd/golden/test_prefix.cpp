@@ -115,7 +115,7 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
 
         const std::int64_t split_day = s.dates[last];
         const std::int64_t statistics_end = std::min(s.statistics_end(), split_day);
-        const ccd::PixelRun recorded = golden::recorded_at(s.prefix(last + 1), statistics_end);
+        const ccd::PixelOutput recorded = golden::recorded_at(s.prefix(last + 1), statistics_end);
         const ccd::FitResult& shorter = recorded.result;
         const ccd::FitResult& longer = full_at(statistics_end);
         ++out.splits;

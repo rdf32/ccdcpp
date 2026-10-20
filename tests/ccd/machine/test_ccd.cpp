@@ -128,7 +128,7 @@ int main() {
     const auto t0 = std::chrono::steady_clock::now();
     const ccd::Input input;
 
-    auto results = ccd::run_pixel(golden::spec_of(input), dates, spectral, qas).result;
+    auto results = ccd::detect(golden::spec_of(input), dates, spectral, qas).result;
 
     const auto tf = std::chrono::steady_clock::now();
 

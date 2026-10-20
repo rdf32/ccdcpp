@@ -108,7 +108,7 @@ Pixel make_pixel(
 
 ccd::FitResult run(const Pixel& p, const ccd::config::Config& config)
 {
-    return ccd::run_pixel(
+    return ccd::detect(
         golden::spec_of(ccd::Input{}, config),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
@@ -160,7 +160,7 @@ std::string dump_cube(
         if (physical)
             golden::to_physical(block, c.T);
 
-        golden::dump_pixel(out, std::to_string(p), ccd::run_pixel(
+        golden::dump_pixel(out, std::to_string(p), ccd::detect(
             golden::spec_of(h, config),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
             ccd::ArrayView<const double, 2>::contiguous(block, {7, c.T}),
@@ -410,7 +410,7 @@ TEST(Cadence, SeasonalRmseCount)
 //==============================================================================
 // The change probability: a higher probability raises the threshold of a
 // peek window longer than the default. Read by adjust_change_threshold(),
-// tested there and through run_pixel() on a dense series.
+// tested there and through detect() on a dense series.
 //==============================================================================
 
 TEST(Cadence, ChangeProbability)

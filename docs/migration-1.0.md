@@ -145,18 +145,19 @@ probability.
 | 0.10.0 | 1.0 |
 |---|---|
 | `HarmonicOptions` | `ccd::Input` (the encoding) and `config::Config` (the algorithm) |
-| `detect(d, s, q, h, l, table, plan)` | `run_pixel(spec, d, s, q).result`, `spec.input` holding its `qa_table` and the configuration its preprocessing |
-| `detect_recorded(...)` | `run_pixel` with `RunSpec::record = true` |
-| `resume(d, s, q, h, l, header, record, segments)` | `run_pixel(spec, d, s, q, PixelResume{header, record, segments})` |
-| `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `run_cube(spec, d, s, q, threads)` |
-| `resume_cube(..., from, ...)` | `run_cube(..., threads, &from)` |
-| `Recorded`, `Resumed`; `DetectScratch` | `PixelRun`; `Worker` |
+| `detect(d, s, q, h, l, table, plan)` | `detect(spec, d, s, q).result`, `spec.encoding` holding its `qa_table` and the configuration its preprocessing |
+| `detect_recorded(...)` | `detect` with `RunSpec::record = true` |
+| `resume(d, s, q, h, l, header, record, segments)` | `detect(spec, d, s, q, PixelResume{header, record, segments})` |
+| `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `detect_cube(spec, d, s, q, threads)`; the masks with `RunSpec::masks = true` (default false, where `keep_masks` defaulted to true) |
+| `resume_cube(..., from, ...)` | `detect_cube(..., threads, &from)` |
+| `Recorded`, `Resumed`; `DetectScratch` | `PixelOutput`; `Worker` |
+| `CubeResult` | `CubeOutput` |
 | `LassoOptions` in a run | the shared Lasso values (`LassoOptions` remains the solver's own options type) |
 | `default_plan(h)` | `plan_of(config, input)` (`run/algorithm.hpp`) |
 | `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`include/ccd/strategies/coefficients.hpp`) |
 | `ccd/types.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, ... | `ccd/core/types.hpp`, `ccd/machine/standard.hpp`, `ccd/results/record.hpp`, ... (`ccd/ccd.hpp` includes every header) |
 
-`RunSpec` is `{input, algorithm, record, keep_masks, observer, observe}`; `algorithm` is a
+`RunSpec` is `{encoding, algorithm, record, masks, observer, observe}`; `algorithm` is a
 compiled configuration (`ccd::Algorithm`, `run/algorithm.hpp`), the `ccdc` preset's
 (`Algorithm::preset("ccdc")`) unless set.
 
@@ -172,9 +173,9 @@ ccd::FitResult r = ccd::detect(dates, spectral, qas, h, l);
 ccd::config::Config config = ccd::strategies::library_registry().preset("ccdc");
 config.shared["statistics_end"] = ccd::config::integer(736694);    // 0.10.0's cutoff
 config.shared["change_probability"] = ccd::config::real(0.995);
-ccd::RunSpec spec;                                                   // spec.input: Collection-1 DN
+ccd::RunSpec spec;                                                   // spec.encoding: Collection-1 DN
 spec.algorithm = std::make_shared<const ccd::Algorithm>(config);
-ccd::FitResult r = ccd::run_pixel(spec, dates, spectral, qas).result;
+ccd::FitResult r = ccd::detect(spec, dates, spectral, qas).result;
 ```
 
 ### Messages
