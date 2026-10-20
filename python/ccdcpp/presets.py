@@ -20,11 +20,16 @@ validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A,
 2020–23; ESA's own processing not sampled. Each docstring gives the measured
 numbers, and tests/python/fixtures/t16sgc_2020_2023 pins four of the
 sample's pixels. All four take physical units (reflectance 0..1, thermal in
-degrees Celsius / 100), detect change on the five Landsat-equivalent bands
-(green, red, nir, swir1, swir2) with the default thresholds, have no
-statistics cutoff (``stat_ord=None``) and keep pyccd's cadence values. The
-single-product presets name their rows by product band ID (``B01``, ``B8A``,
-...); :func:`hls`, whose rows mix two numberings, names them by role.
+degrees Celsius / 100) and were validated with the "ccdc" configuration:
+change detected on the five Landsat-equivalent bands (green, red, nir,
+swir1, swir2) with the default thresholds, no statistics cutoff and pyccd's
+cadence values. The single-product presets name their rows by product band
+ID (``B01``, ``B8A``, ...); :func:`hls`, whose rows mix two numberings, names
+them by role.
+
+A profile describes the data only; the configuration (``config=``, "ccdc" by
+default) is the same for every profile. Only :func:`landsat_c1_dn` declares
+the value a saturated observation holds (``saturated``, 20000).
 
 Every preset leaves ``preprocess`` None, so it runs the default plan of its
 input and configuration (``ccdcpp.default_plan``);
@@ -38,7 +43,6 @@ from .profiles import (
     CELSIUS_HUNDREDTHS,
     DN,
     KELVIN_TENTHS,
-    LANDSAT_STAT_ORD,
     REFLECTANCE,
     SensorProfile,
 )
@@ -58,10 +62,7 @@ _BANDS = ("blue", "green", "red", "nir", "swir1", "swir2", "thermal")
 _LANDSAT = dict(
     band_names=_BANDS,
     roles=_BANDS,
-    detection=("green", "red", "nir", "swir1", "swir2"),
-    tmask=("green", "swir1"),
     saturation=("blue", "green", "red", "nir", "swir1", "swir2"),
-    stat_ord=LANDSAT_STAT_ORD,
 )
 
 
@@ -73,15 +74,15 @@ def landsat_c1_dn():
     ``ccdcpp.Input`` ``qa_*`` fields); for raw ``pixel_qa``, a copy with
     ``qa_table_builder="landsat_c1_pixel_qa"`` (``dataclasses.replace``).
 
-    ``input()`` is ``ccdcpp.Input()``, field for field, and ``config()``
-    runs as the "ccdc" preset.
+    A saturated observation holds 20000 (``saturated``).
+
+    ``input()`` is ``ccdcpp.Input()``, field for field.
     """
     return SensorProfile(
         name="landsat_c1_dn",
         units=DN,
-        alpha=1.0,
-        coef_floor=1.0,
         thermal=KELVIN_TENTHS,
+        saturated=20000.0,
         **_LANDSAT,
     )
 
@@ -93,15 +94,14 @@ def landsat_c1_physical():
     Celsius / 100 (``(K10 * 10 - 27315) / 10000`` from Kelvin x 10). QA:
     pre-classified uint8 codes.
 
-    Every absolute threshold and both Lasso constants are the DN values
-    divided by 10000, and the thermal transform is the identity, so the fit
-    is the DN fit and the coefficients come out in the input's units.
+    Every bound is the DN value divided by 10000 and the thermal transform is
+    the identity; the configuration's reflectance values are converted with
+    ``reflectance_unit`` 1, so the fit is the DN fit and the coefficients
+    come out in the input's units.
     """
     return SensorProfile(
         name="landsat_c1_physical",
         units=REFLECTANCE,
-        alpha=1e-4,
-        coef_floor=1e-4,
         thermal=CELSIUS_HUNDREDTHS,
         **_LANDSAT,
     )
@@ -115,14 +115,12 @@ def landsat_c2():
     273.15) / 100``). QA: the raw uint16 ``QA_PIXEL`` band, decoded by
     ``ccdcpp.qa_tables.landsat_c2_qa_pixel``.
 
-    The thresholds are those of :func:`landsat_c1_physical`: Collection 2's
+    The bounds are those of :func:`landsat_c1_physical`: Collection 2's
     saturation range in DN, 7273..43636, is reflectance 0..1.
     """
     return SensorProfile(
         name="landsat_c2",
         units=REFLECTANCE,
-        alpha=1e-4,
-        coef_floor=1e-4,
         thermal=CELSIUS_HUNDREDTHS,
         qa_table_builder="landsat_c2_qa_pixel",
         **_LANDSAT,
@@ -133,16 +131,10 @@ def landsat_c2():
 # HLS v2.0 and Sentinel-2 L2A. Validated on one cell of T16SGC, 2020-2023.
 #------------------------------------------------------------------------------
 
-#: What the HLS and Sentinel-2 presets share: physical units with the
-#: thresholds of landsat_c1_physical, the Landsat-equivalent detection and
-#: Tmask bands, no statistics cutoff.
+#: What the HLS and Sentinel-2 presets share: physical units, the bounds of
+#: landsat_c1_physical.
 _PHYSICAL = dict(
     units=REFLECTANCE,
-    alpha=1e-4,
-    coef_floor=1e-4,
-    detection=("green", "red", "nir", "swir1", "swir2"),
-    tmask=("green", "swir1"),
-    stat_ord=None,
 )
 
 #: Sentinel-2 MSI bands 2-8, 8A, 11, 12 and their roles.

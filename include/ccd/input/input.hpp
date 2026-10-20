@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -200,6 +201,12 @@ struct Input
     // out which of the three shapes it is.
     //--------------------------------------------------------------------------
     scalar_t reflectance_unit = 10000.0;
+
+    // The value a saturated observation holds, as the sensor writes it:
+    // 20000 in Collection-1 DN (the default), or none when the input does not
+    // declare one. A step or strategy that reads it refuses an input without
+    // one.
+    std::optional<scalar_t> saturated = 20000.0;
 
     // Bound of the saturation_bands. An observation is kept when every one
     // of them lies within (refl_min, refl_max), each end inclusive or

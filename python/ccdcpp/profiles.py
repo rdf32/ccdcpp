@@ -1,13 +1,12 @@
-"""Sensor profiles: one sensor's band layout, input units and QA, by role, and the
-configuration it runs (``SensorProfile.config()``).
+"""Sensor profiles: one sensor's band layout, input units and QA, by role.
 
-A :class:`SensorProfile` names the rows of the ``spectral`` array and says
-which role each one plays. Its ``input()`` is the ``ccdcpp.Input`` of the
-data; the detection and Tmask lists are role names the configuration holds,
-resolved to rows against the input when a run is built, and the saturation
-list is resolved when the input is, so the same profile text holds for any
-band order. ``ccdcpp.detect`` and ``ccdcpp.detect_cube`` take one as
-``input=``.
+A :class:`SensorProfile` describes the data, and only the data: it names the
+rows of the ``spectral`` array, says which role each one plays, and gives the
+units and the QA decoding. Its ``input()`` is the ``ccdcpp.Input`` of the
+data, roles included, so a configuration that names bands by role holds for
+any band order. ``ccdcpp.detect`` and ``ccdcpp.detect_cube`` take one as
+``input=``; the configuration (``config=``, "ccdc" by default) is the same
+for every profile.
 
 A new sensor is one constructor call; ``ccdcpp.presets`` writes its profiles
 that way. NOT SHIPPED: the profile below is an example of the shape, its
@@ -25,21 +24,15 @@ values are not validated, and ccdcpp.presets does not contain it::
                         "SR_B7", "ST_B10"),
             roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2",
                    "thermal"),
-            detection=("green", "red", "nir", "swir1", "swir2"),
-            tmask=("green", "swir1"),
             saturation=("coastal", "blue", "green", "red", "nir", "swir1",
                         "swir2"),
             units=REFLECTANCE,
-            alpha=1e-4,
-            coef_floor=1e-4,
             thermal=CELSIUS_HUNDREDTHS,
-            stat_ord=736694,  # 2017-12-31, the Landsat statistics cutoff
             qa_table_builder="landsat_c2_qa_pixel",
         )
 
-The detection count sets the chi-squared degrees of freedom of the change and
-outlier thresholds: the run computes them from the configuration's
-probabilities for the count it resolves.
+The configuration names its detection and Tmask bands by role ("green",
+"swir1", ...); a profile whose roles lack one is refused when it runs.
 
 A profile's ``preprocess=`` is a :class:`Preprocess`: per procedure, the
 filter steps that build the processing mask and the transform before them,
@@ -85,10 +78,6 @@ GREEN_FILTER_SCOPES = {
     "off": GreenFilterScope.Off,
 }
 
-#: The Landsat statistics cutoff, 2017-12-31 (the "ccdc" preset's shared stat_ord).
-LANDSAT_STAT_ORD = 736694
-
-
 def _flag_pair(value, name):
     """``value`` as a ``(bool, bool)``, for the inclusive-bound fields."""
     pair = tuple(value)
@@ -104,10 +93,6 @@ class Units:
     refl_min, refl_max
         ``Input.refl_min``, ``Input.refl_max``: the saturation bounds, tested
         on the saturation bands.
-    median_green_filter
-        The offset of InsufficientClear's green median cloud screen, in the
-        data's units (the configuration's shared ``green_filter`` times
-        ``reflectance_unit``; :meth:`SensorProfile.config` writes it).
     reflectance_unit
         ``Input.reflectance_unit``: the value one unit of reflectance has in
         the data (Collection-1 DN 10000, reflectance 1).
@@ -119,7 +104,6 @@ class Units:
 
     refl_min: float
     refl_max: float
-    median_green_filter: float
     reflectance_unit: float
     refl_inclusive: Tuple[bool, bool] = (False, False)
 
@@ -155,10 +139,10 @@ class Thermal:
 
 
 #: Collection 1 DN: reflectance x 10000 (``Input()`` defaults).
-DN = Units(refl_min=0.0, refl_max=10000.0, median_green_filter=400.0, reflectance_unit=10000.0)
+DN = Units(refl_min=0.0, refl_max=10000.0, reflectance_unit=10000.0)
 
 #: Surface reflectance, 0..1: :data:`DN` divided by 10000.
-REFLECTANCE = Units(refl_min=0.0, refl_max=1.0, median_green_filter=0.04, reflectance_unit=1.0)
+REFLECTANCE = Units(refl_min=0.0, refl_max=1.0, reflectance_unit=1.0)
 
 #: Thermal as Kelvin x 10, transformed to degrees Celsius x 100
 #: (``Input()`` defaults).
@@ -487,11 +471,13 @@ class Preprocess:
     def plan(self, profile, input=None, config=None):
         """The ``ccdcpp.PreprocessPlan`` of this plan for ``profile``, with
         the ``input`` of the run (default: the profile's own) and its
-        configuration (a ``ccdcpp.Config``; default: the profile's). Raises
+        configuration (a ``ccdcpp.Config``; default: "ccdc"). Raises
         ValueError when the plan does not fit the profile
         (``ccdcpp.validate_plan``)."""
+        from .config import config as _config
+
         h = profile.input() if input is None else input
-        cfg = profile.config() if config is None else config
+        cfg = _config("ccdc") if config is None else config
         default = default_plan(h, cfg)
         shared = cfg.resolve(h)["shared"]
         plan = PreprocessPlan(
@@ -503,7 +489,6 @@ class Preprocess:
         return plan
 
 
-Cadence = Union[Mapping[str, float], Tuple[Tuple[str, float], ...]]
 QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]
 
 #: The keyword arguments each ``ccdcpp.qa_tables`` builder takes beyond
@@ -523,8 +508,7 @@ _TABLE_CODE_FIELDS = ("qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow",
 
 @dataclass(frozen=True)
 class SensorProfile:
-    """One sensor's input: band names and roles, units and QA, and the
-    configuration values that follow the sensor.
+    """One sensor's data: band names and roles, units and QA.
 
     name
         A label for the profile, for messages and provenance.
@@ -533,50 +517,27 @@ class SensorProfile:
     roles
         One role from :data:`ROLES` per band, in the same order. ``"green"``
         is required; ``"thermal"`` requires ``thermal=``.
-    detection, tmask, saturation
-        Role names. ``detection`` is the change-magnitude bands (the
-        configuration's shared ``detection_bands``, :meth:`config`),
-        ``tmask`` the Tmask outlier screen (``window_screen``'s ``bands``),
-        ``saturation`` the bands tested against the saturation bounds
-        (``Input.saturation_bands``; may be empty, must not hold thermal).
-        Each list keeps its order, which is the order the procedures
-        accumulate in.
+    saturation
+        Role names: the bands tested against the saturation bounds
+        (``Input.saturation_bands``; may be empty, must not hold thermal), in
+        the order the procedures test them.
     units
         The reflective bands' units, a :class:`Units`.
-    alpha, coef_floor
-        The Lasso's ``alpha`` and ``coef_floor`` in the data's units; the
-        configuration's shared values are these over
-        ``units.reflectance_unit`` (:meth:`config`). Both are absolute and
-        statements about the input unit; a wrong value does not raise, it
-        fits sparser or wronger coefficients, so neither has a default.
     thermal
         A :class:`Thermal`, or None for an input without a thermal band
         (no ``"thermal"`` role, which skips the transform and filter).
-    cadence
-        ``stage__parameter`` -> value, the configuration's parameters that
-        follow the sensor's revisit (``{"change_test__peek_reference_days":
-        10.0}``), which :meth:`config` sets with ``Config.replace()``.
-        Parameters not named keep the base configuration's values (pyccd's
-        16-day Landsat values in "ccdc").
-    stat_ord
-        The configuration's shared ``stat_ord`` (:meth:`config`), the last
-        date of the statistics window, as a proleptic Gregorian ordinal; None
-        for no cutoff (:data:`NO_STAT_CUTOFF`). The Landsat value,
-        2017-12-31, would put a series that starts later entirely outside
-        the window.
+    saturated
+        ``Input.saturated``: the value a saturated observation holds, as the
+        sensor writes it, or None (the default) when the profile does not
+        declare one. A step or strategy that reads it refuses an input
+        without one.
     qa_table_builder
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
-    green_filter_scope
-        The configuration's shared ``green_filter_scope``, by name from
-        :data:`GREEN_FILTER_SCOPES`:
-        ``"all"``, ``"stat_window"`` (the default) or ``"off"``; a
-        ``ccdcpp.GreenFilterScope`` is accepted and stored as its name. Which
-        observations InsufficientClear's green median filter drops.
     preprocess
         A :class:`Preprocess`, or None (the default) for the default plan of
-        the profile's input. The entry points run it in place of the
-        default plan; see :meth:`preprocess_plan`.
+        the configuration. The entry points run it in place of the default
+        plan; see :meth:`preprocess_plan`.
     qa_table_options
         Keyword arguments of ``qa_table_builder`` beyond the input, as a
         mapping or ``(name, value)`` pairs; empty (the default) for none.
@@ -600,28 +561,19 @@ class SensorProfile:
     name: str
     band_names: Tuple[str, ...]
     roles: Tuple[str, ...]
-    detection: Tuple[str, ...]
-    tmask: Tuple[str, ...]
     saturation: Tuple[str, ...]
     units: Units
-    alpha: float
-    coef_floor: float
     thermal: Optional[Thermal] = None
-    cadence: Cadence = field(default=())
-    stat_ord: Optional[int] = LANDSAT_STAT_ORD
+    saturated: Optional[float] = None
     qa_table_builder: Optional[str] = None
-    green_filter_scope: str = "stat_window"
     preprocess: Optional[Preprocess] = None
     qa_table_options: QaTableOptions = field(default=())
 
     def __post_init__(self):
-        for name in ("band_names", "roles", "detection", "tmask", "saturation"):
+        for name in ("band_names", "roles", "saturation"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
-        if isinstance(self.green_filter_scope, GreenFilterScope):
-            names = {v: k for k, v in GREEN_FILTER_SCOPES.items()}
-            object.__setattr__(self, "green_filter_scope", names[self.green_filter_scope])
-        items = self.cadence.items() if isinstance(self.cadence, Mapping) else self.cadence
-        object.__setattr__(self, "cadence", tuple(sorted((str(k), v) for k, v in items)))
+        if self.saturated is not None:
+            object.__setattr__(self, "saturated", float(self.saturated))
         object.__setattr__(self, "qa_table_options", self._canonical_qa_table_options())
         self._validate()
 
@@ -648,30 +600,16 @@ class SensorProfile:
             self._fail("has no 'green' band; InsufficientClear's green filter reads it")
         if ("thermal" in self.roles) != (self.thermal is not None):
             self._fail("a 'thermal' band and thermal= go together")
-        for list_name in ("detection", "tmask", "saturation"):
-            entries = getattr(self, list_name)
-            for role in entries:
-                if role == "other" or role not in self.roles:
-                    self._fail(
-                        f"{list_name} names {role!r}, which is not a role of this "
-                        f"profile's bands {dict(zip(self.band_names, self.roles))}"
-                    )
-            if len(set(entries)) != len(entries):
-                self._fail(f"{list_name} repeats a role: {entries}")
-        if not self.detection:
-            self._fail("detection is empty")
-        if not self.tmask:
-            self._fail("tmask is empty")
+        for role in self.saturation:
+            if role == "other" or role not in self.roles:
+                self._fail(
+                    f"saturation names {role!r}, which is not a role of this "
+                    f"profile's bands {dict(zip(self.band_names, self.roles))}"
+                )
+        if len(set(self.saturation)) != len(self.saturation):
+            self._fail(f"saturation repeats a role: {self.saturation}")
         if "thermal" in self.saturation:
             self._fail("saturation holds 'thermal'; the thermal bounds test it")
-        for key, _ in self.cadence:
-            if "__" not in key:
-                self._fail(f"cadence names {key!r}; its keys are stage__parameter")
-        if self.green_filter_scope not in GREEN_FILTER_SCOPES:
-            self._fail(
-                f"green_filter_scope is {self.green_filter_scope!r}; it is one of "
-                f"{tuple(GREEN_FILTER_SCOPES)}"
-            )
         if self.preprocess is not None:
             if not isinstance(self.preprocess, Preprocess):
                 self._fail(f"preprocess is {self.preprocess!r}, not a ccdcpp.Preprocess")
@@ -769,45 +707,18 @@ class SensorProfile:
         """
         return _input_of(self)
 
-    def config(self, base="ccdc"):
-        """``base`` (a ``ccdcpp.config()`` source) with this profile's values, a
-        ``ccdcpp.Config``: its ``cadence``; its detection bands, statistics cutoff, green
-        filter scope and value, and Lasso ``alpha`` and ``coef_floor`` (the data's values
-        over ``units.reflectance_unit``) as shared values; and its Tmask bands (window_screen
-        ``bands``), where ``base``'s strategy has that parameter. A run with ``profile=`` and
-        no ``config=`` uses ``profile.config()``. Built once per profile and preset name.
-        """
-        if isinstance(base, str):
-            return _config_of(self, base)
-        return self._config(base)
-
-    def _config(self, base):
-        from .config import config as _config
-
-        cfg = _config(base).replace(**dict(self.cadence))
-        unit = self.units.reflectance_unit
-        params = {
-            "shared__detection_bands": list(self.detection),
-            "shared__stat_ord": self.stat_ord,
-            "shared__green_filter_scope": self.green_filter_scope,
-            "shared__green_filter": self.units.median_green_filter / unit,
-            "shared__alpha": self.alpha / unit,
-            "shared__coef_floor": self.coef_floor / unit,
-        }
-        if "window_screen" in cfg.stages() and "bands" in cfg.params("window_screen"):
-            params["window_screen__bands"] = list(self.tmask)
-        return cfg.replace(**params)
-
     def preprocess_plan(self, input=None, config=None):
         """The ``ccdcpp.PreprocessPlan`` this profile runs, a new object.
 
         ``preprocess`` resolved against this profile, ``input`` (default: the
         profile's own; pass the input the run uses) and ``config`` (a
-        ``ccdcpp.Config``; default: the profile's), or
+        ``ccdcpp.Config``; default: "ccdc"), or
         ``ccdcpp.default_plan(input, config)`` when ``preprocess`` is None.
         """
+        from .config import config as _config
+
         h = self.input() if input is None else input
-        cfg = self.config() if config is None else config
+        cfg = _config("ccdc") if config is None else config
         if self.preprocess is None:
             return default_plan(h, cfg)
         return self.preprocess.plan(self, h, cfg)
@@ -889,6 +800,7 @@ def _input_of(profile):
     h.roles = list(profile.roles)
     h.saturation_bands = [profile.index(r) for r in profile.saturation]
     h.reflectance_unit = profile.units.reflectance_unit
+    h.saturated = profile.saturated
     h.refl_min = profile.units.refl_min
     h.refl_max = profile.units.refl_max
     h.refl_min_inclusive, h.refl_max_inclusive = profile.units.refl_inclusive
@@ -903,7 +815,3 @@ def _input_of(profile):
         h.qa_table = _build_table(profile.qa_table_builder, codes, profile.qa_table_options)
     return h
 
-
-@lru_cache(maxsize=None)
-def _config_of(profile, base):
-    return profile._config(base)

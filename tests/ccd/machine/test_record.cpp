@@ -355,6 +355,8 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         {"roles", [](auto& h) { h.roles[0] = "coastal"; }},
         {"saturation_bands", [](auto& h) { h.saturation_bands = {0, 1, 2, 3, 4}; }},
         {"reflectance_unit", [](auto& h) { h.reflectance_unit = 1.0; }},
+        {"saturated", [](auto& h) { h.saturated = 65535.0; }},
+        {"no saturated", [](auto& h) { h.saturated.reset(); }},
         {"thermal_offset", [](auto& h) { h.thermal_offset = -2731.0; }},
         {"refl_max_inclusive", [](auto& h) { h.refl_max_inclusive = true; }},
         {"therm_min", [](auto& h) { h.therm_min = -9000.0; }},
@@ -470,7 +472,7 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 // for, and a test that fails here is a reminder, not a platform difference.
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::Input), 168u);
+    EXPECT_EQ(sizeof(ccd::Input), 184u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);
 }

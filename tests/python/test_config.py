@@ -57,10 +57,6 @@ class Presets(unittest.TestCase):
         self.assertEqual(preset.hash(), built_in.hash())
         self.assertEqual(ccdcpp.config(), preset)
 
-    def test_the_c1_dn_profile_writes_the_ccdc_preset(self):
-        self.assertEqual(ccdcpp.presets.landsat_c1_dn().config(),
-                         ccdcpp.config("ccdc").replace(shared__stat_ord=736694))
-
     def test_the_preset_is_physical(self):
         shared = ccdcpp.config("ccdc").shared()
         self.assertEqual(shared["alpha"], 1e-4)

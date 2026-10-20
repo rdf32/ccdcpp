@@ -99,6 +99,13 @@ void bind_input(py::module_& m)
         "Collection-1 DN; 1 for reflectance). The configuration's reflectance "
         "values (alpha, coef_floor, the green filter) are multiplied by it."
     )
+    .def_readwrite(
+        "saturated", &ccd::Input::saturated,
+        "The value a saturated observation holds, as the sensor writes it "
+        "(default 20000, Collection-1 DN), or None when the input does not "
+        "declare one. A step or strategy that reads it refuses an input "
+        "without one."
+    )
     .def_readwrite("thermal_scale", &ccd::Input::thermal_scale,
         "The Standard procedure reads thermal * thermal_scale + thermal_offset "
         "(default 10, Kelvin x 10 to Celsius x 100).")

@@ -211,9 +211,11 @@ class DefaultPlan(unittest.TestCase):
     def test_written_default_equals_default(self):
         dn = presets.landsat_c1_dn()
         h = dn.input()
-        self.assertEqual(Preprocess().plan(dn), ccdcpp.default_plan(h, tp.PYCCD))
-        self.assertEqual(written_default().plan(dn), ccdcpp.default_plan(h, tp.PYCCD))
-        self.assertEqual(written_default_explicit().plan(dn), ccdcpp.default_plan(h, tp.PYCCD))
+        ccdc = ccdcpp.config("ccdc")
+        self.assertEqual(Preprocess().plan(dn), ccdcpp.default_plan(h, ccdc))
+        self.assertEqual(written_default().plan(dn), ccdcpp.default_plan(h, ccdc))
+        self.assertEqual(written_default_explicit().plan(dn, config=tp.PYCCD),
+                         ccdcpp.default_plan(h, tp.PYCCD))
         # Physical units: the identity transform is no transform.
         phys = presets.landsat_c1_physical()
         written = Preprocess(
@@ -221,14 +223,16 @@ class DefaultPlan(unittest.TestCase):
             snow=written_default().snow,
             insufficient_clear=written_default().insufficient_clear,
         )
-        self.assertEqual(written.plan(phys), ccdcpp.default_plan(phys.input(), phys.config()))
+        self.assertEqual(written.plan(phys), ccdcpp.default_plan(phys.input(), ccdc))
 
     def test_written_default_output(self):
         for preprocess in (Preprocess(), written_default(), written_default_explicit()):
             with self.subTest(preprocess=preprocess):
                 profile = dataclasses.replace(presets.landsat_c1_dn(), preprocess=preprocess)
-                assert_same(self, every_entry(DATES, CUBE_DN, CODES, input=profile),
-                            every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn()))
+                assert_same(self, every_entry(DATES, CUBE_DN, CODES, input=profile,
+                                              config=tp.PYCCD),
+                            every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(),
+                                        config=tp.PYCCD))
 
     def test_transform_default_none_and_given(self):
         dn = presets.landsat_c1_dn()
@@ -254,7 +258,8 @@ class DefaultPlan(unittest.TestCase):
             snow=ProcedureChain(steps=common + (AddQa(), Dedupe())),
             insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), Dedupe())),
         )
-        self.assertEqual(written.plan(profile), ccdcpp.default_plan(profile.input(), profile.config()))
+        self.assertEqual(written.plan(profile),
+                         ccdcpp.default_plan(profile.input(), ccdcpp.config("ccdc")))
         written_profile = dataclasses.replace(profile, preprocess=written)
         assert_same(self,
                     without(ccdcpp.detect_cube(dates, cube, scl, threads=2,

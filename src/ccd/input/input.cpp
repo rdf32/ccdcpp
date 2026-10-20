@@ -42,6 +42,7 @@ bool operator==(const Input& a, const Input& b)
            a.qa_cirrus1 == b.qa_cirrus1 && a.qa_cirrus2 == b.qa_cirrus2 &&
            a.qa_occlusion == b.qa_occlusion && a.roles == b.roles &&
            a.saturation_bands == b.saturation_bands && a.reflectance_unit == b.reflectance_unit &&
+           a.saturated == b.saturated &&
            a.refl_min == b.refl_min && a.refl_max == b.refl_max &&
            a.refl_min_inclusive == b.refl_min_inclusive &&
            a.refl_max_inclusive == b.refl_max_inclusive && a.thermal_scale == b.thermal_scale &&
@@ -65,6 +66,9 @@ std::uint64_t digest(const Input& o)
     h.bands(o.saturation_bands);
     for (const scalar_t v : {o.reflectance_unit, o.refl_min, o.refl_max})
         h.real(v);
+    h.flag(o.saturated.has_value());
+    if (o.saturated)
+        h.real(*o.saturated);
     h.flag(o.refl_min_inclusive);
     h.flag(o.refl_max_inclusive);
     for (const scalar_t v : {o.thermal_scale, o.thermal_offset, o.therm_min, o.therm_max})

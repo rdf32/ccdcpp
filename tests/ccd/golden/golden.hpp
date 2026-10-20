@@ -117,6 +117,7 @@ inline ccd::Input physical_input()
     h.refl_max = 10000.0 / SCALE;
     h.therm_min = ccd::MIN_CELSIUS / SCALE;
     h.therm_max = ccd::MAX_CELSIUS / SCALE;
+    h.saturated.reset();
     return h;
 }
 
@@ -168,6 +169,7 @@ inline ccd::Input c2_input()
     h.refl_max = 43636.0;
     h.therm_min = -1.0e6;
     h.therm_max = 1.0e6;
+    h.saturated.reset();
     return h;
 }
 
