@@ -47,7 +47,11 @@ void bind_input(py::module_& m)
         "holds no algorithm parameter: those are the configuration's, "
         "resolved against the Input when a run is built. The defaults are "
         "Landsat Collection-1 DN as pyccd consumes it, QA as codes. "
-        "ccdcpp.SensorProfile.input() builds one for a sensor."
+        "ccdcpp.SensorProfile.input() builds one for a sensor.\n\n"
+        "The input says only how to read the data. The configuration says "
+        "what to do with it, in physical units. The run translates once: 0–1 "
+        "reflectance × 10000 = the 0–10000 DN check, exactly as today.\n\n"
+        "Example: h = ccdcpp.Input(); h.reflectance_unit = 1.0  # reflectance 0..1"
     )
     .def(py::init<>())
 

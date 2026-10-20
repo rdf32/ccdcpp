@@ -11,7 +11,7 @@ run's output changes: an observed run's results are the unobserved run's, bit fo
 import pandas as pd
 import ccdcpp
 
-out = ccdcpp.detect(dates, spectral, qas, profile=ccdcpp.presets.landsat_c2(), trace=True)
+out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), trace=True)
 trace = pd.DataFrame(out["trace"])
 print(trace[["kind", "phase", "next", "window_start", "window_stop", "day", "outcome"]].head())
 #          kind       phase        next  window_start  window_stop     day     outcome
@@ -31,8 +31,8 @@ trace[trace.kind == "segment"][["day", "day_to", "outcome", "observations"]]
 For a cube, name the pixels:
 
 ```python
-out = ccdcpp.detect_cube_columns(dates, stack, qas, profile=..., threads=8,
-                                 trace_pixels=[(120, 37), (400, 12)])
+out = ccdcpp.detect_cube(dates, stack, qas, input=..., threads=8,
+                         trace_pixels=[(120, 37), (400, 12)])
 pd.DataFrame(out["traces"][(120, 37)])
 ```
 
@@ -43,7 +43,7 @@ Each event is a dict:
 | `kind` | `transition`, `test`, `drop`, `segment` or `exit` |
 | `machine`, `phase`, `next` | a transition: the machine and the phase it leaves and enters |
 | `window_start`, `window_stop`, `prev_break`, `observations` | a transition: the cursor (positions in the masked series) and the series length |
-| `day`, `outcome`, `values` | a test: the peek's first day, `change` or `no change`, each peek observation's statistic; a drop: the dropped day and why (`outlier`, `lookback outlier`) |
+| `day`, `outcome`, `values` | a test: the peek's first day, `change` or `no change`, each peek observation's value of the change test's first statistic (chi2's `change_magnitude`); a drop: the dropped day and why (`outlier`, `lookback outlier`) |
 | `day`, `day_to`, `outcome`, `observations` | a segment: its first and last day, its curve_qa, break day and change probability, its observation count |
 | `outcome`, `observations` | the exit: why the pixel ended (`SeriesEnd`, `InitializeExhausted`, ...), and its segment count |
 
@@ -57,7 +57,8 @@ nothing. A resumed pixel reports from its Prepare on, then from where the stored
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/run/run.hpp"
 
-ccd::RunSpec spec{hoptions};
+ccd::RunSpec spec;
+spec.input = input;                // ccd::Input, the data's encoding
 spec.observer = std::make_shared<ccd::TextObserver>(std::cerr);
 ccd::run_pixel(spec, dates, spectral, qas);
 // pixel 0: transition Prepare -> Initialize window (0, 12) prev_break 0 n 302

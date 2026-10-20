@@ -5,53 +5,65 @@ ccdcpp runs one fixed machine, the CCDC family's phases and routes, whose decisi
 begins, the outlier screen and the fit and rule a start window is judged by, Lookback, the
 monitoring model and when it is refitted, the change test, the outlier rule, and the fits a
 segment reports. Each stage is decided by a **strategy** chosen by name, with parameters. A
-**configuration** names, for every stage, its strategy and that strategy's parameters.
+**configuration** holds the **shared** values several stages read (written once), for every
+stage its strategy and that strategy's parameters, and for every procedure its
+**preprocessing**: the steps that build the processing mask.
 
-The options (`HarmonicOptions`) describe the input: its bands, units, QA codes and statistics
-window. The configuration is the algorithm. A run without one uses the `ccdc` preset (each
-strategy at its defaults, pyccd's values, Collection-1 DN); a run with `profile=` and no
-`config=` uses `profile.config()`, that preset written for the profile's input. The stages and
-their strategies are in [docs/ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies).
+> **Step 5 state.** The input says only how to read the data. The configuration says what to do
+> with it, in physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN
+> check, exactly as today.
+>
+> - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False,
+>   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, input,
+>   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None)`,
+>   which returns columns; `ccdcpp.to_pixels(out)` reads them per pixel. `resume=` is an earlier
+>   call's output made with `record=True`. C++: `ccd::run_pixel` / `ccd::run_cube` with
+>   `RunSpec{input, algorithm, record, ...}`.
+> - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
+>   decoder of raw QA, or none), `roles`, `saturation_bands`, `reflectance_unit`
+>   (Collection-1 DN 10000, reflectance 1), `thermal_scale`/`thermal_offset` and `saturated`.
+>   `input=` takes an `Input` or a `SensorProfile`; a profile describes the data only.
+> - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
+>   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
+>   probabilities, bands by role, QA codes by name). It is checked and compiled when built and
+>   resolved once per input; `ccdcpp.plan_of(config, input)` shows the resolved preprocessing.
+>   `config=` is a `Config` or a preset's name.
+> - **"ccdc" has no statistics cutoff**; pyccd's is
+>   `ccdcpp.config("ccdc").replace(shared__stat_ord=736694)`.
+>
+> Some sections below still describe earlier details; the full documentation comes later.
 
-> **Step 5 state.** The description of the data is `ccdcpp.Input` (C++ `ccd::Input`): the QA
-> codes, a role per row (`roles`), `saturation_bands`, `reflectance_unit` (Collection-1 DN 10000,
-> reflectance 1) and the bounds and thermal transform, in snake_case. `HarmonicOptions` is gone,
-> and the entry points take `input=` where they took `hoptions=`; `profile.input()` replaces
-> `profile.options()`. A configuration is `{"shared": ..., "stages": ...}` in physical terms
-> (`ccdcpp.Config`, C++ `config::Config`): the values several stages read are written once in
-> `shared` (`detection_bands` by role, `change_probability`, `outlier_probability`, the Lasso's
-> `alpha`, `coef_floor`, `max_iter`, `tolerance`, the coefficient rule, `stat_ord`,
-> `green_filter` and `green_filter_scope`), reflectance values are multiplied by the input's
-> `reflectance_unit`, and the change and outlier thresholds are the chi-squared quantiles of the
-> probabilities for the detection-band count, all when a run resolves the configuration against
-> its input (C++ `ccd::Algorithm`, which caches the resolution per input). Some examples below
-> still use the earlier names; the full documentation comes with the two-call API.
+The input (`ccdcpp.Input`, or a `SensorProfile` that builds one) says how to read the data. The
+configuration is the algorithm, in physical units, and means the same on every input. A run
+without one uses the `ccdc` preset (each strategy and step at its defaults, pyccd's algorithm),
+with or without a profile. The stages and their strategies are in
+[docs/ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies).
 
 ## From Python
 
 ```python
 import ccdcpp
 
-cfg = ccdcpp.config("ccdc")          # the preset: pyccd's algorithm, Collection-1 DN
-print(cfg)                           # every stage and parameter
+cfg = ccdcpp.config("ccdc")          # the preset: pyccd's algorithm, in physical terms
+print(cfg)                           # every shared value, stage, parameter and step
 # Config(
-#   change_test: chi2(change_probability=0.99, change_threshold=15.086272469388987, ...)
-#   edge_fit: lasso(alpha=1.0, coef_floor=1.0, coefficients=4, ...)
+#   shared: alpha=0.0001, change_probability=0.99, ..., stat_ord=9223372036854775807, ...
+#   change_test: chi2(model_rmse_up_to=24, peek_reference_days=16.0, peek_size=6, ...)
 #   ...
-#   refit: span-factor(factor=1.33, min_obs=24)
-#   ...
+#   preprocess standard: thermal_transform, keep_qa(codes=['clear', 'water']); ...
 # )
 
-# Change parameters: stage__parameter=value. A Config is immutable; replace() returns a copy.
-cfg2 = cfg.replace(change_test__change_probability=0.95, refit__factor=2.0)
+# Change values: shared__value=, stage__parameter=, preprocess__...=. A Config is immutable;
+# replace() returns a copy, checked and compiled as it is built.
+cfg2 = cfg.replace(shared__change_probability=0.95, refit__factor=2.0)
 
 # Swap a stage's strategy (a name ccdcpp.strategies() lists for it): its parameters start
 # from the new strategy's defaults.
 cfg3 = cfg.replace(refit="span-factor")
 
-# Run with it: every entry point takes config=.
-out = ccdcpp.detect(dates, spectral, qas, profile=ccdcpp.presets.landsat_c2(), config=cfg2)
-cube = ccdcpp.detect_cube_columns(dates, stack, qas, profile=..., threads=8, config=cfg2)
+# Run with it: detect and detect_cube take config= (a Config or a preset's name).
+out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), config=cfg2)
+cube = ccdcpp.detect_cube(dates, stack, qas, input=..., threads=8, config=cfg2)
 ```
 
 Mistakes are refused by name, before any pixel runs:
@@ -59,10 +71,10 @@ Mistakes are refused by name, before any pixel runs:
 ```python
 cfg.replace(refit__fctor=2.0)
 # ValueError: refit 'span-factor' has no parameter 'fctor'; it has min_obs, factor
-cfg.replace(refit__factor=0.0).check()
+cfg.replace(refit__factor=0.0)
 # ValueError: refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
-cfg.replace(window_screen__bands=[1, 9]).check(bands=7)
-# ValueError: window_screen 'tmask' parameter 'bands' holds band 9; the input has 7 bands
+cfg.replace(window_screen__bands=["green", "coastal"]).check(ccdcpp.Input())
+# ValueError: ... holds 'coastal', which the input does not have; its rows are ...
 ```
 
 What exists and what it takes:
@@ -73,54 +85,51 @@ for p in table["refit"]["span-factor"]:
     print(p["name"], p["unit"], p["bounds"], p["default"], "-", p["doc"])
 # min_obs observations at least 1 24 - observations up to which every test refits
 # factor none greater than 0 1.33 - refit once the window spans this many times the last fit's span
+ccdcpp.shared_values()           # [{"name", "unit", "bounds", "doc", "default"}, ...]
+ccdcpp.steps()                   # {step: [parameter, ...]}
 ```
 
+A parameter whose source is `shared` or `chi2` reads a shared value (its chi-squared quantile
+for the detection-band count, for `chi2`) and is set as `shared__<name>`, not in its stage.
 `cfg.hash()` is a digest equal for equal configurations on any platform; `cfg.to_toml()` writes
 the configuration as a preset file; a `Config` pickles, so it can go to worker processes.
 
-### The configuration of a profile
-
-```python
-p = ccdcpp.presets.landsat_c2()
-cfg = p.config()                     # "ccdc" for the profile's input
-print(cfg.params("model")["alpha"], cfg.params("window_screen")["bands"])
-# 0.0001 [1, 4]
-assert ccdcpp.presets.landsat_c1_dn().config() == ccdcpp.config("ccdc")
-# The same run, with and without it:
-assert ccdcpp.detect(d, s, q, profile=p)["models"] == ccdcpp.detect(d, s, q, profile=p, config=cfg)["models"]
-# Without a profile, the options and the "ccdc" preset:
-out = ccdcpp.detect(d, s_dn, codes, ccdcpp.HarmonicOptions())
-```
-
-`profile.config(base="ccdc")` writes `base` (any `ccdcpp.config()` source) for the profile: its
-`cadence` (`stage__parameter` keys, applied with `Config.replace()`), its `alpha` and
-`coef_floor` in `model`, `stability_fit` and `edge_fit`, its Tmask roles as `window_screen`'s
-`bands`, and the change and outlier thresholds of its detection band count in `change_test`,
-`stability_rule`, `lookback` and `outlier`. A `config=` given with a profile replaces
-`profile.config()` whole, so start from it (`p.config().replace(refit__factor=2.0)`) to keep
-the profile's units. The profile still supplies the band layout, the QA table, the preprocessing
-plan and the options the machine itself reads (detection bands, the statistics window).
-
 ### Units
 
-A configuration's parameters are in the input's units, as the options' are: the Lasso's
-`alpha` and `coef_floor` (in the `stability_fit`, `model` and `edge_fit` stages) are 1.0 for
-Collection-1 DN and 1e-4 for reflectance. `profile.config()` carries the profile's values.
+A configuration's values are physical: the shared `alpha` and `coef_floor`, band_range's bounds
+and green_median's offset in reflectance, thermal_range's bounds in degrees Celsius, the change
+and outlier thresholds as probabilities, bands by role and QA codes by name. A run resolves them
+against its input once: reflectance times the input's `reflectance_unit` (Collection-1 DN 10000,
+reflectance 1), degrees Celsius to the thermal row's unit, roles to rows, names to codes.
+`cfg.resolve(input)` shows the values a run uses; `ccdcpp.plan_of(cfg, input)` the
+preprocessing plan.
+
+### Preprocessing
+
+```python
+from ccdcpp import BandRange, Dedupe, KeepQa, ProcedureChain, ThermalRange
+
+keeps_snow = cfg.replace(preprocess__standard=ProcedureChain(
+    steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
+    thermal_transform=True,
+))
+cfg.replace(preprocess__thermal_range__min=-80.0)            # every thermal_range step
+print(ccdcpp.plan_of(keeps_snow, ccdcpp.Input()))            # the plan, in the input's units
+```
 
 ## Presets
 
-A preset is a TOML file, one table per stage. `ccdcpp.config(name)` reads
+A preset is a TOML file: a `[shared]` table, one table per stage and one
+`[preprocess.<procedure>]` table per procedure. `ccdcpp.config(name)` reads
 `ccdcpp/configs/<name>.toml`, or else the library registry's preset of that name (an
-extension's, `Registry::add_preset()`); `ccdcpp.config(path)` reads any file. A file may extend another and
-list only what differs:
+extension's, `Registry::add_preset()`); `ccdcpp.config(path)` reads any file. A file may extend
+another and list only what differs:
 
 ```toml
 # my_variant.toml
 extends = "ccdc"
 
-[change_test]
-strategy = "chi2"
-[change_test.params]
+[shared]
 change_probability = 0.95
 
 [refit]
@@ -134,9 +143,10 @@ cfg = ccdcpp.config("my_variant.toml")
 ```
 
 A stage the file names with the base's strategy changes only the parameters it gives; with
-another strategy, the stage starts from that strategy's defaults. A relative path in `extends`
-is the extending file's directory's. The shipped preset is `ccdc`
-(pyccd's algorithm with ccdcpp's corrections, Collection-1 DN values).
+another strategy, the stage starts from that strategy's defaults. A procedure the file names
+takes the file's `thermal_transform` and `steps` where it gives them. A relative path in
+`extends` is the extending file's directory's. The shipped preset is `ccdc` (pyccd's algorithm
+with ccdcpp's corrections, no statistics cutoff).
 
 ## From C++
 
@@ -145,18 +155,19 @@ is the extending file's directory's. The shipped preset is `ccdc`
 
 using namespace ccd;
 
-config::ConfigTree tree = strategies::library_registry().preset("ccdc");
-tree["change_test"].params["change_probability"] = config::real(0.95);
-tree["refit"].params["factor"] = config::real(2.0);
+config::Config config = strategies::library_registry().preset("ccdc");
+config.shared["change_probability"] = config::real(0.95);
+config.stages["refit"].params["factor"] = config::real(2.0);
 
-RunSpec spec{HarmonicOptions{}};     // spec.config is the "ccdc" preset
-spec.config = tree;
+RunSpec spec;                        // spec.input is Collection-1 DN, spec.algorithm "ccdc"
+spec.algorithm = std::make_shared<const Algorithm>(config);   // checked here
 PixelRun run = run_pixel(spec, dates, spectral, qas);
+preprocess::PreprocessPlan plan = plan_of(config, spec.input);  // for inspection
 ```
 
-`strategies::library_registry().names()` lists the strategies, `.schemas()` their parameters
-and `.presets()` the named configurations (`ccdc`, and any an extension registers with
-`Registry::add_preset()`).
+`strategies::library_registry().names()` lists the strategies, `.schemas()` their parameters,
+`.step_schemas()` the preprocessing steps' and `.presets()` the named configurations (`ccdc`,
+and any an extension registers with `Registry::add_preset()`).
 
 ## Experiments
 
@@ -165,16 +176,18 @@ your own registered and named.
 
 | What you want to try | How |
 |---|---|
-| a stricter or looser change test | `cfg.replace(change_test__change_probability=0.95)` |
+| a stricter or looser change test, everywhere it is read | `cfg.replace(shared__change_probability=0.95)` |
 | refit less often | `cfg.replace(refit__factor=2.0)` |
 | the model's own RMSE for longer windows | `cfg.replace(change_test__model_rmse_up_to=40)` |
-| other Tmask bands | `cfg.replace(window_screen__bands=[1, 2, 4])` |
-| a stricter start | `cfg.replace(stability_rule__change_threshold=11.0705)` |
-| fewer outliers dropped | `cfg.replace(outlier__threshold=30.856, lookback__outlier_threshold=30.856)` |
+| other Tmask bands | `cfg.replace(window_screen__bands=["green", "red", "swir1"])` |
+| fewer outliers dropped | `cfg.replace(shared__outlier_probability=0.99999)` |
 | Initialize and Lookback at a peek of 6, whatever the change test's | `cfg.replace(stability_rule__peek=6, lookback__peek=6)` |
-| fewer coefficients for long windows | `cfg.replace(model__coefficient_max=6)` |
-| a sweep | `[ccdcpp.detect_cube_columns(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |
+| fewer coefficients for long windows | `cfg.replace(shared__coefficient_max=6)` |
+| pyccd's statistics cutoff | `cfg.replace(shared__stat_ord=736694)` |
+| another preprocessing | `cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)`, `cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(...))` |
+| a sweep | `[ccdcpp.detect_cube(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |
 | a new decision rule | a C++ strategy class for its stage, registered by name (below) |
+| a new preprocessing step | a C++ step type, registered by name (`Registry::add_step()`, `include/ccd/input/mask/steps.hpp`) |
 
 A strategy of your own is a class for its stage's interface
 (`include/ccd/strategies/stages.hpp`) with a `Params` struct and its schema, registered once:
@@ -208,6 +221,7 @@ extension directory (CMake's `CCD_EXTENSIONS`; see
 
 ## Resume records
 
-A record carries the digest of the options and the configuration (`options_digest()`): it
-continues only under the same ones, and a resume under another configuration raises
-`ValueError` before any pixel runs.
+A record carries the digest of the input (its QA table included) and the resolved configuration
+(`ResumeHeader::options_digest`, the resolution's digest): it continues only under the same
+ones, and a resume under another input or configuration raises `ValueError` before any pixel
+runs.

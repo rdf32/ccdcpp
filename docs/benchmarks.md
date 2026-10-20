@@ -7,8 +7,11 @@ All numbers are for ccdcpp 0.10.0 on one machine:
 
 - Apple M5 Max, 18 cores (6 performance, 12 efficiency), 64 GB, macOS 26.7.
 - Release build (`-O3`, Apple clang 21, libomp), Python 3.11, numpy 1.26.4.
-- Default options and configuration (`HarmonicOptions()` and the `ccdc` preset), or
-  `presets.landsat_c2()` (its options and its `config()`) for the real cell.
+- The default input and configuration (`ccdcpp.Input()` and the `ccdc` preset, at pyccd's
+  statistics cutoff as 0.10.0 ran it), or `input=presets.landsat_c2()` for the real cell.
+- The entry points are named as in 1.0: `detect_cube` returns the columns (0.10.0's
+  `detect_cube_columns`), and `detect_cube(resume=...)` continues a recorded run (0.10.0's
+  `resume_cube_columns`).
 - The machine was not otherwise idle: the 1-minute load is given with each table. A
   comparison is only made between runs of the same session.
 - Memory is the peak resident set size of the process (`/usr/bin/time -l`), which includes the
@@ -18,9 +21,9 @@ All numbers are for ccdcpp 0.10.0 on one machine:
 
 | Name | What it is |
 |---|---|
-| Synthetic | `make_corpus.cpp`'s 2000 pixels at a 16-day cadence, tiled 2 x 2 (8000 pixels, float64 input), through `detect_cube_columns` ("cols") or `detect_cube` ("cube"). Small and repeatable: the per-change bench. |
-| Atlanta cell | A real 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 7 bands, uint16), through `detect_cube_columns` with `presets.landsat_c2()` in strips of 50 rows, as a production plugin runs it. 250,000 pixels, 455,231 segments. Read whole before timing; only detection is timed. |
-| Annual update | The same cell recorded up to 2022-12-31, then resumed to 2023 with `resume_cube_columns`, against a full run to 2023. |
+| Synthetic | `make_corpus.cpp`'s 2000 pixels at a 16-day cadence, tiled 2 x 2 (8000 pixels, float64 input), through `detect_cube` (columns; "cols") or 0.10.0's per-pixel dicts ("cube"). Small and repeatable: the per-change bench. |
+| Atlanta cell | A real 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 7 bands, uint16), through `detect_cube` with `input=presets.landsat_c2()` in strips of 50 rows, as a production plugin runs it. 250,000 pixels, 455,231 segments. Read whole before timing; only detection is timed. |
+| Annual update | The same cell recorded up to 2022-12-31, then resumed to 2023 with `detect_cube(resume=...)`, against a full run to 2023. |
 | PyCCD pixels | Pixels run one at a time through PyCCD's `ccd.detect` and `ccdcpp.detect`. |
 
 ## Against PyCCD
@@ -56,7 +59,7 @@ reference pixel (192-205 ms against 2.8 ms), 250-256x on the Atlanta pixel (313-
 
 ## The Atlanta cell: threads
 
-`detect_cube_columns` on the whole Atlanta cell, strips of 50 rows, one run per thread count
+`detect_cube` on the whole Atlanta cell, strips of 50 rows, one run per thread count
 (load 6-18 before the runs, from the run before):
 
 | Threads | Detect | ms per pixel | Speed-up | Peak memory |
@@ -109,7 +112,7 @@ rounds, load 9-12:
 | | Time | Peak memory |
 |---|---|---|
 | Full run to 2023 | 40.1 s, 38.7 s | |
-| Update (`resume_cube_columns`) | 14.6 s, 13.9 s | |
+| Update (`detect_cube(resume=...)`) | 14.6 s, 13.9 s | |
 | Update / full | 0.36 | |
 | The whole bench (stored run, update and full run in one process) | | 19.9 GB |
 

@@ -14,12 +14,13 @@ otherwise (the rules in section 7); see the README's
 ## 1. One pixel, end to end
 
 `Run::pixel` (`src/ccd/run/run.cpp`) is a straight pipeline, not a machine. A `Run` is built
-once per call (`include/ccd/run/run.hpp`): it checks the options, dates, QA and plan and holds
+once per call (`include/ccd/run/run.hpp`): it checks the input, dates and QA, takes the
+configuration resolved for the input (its strategies and preprocessing plan) and holds
 what every pixel shares; each OpenMP thread holds a `Worker` with the buffers and the change
 detector it reuses from pixel to pixel. The steps of one pixel:
 
-1. decode the QA (through a `QaTable` when one is given);
-2. compute the QA statistics of the observations dated up to `STAT_ORD`
+1. decode the QA (through the input's `QaTable` when it has one);
+2. compute the QA statistics of the observations dated up to the shared `stat_ord`
    (`Quality::compute_until`, `include/ccd/input/quality.hpp`);
 3. choose the pixel's procedure: the run's `mode` stage (`ModeRule::choose`,
    `include/ccd/strategies/stages.hpp`);
@@ -152,14 +153,14 @@ only when a full peek fits.
 A transition is a function of two arguments, `(const Context&, State&)`. What it may change is
 in the `State`. What it reads but never changes is in the `Context`.
 
-**`standard::Context`** holds the caller's `HarmonicOptions` (never written below
-`Run::pixel`), the pixel's `HarmonicWorkspace` (its dates, spectral and QA), the run's
-strategies, the observer and the pixel mode's coefficient cap. It holds no solver: each strategy
+**`standard::Context`** holds the run's resolved shared values (never written below
+`Run::pixel`), the pixel's `PixelSeries` (its dates, spectral and QA, with the run's `Input`),
+the run's strategies, the observer and the pixel mode's coefficient cap. It holds no solver: each strategy
 that fits holds its own. The catch segments (StartCatch, EndCatch) fit with the edge fit's,
 Initialize with the stability fit's and Extend with the monitoring model's (the `edge_fit`,
 `stability_fit` and `model` stages' parameters), and Lookback reads the stability fit. A direct
-caller of `standard::Procedure` builds the strategies from a configuration
-(`strategies::build_strategies(strategies::library_registry(), tree)`), as `Run` does.
+caller of `standard::Procedure` takes the strategies of a configuration resolved against its
+input (`strategies::library_registry().resolve(config, input).strategies`), as `Run` does.
 
 **`standard::State`** is one pixel's record:
 
@@ -270,12 +271,13 @@ struct Shortened final : ccd::ChangeTest
 
 At an Extend peek every stage reads one `Peek` (the model, the windows, the peek's residuals,
 the variogram and the detection bands), and the change test writes what it found into a
-`PeekResult` (the comparison RMSE and the per-observation statistic), which the outlier rule
-reads. What each strategy provides and needs is declared as `Capabilities`
+`PeekResult` (the comparison RMSE and its per-observation statistics by name, chi2's
+`change_magnitude`), which the outlier rule reads, selecting a statistic by name (floored's
+`statistic`). What each strategy provides and needs is declared as `Capabilities`
 (`include/ccd/strategies/capabilities.hpp`: the model's `peek_residuals`, `model_rmse` and
-`in_window_residuals`; the change test's `comparison_rmse` and `peek_statistic`), and
-`build_strategies` refuses a configuration in which a strategy needs what no earlier stage's
-strategy provides:
+`in_window_residuals`; the change test's `comparison_rmse`) and as statistic names
+(`ChangeTest::statistics()`, `OutlierRule::statistics()`), and the registry refuses a
+configuration in which a strategy needs what no earlier stage's strategy provides:
 
 ```cpp
 // A model strategy that provides nothing, registered as "opaque", with chi2:
@@ -304,80 +306,53 @@ has more):
 
 using namespace ccd;
 
-// The configuration a run uses by default, and its strategies.
-config::ConfigTree tree = strategies::library_registry().preset("ccdc");
-// tree["start_search"] is {"pyccd", {{"meow_size", 12}, {"day_delta", 365}}}
-// tree["lookback"] is {"pyccd", {{"change_threshold", 15.0863}, {"change_probability", 0.99},
-//                                {"outlier_threshold", 35.8882}, {"peek", 0}}}
-// tree["window_screen"] is {"tmask", {{"bands", {1, 4}}, {"t_const", 4.89}}}
-// tree["stability_fit"] and tree["model"] are {"lasso", {{"max_iter", 1000}, {"alpha", 1.0},
-//                                           {"tolerance", 1e-4}, {"coef_floor", 1.0},
-//                                           {"coefficient_min", 4}, {"coefficient_mid", 6},
-//                                           {"coefficient_max", 8}, {"num_obs_factor", 3}}}
-// tree["stability_rule"] is {"pyccd", {{"change_threshold", 15.0863},
-//                                      {"change_probability", 0.99}, {"peek", 0}}}
-// tree["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
-// tree["change_test"] is {"chi2", {{"peek_size", 6}, {"peek_reference_days", 16.0},
-//                                  {"change_threshold", 15.0863}, {"change_probability", 0.99},
-//                                  {"model_rmse_up_to", 24}, {"seasonal_count", 24},
-//                                  {"seasonal_divisor", 4.0}}}
-// tree["outlier"] is {"floored", {{"threshold", 35.8882}}}
-// tree["edge_fit"] is {"lasso", {{"coefficients", 4}, {"min_observations", 12}, and the Lasso's four}}
+// The configuration a run uses by default: the shared values, the stages and the
+// preprocessing, in physical terms (config::Config, config/registry.hpp).
+config::Config config = strategies::library_registry().preset("ccdc");
+// config.shared holds detection_bands {"green", "red", "nir", "swir1", "swir2"},
+//   change_probability 0.99, outlier_probability 0.999999, alpha and coef_floor 1e-4
+//   (reflectance), max_iter 1000, tolerance 1e-4, the coefficient rule 4/6/8/3 and stat_ord
+//   NO_STAT_CUTOFF; the stages that read them hold no copy.
+// config.stages["start_search"] is {"pyccd", {{"meow_size", 12}, {"day_delta", 365}}}
+// config.stages["window_screen"] is {"tmask", {{"bands", {"green", "swir1"}}, {"t_const", 4.89}}}
+// config.stages["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
+// config.stages["outlier"] is {"floored", {{"statistic", "change_magnitude"}}}: its
+//   threshold is the chi-squared quantile of the shared outlier_probability.
 
 // Start windows of 18 observations spanning two years.
-tree["start_search"].params["meow_size"] = config::integer(18);
-tree["start_search"].params["day_delta"] = config::integer(730);
+config.stages["start_search"].params["meow_size"] = config::integer(18);
+config.stages["start_search"].params["day_delta"] = config::integer(730);
 
 // Tmask over green, red and swir1, and a looser outlier cut.
-tree["window_screen"].params["bands"] = config::bands({1, 2, 4});
-tree["window_screen"].params["t_const"] = config::real(6.0);
+config.stages["window_screen"].params["bands"] = config::roles({"green", "red", "swir1"});
+config.stages["window_screen"].params["t_const"] = config::real(6.0);
 
-// Every fit for reflectance input: a 10,000 times smaller penalty and floor.
-for (const char* stage : {"stability_fit", "model", "edge_fit"})
-{
-    tree[stage].params["alpha"] = config::real(1e-4);
-    tree[stage].params["coef_floor"] = config::real(1e-4);
-}
-
-// A stricter start: stability below chi2(5) at 0.95 instead of 0.99, for the default peek
-// (change_threshold) and a longer one (change_probability).
-tree["stability_rule"].params["change_threshold"] = config::real(11.0705);
-tree["stability_rule"].params["change_probability"] = config::real(0.95);
+// Every change test at 0.95 instead of 0.99, and fewer outliers (0.99999).
+config.shared["change_probability"] = config::real(0.95);
+config.shared["outlier_probability"] = config::real(0.99999);
 
 // Refit less often: once the window spans twice the last fit's span.
-tree["refit"].params["factor"] = config::real(2.0);
+config.stages["refit"].params["factor"] = config::real(2.0);
 
-// The change test compares against the model's own RMSE up to 40 observations (pyccd: 24),
-// apart from the refit schedule's 24.
-tree["change_test"].params["model_rmse_up_to"] = config::integer(40);
-
-// Extend and Lookback drop fewer observations as outliers: chi2(5) at 0.99999 instead of
-// pyccd's 0.999999.
-tree["outlier"].params["threshold"] = config::real(30.856);
-tree["lookback"].params["outlier_threshold"] = config::real(30.856);
-
-Strategies s = strategies::build_strategies(strategies::core_registry(), tree);
-s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_size=*/24, /*fit_span=*/100.0);  // false
-s.refit->due(30, 200.0, 24, 100.0);                                                           // true
-
-// A run under a configuration of its own (RunSpec::config): checked when the run is built,
-// band lists against the input's bands, and part of its resume records' digest.
-RunSpec spec{HarmonicOptions{}};
-spec.config = tree;
+// A run under it: checked when the Algorithm is built, resolved against the input (units,
+// rows, thresholds, the preprocessing plan) once, and part of its resume records' digest.
+RunSpec spec;
+spec.algorithm = std::make_shared<const Algorithm>(config);
 PixelRun run = run_pixel(spec, dates, spectral, qas);
 
-// A value out of range is refused when the strategies are built:
-tree["refit"].params["factor"] = config::real(0.0);
-strategies::build_strategies(strategies::core_registry(), tree);
+// A value out of range is refused when the Algorithm is built:
+config.stages["refit"].params["factor"] = config::real(0.0);
+Algorithm bad(config);
 // std::invalid_argument: refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
 ```
 
 ### Configurations and extensions
 
-A run's configuration is `RunSpec::config`. It names its strategies in
+A run's configuration is `RunSpec::algorithm`, a compiled `config::Config`. It names its
+strategies and preprocessing steps in
 `ccd::strategies::library_registry()`: the library's own (`register_core_strategies()`, which
 also registers the `ccdc` preset) and those of the extensions it was built with, which may
-register presets of their own (`Registry::add_preset()`; `preset()`, `presets()`). An extension is a
+register presets and preprocessing step types of their own (`Registry::add_preset()`; `preset()`, `presets()`; `Registry::add_step()`, a step beyond the built-in kinds being a `preprocess::CustomStep`). An extension is a
 directory in CMake's `CCD_EXTENSIONS` whose `extension.cmake` adds its sources, include
 directories and registration functions (`CCD_EXTENSION_SOURCES`, `CCD_EXTENSION_INCLUDE_DIRS`,
 `CCD_EXTENSION_REGISTRATIONS`); the library calls each registration function when the registry

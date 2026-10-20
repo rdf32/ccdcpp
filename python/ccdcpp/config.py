@@ -218,7 +218,14 @@ def _set_step(tree, procedures, step, param, value):
 class Config:
     """An algorithm configuration (see the module's documentation). Building one checks it
     (ValueError for what a run would refuse on any input) and compiles it once: every call
-    that runs it reuses the compilation, and its resolution against each input it meets."""
+    that runs it reuses the compilation, and its resolution against each input it meets.
+
+    The input says only how to read the data. The configuration says what to do with it, in
+    physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
+    exactly as today.
+
+    Example: ``cfg = ccdcpp.config("ccdc").replace(shared__change_probability=0.995)``
+    """
 
     __slots__ = ("_tree", "_algorithm")
 

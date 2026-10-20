@@ -108,6 +108,13 @@ _TABLE_CODE_FIELDS = ("qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow",
 class SensorProfile:
     """One sensor's data: band names and roles, units and QA.
 
+    The input says only how to read the data. The configuration says what
+    to do with it, in physical units. The run translates once: 0–1
+    reflectance × 10000 = the 0–10000 DN check, exactly as today.
+
+    Example: ``ccdcpp.detect(dates, spectral, qas,
+    input=ccdcpp.presets.landsat_c2())``
+
     name
         A label for the profile, for messages and provenance.
     band_names
