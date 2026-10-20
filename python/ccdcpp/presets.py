@@ -30,8 +30,9 @@ them by role.
 A profile describes the data only; the configuration (``config=``, "ccdc" by
 default) is the same for every profile. Only :func:`landsat_c1_dn` declares
 the values a saturated observation holds (``saturation_code`` and
-``thermal_saturation_code``, 20000 in its stored DN); the others' are not
-verified, and they declare none.
+``thermal_saturation_code``, 20000 in its stored DN): the others hold their
+data converted to reflectance, where a code does not survive, and declare
+none (docs/units.md lists which products store one).
 
 A profile for another sensor is a :class:`ccdcpp.SensorProfile` call; the
 module docstring of ``ccdcpp.profiles`` has an example.

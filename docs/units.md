@@ -7,16 +7,17 @@ exactly as today.
 ## The boundary
 
 - **The storage domain** is the data as given: `spectral` in the input's encoding, its QA, and
-  its codes. Fill and saturation codes (`qa_fill`, `saturation_code`, `thermal_saturation_code`) belong
-  here and are compared on the raw stored values, before any transform. The outputs are in it
-  too: coefficients, intercepts, RMSEs and magnitudes are in the input's units (DN in, DN out).
+  its codes. Fill and saturation codes (`qa_fill`, `saturation_code`,
+  `thermal_saturation_code`) belong here and are compared on the raw stored values, before any
+  transform. The outputs are in it too: coefficients, intercepts, RMSEs and magnitudes are in
+  the input's units (DN in, DN out).
 - **The physical domain** is the configuration only: reflectance levels (0–1), reflectance
   differences (`alpha`, `coef_floor`, the green median's offset), degrees Celsius, days,
   observations, probabilities, bands by role and QA codes by name.
 - **The conversion.** The run converts the configuration into the storage domain once, when
   it resolves it against the input: levels as `r * reflectance_scale + reflectance_offset`,
-  differences as `r * reflectance_scale`, degrees Celsius as `c * 100 * thermal_at_100c / 10000`.
-  The one conversion of the data is the thermal transform, `thermal * thermal_scale +
+  differences as `r * reflectance_scale`, degrees Celsius as `c * 100 * thermal_at_100c /
+  10000`. The one conversion of the data is the thermal transform, `thermal * thermal_scale +
   thermal_offset`, applied to the thermal row of the procedures whose chain sets
   `thermal_transform`, with its output unit stated by `thermal_at_100c` (the value 100 °C has
   after it).
@@ -41,16 +42,38 @@ every resolved value.
 - reflectance `r` is held as `r * reflectance_scale + reflectance_offset` (Collection-1 DN:
   10000 and 0, the defaults; reflectance: 1 and 0);
 - the thermal transform `thermal * thermal_scale + thermal_offset` takes the thermal row to a
-  multiple of degrees Celsius, and `thermal_at_100c` is the value 100 °C has after it (Collection-1
-  DN: Kelvin x 10 through (10, -27315) is Celsius x 100, `thermal_at_100c` 10000, the defaults;
-  Celsius / 100 through the identity: `thermal_at_100c` 1).
+  multiple of degrees Celsius, and `thermal_at_100c` is the value 100 °C has after it
+  (Collection-1 DN: Kelvin x 10 through (10, -27315) is Celsius x 100, `thermal_at_100c` 10000,
+  the defaults; Celsius / 100 through the identity: `thermal_at_100c` 1).
 
-A configuration's reflectance levels (`band_range`'s bounds) resolve as `r * reflectance_scale +
-reflectance_offset`, its reflectance differences (`alpha`, `coef_floor`, `green_median`'s
-offset) as `r * reflectance_scale`, its degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`.
-1e-4 x 10000, 0.04 x 10000, 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0 and 10000 exactly, and
--93.2 and 70.7 degrees are -9320 and 7070 on DN and -0.932 and 0.707 on Celsius / 100, so a DN
-input runs pyccd's DN values bit for bit.
+A configuration's reflectance levels (`band_range`'s bounds) resolve as `r *
+reflectance_scale + reflectance_offset`, its reflectance differences (`alpha`, `coef_floor`,
+`green_median`'s offset) as `r * reflectance_scale`, its degrees Celsius `c` as `c * 100 *
+thermal_at_100c / 10000`. 1e-4 x 10000, 0.04 x 10000, 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0
+and 10000 exactly, and -93.2 and 70.7 degrees are -9320 and 7070 on DN and -0.932 and 0.707 on
+Celsius / 100, so a DN input runs pyccd's DN values bit for bit.
+
+## Saturation codes
+
+`saturation_code` and `thermal_saturation_code` are the values a saturated observation holds in
+the reflective rows and in the thermal row, as stored. Which products store one in the band
+(from the official product guides):
+
+| Product | Saturation code in the band (stored value) | Source |
+|---|---|---|
+| Landsat Collection 1 surface reflectance and brightness temperature | 20000 (fill -9999) | LaSRC product guide, LSDS-1368 |
+| Landsat Collection 2 Level-2 scenes | none: saturation is flagged in `QA_RADSAT` only | LSDS-1619, section 6.1.2 |
+| Landsat Collection 2 U.S. ARD | surface reflectance: 65535 on Landsat 4-7, 65455 on Landsat 8-9; surface temperature: none | DFCB, LSDS-1435 version 4 |
+| HLS v2.0 | none (no saturation value or QA) | HLS v2.0 User Guide |
+| Sentinel-2 L2A | 65535, in the raw DN, before `BOA_ADD_OFFSET` and the quantification | L2A product format |
+
+A shipped profile declares a code only when its stored encoding is the product's own: today
+only `presets.landsat_c1_dn()`, 20000 and 20000. The codes do not survive conversion to
+reflectance: once the data is scaled (and offset), the code is a value like any other, so a
+profile of converted data, `landsat_c1_physical()` and the reflectance profiles of the other
+products, declares none. An input in a product's stored encoding (Collection-2 ARD DN, say)
+declares the product's code itself; Collection-2 ARD's differs between Landsat 4-7 and 8-9, so
+a stack of both holds no single code.
 
 ## The physical-unit input
 
