@@ -5,7 +5,7 @@ An annual update of the bench cell (bench_cell.py's: h024v013 chunk 00030008, 50
 
   1. the stored run: detect_cube(record=True) on the dates before `cut`;
   2. the update: detect_cube(resume=) on every date, from 1's output;
-  3. the full run: detect_cube() on every date, stat_ord capped at 1's last date.
+  3. the full run: detect_cube() on every date, statistics_end capped at 1's last date.
 
 2 must equal 3 column for column (every segment array, bit for bit); the script counts the
 pixels where they differ and exits non-zero if any do. It reports each step's detect time
@@ -50,7 +50,7 @@ print(f"T={dates.size}; stored run on {n} dates up to {dt.date.fromordinal(int(d
 
 profile = presets.landsat_c2()
 capped = ccdcpp.config("ccdc").replace(
-    shared__stat_ord=min(ccdcpp.config("ccdc").shared()["stat_ord"], int(dates[n - 1])))
+    shared__statistics_end=min(ccdcpp.config("ccdc").shared()["statistics_end"], int(dates[n - 1])))
 
 digest = hashlib.sha256()
 t_first = t_resume = t_full = 0.0

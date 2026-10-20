@@ -91,19 +91,19 @@ public:
         return stats;
     }
 
-    // The statistics of the observations dated <= stat_ord.
+    // The statistics of the observations dated <= statistics_end.
     static Statistics compute_until(
         ArrayView<const std::uint8_t,1> qas,
         ArrayView<const std::int64_t,1> dates,
         const Input& input,
-        std::int64_t stat_ord
+        std::int64_t statistics_end
     )
     {
         Statistics stats;
 
         for(index_t i = 0; i < qas.size(); ++i)
         {
-            if(dates(i) <= stat_ord)
+            if(dates(i) <= statistics_end)
             {
                 update(stats, qas(i), input);
             }

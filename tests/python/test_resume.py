@@ -5,7 +5,7 @@ usage: python test_resume.py <module_dir> <source_dir> [unittest args]
 
 The C++ suite (tests/ccd/golden/test_resume.cpp) holds resume to the full
 run at thousands of cuts; this one holds the bindings to the C++: the
-continuation of a recorded run equals detect() with stat_ord capped at the
+continuation of a recorded run equals detect() with statistics_end capped at the
 cut, array for array, the record a resumed run returns equals a full run's,
 and segments stored the way nlcd stores them (no observation count, a
 placeholder break day and a NaN magnitude where there is no break) give the
@@ -46,7 +46,7 @@ def pixel(seed, step_at=None):
 def capped(cut):
     """The ccdc preset with its statistics cutoff capped at `cut`."""
     config = ccdcpp._config_preset("ccdc")
-    config["shared"]["stat_ord"] = min(config["shared"]["stat_ord"], cut)
+    config["shared"]["statistics_end"] = min(config["shared"]["statistics_end"], cut)
     return config
 
 

@@ -10,7 +10,7 @@
 //                     Landsat cubes of the golden fixture, the band profiles
 //                     of the bands fixture) and on randomized series with NaN,
 //                     values on and beside the bounds, repeated dates, snow
-//                     and observations dated after stat_ord, in DN and in
+//                     and observations dated after statistics_end, in DN and in
 //                     physical units, under every GreenFilterScope and every
 //                     combination of the four inclusive flags.
 //   CustomPlan.*      configurations whose chains change what run_pixel()
@@ -120,8 +120,8 @@ bool flag(const ccd::config::Values& values, const char* name)
 
 // The values the reference chains read: the configuration's bounds, offset
 // and scope as written (physical), converted here to the input's units by
-// the rule input.hpp states -- reflectance times reflectance_unit, degrees
-// Celsius as hundredths of a degree times thermal_unit / 10000 --
+// the rule input.hpp states -- reflectance times reflectance_scale, degrees
+// Celsius as hundredths of a degree times thermal_at_100c / 10000 --
 // independently of the registry's resolution.
 struct Bounds
 {
@@ -130,7 +130,7 @@ struct Bounds
     pp::Range thermal;
     scalar_t green_offset;
     ccd::GreenFilterScope scope;
-    std::int64_t stat_ord;
+    std::int64_t statistics_end;
 };
 
 // band_range's bands as rows of `input`: "reflective" is every row whose
@@ -164,8 +164,8 @@ Bounds bounds_of(const Options& options)
     const ccd::config::Values& band = standard.at(2).params;
     const ccd::config::Values& green =
         options.config.preprocess.at("insufficient_clear").steps.at(3).params;
-    const scalar_t u = options.input.reflectance_unit;
-    const scalar_t tu = options.input.thermal_unit;
+    const scalar_t u = options.input.reflectance_scale;
+    const scalar_t tu = options.input.thermal_at_100c;
     const auto celsius = [tu](double c) { return c * 100.0 * tu / 10000.0; };
     return {
         band_rows(band.at("bands"), options.input),
@@ -175,7 +175,7 @@ Bounds bounds_of(const Options& options)
          {celsius(number(thermal, "max")), flag(thermal, "max_inclusive")}},
         number(green, "offset") * u,
         *ccd::green_filter_scope(std::get<std::string>(green.at("scope"))),
-        std::get<std::int64_t>(options.config.shared.at("stat_ord")),
+        std::get<std::int64_t>(options.config.shared.at("statistics_end")),
     };
 }
 
@@ -261,7 +261,7 @@ ccd::ProcessingMask reference_insufficient_clear(
         px.dates,
         px.spectral,
         options.input.index("green"),
-        bounds.stat_ord,
+        bounds.statistics_end,
         bounds.green_offset,
         bounds.scope,
         mask
@@ -509,10 +509,10 @@ std::vector<Series> fixture_inputs()
 //
 // Each value is drawn from the cases the filters distinguish: either bound
 // itself, just inside and just outside each, mid-range, far outside, and
-// NaN. Dates repeat, and stat_ord falls before, inside or after the series.
+// NaN. Dates repeat, and statistics_end falls before, inside or after the series.
 //------------------------------------------------------------------------------
 
-// The bounds of "ccdc" in the data's units, and the input's reflectance_unit
+// The bounds of "ccdc" in the data's units, and the input's reflectance_scale
 // that resolves them.
 struct Unit
 {
@@ -520,8 +520,8 @@ struct Unit
     scalar_t refl_lo, refl_hi;
     scalar_t therm_lo, therm_hi;
     scalar_t green_filter;
-    scalar_t reflectance_unit;
-    scalar_t thermal_unit;
+    scalar_t reflectance_scale;
+    scalar_t thermal_at_100c;
 };
 
 const Unit DN = {"dn", 0.0, 10000.0, ccd::MIN_CELSIUS, ccd::MAX_CELSIUS, 400.0, 10000.0, 10000.0};
@@ -598,19 +598,19 @@ Series random_series(golden::Rng& rng, const Unit& unit)
     }
 
     ccd::Input& h = s.h.input;
-    h.reflectance_unit = unit.reflectance_unit;
-    h.thermal_unit = unit.thermal_unit;
+    h.reflectance_scale = unit.reflectance_scale;
+    h.thermal_at_100c = unit.thermal_at_100c;
 
-    // stat_ord before the series, inside it (often on an observation's
+    // statistics_end before the series, inside it (often on an observation's
     // date), or after it.
-    std::int64_t stat_ord = 0;
+    std::int64_t statistics_end = 0;
     switch (rng.below(4))
     {
-        case 0: stat_ord = s.dates.front() - 1; break;
-        case 1: stat_ord = s.dates.back() + 1; break;
-        default: stat_ord = s.dates[rng.below(T)]; break;
+        case 0: statistics_end = s.dates.front() - 1; break;
+        case 1: statistics_end = s.dates.back() + 1; break;
+        default: statistics_end = s.dates[rng.below(T)]; break;
     }
-    s.h.config = golden::with_shared(s.h.config, "stat_ord", ccd::config::integer(stat_ord));
+    s.h.config = golden::with_shared(s.h.config, "statistics_end", ccd::config::integer(statistics_end));
 
     // Some series have no thermal band to test, or band_range on two bands,
     // out of row order.
@@ -691,7 +691,7 @@ TEST(CcdcPlan, Shape)
     const pp::Step& green = plan.insufficient_clear.chain[3];
     EXPECT_EQ(green.band, h.index("green"));
     EXPECT_EQ(green.green_offset, 400.0);
-    EXPECT_EQ(green.max_date, shared.stat_ord);
+    EXPECT_EQ(green.max_date, shared.statistics_end);
     EXPECT_EQ(green.scope, ccd::GreenFilterScope::StatWindow);
 
     // The identity transform, and an input without thermal, have none; the
@@ -746,7 +746,7 @@ std::string fields(const pp::PreprocessPlan& plan)
 // pyccd's plan of `input` written out with the Step constructors: in the
 // Standard chain the thermal range (therm_lo, therm_hi) on the thermal row
 // when it has one, in every chain the reflectance range (0, refl_hi) on its
-// reflective rows, the green median `green` above, up to stat_ord 736694,
+// reflective rows, the green median `green` above, up to statistics_end 736694,
 // Standard transformed by `transform`.
 pp::PreprocessPlan pyccds_plan(const ccd::Input& input, double therm_lo, double therm_hi,
                                double refl_hi, double green,
@@ -771,7 +771,7 @@ pp::PreprocessPlan pyccds_plan(const ccd::Input& input, double therm_lo, double 
     plan.snow.chain.push_back(pp::Step::dedupe());
     plan.insufficient_clear.chain = common;
     plan.insufficient_clear.chain.push_back(pp::Step::green_median(
-        input.index("green"), green, golden::PYCCD_STAT_ORD, ccd::GreenFilterScope::StatWindow));
+        input.index("green"), green, golden::PYCCD_STATISTICS_END, ccd::GreenFilterScope::StatWindow));
     plan.insufficient_clear.chain.push_back(pp::Step::dedupe());
     return plan;
 }

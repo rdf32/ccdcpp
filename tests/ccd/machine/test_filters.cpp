@@ -9,7 +9,7 @@
 //   GreenScope.*
 //              the InsufficientClear chain's green median step under each
 //              GreenFilterScope, on a series with green spikes before and
-//              after stat_ord, and on one dated entirely after it.
+//              after statistics_end, and on one dated entirely after it.
 //
 //==============================================================================
 
@@ -308,14 +308,14 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
 namespace
 {
 
-constexpr std::int64_t STAT_ORD = 731000;
+constexpr std::int64_t STATISTICS_END = 731000;
 
-// The configuration with the cutoff at STAT_ORD and the green median's scope
+// The configuration with the cutoff at STATISTICS_END and the green median's scope
 // `scope`.
 ccd::config::Config config_with(ccd::GreenFilterScope scope)
 {
     return golden::with_steps(
-        golden::with_shared(golden::pyccd(), "stat_ord", ccd::config::integer(STAT_ORD)),
+        golden::with_shared(golden::pyccd(), "statistics_end", ccd::config::integer(STATISTICS_END)),
         "green_median", "scope", ccd::config::Value(std::string(ccd::name(scope))));
 }
 
@@ -368,16 +368,16 @@ TEST(GreenScope, DefaultIsStatWindow)
               ccd::GreenFilterScope::StatWindow);
 }
 
-// Green median before stat_ord is 1000, so the threshold is 1400. Spikes of
-// 2000 sit at t = 2 (before stat_ord) and t = 17 (after); t = 4 is exactly
+// Green median before statistics_end is 1000, so the threshold is 1400. Spikes of
+// 2000 sit at t = 2 (before statistics_end) and t = 17 (after); t = 4 is exactly
 // the threshold, which the filter drops (green >= threshold), and t = 6 is
 // just below it. t = 9 is a cloud: out of the mask whatever its green.
 TEST(GreenScope, SpikesBeforeAndAfterStatOrd)
 {
-    // 20 observations; the first 10 are dated <= stat_ord.
-    Series s(STAT_ORD - 16 * 9, 20);
-    ASSERT_LE(s.dates[9], STAT_ORD);
-    ASSERT_GT(s.dates[10], STAT_ORD);
+    // 20 observations; the first 10 are dated <= statistics_end.
+    Series s(STATISTICS_END - 16 * 9, 20);
+    ASSERT_LE(s.dates[9], STATISTICS_END);
+    ASSERT_GT(s.dates[10], STATISTICS_END);
 
     s.green(2, 2000.0);
     s.green(4, 1400.0);
@@ -400,10 +400,10 @@ TEST(GreenScope, SpikesBeforeAndAfterStatOrd)
     EXPECT_EQ(s.insufficient_clear(ccd::GreenFilterScope::Off), off);
 }
 
-// Every observation after stat_ord: no median, so no scope drops anything.
+// Every observation after statistics_end: no median, so no scope drops anything.
 TEST(GreenScope, NothingBeforeStatOrd)
 {
-    Series s(STAT_ORD + 1, 12);
+    Series s(STATISTICS_END + 1, 12);
     s.green(3, 5000.0);
     s.green(8, 9000.0);
 
@@ -422,7 +422,7 @@ TEST(GreenScope, NothingBeforeStatOrd)
 // the same under each.
 TEST(GreenScope, StandardFilterIgnoresIt)
 {
-    Series s(STAT_ORD - 16 * 9, 20);
+    Series s(STATISTICS_END - 16 * 9, 20);
     s.green(2, 2000.0);
     s.green(17, 2000.0);
 

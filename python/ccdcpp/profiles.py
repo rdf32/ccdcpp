@@ -45,17 +45,17 @@ from .ccdcpp import CCD_MAX_BANDS, ROLES, Input, qa_tables
 @dataclass(frozen=True)
 class Units:
     """The units of the reflective bands: reflectance r is held as
-    ``r * reflectance_unit + offset``.
+    ``r * reflectance_scale + offset``.
 
-    reflectance_unit
-        ``Input.reflectance_unit``: the value one unit of reflectance has in
+    reflectance_scale
+        ``Input.reflectance_scale``: the value one unit of reflectance has in
         the data (Collection-1 DN 10000, reflectance 1).
     offset
         ``Input.reflectance_offset``: the data's value of reflectance 0
         (0, the default, for both).
     """
 
-    reflectance_unit: float
+    reflectance_scale: float
     offset: float = 0.0
 
 
@@ -67,32 +67,32 @@ class Thermal:
         ``Input.thermal_scale``, ``Input.thermal_offset``: a procedure that
         transforms thermal reads ``thermal * scale + offset``. ``(1.0, 0.0)``
         for input already in the unit.
-    unit
-        ``Input.thermal_unit``: the value 100 degrees Celsius has after the
+    at_100c
+        ``Input.thermal_at_100c``: the value 100 degrees Celsius has after the
         transform (10000 for Celsius x 100, 1 for Celsius / 100). The
         configuration's thermal bounds in degrees Celsius resolve to
-        ``c * 100 * unit / 10000``.
+        ``c * 100 * at_100c / 10000``.
     """
 
     scale: float
     offset: float
-    unit: float
+    at_100c: float
 
 
 #: Collection 1 DN: reflectance x 10000 (``Input()`` defaults).
-DN = Units(reflectance_unit=10000.0)
+DN = Units(reflectance_scale=10000.0)
 
 #: Surface reflectance, 0..1: :data:`DN` divided by 10000.
-REFLECTANCE = Units(reflectance_unit=1.0)
+REFLECTANCE = Units(reflectance_scale=1.0)
 
 #: Thermal as Kelvin x 10, transformed to degrees Celsius x 100, where 100
 #: degrees is 10000 (``Input()`` defaults).
-KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0, unit=10000.0)
+KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0, at_100c=10000.0)
 
 #: Thermal already in degrees Celsius / 100, where 100 degrees is 1: the unit
 #: that shares the reflectance scale factor of 10000 with the optical bands
 #: (one Lasso alpha serves every band only if every band has the same scale).
-CELSIUS_OVER_100 = Thermal(scale=1.0, offset=0.0, unit=1.0)
+CELSIUS_OVER_100 = Thermal(scale=1.0, offset=0.0, at_100c=1.0)
 
 
 QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]
@@ -136,8 +136,8 @@ class SensorProfile:
         A :class:`Thermal`, or None for an input without a thermal band
         (no ``"thermal"`` role, which skips the transform and the thermal
         range).
-    saturated, thermal_saturated
-        ``Input.saturated``, ``Input.thermal_saturated``: the value a
+    saturation_code, thermal_saturation_code
+        ``Input.saturation_code``, ``Input.thermal_saturation_code``: the value a
         saturated observation holds in the reflective rows and in the thermal
         row, as the data stores it (before any transform), or None (the
         default) when the profile does not declare one. A step or strategy
@@ -170,15 +170,15 @@ class SensorProfile:
     roles: Tuple[str, ...]
     units: Units
     thermal: Optional[Thermal] = None
-    saturated: Optional[float] = None
-    thermal_saturated: Optional[float] = None
+    saturation_code: Optional[float] = None
+    thermal_saturation_code: Optional[float] = None
     qa_table_builder: Optional[str] = None
     qa_table_options: QaTableOptions = field(default=())
 
     def __post_init__(self):
         for name in ("band_names", "roles"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
-        for name in ("saturated", "thermal_saturated"):
+        for name in ("saturation_code", "thermal_saturation_code"):
             if getattr(self, name) is not None:
                 object.__setattr__(self, name, float(getattr(self, name)))
         object.__setattr__(self, "qa_table_options", self._canonical_qa_table_options())
@@ -367,15 +367,15 @@ def _build_table(builder, codes, builder_options=()):
 def _input_of(profile):
     h = Input(
         roles=list(profile.roles),
-        reflectance_unit=profile.units.reflectance_unit,
+        reflectance_scale=profile.units.reflectance_scale,
         reflectance_offset=profile.units.offset,
-        saturated=profile.saturated,
-        thermal_saturated=profile.thermal_saturated,
+        saturation_code=profile.saturation_code,
+        thermal_saturation_code=profile.thermal_saturation_code,
     )
     if profile.thermal is not None:
         h = h.replace(thermal_scale=profile.thermal.scale,
                       thermal_offset=profile.thermal.offset,
-                      thermal_unit=profile.thermal.unit)
+                      thermal_at_100c=profile.thermal.at_100c)
     if profile.qa_table_builder is not None:
         codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
         h = h.replace(qa_table=_build_table(profile.qa_table_builder, codes,

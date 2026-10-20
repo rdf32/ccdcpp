@@ -97,23 +97,23 @@ struct Input
     // configuration says what to do with them, in physical units, and a run
     // translates once (Registry::resolve()).
     //
-    // Reflectance r is held as r x reflectance_unit + reflectance_offset:
+    // Reflectance r is held as r x reflectance_scale + reflectance_offset:
     // 10000 and 0 for Collection-1 DN (the default), 1 and 0 for
     // reflectance. A configuration's reflectance levels (band_range's
     // bounds) resolve the same way; its reflectance differences and
     // magnitudes (the Lasso's alpha and coef_floor, green_median's offset)
-    // are multiplied by reflectance_unit only. 1e-4 x 10000, 0.04 x 10000,
+    // are multiplied by reflectance_scale only. 1e-4 x 10000, 0.04 x 10000,
     // 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0 and 10000 exactly, so a DN
     // input runs pyccd's DN values bit for bit.
     //
     // The thermal transform (thermal_scale, thermal_offset) takes the thermal
-    // row to a multiple of degrees Celsius, and thermal_unit says which: the
+    // row to a multiple of degrees Celsius, and thermal_at_100c says which: the
     // value 100 degrees Celsius has after the transform. Celsius x 100 on
     // Collection-1 DN (Kelvin x 10 times 10 less 27315, the default; 100
     // degrees is 10000), Celsius / 100 on the physical-unit input (the
     // identity transform; 100 degrees is 1). A configuration's thermal
     // bounds, in degrees Celsius, resolve to that unit: c x 100 x
-    // thermal_unit / 10000, so pyccd's -93.2 and 70.7 are -9320 and 7070 on
+    // thermal_at_100c / 10000, so pyccd's -93.2 and 70.7 are -9320 and 7070 on
     // DN and -0.932 and 0.707 on the physical-unit input, exactly.
     //
     // docs/units.md has the physical-unit input (reflectance and degrees
@@ -121,10 +121,10 @@ struct Input
     // Celsius itself is not the unit, Collection 2, the thermal range, and
     // the guards of every unit-bearing value (tests/ccd/machine/test_units.cpp).
     //--------------------------------------------------------------------------
-    scalar_t reflectance_unit = 10000.0;
+    scalar_t reflectance_scale = 10000.0;
 
-    // The data's value of reflectance 0 (see reflectance_unit): 0 by
-    // default. Collection-2 DN, r = DN x 2.75e-5 - 0.2, is reflectance_unit
+    // The data's value of reflectance 0 (see reflectance_scale): 0 by
+    // default. Collection-2 DN, r = DN x 2.75e-5 - 0.2, is reflectance_scale
     // 1 / 2.75e-5 and reflectance_offset 0.2 / 2.75e-5.
     scalar_t reflectance_offset = 0.0;
 
@@ -148,21 +148,21 @@ struct Input
     // positive number; the transform cannot say which unit its input is in,
     // so the pair's agreement is the writer's (each shipped profile's is
     // tested).
-    scalar_t thermal_unit = 10000.0;
+    scalar_t thermal_at_100c = 10000.0;
 
     //--------------------------------------------------------------------------
     // Saturation codes
     //
     // The values a saturated observation holds, as the data stores them: in
     // the storage encoding, before any transform, and compared on the raw
-    // stored values, as fill codes are (docs/units.md). `saturated` is the
-    // reflective rows' code, `thermal_saturated` the thermal row's: 20000
+    // stored values, as fill codes are (docs/units.md). `saturation_code` is the
+    // reflective rows' code, `thermal_saturation_code` the thermal row's: 20000
     // and 20000 in Collection-1 DN, or none (the defaults) when the input
     // does not declare one. A step or strategy that reads one refuses an
     // input without it.
     //--------------------------------------------------------------------------
-    std::optional<scalar_t> saturated;
-    std::optional<scalar_t> thermal_saturated;
+    std::optional<scalar_t> saturation_code;
+    std::optional<scalar_t> thermal_saturation_code;
 
     // The band count: one row per role.
     index_t bands() const { return roles.size(); }

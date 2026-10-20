@@ -21,7 +21,7 @@ resume record of a configured run continues only under the same configuration.
 
 A configuration is written in physical terms, so it means the same on every input: the shared
 ``alpha`` and ``coef_floor`` and the preprocessing's bounds and offsets in reflectance (the run
-multiplies them by the input's ``reflectance_unit``), the thermal bounds in degrees Celsius, the
+multiplies them by the input's ``reflectance_scale``), the thermal bounds in degrees Celsius, the
 change and outlier thresholds as probabilities (the run takes their chi-squared quantiles for
 the number of detection bands), bands by role, QA codes by name. The values
 several stages read are written once, in ``shared`` (``ccdcpp.shared_values()`` lists them); a
@@ -55,8 +55,8 @@ table per stage and one ``[preprocess.<procedure>]`` table per procedure:
 A stage a file names with the base's strategy changes only the parameters it gives; with
 another strategy, the stage starts from that strategy's defaults. A procedure a file names
 takes the file's ``thermal_transform`` and ``steps`` where it gives them, its base's otherwise.
-``stat_ord`` with no statistics cutoff is ``NO_STAT_CUTOFF``, 9223372036854775807 (``None`` in
-``replace()``).
+``statistics_end`` with no statistics cutoff is ``NO_STATISTICS_END``, 9223372036854775807
+(``None`` in ``replace()``).
 """
 
 import copy
@@ -133,8 +133,8 @@ def _value(v, default=None):
 
 
 def _shared_value(name, v):
-    if name == "stat_ord" and v is None:
-        return _extension.NO_STAT_CUTOFF
+    if name == "statistics_end" and v is None:
+        return _extension.NO_STATISTICS_END
     known = _SHARED.get(name)
     return _value(v, known["default"] if known else None)
 
@@ -293,7 +293,7 @@ class Config:
     def replace(self, **changes):
         """A copy with changes:
 
-        - ``shared__name=value`` sets a shared value (``stat_ord=None`` for no statistics
+        - ``shared__name=value`` sets a shared value (``statistics_end=None`` for no statistics
           cutoff);
         - ``stage="strategy"`` swaps a stage's strategy (its parameters become the new
           strategy's defaults), ``stage__param=value`` sets one parameter;

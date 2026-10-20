@@ -49,9 +49,9 @@ std::optional<double> number_of(const Value& value)
 }
 
 // `value` of a field in `unit`, as the input holds it (Unit): a reflectance
-// level times input->reflectance_unit plus input->reflectance_offset, a
-// reflectance difference times input->reflectance_unit, degrees Celsius in
-// the thermal row's unit (input->thermal_unit), a band list by role or
+// level times input->reflectance_scale plus input->reflectance_offset, a
+// reflectance difference times input->reflectance_scale, degrees Celsius in
+// the thermal row's unit (input->thermal_at_100c), a band list by role or
 // REFLECTIVE as the input's rows, QA code names as its codes. Without an input (a check), the
 // value as written, and none for a list by name once its names are known
 // ones. `at` names the field in messages.
@@ -65,7 +65,7 @@ std::optional<Value> convert(Unit unit, const Value& value, const std::string& a
         // itself (but for -0, which becomes +0).
         if (const auto v = number_of(value))
         {
-            const double scaled = *v * input->reflectance_unit;
+            const double scaled = *v * input->reflectance_scale;
             return real(scaled + input->reflectance_offset);
         }
         return value;
@@ -73,13 +73,13 @@ std::optional<Value> convert(Unit unit, const Value& value, const std::string& a
     if (unit == Unit::ReflectanceDelta && input)
     {
         if (const auto v = number_of(value))
-            return real(*v * input->reflectance_unit);
+            return real(*v * input->reflectance_scale);
         return value;
     }
     if (unit == Unit::Celsius && input)
     {
         if (const auto v = number_of(value))
-            return real(*v * 100.0 * input->thermal_unit / 10000.0);
+            return real(*v * 100.0 * input->thermal_at_100c / 10000.0);
         return value;
     }
     if (unit == Unit::QaCodes)

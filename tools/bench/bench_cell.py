@@ -1,9 +1,9 @@
-"""bench_cell.py <ccdcpp_package_parent> <cube.zarr> [threads=8] [strip=50] [stat_ord]
+"""bench_cell.py <ccdcpp_package_parent> <cube.zarr> [threads=8] [strip=50] [statistics_end]
 
 The real-cell timing of the ccdcpp state-machine refactor: a 500 x 500 cell of a Landsat C2
 ARD cube, through detect_cube with input=presets.landsat_c2() (raw QA_PIXEL decoded by the
-Landsat C2 table) and the "ccdc" configuration (with its shared stat_ord set to `stat_ord`, an
-ordinal day, when given: 736694 is pyccd's 2017-12-31), `threads` threads, in strips of `strip` rows as the nlcd plugin runs
+Landsat C2 table) and the "ccdc" configuration (with its shared statistics_end set to the
+argument `statistics_end`, an ordinal day, when given: 736694 is pyccd's 2017-12-31), `threads` threads, in strips of `strip` rows as the nlcd plugin runs
 it. The refactor's cell is h024v013 chunk 00030008 (rows 4000-4499, cols 1500-1999 of the
 tile), 1984-2023, all 2473 dates.
 
@@ -45,8 +45,8 @@ from ccdcpp import presets  # noqa: E402
 CUBE = sys.argv[2]
 THREADS = int(sys.argv[3]) if len(sys.argv) > 3 else 8
 STRIP = int(sys.argv[4]) if len(sys.argv) > 4 else 50
-CONFIG = (ccdcpp.config("ccdc").replace(shared__stat_ord=int(sys.argv[5])) if len(sys.argv) > 5
-          else ccdcpp.config("ccdc"))
+CONFIG = (ccdcpp.config("ccdc").replace(shared__statistics_end=int(sys.argv[5]))
+          if len(sys.argv) > 5 else ccdcpp.config("ccdc"))
 R0, C0, N = 4000, 1500, 500
 
 print("ccdcpp", ccdcpp.__version__, ccdcpp.__file__, "numpy", np.__version__, "zarr", zarr.__version__)

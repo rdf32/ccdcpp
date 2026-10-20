@@ -1,8 +1,8 @@
 # The ccdc preset: pyccd's algorithm, as ccdcpp corrects it (README), in physical terms: the
 # shared alpha and coef_floor and the preprocessing's reflectance bounds and offset in
-# reflectance (a run multiplies them by its input's reflectance_unit), the thermal bounds in
+# reflectance (a run multiplies them by its input's reflectance_scale), the thermal bounds in
 # degrees Celsius, probabilities for the chi-squared thresholds, bands by role, QA codes by
-# name, no statistics cutoff (stat_ord 9223372036854775807). The library registry's "ccdc"
+# name, no statistics cutoff (statistics_end 9223372036854775807). The library registry's "ccdc"
 # preset (ccd::strategies::library_registry().preset("ccdc")), written out by its Config's
 # to_toml().
 
@@ -18,7 +18,7 @@ max_iter = 1000
 min_observations = 12
 num_obs_factor = 3
 outlier_probability = 0.999999
-stat_ord = 9223372036854775807
+statistics_end = 9223372036854775807
 tolerance = 0.0001
 
 [change_test]

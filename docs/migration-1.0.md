@@ -6,9 +6,9 @@ as today.
 
 - **`ccdcpp.Input` replaces `HarmonicOptions`** and holds the data's encoding only: the QA
   codes and the table that decodes raw QA (`qa_table`), a role per row (`roles`),
-  `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and
-  0), the thermal transform (`thermal_scale`, `thermal_offset`, with `thermal_unit`, the value
-  of 100 °C after it) and the saturation codes (`saturated`, `thermal_saturated`). It is
+  `reflectance_scale` and `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and
+  0), the thermal transform (`thermal_scale`, `thermal_offset`, with `thermal_at_100c`, the value
+  of 100 °C after it) and the saturation codes (`saturation_code`, `thermal_saturation_code`). It is
   immutable: `ccdcpp.Input(**fields)` by keyword,
   `h.replace(**fields)` for a changed copy, where `HarmonicOptions` set attributes. Every
   algorithm value of 0.10.0, `LassoOptions`' four, the bounds, the green filter and the statistics cutoff are the
@@ -19,7 +19,7 @@ as today.
   `input=` is an `Input` or a `SensorProfile`, `config=` a `Config` or a preset's name.
 - **Results are bit-identical** to 0.10.0 for the same input, configuration and statistics
   cutoff. The `ccdc` configuration has **no statistics cutoff**; 0.10.0's Landsat default was
-  2017-12-31: `ccdcpp.config("ccdc").replace(shared__stat_ord=736694)` runs it, bit for bit.
+  2017-12-31: `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` runs it, bit for bit.
 - **0.10.0 resume records do not continue.** The resume digest covers the input and the
   resolved configuration, so a 0.10.0 record is refused with `ValueError` ("the resume record
   was made with another input or configuration") before any pixel runs. Run once on 1.0 with
@@ -46,7 +46,7 @@ as today.
 ### Profiles
 
 A `SensorProfile` describes the data: `name`, `band_names`, `roles`, `units`
-(`Units(reflectance_unit, offset)`), `thermal` (`Thermal(scale, offset, unit)`), `saturated`, `thermal_saturated`,
+(`Units(reflectance_scale, offset)`), `thermal` (`Thermal(scale, offset, at_100c)`), `saturation_code`, `thermal_saturation_code`,
 `qa_table_builder` and `qa_table_options`. `profile.input()` is its `ccdcpp.Input`, QA table
 included.
 
@@ -57,7 +57,7 @@ included.
 | `detection`, `tmask` | `shared__detection_bands`, `window_screen__bands` (roles; "ccdc"'s are pyccd's) |
 | `alpha`, `coef_floor` | `shared__alpha`, `shared__coef_floor` in reflectance (DN / 10000) |
 | `cadence` | `stage__parameter` changes of the configuration |
-| `stat_ord` | `shared__stat_ord` (`None`: no cutoff, the default) |
+| `stat_ord` | `shared__statistics_end` (`None`: no cutoff, the default) |
 | `green_filter_scope`, `Units.median_green_filter` | `green_median`'s `scope` and `offset` (reflectance) |
 | `Units.refl_min/refl_max/refl_inclusive`, `Thermal.min/max/inclusive` | `band_range`'s and `thermal_range`'s bounds and flags |
 | `preprocess=` | the configuration's `preprocess` section |
@@ -77,7 +77,7 @@ lo = ccdcpp.LassoOptions()
 lo.alpha, lo.coef_floor = 1e-4, 1e-4
 out = ccdcpp.detect_cube_columns(dates, cube, codes, h_physical, lo, threads=4)
 # 1.0: the configuration is the same for every input; the input says the unit
-h = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0, thermal_offset=0.0, thermal_unit=1.0)
+h = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0, thermal_at_100c=1.0)
 out = ccdcpp.detect_cube(dates, cube, codes, input=h, threads=4)   # or input=presets.landsat_c1_physical()
 ```
 
@@ -93,7 +93,7 @@ lo.max_iter = 500
 out = ccdcpp.detect(dates, dn, codes, h, lo)
 # 1.0
 cfg = ccdcpp.config("ccdc").replace(
-    shared__stat_ord=736694,                 # 0.10.0's cutoff
+    shared__statistics_end=736694,           # 0.10.0's cutoff
     shared__change_probability=0.995,        # every change test, its thresholds derived
     refit__factor=2.0,
     shared__min_observations=16,             # the start window and a whole-series curve's least
@@ -119,7 +119,7 @@ probability.
 | `THERM_MIN`, `THERM_MAX` and their flags | -9320, 7070 | `thermal_range`'s `min`, `max` (degrees Celsius: -93.2, 70.7) and flags |
 | `MEDIAN_GREEN_FILTER` | 400 | `green_median`'s `offset` (reflectance: 0.04) |
 | `GREEN_FILTER_SCOPE` | StatWindow | `green_median`'s `scope` ("stat_window") |
-| `STAT_ORD` | 736694 | `shared__stat_ord` (default: no cutoff) |
+| `STAT_ORD` | 736694 | `shared__statistics_end` (default: no cutoff) |
 | `DETECTION_BANDS` | [1..5] | `shared__detection_bands` (roles) |
 | `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_fit`'s `min_observations`) |
 | `PEEK_SIZE` | 6 | `change_test__peek_size` (`stability_rule__peek` and `lookback__peek` are 0, the change test's peek) |
@@ -170,7 +170,7 @@ ccd::FitResult r = ccd::detect(dates, spectral, qas, h, l);
 
 // 1.0
 ccd::config::Config config = ccd::strategies::library_registry().preset("ccdc");
-config.shared["stat_ord"] = ccd::config::integer(736694);          // 0.10.0's cutoff
+config.shared["statistics_end"] = ccd::config::integer(736694);    // 0.10.0's cutoff
 config.shared["change_probability"] = ccd::config::real(0.995);
 ccd::RunSpec spec;                                                   // spec.input: Collection-1 DN
 spec.algorithm = std::make_shared<const ccd::Algorithm>(config);

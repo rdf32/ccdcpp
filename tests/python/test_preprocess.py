@@ -105,10 +105,10 @@ class Plans(unittest.TestCase):
         self.assertEqual((band.bands, band.min, band.max), ([0, 1, 2, 3, 4, 5], 0.0, 10000.0))
         green = plan.insufficient_clear.chain[3]
         self.assertEqual((green.band, green.green_offset, green.max_date, green.scope),
-                         (1, 400.0, ccdcpp.NO_STAT_CUTOFF, ccdcpp.GreenFilterScope.StatWindow))
-        # The step's values and the shared stat_ord, in the input's units.
+                         (1, 400.0, ccdcpp.NO_STATISTICS_END, ccdcpp.GreenFilterScope.StatWindow))
+        # The step's values and the shared statistics_end, in the input's units.
         cfg = CCDC.replace(preprocess__green_median__offset=0.05,
-                           preprocess__green_median__scope="all", shared__stat_ord=730000)
+                           preprocess__green_median__scope="all", shared__statistics_end=730000)
         green = ccdcpp.plan_of(cfg, h).insufficient_clear.chain[3]
         self.assertEqual((green.green_offset, green.max_date, green.scope),
                          (0.05 * 10000.0, 730000, ccdcpp.GreenFilterScope.All))
@@ -308,7 +308,7 @@ class Replace(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "2 'dedupe' steps"):
             CCDC.replace(preprocess__snow__dedupe__x=1)
         with self.assertRaisesRegex(ValueError, "step 'green_median' parameter 'max_date' is "
-                                                "the shared value 'stat_ord'"):
+                                                "the shared value 'statistics_end'"):
             CCDC.replace(preprocess__green_median__max_date=1)
         with self.assertRaisesRegex(ValueError, "has no parameter 'width'"):
             CCDC.replace(preprocess__band_range__width=1)
@@ -369,7 +369,7 @@ class Validation(unittest.TestCase):
             "at most 8": lambda: CCDC.replace(preprocess__snow=[Dedupe()] * 9),
             "no 'snow' procedure": without_snow,
             "'cirrus', which is not a QA code name": with_codes,
-            "green_median.* 'max_date' is the shared value 'stat_ord'": with_max_date,
+            "green_median.* 'max_date' is the shared value 'statistics_end'": with_max_date,
         }
         for message, build in cases.items():
             with self.subTest(message=message):
@@ -415,7 +415,7 @@ class Validation(unittest.TestCase):
         self.assertEqual(units["min"], "celsius")
         self.assertEqual({p["name"]: p["unit"] for p in steps["keep_qa"]}["codes"], "qa_codes")
         (max_date,) = [p for p in steps["green_median"] if p["name"] == "max_date"]
-        self.assertEqual((max_date["source"], max_date["from"]), ("shared", "stat_ord"))
+        self.assertEqual((max_date["source"], max_date["from"]), ("shared", "statistics_end"))
 
 
 if __name__ == "__main__":

@@ -22,9 +22,9 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
 >   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
->   or none), `roles`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
->   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_unit` (the value of
->   100 °C after the transform) and the saturation codes `saturated` and `thermal_saturated`
+>   or none), `roles`, `reflectance_scale` and `reflectance_offset` (Collection-1 DN 10000 and 0,
+>   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_at_100c` (the value of
+>   100 °C after the transform) and the saturation codes `saturation_code` and `thermal_saturation_code`
 >   (stored values). `input=` takes an `Input` or a
 >   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
@@ -33,7 +33,7 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >   resolved once per input; `ccdcpp.plan_of(config, input)` shows the resolved preprocessing.
 >   `config=` is a `Config` or a preset's name.
 > - **"ccdc" has no statistics cutoff**; pyccd's is
->   `ccdcpp.config("ccdc").replace(shared__stat_ord=736694)`.
+>   `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)`.
 
 The input (`ccdcpp.Input`, or a `SensorProfile` that builds one) says how to read the data. The
 configuration is the algorithm, in physical units, and means the same on every input. A run
@@ -49,7 +49,7 @@ import ccdcpp
 cfg = ccdcpp.config("ccdc")          # the preset: pyccd's algorithm, in physical terms
 print(cfg)                           # every shared value, stage, parameter and step
 # Config(
-#   shared: alpha=0.0001, change_probability=0.99, ..., stat_ord=9223372036854775807, ...
+#   shared: alpha=0.0001, change_probability=0.99, ..., statistics_end=9223372036854775807, ...
 #   change_test: chi2(model_rmse_up_to=24, peek_reference_days=16.0, peek_size=6, ...)
 #   ...
 #   preprocess standard: thermal_transform, keep_qa(codes=['clear', 'water']); ...
@@ -102,9 +102,9 @@ A configuration's values are physical: the shared `alpha` and `coef_floor`, band
 and green_median's offset in reflectance, thermal_range's bounds in degrees Celsius, the change
 and outlier thresholds as probabilities, bands by role and QA codes by name. A run resolves them
 against its input once: a reflectance level (unit `reflectance`, band_range's bounds) as
-`r * reflectance_unit + reflectance_offset`, a reflectance difference (unit `reflectance_delta`:
-`alpha`, `coef_floor`, green_median's offset) as `r * reflectance_unit` (Collection-1 DN 10000
-and 0, reflectance 1 and 0), degrees Celsius `c` as `c * 100 * thermal_unit / 10000`, roles to
+`r * reflectance_scale + reflectance_offset`, a reflectance difference (unit `reflectance_delta`:
+`alpha`, `coef_floor`, green_median's offset) as `r * reflectance_scale` (Collection-1 DN 10000
+and 0, reflectance 1 and 0), degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, roles to
 rows, names to codes.
 `cfg.resolve(input)` shows the values a run uses; `ccdcpp.plan_of(cfg, input)` the
 preprocessing plan. [units.md](units.md) has the input's units and the physical-unit input.
@@ -188,7 +188,7 @@ your own registered and named.
 | fewer outliers dropped | `cfg.replace(shared__outlier_probability=0.99999)` |
 | Initialize and Lookback at a peek of 6, whatever the change test's | `cfg.replace(stability_rule__peek=6, lookback__peek=6)` |
 | fewer coefficients for long windows | `cfg.replace(shared__coefficient_max=6)` |
-| pyccd's statistics cutoff | `cfg.replace(shared__stat_ord=736694)` |
+| pyccd's statistics cutoff | `cfg.replace(shared__statistics_end=736694)` |
 | another preprocessing | `cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)`, `cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(...))` |
 | a sweep | `[ccdcpp.detect_cube(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |
 | a new decision rule | a C++ strategy class for its stage, registered by name (below) |

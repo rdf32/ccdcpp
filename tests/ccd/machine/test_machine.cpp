@@ -378,9 +378,9 @@ TEST(StandardPrepare, AtMostMeowObservationsIsDoneWithTheMaskOnly)
 
 TEST(StandardPrepare, ANaNVariogramIsDoneWithTheMaskOnly)
 {
-    // One observation dated <= stat_ord: the statistics window's variogram
+    // One observation dated <= statistics_end: the statistics window's variogram
     // has no pair to difference, and is NaN.
-    Record r(40, golden::PYCCD_STAT_ORD);
+    Record r(40, golden::PYCCD_STATISTICS_END);
     EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Done);
     EXPECT_EQ(r.state.exit, Exit::VariogramNaN);
 
@@ -1262,7 +1262,7 @@ TEST(StandardHooks, TheModesExtraMaskStepsFollowTheChain)
     const auto green = ccd::preprocess::Step::green_median(
         r.options.index("green"),
         r.resolved.plan.insufficient_clear.chain[3].green_offset,
-        r.shared.stat_ord,
+        r.shared.statistics_end,
         ccd::GreenFilterScope::All);
     const ccd::preprocess::Chain chain{ccd::preprocess::Step::dedupe()};
     ccd::PixelMode mode(ccd::PixelProcedure::Standard);

@@ -342,10 +342,10 @@ Phase prepare(const Context& context, State& state)
     }
 
     //----------------------------------------------------------
-    // Statistics window: the observations dated <= stat_ord
+    // Statistics window: the observations dated <= statistics_end
     // (views, no copy)
     //----------------------------------------------------------
-    const index_t stat_count = series.count_until(shared.stat_ord);
+    const index_t stat_count = series.count_until(shared.statistics_end);
     LOG_DEBUG("Stat mask count: " << stat_count);
 
     const auto stat_dates =

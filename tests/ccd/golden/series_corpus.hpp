@@ -44,9 +44,9 @@ struct Series
     ccd::config::Config config = golden::pyccd();
 
     // The configuration's statistics cutoff.
-    std::int64_t stat_ord() const
+    std::int64_t statistics_end() const
     {
-        return std::get<std::int64_t>(config.shared.at("stat_ord"));
+        return std::get<std::int64_t>(config.shared.at("statistics_end"));
     }
 
     std::size_t size() const
@@ -83,22 +83,22 @@ struct Series
     }
 };
 
-// run_pixel() on `s` with the shared stat_ord at `stat_ord`.
-inline ccd::FitResult detect_at(const Series& s, std::int64_t stat_ord)
+// run_pixel() on `s` with the shared statistics_end at `statistics_end`.
+inline ccd::FitResult detect_at(const Series& s, std::int64_t statistics_end)
 {
     return ccd::run_pixel(
-        golden::spec_of(s.h, with_shared(s.config, "stat_ord", ccd::config::integer(stat_ord))),
+        golden::spec_of(s.h, with_shared(s.config, "statistics_end", ccd::config::integer(statistics_end))),
         s.date_view(),
         s.spectral_view(),
         s.qa_view()).result;
 }
 
-// run_pixel() with RunSpec::record on `s` with the shared stat_ord at
-// `stat_ord`.
-inline ccd::PixelRun recorded_at(const Series& s, std::int64_t stat_ord)
+// run_pixel() with RunSpec::record on `s` with the shared statistics_end at
+// `statistics_end`.
+inline ccd::PixelRun recorded_at(const Series& s, std::int64_t statistics_end)
 {
     return ccd::run_pixel(
-        golden::spec_of(s.h, with_shared(s.config, "stat_ord", ccd::config::integer(stat_ord)),
+        golden::spec_of(s.h, with_shared(s.config, "statistics_end", ccd::config::integer(statistics_end)),
                         true),
         s.date_view(),
         s.spectral_view(),
@@ -241,7 +241,7 @@ inline std::vector<std::size_t> shard_of(const Series& s, std::size_t ordinal,
                                          const std::vector<std::size_t>& cuts, std::size_t shard)
 {
     std::vector<bool> near(s.size(), false);
-    for (const auto& m : detect_at(s, s.stat_ord()).models)
+    for (const auto& m : detect_at(s, s.statistics_end()).models)
     {
         if (m.change_probability != 1.0)
             continue;

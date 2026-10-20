@@ -16,8 +16,8 @@
 //
 // The one input that is not causal is the statistics window (the QA
 // statistics, the cadence, the variogram and the green filter all read the
-// observations dated <= STAT_ORD). Both runs here take STAT_ORD as
-// min(STAT_ORD, T), so they see the same window.
+// observations dated <= STATISTICS_END). Both runs here take STATISTICS_END as
+// min(STATISTICS_END, T), so they see the same window.
 //
 // Read from the output alone, the final segments of a run are the leading
 // ones up to its last change-ended segment (change probability 1), or the
@@ -100,11 +100,11 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
 
     // The full run under each statistics cutoff, computed once.
     std::map<std::int64_t, ccd::FitResult> full;
-    auto full_at = [&](std::int64_t stat_ord) -> const ccd::FitResult&
+    auto full_at = [&](std::int64_t statistics_end) -> const ccd::FitResult&
     {
-        auto it = full.find(stat_ord);
+        auto it = full.find(statistics_end);
         if (it == full.end())
-            it = full.emplace(stat_ord, golden::detect_at(s, stat_ord)).first;
+            it = full.emplace(statistics_end, golden::detect_at(s, statistics_end)).first;
         return it->second;
     };
 
@@ -114,10 +114,10 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
             continue;
 
         const std::int64_t split_day = s.dates[last];
-        const std::int64_t stat_ord = std::min(s.stat_ord(), split_day);
-        const ccd::PixelRun recorded = golden::recorded_at(s.prefix(last + 1), stat_ord);
+        const std::int64_t statistics_end = std::min(s.statistics_end(), split_day);
+        const ccd::PixelRun recorded = golden::recorded_at(s.prefix(last + 1), statistics_end);
         const ccd::FitResult& shorter = recorded.result;
-        const ccd::FitResult& longer = full_at(stat_ord);
+        const ccd::FitResult& longer = full_at(statistics_end);
         ++out.splits;
 
         const std::string at = s.name + " split after " + std::to_string(split_day);

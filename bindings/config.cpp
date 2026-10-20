@@ -335,7 +335,7 @@ ccd::AlgorithmPtr algorithm_from_python(const py::object& config)
 
 void bind_config(py::module_& m)
 {
-    m.attr("NO_STAT_CUTOFF") = ccd::config::NO_STAT_CUTOFF;
+    m.attr("NO_STATISTICS_END") = ccd::config::NO_STATISTICS_END;
 
     py::class_<ccd::Algorithm, std::shared_ptr<ccd::Algorithm>>(
         m,

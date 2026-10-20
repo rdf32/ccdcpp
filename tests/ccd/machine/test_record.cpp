@@ -323,7 +323,7 @@ TEST(Digest, EqualOptionsEqualDigests)
     EXPECT_EQ(digest_of(golden::physical_input()), digest_of(golden::physical_input()));
     // A configuration that leaves its defaults out is the same run.
     ccd::config::Config partial = golden::pyccd();
-    partial.shared = {{"stat_ord", partial.shared.at("stat_ord")}};
+    partial.shared = {{"statistics_end", partial.shared.at("statistics_end")}};
     partial.stages["refit"].params.clear();
     EXPECT_EQ(digest_of(ccd::Input{}, partial), digest_of(ccd::Input{}));
 }
@@ -351,14 +351,14 @@ TEST(Digest, EveryGroupOfFieldsMoves)
         {"qa_snow", [](auto& h) { h.qa_snow = 7; }},
         {"qa_occlusion", [](auto& h) { h.qa_occlusion = 11; }},
         {"roles", [](auto& h) { h.roles[0] = "coastal"; }},
-        {"reflectance_unit", [](auto& h) { h.reflectance_unit = 1.0; }},
+        {"reflectance_scale", [](auto& h) { h.reflectance_scale = 1.0; }},
         {"reflectance_offset", [](auto& h) { h.reflectance_offset = 0.5; }},
-        {"saturated", [](auto& h) { h.saturated = 65535.0; }},
-        {"saturated 20000", [](auto& h) { h.saturated = 20000.0; }},
-        {"thermal_saturated", [](auto& h) { h.thermal_saturated = 20000.0; }},
+        {"saturation_code", [](auto& h) { h.saturation_code = 65535.0; }},
+        {"saturation_code 20000", [](auto& h) { h.saturation_code = 20000.0; }},
+        {"thermal_saturation_code", [](auto& h) { h.thermal_saturation_code = 20000.0; }},
         {"thermal_scale", [](auto& h) { h.thermal_scale = 1.0; }},
         {"thermal_offset", [](auto& h) { h.thermal_offset = -2731.0; }},
-        {"thermal_unit", [](auto& h) { h.thermal_unit = 1.0; }},
+        {"thermal_at_100c", [](auto& h) { h.thermal_at_100c = 1.0; }},
     };
     for (const auto& [name, set] : input)
     {
@@ -457,7 +457,7 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
             for (const auto& [name, value] : chain.steps[i].params)
             {
                 if (name == "max_date")
-                    continue;   // the shared stat_ord's, moved above
+                    continue;   // the shared statistics_end's, moved above
                 const ccd::config::Value moved = std::visit(
                     [](auto v) -> ccd::config::Value
                     {

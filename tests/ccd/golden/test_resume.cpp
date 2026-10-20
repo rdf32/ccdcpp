@@ -103,9 +103,9 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Counts& counts
         const std::int64_t T = s.dates[last];
         const std::string at = s.name + " cut after " + std::to_string(T);
 
-        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.stat_ord());
+        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.statistics_end());
         const ccd::PixelRun resumed = resume_on(s, stored);
-        const ccd::PixelRun full = golden::recorded_at(s, std::min(s.stat_ord(), T));
+        const ccd::PixelRun full = golden::recorded_at(s, std::min(s.statistics_end(), T));
         ++counts.splits;
 
         EXPECT_EQ(resumed.status, ccd::ResumeStatus::Resumed) << at;
@@ -197,11 +197,11 @@ TEST(ResumeEqualsTheFullRun, AChainOfResumes)
             const std::string at = s.name + " cut after " + std::to_string(T1) +
                                    " and " + std::to_string(s.dates[b]);
 
-            const ccd::PixelRun first = golden::recorded_at(s.prefix(a + 1), s.stat_ord());
+            const ccd::PixelRun first = golden::recorded_at(s.prefix(a + 1), s.statistics_end());
             const ccd::PixelRun second = resume_on(s.prefix(b + 1), first);
             const ccd::PixelRun third = resume_on(s, second);
 
-            const std::int64_t capped = std::min(s.stat_ord(), T1);
+            const std::int64_t capped = std::min(s.statistics_end(), T1);
             const ccd::PixelRun middle = golden::recorded_at(s.prefix(b + 1), capped);
             const ccd::PixelRun full = golden::recorded_at(s, capped);
 
@@ -273,10 +273,10 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
                 s.qa_view(),
                 ccd::PixelResume{stored.header, stored.record, stored.result.models});
 
-            // Every statistics cutoff capped at T: the shared stat_ord, which
+            // Every statistics cutoff capped at T: the shared statistics_end, which
             // the green median step reads too.
             const ccd::config::Config capped = golden::with_shared(
-                given, "stat_ord", ccd::config::integer(std::min(s.stat_ord(), T)));
+                given, "statistics_end", ccd::config::integer(std::min(s.statistics_end(), T)));
             const ccd::FitResult full = ccd::run_pixel(
                 golden::spec_of(s.h, capped),
                 s.date_view(),
@@ -306,14 +306,14 @@ TEST(ResumeOfChangedInput, AReprocessedObservationIsRerun)
         const Series& s = named(all, name);
         const std::size_t last = 2 * s.size() / 3;
         const std::int64_t T = s.dates[last];
-        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.stat_ord());
+        const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.statistics_end());
 
         // One value of one observation before T, reprocessed.
         Series changed = s;
         changed.spectral[3 * s.size() + last / 2] += 1.0;
 
         const ccd::PixelRun resumed = resume_on(changed, stored);
-        const ccd::PixelRun full = golden::recorded_at(changed, std::min(s.stat_ord(), T));
+        const ccd::PixelRun full = golden::recorded_at(changed, std::min(s.statistics_end(), T));
 
         EXPECT_EQ(resumed.status, ccd::ResumeStatus::RerunInputChanged) << name;
         EXPECT_EQ(dump(resumed.result), dump(full.result)) << name;
@@ -327,7 +327,7 @@ TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
     const Series& s = named(all, "start_catch");
     const std::size_t last = 2 * s.size() / 3;
     const std::int64_t T = s.dates[last];
-    const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.stat_ord());
+    const ccd::PixelRun stored = golden::recorded_at(s.prefix(last + 1), s.statistics_end());
 
     // A scene back-filled between two observations, fill for this pixel.
     const std::size_t at = last / 2;
@@ -352,7 +352,7 @@ TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
             filled.spectral[b * (N + 1) + t] = t == at ? 0.0 : s.spectral[b * N + u++];
 
     const ccd::PixelRun resumed = resume_on(filled, stored);
-    const ccd::PixelRun full = golden::recorded_at(filled, std::min(s.stat_ord(), T));
+    const ccd::PixelRun full = golden::recorded_at(filled, std::min(s.statistics_end(), T));
 
     EXPECT_EQ(resumed.status, ccd::ResumeStatus::Resumed);
     EXPECT_EQ(dump(resumed.result), dump(full.result));
@@ -378,18 +378,18 @@ TEST(ResumeWithNothingNew, TheStoredOutputAgain)
                 continue;
             const Series cut = s.prefix(last + 1);
             const std::int64_t T = cut.dates.back();
-            const ccd::PixelRun stored = golden::recorded_at(cut, s.stat_ord());
+            const ccd::PixelRun stored = golden::recorded_at(cut, s.statistics_end());
             const std::string at = s.name + " cut after " + std::to_string(T);
 
             const ccd::PixelRun again = resume_on(cut, stored);
-            EXPECT_EQ(dump(again.result), dump(golden::detect_at(cut, std::min(s.stat_ord(), T)))) << at;
+            EXPECT_EQ(dump(again.result), dump(golden::detect_at(cut, std::min(s.statistics_end(), T)))) << at;
 
             Series cloudy = s.prefix(std::min(s.size(), last + 1 + 10));
             for (std::size_t t = last + 1; t < cloudy.size(); ++t)
                 cloudy.qas[t] = s.h.qa_cloud;
             const ccd::PixelRun more = resume_on(cloudy, stored);
             EXPECT_EQ(dump(more.result),
-                      dump(golden::detect_at(cloudy, std::min(s.stat_ord(), T)))) << at;
+                      dump(golden::detect_at(cloudy, std::min(s.statistics_end(), T)))) << at;
 
             if (stored.record.standard.exit == ccd::standard::Exit::SeriesEnd)
                 ++seen_series_end;
@@ -407,7 +407,7 @@ TEST(ResumeRefuses, WhatItCannotContinue)
     const auto all = golden::characterization_series();
     const Series& s = named(all, "start_catch");
     const Series cut = s.prefix(2 * s.size() / 3);
-    const ccd::PixelRun stored = golden::recorded_at(cut, s.stat_ord());
+    const ccd::PixelRun stored = golden::recorded_at(cut, s.statistics_end());
     ASSERT_GT(stored.record.standard.final_segments, 0u);
 
     const auto refuse = [&](ccd::ResumeHeader header, const Series& input,
@@ -552,7 +552,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
                 s.spectral.assign(c.spectral.begin() + p * 7 * c.T, c.spectral.begin() + (p + 1) * 7 * c.T);
                 s.qas.assign(c.qas.begin() + p * c.T, c.qas.begin() + (p + 1) * c.T);
 
-                const ccd::PixelRun alone = golden::recorded_at(s.prefix(count), s.stat_ord());
+                const ccd::PixelRun alone = golden::recorded_at(s.prefix(count), s.statistics_end());
                 expect_same_record(stored.pixels[p].record, alone.record, at + " stored");
 
                 const ccd::PixelRun one = resume_on(s, alone);

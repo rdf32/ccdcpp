@@ -64,10 +64,10 @@ void validate(const Input& input, index_t bands)
         );
     }
 
-    if (!(input.reflectance_unit > 0) || !std::isfinite(input.reflectance_unit))
+    if (!(input.reflectance_scale > 0) || !std::isfinite(input.reflectance_scale))
     {
         throw std::invalid_argument(
-            "reflectance_unit is " + config::number(input.reflectance_unit) +
+            "reflectance_scale is " + config::number(input.reflectance_scale) +
             "; it must be a positive number"
         );
     }
@@ -80,10 +80,10 @@ void validate(const Input& input, index_t bands)
         );
     }
 
-    if (!(input.thermal_unit > 0) || !std::isfinite(input.thermal_unit))
+    if (!(input.thermal_at_100c > 0) || !std::isfinite(input.thermal_at_100c))
     {
         throw std::invalid_argument(
-            "thermal_unit is " + config::number(input.thermal_unit) +
+            "thermal_at_100c is " + config::number(input.thermal_at_100c) +
             "; it must be a positive number"
         );
     }

@@ -37,7 +37,7 @@ const std::vector<Field<Shared>>& shared_schema()
         {"min_observations", &Shared::min_observations, Unit::Observations, at_least(1),
          "the fewest observations a curve is fitted on: a start window's size and what a start "
          "needs after it, and a whole-series curve's least"},
-        {"stat_ord", &Shared::stat_ord, Unit::None, any(),
+        {"statistics_end", &Shared::statistics_end, Unit::None, any(),
          "the statistics cutoff, an ordinal day (9223372036854775807: none)"},
     };
     return s;

@@ -63,7 +63,7 @@ class Presets(unittest.TestCase):
         self.assertNotIn("green_filter", shared)
         self.assertEqual(shared["change_probability"], 0.99)
         self.assertEqual(shared["outlier_probability"], 1.0 - 1e-6)
-        self.assertEqual(shared["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
+        self.assertEqual(shared["statistics_end"], ccdcpp.NO_STATISTICS_END)
         self.assertEqual(shared["detection_bands"], ["green", "red", "nir", "swir1", "swir2"])
         self.assertEqual(ccdcpp.config("ccdc").params("window_screen")["bands"],
                          ["green", "swir1"])
@@ -105,7 +105,7 @@ class Presets(unittest.TestCase):
         self.assertEqual(clear[0]["codes"], [0, 1])
         self.assertEqual((clear[1]["min"], clear[1]["max"]), (0.0, 10000.0))
         self.assertEqual(clear[3], {"step": "green_median", "offset": 400.0,
-                                    "scope": "stat_window", "max_date": ccdcpp.NO_STAT_CUTOFF})
+                                    "scope": "stat_window", "max_date": ccdcpp.NO_STATISTICS_END})
         thermal = r["preprocess"]["standard"]["steps"][1]
         self.assertEqual((thermal["min"], thermal["max"]), (-9320.0, 7070.0))
 
@@ -126,17 +126,17 @@ class Presets(unittest.TestCase):
         path = os.path.join(_ROOT, "written.toml")
         for cfg in (ccdcpp.config(),
                     ccdcpp.config().replace(window_screen__bands=[1, 2, 4], refit__factor=1.5),
-                    ccdcpp.config().replace(shared__stat_ord=None,
+                    ccdcpp.config().replace(shared__statistics_end=None,
                                             shared__detection_bands=["red", "nir"])):
             with open(path, "w") as f:
                 f.write(cfg.to_toml())
             self.assertEqual(ccdcpp.config(path), cfg)
 
     def test_no_statistics_cutoff_is_the_largest_ordinal(self):
-        cfg = ccdcpp.config().replace(shared__stat_ord=None)
-        self.assertEqual(cfg.shared()["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
-        self.assertEqual(ccdcpp.NO_STAT_CUTOFF, 2**63 - 1)
-        self.assertIn("stat_ord = 9223372036854775807", cfg.to_toml())
+        cfg = ccdcpp.config().replace(shared__statistics_end=None)
+        self.assertEqual(cfg.shared()["statistics_end"], ccdcpp.NO_STATISTICS_END)
+        self.assertEqual(ccdcpp.NO_STATISTICS_END, 2**63 - 1)
+        self.assertIn("statistics_end = 9223372036854775807", cfg.to_toml())
 
     def test_an_unknown_preset_names_the_presets(self):
         with self.assertRaisesRegex(ValueError, r"the presets are (.*, )?ccdc$"):

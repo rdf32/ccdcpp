@@ -187,27 +187,27 @@ class BandLayout(unittest.TestCase):
             [h.qa_fill, h.qa_clear, h.qa_water, h.qa_shadow, h.qa_snow,
              h.qa_cloud, h.qa_cirrus1, h.qa_cirrus2, h.qa_occlusion],
             [255, 0, 1, 2, 3, 4, 8, 9, 10])
-        self.assertEqual(h.reflectance_unit, 10000.0)
+        self.assertEqual(h.reflectance_scale, 10000.0)
         self.assertEqual(ccdcpp.NO_BAND, 2**64 - 1)
         self.assertEqual(ccdcpp.CCD_MAX_BANDS, 32)
 
     def test_immutable_by_keyword(self):
-        h = ccdcpp.Input(reflectance_unit=1.0, roles=["blue", "green", "red"], saturated=None)
-        self.assertEqual((h.reflectance_unit, h.roles, h.saturated), (1.0, ["blue", "green", "red"],
+        h = ccdcpp.Input(reflectance_scale=1.0, roles=["blue", "green", "red"], saturation_code=None)
+        self.assertEqual((h.reflectance_scale, h.roles, h.saturation_code), (1.0, ["blue", "green", "red"],
                                                                       None))
-        for name in ("roles", "reflectance_unit", "qa_clear", "qa_table", "saturated"):
+        for name in ("roles", "reflectance_scale", "qa_clear", "qa_table", "saturation_code"):
             with self.subTest(name=name):
                 with self.assertRaises(AttributeError):
                     setattr(h, name, getattr(h, name))
         h.roles.append("nir")   # a copy
         self.assertEqual(h.roles, ["blue", "green", "red"])
         # replace() is a new input; the old one is unchanged.
-        r = h.replace(reflectance_unit=10000.0, qa_snow=7)
-        self.assertEqual((r.reflectance_unit, r.qa_snow, r.roles), (10000.0, 7, h.roles))
-        self.assertEqual((h.reflectance_unit, h.qa_snow), (1.0, 3))
+        r = h.replace(reflectance_scale=10000.0, qa_snow=7)
+        self.assertEqual((r.reflectance_scale, r.qa_snow, r.roles), (10000.0, 7, h.roles))
+        self.assertEqual((h.reflectance_scale, h.qa_snow), (1.0, 3))
         # Equal and hashed by value.
-        self.assertEqual(r.replace(reflectance_unit=1.0, qa_snow=3), h)
-        self.assertEqual(hash(r.replace(reflectance_unit=1.0, qa_snow=3)), hash(h))
+        self.assertEqual(r.replace(reflectance_scale=1.0, qa_snow=3), h)
+        self.assertEqual(hash(r.replace(reflectance_scale=1.0, qa_snow=3)), hash(h))
         self.assertNotEqual(r, h)
         self.assertEqual(ccdcpp.Input(), ccdcpp.Input().replace())
         # Keywords only, each a field, each of its type.
@@ -310,7 +310,7 @@ class LayoutValidation(unittest.TestCase):
             (self.broken(roles=roles(r1="other")), 10, "roles has no 'green'"),
             (self.broken(roles=roles(r7="nir8a")), 10, "roles holds 'nir8a', which is not a role"),
             (self.broken(roles=roles(r7="red")), 10, "roles holds 'red' more than once"),
-            (self.broken(reflectance_unit=0.0), 10, "reflectance_unit is 0; it must be a positive number"),
+            (self.broken(reflectance_scale=0.0), 10, "reflectance_scale is 0; it must be a positive number"),
         ]
         for h, bands, expected in cases:
             self.assert_rejected(h, bands, expected)
@@ -402,11 +402,11 @@ class CadenceParameters(unittest.TestCase):
 
     # The Input's fields: the data's band layout, QA codes and units.
     INPUT_FIELDS = {
-        "roles", "bands", "index", "digest", "replace", "reflectance_unit",
-        "reflectance_offset", "saturated", "thermal_saturated",
+        "roles", "bands", "index", "digest", "replace", "reflectance_scale",
+        "reflectance_offset", "saturation_code", "thermal_saturation_code",
         "qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud",
         "qa_cirrus1", "qa_cirrus2", "qa_occlusion", "qa_table",
-        "thermal_scale", "thermal_offset", "thermal_unit",
+        "thermal_scale", "thermal_offset", "thermal_at_100c",
     }
 
     def value(self, tree, stage, name):
@@ -561,7 +561,7 @@ class BoundFlags(unittest.TestCase):
 
 
 class GreenFilterScope(unittest.TestCase):
-    STAT_ORD = 731000
+    STATISTICS_END = 731000
 
     NAMES = {"All": "all", "StatWindow": "stat_window", "Off": "off"}
 
@@ -569,7 +569,7 @@ class GreenFilterScope(unittest.TestCase):
         green = preset()["preprocess"]["insufficient_clear"]["steps"][3]
         self.assertEqual((green["step"], green["scope"]), ("green_median", "stat_window"))
         self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
-        self.assertIn("stat_ord", ccdcpp.GreenFilterScope.__doc__)
+        self.assertIn("statistics_end", ccdcpp.GreenFilterScope.__doc__)
         self.assertIn('"stat_window"', ccdcpp.GreenFilterScope.__doc__)
 
     def pixel(self, first):
@@ -586,14 +586,14 @@ class GreenFilterScope(unittest.TestCase):
         return d, s, q
 
     def detect_mask(self, pixel, scope):
-        config = preset(shared__stat_ord=self.STAT_ORD,
+        config = preset(shared__statistics_end=self.STATISTICS_END,
                         preprocess__green_median__scope=self.NAMES[scope.name])
         out = ccdcpp.detect(*pixel, input=ccdcpp.Input(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]
 
-    def test_spikes_before_and_after_stat_ord(self):
-        pixel = self.pixel(self.STAT_ORD - 16 * 99)   # t = 99 is stat_ord
+    def test_spikes_before_and_after_statistics_end(self):
+        pixel = self.pixel(self.STATISTICS_END - 16 * 99)   # t = 99 is statistics_end
         for scope, kept in ((ccdcpp.GreenFilterScope.All, (0, 0)),
                             (ccdcpp.GreenFilterScope.StatWindow, (0, 1)),
                             (ccdcpp.GreenFilterScope.Off, (1, 1))):
@@ -602,8 +602,8 @@ class GreenFilterScope(unittest.TestCase):
                 self.assertEqual((mask[10], mask[150]), kept)
                 self.assertEqual(int(mask.sum()), 38 + sum(kept))
 
-    def test_every_date_after_stat_ord(self):
-        pixel = self.pixel(self.STAT_ORD + 1)
+    def test_every_date_after_statistics_end(self):
+        pixel = self.pixel(self.STATISTICS_END + 1)
         masks = [self.detect_mask(pixel, scope) for scope in (
             ccdcpp.GreenFilterScope.All, ccdcpp.GreenFilterScope.StatWindow,
             ccdcpp.GreenFilterScope.Off)]

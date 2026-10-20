@@ -29,8 +29,8 @@ them by role.
 
 A profile describes the data only; the configuration (``config=``, "ccdc" by
 default) is the same for every profile. Only :func:`landsat_c1_dn` declares
-the values a saturated observation holds (``saturated`` and
-``thermal_saturated``, 20000 in its stored DN); the others' are not
+the values a saturated observation holds (``saturation_code`` and
+``thermal_saturation_code``, 20000 in its stored DN); the others' are not
 verified, and they declare none.
 
 A profile for another sensor is a :class:`ccdcpp.SensorProfile` call; the
@@ -70,18 +70,18 @@ def landsat_c1_dn():
     ``ccdcpp.Input`` ``qa_*`` fields); for raw ``pixel_qa``, a copy with
     ``qa_table_builder="landsat_c1_pixel_qa"`` (``dataclasses.replace``).
 
-    A saturated observation holds 20000 in every band (``saturated``,
-    ``thermal_saturated``).
+    A saturated observation holds 20000 in every band (``saturation_code``,
+    ``thermal_saturation_code``).
 
     ``input()`` is, field for field,
-    ``ccdcpp.Input(saturated=20000.0, thermal_saturated=20000.0)``.
+    ``ccdcpp.Input(saturation_code=20000.0, thermal_saturation_code=20000.0)``.
     """
     return SensorProfile(
         name="landsat_c1_dn",
         units=DN,
         thermal=KELVIN_TENTHS,
-        saturated=20000.0,
-        thermal_saturated=20000.0,
+        saturation_code=20000.0,
+        thermal_saturation_code=20000.0,
         **_LANDSAT,
     )
 
@@ -95,7 +95,7 @@ def landsat_c1_physical():
 
     Every bound is the DN value divided by 10000 and the thermal transform is
     the identity; the configuration's reflectance values are converted with
-    ``reflectance_unit`` 1, so the fit is the DN fit and the coefficients
+    ``reflectance_scale`` 1, so the fit is the DN fit and the coefficients
     come out in the input's units.
     """
     return SensorProfile(

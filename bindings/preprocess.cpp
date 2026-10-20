@@ -122,7 +122,7 @@ std::string step_fields(const pp::Step& s)
 
         case pp::StepKind::GreenMedian:
             return "band " + band(s.band) + ", drop x >= median(" +
-                   (s.max_date == ccd::config::NO_STAT_CUTOFF
+                   (s.max_date == ccd::config::NO_STATISTICS_END
                         ? std::string("every date")
                         : "dates <= " + std::to_string(s.max_date)) +
                    ") + " + number(s.green_offset) + ", scope " + scope_name(s.scope);

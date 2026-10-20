@@ -3,16 +3,16 @@
 // The unit-convention guard.
 //
 // The Input carries the statements about what unit the caller's `spectral`
-// array is in: reflectance_unit (what one unit of reflectance is in the
+// array is in: reflectance_scale (what one unit of reflectance is in the
 // data), thermal_scale and thermal_offset. The configuration's values are
 // physical -- the shared alpha and coef_floor, band_range's bounds and
-// green_median's offset in reflectance, multiplied by reflectance_unit;
+// green_median's offset in reflectance, multiplied by reflectance_scale;
 // thermal_range's bounds in degrees Celsius, converted to the thermal row's
 // unit -- when a run resolves it. The Input defaults are Collection-1 DN, and
 // the regression tests in test_standard.cpp pin those.
 //
 // This file pins the OTHER end: that dividing every band of the input by
-// 10,000, with reflectance_unit 1 and the identity thermal transform, gives
+// 10,000, with reflectance_scale 1 and the identity thermal transform, gives
 // the identical fit, scaled. That is what makes
 // the algorithm unit-agnostic rather than merely parameterised, and it is
 // the property a future edit is most likely to break silently -- every
@@ -27,7 +27,7 @@
 //                               reflectance bounds, which the default
 //                               exclusive bounds drop and inclusive ones keep:
 //                               the *_inclusive flags are not unit constants
-//   ReflectanceUnitIsTheUnit    reflectance_unit left at 10000 on reflectance
+//   ReflectanceUnitIsTheUnit    reflectance_scale left at 10000 on reflectance
 //                               data: alpha and coef_floor at their DN values
 //   AlphaIsAUnitConstant        alpha at its DN value: 89 % of coefficients
 //                               zeroed and a different segment count -- and
@@ -202,11 +202,11 @@ ccd::Input physical_input()
 {
     ccd::Input h;
 
-    h.reflectance_unit = 1.0;
+    h.reflectance_scale = 1.0;
 
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
-    h.thermal_unit = 1.0;
+    h.thermal_at_100c = 1.0;
 
     return h;
 }
@@ -532,7 +532,7 @@ TEST(Units, ReflectanceUnitIsTheUnit)
     const auto dn = run(obs, obs.spectral, ccd::Input{});
 
     ccd::Input h = physical_input();
-    h.reflectance_unit = 10000.0;
+    h.reflectance_scale = 10000.0;
     const auto bad = run(obs, to_physical(obs.spectral, obs.T), h);
 
     ASSERT_GT(count_nonzero(dn), 0u);
@@ -682,25 +682,25 @@ TEST(Units, BoundsAreUnitConstants)
 
 // Collection-2 DN describes itself with a scale and an offset. Its surface
 // reflectance is r = DN x 2.75e-5 - 0.2, so DN = r / 2.75e-5 + 0.2 /
-// 2.75e-5: reflectance_unit 1 / 2.75e-5 (36363.63...) and
+// 2.75e-5: reflectance_scale 1 / 2.75e-5 (36363.63...) and
 // reflectance_offset 0.2 / 2.75e-5 (7272.72...), each one double division.
 // band_range's levels 0 and 1 resolve to 0 x unit + offset, the offset
 // itself, and 1 x unit + offset, 43636.36...: on integer DN the range keeps
 // 7273 to 43636, the values whose reflectance is in (0, 1) (DN 7273 is
 // 7.5e-6, DN 43636 is 0.99999). The differences -- alpha, coef_floor, the
-// green median's offset -- are reflectance_unit times their value, with no
+// green median's offset -- are reflectance_scale times their value, with no
 // offset.
 TEST(Units, Collection2DnResolvesReflectanceZeroToOne)
 {
     ccd::Input h;
-    h.reflectance_unit = 1.0 / 2.75e-5;
+    h.reflectance_scale = 1.0 / 2.75e-5;
     h.reflectance_offset = 0.2 / 2.75e-5;
 
     const ccd::preprocess::PreprocessPlan plan = golden::plan_of(golden::pyccd(), h);
     const ccd::preprocess::Step& band = plan.standard.chain[2];
     ASSERT_EQ(band.kind, ccd::preprocess::StepKind::BandRange);
     EXPECT_EQ(band.range.lo.value, h.reflectance_offset);
-    const double one = 1.0 * h.reflectance_unit;
+    const double one = 1.0 * h.reflectance_scale;
     EXPECT_EQ(band.range.hi.value, one + h.reflectance_offset);
     EXPECT_GT(band.range.lo.value, 7272.0);
     EXPECT_LT(band.range.lo.value, 7273.0);
@@ -712,10 +712,10 @@ TEST(Units, Collection2DnResolvesReflectanceZeroToOne)
         EXPECT_FALSE(ccd::filter::in_range(dn, band.range)) << dn;
 
     // The differences carry no offset.
-    EXPECT_EQ(plan.insufficient_clear.chain[3].green_offset, 0.04 * h.reflectance_unit);
+    EXPECT_EQ(plan.insufficient_clear.chain[3].green_offset, 0.04 * h.reflectance_scale);
     const ccd::config::Resolved r = golden::resolved(golden::pyccd(), h);
-    EXPECT_EQ(r.shared.alpha, 1e-4 * h.reflectance_unit);
-    EXPECT_EQ(r.shared.coef_floor, 1e-4 * h.reflectance_unit);
+    EXPECT_EQ(r.shared.alpha, 1e-4 * h.reflectance_scale);
+    EXPECT_EQ(r.shared.coef_floor, 1e-4 * h.reflectance_scale);
 }
 
 TEST(Units, GreenMedianFilterIsAUnitConstant)

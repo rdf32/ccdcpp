@@ -34,7 +34,7 @@ namespace ccd
 //   * a role is not one of ROLES, or a role other than "other" is held
 //     twice;
 //   * the input has no "green" row;
-//   * reflectance_unit or thermal_unit is not a positive number, or
+//   * reflectance_scale or thermal_at_100c is not a positive number, or
 //     reflectance_offset is not a finite one.
 //
 // The message names the field and the counts or the value. The algorithm's

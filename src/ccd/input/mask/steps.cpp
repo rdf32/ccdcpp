@@ -125,7 +125,7 @@ const std::vector<Field<GreenMedian::Params>>& GreenMedian::schema()
          "which observations it drops: all, stat_window or off"},
         {"max_date", &Params::max_date, Unit::None, config::any(),
          "the last date of the observations the median is taken over", Source::Shared,
-         "stat_ord"},
+         "statistics_end"},
     };
     return s;
 }

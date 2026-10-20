@@ -19,21 +19,21 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   InsufficientClear chains have no `thermal_range` step, where pyccd tests their untransformed
   thermal band against the Celsius bounds; Collection-1 DN outputs are unchanged, and inputs in
   other units keep the clear and water observations that test dropped there.
-- **The "ccdc" configuration has no statistics cutoff** (`shared.stat_ord` is
-  `NO_STAT_CUTOFF`): the procedure choice, the cadence, the variogram and the green median read
+- **The "ccdc" configuration has no statistics cutoff** (`shared.statistics_end` is
+  `NO_STATISTICS_END`): the procedure choice, the cadence, the variogram and the green median read
   the whole series. 0.10.0 and pyccd stop them at 2017-12-31 (ordinal 736694), so a series with
-  observations after 2017 can give other outputs; `config("ccdc").replace(shared__stat_ord=736694)`
+  observations after 2017 can give other outputs; `config("ccdc").replace(shared__statistics_end=736694)`
   runs pyccd's cutoff, bit for bit as 0.10.0. A resumed run still freezes the statistics at the
   first run's series end.
 - **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and says only how to read the
   data: the QA codes (`qa_fill`, ...), the QA table that decodes raw QA (`qa_table`, which
   replaces every `qa_table=` argument and `RunSpec::qa_table`; a `QaTable` is immutable and
   digests its codes once), a role per row (`roles`, replacing `NUM_BANDS` and the `*_IDX`
-  fields), the reflectance encoding (`reflectance_unit` and `reflectance_offset`: reflectance r
-  is held as `r * reflectance_unit + reflectance_offset`; Collection-1 DN 10000 and 0,
+  fields), the reflectance encoding (`reflectance_scale` and `reflectance_offset`: reflectance r
+  is held as `r * reflectance_scale + reflectance_offset`; Collection-1 DN 10000 and 0,
   reflectance 1 and 0), the thermal transform (`thermal_scale`, `thermal_offset`) with
-  `thermal_unit` (the value 100 °C has after it: 10000 for Celsius x 100, 1 for Celsius / 100)
-  and the saturation codes `saturated` and `thermal_saturated` (the values a saturated
+  `thermal_at_100c` (the value 100 °C has after it: 10000 for Celsius x 100, 1 for Celsius / 100)
+  and the saturation codes `saturation_code` and `thermal_saturation_code` (the values a saturated
   observation holds in the reflective rows and the thermal row, in the stored encoding, before
   any transform; `None`, the default, or as `presets.landsat_c1_dn()` declares, 20000 and
   20000).
@@ -43,7 +43,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   `TMASK_BANDS`, `DETECTION_BANDS`, `STAT_ORD`) and `LassoOptions`' four are values of the
   configuration: `shared` values read by every stage that needs them (`detection_bands` by
   role, `change_probability`, `outlier_probability`, `alpha`, `coef_floor`, `max_iter`,
-  `tolerance`, the coefficient rule, `min_observations`, `stat_ord`), or `stage__parameter`
+  `tolerance`, the coefficient rule, `min_observations`, `statistics_end`), or `stage__parameter`
   parameters. `MEOW_SIZE` is the shared `min_observations`, the fewest observations a curve is
   fitted on, which the start search reads as its `meow_size` and the edge fit as its
   `min_observations`. The change
@@ -51,9 +51,9 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   detection-band count. `LassoOptions` remains the solver's own options type, inside the
   `lasso` strategies.
 - **The configuration is in physical units** and means the same on every input: reflectance
-  levels (the preprocessing's reflectance bounds) resolve as `r * reflectance_unit +
+  levels (the preprocessing's reflectance bounds) resolve as `r * reflectance_scale +
   reflectance_offset`, reflectance differences (`alpha`, `coef_floor`, the green median's
-  offset) as `r * reflectance_unit`, degrees Celsius `c` as `c * 100 * thermal_unit / 10000`, bands are named by role and QA codes by name, all when the run resolves the
+  offset) as `r * reflectance_scale`, degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, bands are named by role and QA codes by name, all when the run resolves the
   configuration against its input, once per input (`ccd::Algorithm`, which caches the
   resolutions of the 16 inputs used last).
 - **The preprocessing chain is part of the configuration**: a `preprocess` section holds, per
@@ -65,7 +65,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   "ccdc" value), every row whose role is not thermal or other, in row order. `preprocess=`, `RunSpec::plan`, `default_plan()` and `validate_plan()` are gone;
   `plan_of(config, input)` (C++ and Python) returns the resolved plan for inspection.
 - **Profiles describe the data only**: a `SensorProfile` holds band names and roles, `units`
-  (`reflectance_unit`, `offset`), `thermal` (`scale`, `offset`, `unit`), `saturated`, `thermal_saturated` and the QA
+  (`reflectance_scale`, `offset`), `thermal` (`scale`, `offset`, `at_100c`), `saturation_code`, `thermal_saturation_code` and the QA
   table builder; `CELSIUS_HUNDREDTHS` is `CELSIUS_OVER_100` (thermal in degrees Celsius / 100). `profile.input()` replaces `profile.options()` and carries the QA
   table (`profile.qa_table()` is gone); `config()`, `alpha`, `coef_floor`, `detection`,
   `tmask`, `cadence`, `stat_ord`, `green_filter_scope`, `preprocess` and the bounds of `Units`

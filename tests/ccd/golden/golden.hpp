@@ -111,10 +111,10 @@ constexpr double SCALE = 10000.0;
 inline ccd::Input physical_input()
 {
     ccd::Input h;
-    h.reflectance_unit = 1.0;
+    h.reflectance_scale = 1.0;
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
-    h.thermal_unit = 1.0;
+    h.thermal_at_100c = 1.0;
     return h;
 }
 
@@ -159,21 +159,21 @@ inline void put_bound_values(double* block, const std::uint8_t* qas, std::size_t
 // A RAW-NUMBER REFERENCE CONFIGURATION, not a physical one: the two C2
 // reference files' run, which applies pyccd's Collection-1 DN thresholds to
 // Collection-2 DN numbers as they are. c2_input() says the data's numbers are
-// its units (reflectance_unit 1, offset 0, thermal_unit 1, the identity
+// its units (reflectance_scale 1, offset 0, thermal_at_100c 1, the identity
 // transform), so c2_config()'s values are the data's own numbers: the
 // Lasso's alpha and coefficient floor 1 and the green median's offset 400
 // (pyccd's DN values), the band range (7273, 43636) and the thermal range
 // +-1e6 (no thermal screen). The reference files pin those numbers. The
-// physical description of Collection-2 DN (reflectance_unit 1 / 2.75e-5,
+// physical description of Collection-2 DN (reflectance_scale 1 / 2.75e-5,
 // reflectance_offset 0.2 / 2.75e-5) resolves "ccdc" to other values
 // (test_units.cpp, Collection2DnResolvesReflectanceZeroToOne).
 inline ccd::Input c2_input()
 {
     ccd::Input h;
-    h.reflectance_unit = 1.0;
+    h.reflectance_scale = 1.0;
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
-    h.thermal_unit = 1.0;
+    h.thermal_at_100c = 1.0;
     return h;
 }
 
@@ -184,7 +184,7 @@ inline ccd::config::Config c2_config()
     c = with_shared(c, "coef_floor", real(1.0));
     c = with_steps(c, "band_range", "min", real(7273.0));
     c = with_steps(c, "band_range", "max", real(43636.0));
-    // Degrees Celsius: 1e8 x 100 x thermal_unit 1 / 10000 is 1e6.
+    // Degrees Celsius: 1e8 x 100 x thermal_at_100c 1 / 10000 is 1e6.
     c = with_steps(c, "thermal_range", "min", real(-1.0e8));
     c = with_steps(c, "thermal_range", "max", real(1.0e8));
     return with_steps(c, "green_median", "offset", real(400.0));

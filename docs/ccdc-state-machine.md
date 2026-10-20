@@ -20,7 +20,7 @@ what every pixel shares; each OpenMP thread holds a `Worker` with the buffers an
 detector it reuses from pixel to pixel. The steps of one pixel:
 
 1. decode the QA (through the input's `QaTable` when it has one);
-2. compute the QA statistics of the observations dated up to the shared `stat_ord`
+2. compute the QA statistics of the observations dated up to the shared `statistics_end`
    (`Quality::compute_until`, `include/ccd/input/quality.hpp`);
 3. choose the pixel's procedure: the run's `mode` stage (`ModeRule::choose`,
    `include/ccd/strategies/stages.hpp`);
@@ -310,7 +310,7 @@ config::Config config = strategies::library_registry().preset("ccdc");
 // config.shared holds detection_bands {"green", "red", "nir", "swir1", "swir2"},
 //   change_probability 0.99, outlier_probability 0.999999, alpha and coef_floor 1e-4
 //   (reflectance), max_iter 1000, tolerance 1e-4, the coefficient rule 4/6/8/3,
-//   min_observations 12 and stat_ord NO_STAT_CUTOFF; the stages that read them hold no copy.
+//   min_observations 12 and statistics_end NO_STATISTICS_END; the stages that read them hold no copy.
 // config.stages["start_search"] is {"pyccd", {{"day_delta", 365}}}: its meow_size is the
 //   shared min_observations.
 // config.stages["window_screen"] is {"tmask", {{"bands", {"green", "swir1"}}, {"t_const", 4.89}}}

@@ -154,7 +154,7 @@ class BandRange:
 class GreenMedian:
     """green_median: InsufficientClear's cloud screen. Drop the observations whose green row is
     at or above the median green of the kept observations dated up to the shared
-    ``stat_ord``, plus ``offset`` (reflectance), at the dates ``scope`` names: ``"all"``,
+    ``statistics_end``, plus ``offset`` (reflectance), at the dates ``scope`` names: ``"all"``,
     ``"stat_window"`` or ``"off"``. None: 0.04 and ``"stat_window"``."""
 
     offset: Optional[float] = None

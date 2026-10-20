@@ -88,13 +88,13 @@ inline ccd::config::Config with_chain(ccd::config::Config config, const std::str
 
 // pyccd's statistics cutoff, 2017-12-31: the pyccd references and the golden
 // fixtures ran with it.
-constexpr std::int64_t PYCCD_STAT_ORD = 736694;
+constexpr std::int64_t PYCCD_STATISTICS_END = 736694;
 
 // The "ccdc" preset with pyccd's statistics cutoff: the configuration the
 // pyccd references and the golden fixtures ran.
 inline ccd::config::Config pyccd()
 {
-    return with_shared(ccdc(), "stat_ord", ccd::config::integer(PYCCD_STAT_ORD));
+    return with_shared(ccdc(), "statistics_end", ccd::config::integer(PYCCD_STATISTICS_END));
 }
 
 // `config` resolved against `input`, in the library's registry.

@@ -57,17 +57,17 @@ namespace config
 //
 //   None, Observations, Days   unchanged;
 //   Reflectance                a reflectance level (a bound of the data's
-//                              values): r x Input::reflectance_unit +
+//                              values): r x Input::reflectance_scale +
 //                              Input::reflectance_offset, the data's value
 //                              of reflectance r;
 //   ReflectanceDelta           a difference or magnitude of reflectance (the
 //                              Lasso's alpha and coef_floor, the green
 //                              median's offset): times
-//                              Input::reflectance_unit only;
+//                              Input::reflectance_scale only;
 //   Celsius                    degrees Celsius, to the thermal row's unit
 //                              after the input's transform: c x 100 (hundredths
 //                              of a degree, pyccd's unit) times
-//                              Input::thermal_unit / 10000, so -93.2 and 70.7
+//                              Input::thermal_at_100c / 10000, so -93.2 and 70.7
 //                              are -9320 and 7070 on Collection-1 DN and -0.932
 //                              and 0.707 on Celsius / 100, exactly;
 //   Bands                      band roles to the input's rows (rows as given);

@@ -113,11 +113,11 @@ void check_resume(
 // Resume: the cutoffs of a run resumed from one whose series ended at `end`
 //==============================================================================
 
-// stat_ord capped at `end`.
+// statistics_end capped at `end`.
 config::Shared capped(const config::Shared& shared, std::int64_t end)
 {
     config::Shared out = shared;
-    out.stat_ord = std::min(out.stat_ord, end);
+    out.statistics_end = std::min(out.statistics_end, end);
     return out;
 }
 
@@ -176,16 +176,17 @@ ArrayView<const std::uint8_t, 1> decode_qa(
 }
 
 // Step 2. The pixel's procedure and mode, from its QA statistics up to
-// stat_ord.
+// statistics_end.
 PixelMode choose_procedure(
     ArrayView<const std::uint8_t, 1> qas,
     ArrayView<const std::int64_t, 1> dates,
     const Input& input,
-    std::int64_t stat_ord,
+    std::int64_t statistics_end,
     const ModeRule& mode
 )
 {
-    const Quality::Statistics statistics = Quality::compute_until(qas, dates, input, stat_ord);
+    const Quality::Statistics statistics =
+        Quality::compute_until(qas, dates, input, statistics_end);
     return mode.choose(statistics);
 }
 
@@ -345,7 +346,8 @@ FitResult run_steps(
 )
 {
     const auto qas = decode_qa<Qa>(raw_qas, qa_table, worker.qas);
-    const PixelMode mode = choose_procedure(qas, dates, input, shared.stat_ord, *strategies.mode);
+    const PixelMode mode =
+        choose_procedure(qas, dates, input, shared.statistics_end, *strategies.mode);
     const PixelProcedure procedure = mode.procedure;
 
     if (request.record)

@@ -33,7 +33,7 @@ namespace config
 // It is written in physical terms -- reflectance, degrees Celsius, days,
 // observations, probabilities, bands by role, QA codes by name -- so it means
 // the same on every input. The registry resolves it against an Input
-// (resolve()): reflectance values times Input::reflectance_unit, degrees
+// (resolve()): reflectance values times Input::reflectance_scale, degrees
 // Celsius to the thermal row's unit, roles to rows, code names to codes,
 // shared values into the stages and steps that read them, chi-squared
 // thresholds from probabilities for the input's detection-band count; then it

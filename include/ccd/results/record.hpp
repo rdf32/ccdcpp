@@ -22,7 +22,7 @@ namespace ccd
 //
 // The statistics window (the QA statistics, the cadence, the variogram and
 // the green median) is the one input that is not causal: a resumed run caps
-// every statistics cutoff (the shared stat_ord and each GreenMedian step's date) at
+// every statistics cutoff (the shared statistics_end and each GreenMedian step's date) at
 // statistics_end, the end of the first run's series, so that it computes
 // them from the observations the first run saw.
 //

@@ -144,14 +144,14 @@ def to_physical(spectral):
 
 
 #: The "ccdc" preset with pyccd's statistics cutoff, 2017-12-31: what the Landsat profiles run.
-PYCCD = ccdcpp.config("ccdc").replace(shared__stat_ord=736694)
+PYCCD = ccdcpp.config("ccdc").replace(shared__statistics_end=736694)
 
 
 def explicit_physical():
     """The physical-unit input written out, as the golden tests write it, and the
     configuration it runs: (Input, Config)."""
-    h = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0, thermal_offset=0.0,
-                     thermal_unit=1.0)
+    h = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0,
+                     thermal_at_100c=1.0)
     return h, PYCCD
 
 
@@ -239,8 +239,8 @@ class Corpus(unittest.TestCase):
 class LandsatC1DN(unittest.TestCase):
     def test_options_are_the_defaults_field_by_field(self):
         h = presets.landsat_c1_dn().input()
-        self.assertEqual(fields(h), fields(ccdcpp.Input(saturated=20000.0,
-                                                        thermal_saturated=20000.0)))
+        self.assertEqual(fields(h), fields(ccdcpp.Input(saturation_code=20000.0,
+                                                        thermal_saturation_code=20000.0)))
         for threshold in (change_threshold, outlier_threshold):
             self.assertEqual(threshold(PYCCD, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
         self.assertGreater(len(fields(h)), 14)
@@ -835,24 +835,24 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(q, p)
                 self.assertEqual(fields(q.input()), fields(p.input()))
                 with self.assertRaises(dataclasses.FrozenInstanceError):
-                    p.saturated = 2.0
+                    p.saturation_code = 2.0
 
     def test_input_is_built_once_and_immutable(self):
         p = presets.landsat_c1_dn()
         self.assertIs(p.input(), p.input())
         self.assertIs(p.input(), presets.landsat_c1_dn().input())
         with self.assertRaises(AttributeError):
-            p.input().reflectance_unit = 99.0
-        h = p.input().replace(reflectance_unit=99.0)
-        self.assertEqual(h.reflectance_unit, 99.0)
-        self.assertEqual(p.input().reflectance_unit, 10000.0)
+            p.input().reflectance_scale = 99.0
+        h = p.input().replace(reflectance_scale=99.0)
+        self.assertEqual(h.reflectance_scale, 99.0)
+        self.assertEqual(p.input().reflectance_scale, 10000.0)
         self.assertEqual(copy.copy(p.input()), p.input())
 
-    def test_thermal_unit_is_the_transform_of_100_celsius(self):
+    def test_thermal_at_100c_is_the_transform_of_100_celsius(self):
         # Each preset's raw thermal value of 100 degrees Celsius, as its
         # docstring states the input: Kelvin x 10 (373.15 K) on DN, degrees
         # Celsius / 100 on the physical inputs. Through the thermal transform
-        # it is the input's thermal_unit, exactly; the presets without a
+        # it is the input's thermal_at_100c, exactly; the presets without a
         # thermal band have none to transform.
         raw_100c = {"landsat_c1_dn": 3731.5, "landsat_c1_physical": 1.0,
                     "landsat_c2": 1.0, "hls_l30": 1.0}
@@ -863,7 +863,7 @@ class Profiles(unittest.TestCase):
                     self.assertEqual(h.index("thermal"), ccdcpp.NO_BAND)
                     continue
                 self.assertEqual(raw_100c[preset] * h.thermal_scale + h.thermal_offset,
-                                 h.thermal_unit)
+                                 h.thermal_at_100c)
         # The bounds it resolves, bit for bit: pyccd's -93.2 and 70.7 degrees.
         for preset, (lo, hi) in {"landsat_c1_dn": (-9320.0, 7070.0),
                                  "landsat_c2": (-0.932, 0.707)}.items():
@@ -876,26 +876,26 @@ class Profiles(unittest.TestCase):
             with self.subTest(preset=preset):
                 p = getattr(presets, preset)()
                 expected = 20000.0 if preset == "landsat_c1_dn" else None
-                for name in ("saturated", "thermal_saturated"):
+                for name in ("saturation_code", "thermal_saturation_code"):
                     self.assertEqual(getattr(p, name), expected)
                     self.assertEqual(getattr(p.input(), name), expected)
-        self.assertIsNone(ccdcpp.Input().saturated)
-        self.assertIsNone(ccdcpp.Input().thermal_saturated)
-        p = dataclasses.replace(presets.landsat_c1_physical(), saturated=2, thermal_saturated=3)
-        self.assertEqual((p.saturated, p.thermal_saturated), (2.0, 3.0))
-        self.assertEqual((p.input().saturated, p.input().thermal_saturated), (2.0, 3.0))
+        self.assertIsNone(ccdcpp.Input().saturation_code)
+        self.assertIsNone(ccdcpp.Input().thermal_saturation_code)
+        p = dataclasses.replace(presets.landsat_c1_physical(), saturation_code=2, thermal_saturation_code=3)
+        self.assertEqual((p.saturation_code, p.thermal_saturation_code), (2.0, 3.0))
+        self.assertEqual((p.input().saturation_code, p.input().thermal_saturation_code), (2.0, 3.0))
         # In the input's equality and digest, each on its own.
         h = ccdcpp.Input()
-        for name in ("saturated", "thermal_saturated"):
+        for name in ("saturation_code", "thermal_saturation_code"):
             for value in (20000.0, 65535.0):
                 with self.subTest(name=name, value=value):
                     other = ccdcpp.Input(**{name: value})
                     self.assertEqual(getattr(other, name), value)
                     self.assertNotEqual(other, h)
                     self.assertNotEqual(other.digest(), h.digest())
-        self.assertNotEqual(ccdcpp.Input(saturated=1.0), ccdcpp.Input(thermal_saturated=1.0))
-        self.assertNotEqual(ccdcpp.Input(saturated=1.0).digest(),
-                            ccdcpp.Input(thermal_saturated=1.0).digest())
+        self.assertNotEqual(ccdcpp.Input(saturation_code=1.0), ccdcpp.Input(thermal_saturation_code=1.0))
+        self.assertNotEqual(ccdcpp.Input(saturation_code=1.0).digest(),
+                            ccdcpp.Input(thermal_saturation_code=1.0).digest())
         self.assertEqual(copy.copy(h), h)
 
     def test_a_denser_cadence_and_no_cutoff_are_a_configuration(self):
@@ -907,8 +907,8 @@ class Profiles(unittest.TestCase):
         stages = cfg.resolve(h)["stages"]
         self.assertEqual(stages["start_search"]["params"]["meow_size"], 18)
         self.assertEqual(stages["edge_fit"]["params"]["min_observations"], 18)
-        self.assertEqual(cfg.shared()["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
-        self.assertEqual(cfg.resolve(h)["shared"]["stat_ord"], 2**63 - 1)
+        self.assertEqual(cfg.shared()["statistics_end"], ccdcpp.NO_STATISTICS_END)
+        self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], 2**63 - 1)
         out = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(), config=cfg)
         self.assertEqual(out["detect_cube"]["failures"], [])
 
@@ -967,7 +967,7 @@ SCL_VALUES = np.array([4, 5, 6, 8, 9, 3, 0], dtype=np.uint8)
 
 def ten_band_inputs(H=2, W=2, seed=5):
     """(dates, spectral (H, W, 10, T) reflectance, raw SCL (H, W, T)): a 5-day
-    series from 2018, after the Landsat stat_ord, with a break per pixel."""
+    series from 2018, after the Landsat statistics_end, with a break per pixel."""
     rng = np.random.default_rng(seed)
     dates = (736695 + 5 * np.arange(4 * 73)).astype(np.int64)
     T = dates.size
@@ -1007,11 +1007,11 @@ class TenBand(unittest.TestCase):
         dates, cube, scl = ten_band_inputs()
         h = ccdcpp.Input(roles=["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
                                 "nir_broad", "nir", "swir1", "swir2"],
-                         reflectance_unit=1.0)
+                         reflectance_scale=1.0)
         cfg = ccdcpp.config("ccdc").replace(
             change_test__peek_reference_days=10.0,
             shared__detection_bands=["green", "red", "red_edge_2", "nir", "swir1", "swir2"],
-            shared__stat_ord=None,
+            shared__statistics_end=None,
         )
         self.assertEqual(TEN_BAND_CONFIG, cfg)
         self.assertEqual(profile.input(), with_table(h, ccdcpp.qa_tables.sentinel2_scl(h)))
@@ -1038,13 +1038,13 @@ class TenBand(unittest.TestCase):
         self.assertEqual((h.bands(), h.index("green"), h.index("thermal")), (8, 2, 7))
         shared = ccdcpp.config("ccdc").resolve(h)["shared"]
         self.assertEqual(shared["detection_bands"], [2, 3, 4, 5, 6])
-        self.assertEqual(shared["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
+        self.assertEqual(shared["statistics_end"], ccdcpp.NO_STATISTICS_END)
         np.testing.assert_array_equal(profile.input().qa_table.codes,
                                       ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
 
-    def test_stat_ord_matters_after_2017(self):
+    def test_statistics_end_matters_after_2017(self):
         dates, cube, scl = ten_band_inputs()
-        landsat = TEN_BAND_CONFIG.replace(shared__stat_ord=736694)
+        landsat = TEN_BAND_CONFIG.replace(shared__statistics_end=736694)
         out = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=ten_band_profile(),
                                  config=landsat)
         self.assertNotEqual(set(out["curve_qa"].tolist()), {8})
@@ -1125,14 +1125,14 @@ def s2_inputs(H=2, W=2, seed=9, breaks=True, years=8):
 
 #: Each preset's input, written out: the ccdcpp.Input() fields that differ.
 #: Every unnamed field is the default.
-PHYSICAL = dict(reflectance_unit=1.0)
+PHYSICAL = dict(reflectance_scale=1.0)
 _MSI = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad", "nir",
         "swir1", "swir2"]
 _HLS = ["coastal", "blue", "green", "red", "nir", "swir1", "swir2"]
 EXPECTED = {
     "hls_l30": dict(
         PHYSICAL, roles=_HLS + ["thermal"],
-        thermal_scale=1.0, thermal_offset=0.0, thermal_unit=1.0),
+        thermal_scale=1.0, thermal_offset=0.0, thermal_at_100c=1.0),
     "hls_s30": dict(PHYSICAL, roles=["coastal"] + _MSI),
     "hls": dict(PHYSICAL, roles=_HLS),
     "sentinel2_l2a": dict(PHYSICAL, roles=_MSI),
@@ -1190,7 +1190,7 @@ class SensorPresets(unittest.TestCase):
                 self.assertEqual(set(option_params(cfg, "alpha", h).values()), {1e-4})
                 for threshold in (change_threshold, outlier_threshold):
                     self.assertEqual(threshold(cfg, h).hex(), threshold(defaults).hex())
-                self.assertEqual(r["shared"]["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
+                self.assertEqual(r["shared"]["statistics_end"], ccdcpp.NO_STATISTICS_END)
                 self.assertEqual(preset().band_names, BAND_NAMES[name])
                 self.assertEqual(preset().qa_table_options,
                                  dict(sentinel2_l2a=()).get(

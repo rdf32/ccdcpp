@@ -209,7 +209,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
               real(0.04));
     EXPECT_EQ(preset.shared.at("change_probability"), real(0.99));
     EXPECT_EQ(preset.shared.at("outlier_probability"), real(1.0 - 1e-6));
-    EXPECT_EQ(preset.shared.at("stat_ord"), integer(ccd::config::NO_STAT_CUTOFF));
+    EXPECT_EQ(preset.shared.at("statistics_end"), integer(ccd::config::NO_STATISTICS_END));
     EXPECT_EQ(preset.shared.at("detection_bands"),
               ccd::config::roles({"green", "red", "nir", "swir1", "swir2"}));
     EXPECT_EQ(preset.stages.at("window_screen").params.at("bands"),
@@ -282,7 +282,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     // the cutoff; the green median's offset in DN and its scope.
     const ccd::config::Shared& shared = got.shared;
     EXPECT_EQ(shared.detection_bands, (ccd::BandList{1, 2, 3, 4, 5}));
-    EXPECT_EQ(shared.stat_ord, ccd::config::NO_STAT_CUTOFF);
+    EXPECT_EQ(shared.statistics_end, ccd::config::NO_STATISTICS_END);
     const ccd::config::Values& green = got.preprocess.at("insufficient_clear").steps.at(3).params;
     EXPECT_EQ(green.at("offset"), real(400.0));
     EXPECT_EQ(green.at("scope"), ccd::config::Value(std::string("stat_window")));
@@ -330,7 +330,7 @@ TEST(Registry, SharedValuesReachTheirStages)
     using ccd::config::real;
     const ccd::config::Registry& r = ccd::strategies::library_registry();
     ccd::Input reflectance;
-    reflectance.reflectance_unit = 1.0;
+    reflectance.reflectance_scale = 1.0;
 
     // Reflectance values times the input's unit, in every Lasso stage.
     const auto lasso = golden::with_shared(golden::ccdc(), "alpha", real(0.5));
@@ -484,7 +484,7 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     tree.shared["max_iter"] = ccd::config::integer(300);
     EXPECT_EQ(tree.stages.at("model").strategy, "lasso");
     ccd::Input reflectance;
-    reflectance.reflectance_unit = 1.0;
+    reflectance.reflectance_scale = 1.0;
     const auto s = golden::strategies_of(tree, reflectance);
     const auto& lasso = static_cast<const ccd::strategies::Lasso&>(*s.model);
     EXPECT_EQ(lasso.solver_options().alpha, 0.5);
@@ -1063,7 +1063,7 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     config.shared["min_observations"] = ccd::config::integer(15);
     config.shared["alpha"] = ccd::config::real(0.5);
     ccd::Input reflectance;
-    reflectance.reflectance_unit = 1.0;
+    reflectance.reflectance_scale = 1.0;
     const ccd::config::ConfigTree tree = golden::resolved(config, reflectance).stages;
     const auto& edges = tree.at("edge_fit");
     EXPECT_EQ(edges.strategy, "lasso");
@@ -1177,7 +1177,7 @@ TEST(Registry, BandListsAreCheckedAgainstTheInput)
 //------------------------------------------------------------------------------
 
 // Degrees Celsius resolve to the thermal row's unit (hundredths of a degree
-// times reflectance_unit / 10000), reflectance to reflectance_unit, QA code
+// times reflectance_scale / 10000), reflectance to reflectance_scale, QA code
 // names to the input's codes; codes given as numbers stay as given.
 TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
 {
@@ -1326,7 +1326,7 @@ TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
         ccd::config::integer(736694);
     expect_refused([&] { build(dated); },
                    "preprocess insufficient_clear step 3 'green_median' parameter 'max_date' is "
-                   "the shared value 'stat_ord'; set shared 'stat_ord' instead");
+                   "the shared value 'statistics_end'; set shared 'statistics_end' instead");
 
     ccd::config::Config typo = golden::ccdc();
     typo.preprocess.at("standard").steps.at(2).params["maximum"] = ccd::config::real(1.0);

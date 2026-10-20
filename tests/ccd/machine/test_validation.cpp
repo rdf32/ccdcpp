@@ -266,8 +266,8 @@ TEST(Validation, LayoutRules)
     for (const double unit : {0.0, -1.0, std::nan("")})
     {
         ccd::Input h;
-        h.reflectance_unit = unit;
-        expect_layout_error(h, 7, "reflectance_unit is");
+        h.reflectance_scale = unit;
+        expect_layout_error(h, 7, "reflectance_scale is");
     }
 
     // The value of reflectance 0 is a finite number.
@@ -282,8 +282,8 @@ TEST(Validation, LayoutRules)
     for (const double unit : {0.0, -1.0, std::nan(""), HUGE_VAL})
     {
         ccd::Input h;
-        h.thermal_unit = unit;
-        expect_layout_error(h, 7, "thermal_unit is");
+        h.thermal_at_100c = unit;
+        expect_layout_error(h, 7, "thermal_at_100c is");
     }
 }
 

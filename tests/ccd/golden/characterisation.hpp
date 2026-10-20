@@ -144,7 +144,7 @@ inline CharPixel make_char_pixel(
 //------------------------------------------------------------------------------
 
 // 13 observations 34 days apart, then 500 `gap` days apart, all before
-// stat_ord: the median gap is `gap`, so the peek is adjusted to 13-25 for
+// statistics_end: the median gap is `gap`, so the peek is adjusted to 13-25 for
 // gaps of 4-6 days. A break at observation 13 with a decaying transient after
 // it, so the second Initialize shifts and its Lookback starts at or below
 // peek_size with prev_break = 13.
@@ -224,7 +224,7 @@ inline CharPixel series_end_after_outlier(std::uint64_t seed, std::size_t back)
     return make_char_pixel("series_end_after_outlier", d, s);
 }
 
-// One clear observation dated up to stat_ord (2017-12-31), 60 after it: the
+// One clear observation dated up to statistics_end (2017-12-31), 60 after it: the
 // QA statistics see 1 of 1 clear, so Standard runs, and the variogram over the
 // statistics window of one observation is NaN.
 inline CharPixel variogram_nan()
@@ -254,7 +254,7 @@ inline CharPixel constant_detection_band()
     return p;
 }
 
-// `n` observations 16 days apart before stat_ord; `clear` of them clear
+// `n` observations 16 days apart before statistics_end; `clear` of them clear
 // (QA 0) spread evenly, then of the others the first `snow` snow (QA 3) and
 // the rest cloud (QA 4). The clear percentage is clear / n and the snow
 // percentage snow / (clear + snow + 0.01).

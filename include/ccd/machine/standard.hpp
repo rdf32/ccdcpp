@@ -350,7 +350,7 @@ Scratch& edge_scratch(const Context& context, State& state);
 
 // Done (TooFewObservations) when the start search finds too few observations
 // (too_few()). Otherwise sets the cadence, Initialize's criteria and the
-// variogram from the statistics window (the observations dated <= stat_ord); Done
+// variogram from the statistics window (the observations dated <= statistics_end); Done
 // (VariogramNaN) on a NaN in it. Puts the window at the search's first(0)
 // and prev_break at 0. Next: Initialize (begin_search()), or EndCatch
 // (NoRoomToInitialize).

@@ -7,22 +7,22 @@ exactly as today.
 ## The boundary
 
 - **The storage domain** is the data as given: `spectral` in the input's encoding, its QA, and
-  its codes. Fill and saturation codes (`qa_fill`, `saturated`, `thermal_saturated`) belong
+  its codes. Fill and saturation codes (`qa_fill`, `saturation_code`, `thermal_saturation_code`) belong
   here and are compared on the raw stored values, before any transform. The outputs are in it
   too: coefficients, intercepts, RMSEs and magnitudes are in the input's units (DN in, DN out).
 - **The physical domain** is the configuration only: reflectance levels (0–1), reflectance
   differences (`alpha`, `coef_floor`, the green median's offset), degrees Celsius, days,
   observations, probabilities, bands by role and QA codes by name.
 - **The conversion.** The run converts the configuration into the storage domain once, when
-  it resolves it against the input: levels as `r * reflectance_unit + reflectance_offset`,
-  differences as `r * reflectance_unit`, degrees Celsius as `c * 100 * thermal_unit / 10000`.
+  it resolves it against the input: levels as `r * reflectance_scale + reflectance_offset`,
+  differences as `r * reflectance_scale`, degrees Celsius as `c * 100 * thermal_at_100c / 10000`.
   The one conversion of the data is the thermal transform, `thermal * thermal_scale +
   thermal_offset`, applied to the thermal row of the procedures whose chain sets
-  `thermal_transform`, with its output unit stated by `thermal_unit` (the value 100 °C has
+  `thermal_transform`, with its output unit stated by `thermal_at_100c` (the value 100 °C has
   after it).
 
-On Collection-1 DN (`ccdcpp.Input()`: `reflectance_unit` 10000, `reflectance_offset` 0, the
-transform (10, -27315) to Celsius x 100, `thermal_unit` 10000), "ccdc" resolves to:
+On Collection-1 DN (`ccdcpp.Input()`: `reflectance_scale` 10000, `reflectance_offset` 0, the
+transform (10, -27315) to Celsius x 100, `thermal_at_100c` 10000), "ccdc" resolves to:
 
 | Configuration (physical) | Resolved (storage) | Conversion |
 |---|---|---|
@@ -38,16 +38,16 @@ every resolved value.
 
 `ccd::Input` (`include/ccd/input/input.hpp`, `ccdcpp.Input`) states the data's encoding:
 
-- reflectance `r` is held as `r * reflectance_unit + reflectance_offset` (Collection-1 DN:
+- reflectance `r` is held as `r * reflectance_scale + reflectance_offset` (Collection-1 DN:
   10000 and 0, the defaults; reflectance: 1 and 0);
 - the thermal transform `thermal * thermal_scale + thermal_offset` takes the thermal row to a
-  multiple of degrees Celsius, and `thermal_unit` is the value 100 °C has after it (Collection-1
-  DN: Kelvin x 10 through (10, -27315) is Celsius x 100, `thermal_unit` 10000, the defaults;
-  Celsius / 100 through the identity: `thermal_unit` 1).
+  multiple of degrees Celsius, and `thermal_at_100c` is the value 100 °C has after it (Collection-1
+  DN: Kelvin x 10 through (10, -27315) is Celsius x 100, `thermal_at_100c` 10000, the defaults;
+  Celsius / 100 through the identity: `thermal_at_100c` 1).
 
-A configuration's reflectance levels (`band_range`'s bounds) resolve as `r * reflectance_unit +
+A configuration's reflectance levels (`band_range`'s bounds) resolve as `r * reflectance_scale +
 reflectance_offset`, its reflectance differences (`alpha`, `coef_floor`, `green_median`'s
-offset) as `r * reflectance_unit`, its degrees Celsius `c` as `c * 100 * thermal_unit / 10000`.
+offset) as `r * reflectance_scale`, its degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`.
 1e-4 x 10000, 0.04 x 10000, 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0 and 10000 exactly, and
 -93.2 and 70.7 degrees are -9320 and 7070 on DN and -0.932 and 0.707 on Celsius / 100, so a DN
 input runs pyccd's DN values bit for bit.
@@ -57,9 +57,9 @@ input runs pyccd's DN values bit for bit.
 One divisor, 10000, applied to every band:
 
 ```text
-reflectance_unit = 1.0
+reflectance_scale = 1.0
 thermal_scale = 1.0       thermal_offset = 0.0    (identity)
-thermal_unit = 1.0
+thermal_at_100c = 1.0
 ```
 
 with the caller's array pre-divided by 10000:
@@ -93,7 +93,7 @@ change-detection archive already stores.
 
 Collection-1's saturation range (0, 10000) and Collection-2's mean the same predicate,
 reflectance in (0, 1): Collection-2 surface reflectance is `DN * 2.75e-5 - 0.2`. An input in
-Collection-2 DN says so with `reflectance_unit = 1 / 2.75e-5` and `reflectance_offset = 0.2 /
+Collection-2 DN says so with `reflectance_scale = 1 / 2.75e-5` and `reflectance_offset = 0.2 /
 2.75e-5`, and `band_range` 0..1 resolves to (7272.7..., 43636.3...), which keeps DN 7273 to
 43636 (`tests/ccd/machine/test_units.cpp`, `Collection2DnResolvesReflectanceZeroToOne`). In
 physical units there is no collection branch.
@@ -117,7 +117,7 @@ leaving it behind is detected. The three shapes of detection there are not inter
 
 | Value | How leaving it behind is caught |
 |---|---|
-| `reflectance_unit` | by the equivalence test directly: it scales alpha (which moves the segment count) and coef_floor (which leaves sparsity identical, so only the value comparison catches it) |
+| `reflectance_scale` | by the equivalence test directly: it scales alpha (which moves the segment count) and coef_floor (which leaves sparsity identical, so only the value comparison catches it) |
 | the bounds | not by it. The physical bounds are narrower, so leaving them at the DN value merely loosens a screen, and a screen that rejects nothing is indistinguishable from a correct one. The guard runs them the other way, DN input with the physical bound, where the mask empties and the pixel returns 0 segments instead of 5 |
 | the green filter | unreachable through `run_pixel()` on the reference pixel, which takes the Standard procedure; `ccdc` runs the green median filter in the InsufficientClear chain only. Its guard fits the InsufficientClear procedure directly (`ccd::fit_whole_series`) |
 

@@ -78,7 +78,7 @@ for path in sys.argv[5:]:
 
 hopt = ccdcpp.Input()
 # The "ccdc" configuration with PyCCD's statistics cutoff, 2017-12-31.
-PYCCD = ccdcpp.config("ccdc").replace(shared__stat_ord=736694)
+PYCCD = ccdcpp.config("ccdc").replace(shared__statistics_end=736694)
 
 
 def peak_mb():

@@ -15,9 +15,9 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
 >   `replace(**fields)`): the encoding only: the QA codes and `qa_table` (the decoder of raw QA,
->   or none), `roles`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
->   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_unit` (the value of
->   100 °C after the transform) and the saturation codes `saturated` and `thermal_saturated`
+>   or none), `roles`, `reflectance_scale` and `reflectance_offset` (Collection-1 DN 10000 and 0,
+>   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_at_100c` (the value of
+>   100 °C after the transform) and the saturation codes `saturation_code` and `thermal_saturation_code`
 >   (stored values). `input=` takes an `Input` or a
 >   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
@@ -26,7 +26,7 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   resolved once per input; `ccdcpp.plan_of(config, input)` shows the resolved preprocessing.
 >   `config=` is a `Config` or a preset's name.
 > - **"ccdc" has no statistics cutoff**; pyccd's is
->   `ccdcpp.config("ccdc").replace(shared__stat_ord=736694)`.
+>   `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)`.
 
 ## Contents
 
@@ -192,7 +192,7 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
 
 ccdcpp runs one fixed machine, the CCDC phases and routes, whose decisions are made by **stages**: the procedure a pixel takes, its noise floor, where the search for a stable start begins, the start window's outlier screen, fit and stability rule, Lookback, the monitoring model and when it is refitted, the change test, the outlier rule, and the fits a segment reports. Each stage is decided by a **strategy**, chosen by name, with parameters. A **configuration** holds the shared values several stages read, for every stage its strategy and that strategy's parameters, and every procedure's preprocessing steps.
 
-The input says only how to read the data. The configuration says what to do with it, in physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. A run without a configuration uses the preset `ccdc`, each strategy and step at its defaults: PyCCD's algorithm with ccdcpp's corrections, with no statistics cutoff (PyCCD's 2017-12-31 is `shared__stat_ord=736694`), on any input.
+The input says only how to read the data. The configuration says what to do with it, in physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. A run without a configuration uses the preset `ccdc`, each strategy and step at its defaults: PyCCD's algorithm with ccdcpp's corrections, with no statistics cutoff (PyCCD's 2017-12-31 is `shared__statistics_end=736694`), on any input.
 
 ```python
 cfg = ccdcpp.config("ccdc")
@@ -201,7 +201,7 @@ print(cfg)
 
 ```text
 Config(
-  shared: alpha=0.0001, change_probability=0.99, coef_floor=0.0001, coefficient_max=8, ..., detection_bands=['green', 'red', 'nir', 'swir1', 'swir2'], ..., stat_ord=9223372036854775807, tolerance=0.0001
+  shared: alpha=0.0001, change_probability=0.99, coef_floor=0.0001, coefficient_max=8, ..., detection_bands=['green', 'red', 'nir', 'swir1', 'swir2'], ..., statistics_end=9223372036854775807, tolerance=0.0001
   change_test: chi2(model_rmse_up_to=24, peek_reference_days=16.0, peek_size=6, seasonal_count=24, seasonal_divisor=4.0)
   ...
   window_screen: tmask(bands=['green', 'swir1'], t_const=4.89)
@@ -210,7 +210,7 @@ Config(
 )
 ```
 
-A configuration's values are physical, so one configuration means the same on every input: the Lasso's `alpha` and `coef_floor` and the bounds in reflectance (times the input's `reflectance_unit`), the thermal bounds in degrees Celsius, the thresholds as probabilities, bands by role. A `Config` is immutable and checked when it is built; `replace(shared__name=value)` and `replace(stage__parameter=value)` return a changed copy, and `replace(stage="strategy")` swaps a stage's strategy, its parameters starting from the new strategy's defaults. `detect` and `detect_cube` take it as `config=`:
+A configuration's values are physical, so one configuration means the same on every input: the Lasso's `alpha` and `coef_floor` and the bounds in reflectance (times the input's `reflectance_scale`), the thermal bounds in degrees Celsius, the thresholds as probabilities, bands by role. A `Config` is immutable and checked when it is built; `replace(shared__name=value)` and `replace(stage__parameter=value)` return a changed copy, and `replace(stage="strategy")` swaps a stage's strategy, its parameters starting from the new strategy's defaults. `detect` and `detect_cube` take it as `config=`:
 
 ```python
 c2 = presets.landsat_c2()
@@ -218,7 +218,7 @@ base = ccdcpp.config("ccdc")
 stricter = base.replace(shared__change_probability=0.999, refit__factor=2.0)
 out2 = ccdcpp.detect(dates, spectral, qas, input=c2, config=stricter)
 print(base.hash() != stricter.hash())
-print(base.resolve(c2.input())["stages"]["model"]["params"]["alpha"])   # 1e-4 x reflectance_unit 1
+print(base.resolve(c2.input())["stages"]["model"]["params"]["alpha"])   # 1e-4 x reflectance_scale 1
 ```
 
 Mistakes are refused by name, before any pixel runs:
@@ -300,7 +300,7 @@ SEGMENT_COLUMNS = ("row", "col", "start_day", "end_day", "break_day", "curve_qa"
 update = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, threads=4, resume=first)
 
 print(update["counts"])
-capped = ccdcpp.config("ccdc").replace(shared__stat_ord=int(dates[n - 1]))
+capped = ccdcpp.config("ccdc").replace(shared__statistics_end=int(dates[n - 1]))
 full = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, config=capped, threads=4)
 print(all(np.array_equal(update[k], full[k]) for k in SEGMENT_COLUMNS))
 ```
@@ -310,7 +310,7 @@ print(all(np.array_equal(update[k], full[k]) for k in SEGMENT_COLUMNS))
 True
 ```
 
-- **The result is the full run's, bit for bit**: `detect_cube(resume=...)` gives what `detect_cube` gives on the whole series with the statistics cutoff (the shared `stat_ord`, which the green median step reads too) capped at the first run's series end. With `ccdc`'s no cutoff, the statistics (the procedure choice, the cadence, the variogram) stay those of the first run until a full rerun re-baselines them; with a cutoff before the first run's end (PyCCD's 2017-12-31), the update is the plain full rerun.
+- **The result is the full run's, bit for bit**: `detect_cube(resume=...)` gives what `detect_cube` gives on the whole series with the statistics cutoff (the shared `statistics_end`, which the green median step reads too) capped at the first run's series end. With `ccdc`'s no cutoff, the statistics (the procedure choice, the cadence, the variogram) stay those of the first run until a full rerun re-baselines them; with a cutoff before the first run's end (PyCCD's 2017-12-31), the update is the plain full rerun.
 - **What it saves is compute**: each pixel the Standard machine was running continues from where its stored run stopped, its earlier segments kept as stored and its open segment refitted once. The pixels with nothing to continue (PermanentSnow, InsufficientClear and the early exits) are rerun whole and count as resumed, since their result is the rerun's. On a 500 x 500 Landsat cell the annual update takes 0.36 of a full run's time ([Performance](#performance)).
 - **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene) is rerun in full, and its status says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed). A scene the pixel's QA marks fill does not count as a change.
 - **A record that does not match the call is refused** (`ValueError`): another record format or results version (`ccdcpp.RESULTS_VERSION` changes whenever a release changes outputs), another input (its QA table included) or configuration, a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
@@ -448,11 +448,11 @@ The input says only how to read the data. The configuration says what to do with
 
 | Input field | Default | Read by |
 |-------|---------|---------|
-| `reflectance_unit` | `10000.0` | reflectance `r` is held as `r * reflectance_unit + reflectance_offset`: the configuration's reflectance levels (`band_range`'s bounds) resolve that way, its differences (the Lasso's `alpha` and `coef_floor`, `green_median`'s offset) are multiplied by `reflectance_unit` only |
-| `reflectance_offset` | `0.0` | the data's value of reflectance 0; Collection-2 DN (`r = DN * 2.75e-5 - 0.2`) is `reflectance_unit = 1 / 2.75e-5`, `reflectance_offset = 0.2 / 2.75e-5` |
+| `reflectance_scale` | `10000.0` | reflectance `r` is held as `r * reflectance_scale + reflectance_offset`: the configuration's reflectance levels (`band_range`'s bounds) resolve that way, its differences (the Lasso's `alpha` and `coef_floor`, `green_median`'s offset) are multiplied by `reflectance_scale` only |
+| `reflectance_offset` | `0.0` | the data's value of reflectance 0; Collection-2 DN (`r = DN * 2.75e-5 - 0.2`) is `reflectance_scale = 1 / 2.75e-5`, `reflectance_offset = 0.2 / 2.75e-5` |
 | `thermal_scale`, `thermal_offset` | `10.0`, `-27315.0` | the thermal transform, `thermal * scale + offset`, of a procedure whose chain sets `thermal_transform` (Standard in `ccdc`) |
-| `thermal_unit` | `10000.0` | the value 100 °C has after the transform (Celsius x 100: 10000; Celsius / 100: 1); `thermal_range`'s bounds, in degrees Celsius, resolve to `c * 100 * thermal_unit / 10000` |
-| `saturated`, `thermal_saturated` | `None`, `None` | the value a saturated observation holds in the reflective rows and in the thermal row, as the data stores it (before any transform; Collection-1 DN: 20000 and 20000), or `None`; no public step reads them |
+| `thermal_at_100c` | `10000.0` | the value 100 °C has after the transform (Celsius x 100: 10000; Celsius / 100: 1); `thermal_range`'s bounds, in degrees Celsius, resolve to `c * 100 * thermal_at_100c / 10000` |
+| `saturation_code`, `thermal_saturation_code` | `None`, `None` | the value a saturated observation holds in the reflective rows and in the thermal row, as the data stores it (before any transform; Collection-1 DN: 20000 and 20000), or `None`; no public step reads them |
 
 [docs/units.md](docs/units.md) states the boundary: the data, its codes and the outputs are in the storage domain (DN in, DN out), the configuration in the physical one, and the run converts the configuration once. The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is reflectance with Celsius / 100 thermal and the identity transform (the measured equivalence is in [docs/units.md](docs/units.md)). The bounds and the green median filter are steps of the configuration's preprocessing, in physical units ([Preprocessing](#preprocessing)):
 
@@ -464,7 +464,7 @@ The input says only how to read the data. The configuration says what to do with
 | `green_median` `offset`, `scope` | `0.04` (reflectance), `"stat_window"` | the InsufficientClear green median filter |
 
 - **Bounds.** The defaults are exclusive at both ends of both ranges, pyccd's `0 < v < 10000` and `-9320 < v < 7070` on DN: an observation with a saturation band at exactly a bound, or NaN, is dropped. With both ends of a range inclusive the test is `!(v < lo || v > hi)`, under which the bounds are kept and NaN passes, reaching the fit (a pixel with a NaN kept this way returns no segments and its processing mask).
-- **Green median filter.** The InsufficientClear procedure drops cloud-like observations by their green value: the threshold is the median green of the masked observations dated up to the shared `stat_ord`, plus the offset, and an observation at or above it is dropped. The scope says where: `"stat_window"` (the default, the scope pyccd's filter computes its mask for) only up to `stat_ord`, `"all"` at any date, `"off"` never (what pyccd's code does; see [Differences from pyccd](#differences-from-pyccd)). With no masked observation up to `stat_ord` nothing is dropped.
+- **Green median filter.** The InsufficientClear procedure drops cloud-like observations by their green value: the threshold is the median green of the masked observations dated up to the shared `statistics_end`, plus the offset, and an observation at or above it is dropped. The scope says where: `"stat_window"` (the default, the scope pyccd's filter computes its mask for) only up to `statistics_end`, `"all"` at any date, `"off"` never (what pyccd's code does; see [Differences from pyccd](#differences-from-pyccd)). With no masked observation up to `statistics_end` nothing is dropped.
 
 ## QA Input
 
@@ -558,7 +558,7 @@ print(dense.shared()["min_observations"], dense.params("refit"))
 
 A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises `ValueError` naming the stage, strategy and parameter, before any pixel runs: `peek_reference_days` or `min_lag_days` of zero or less, a count below 1, a `peek_size` below 2, a probability outside (0, 1), a factor or divisor of zero or less, a NaN threshold, a negative or NaN Lasso constant, and coefficient counts that decrease from `coefficient_min` to `coefficient_max` or exceed 8 (the harmonic basis's width).
 
-**Denser cadences.** The peek size follows the cadence: it is `round(peek_size * peek_reference_days / (median gap + 0.001))`, never below `peek_size`, where the gap is between consecutive observations the processing mask keeps, up to the shared `stat_ord`; at 8 days it is 12, at 5 days 19, at 4 days 24. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: with the defaults it is 9.24 at a peek of 12, 6.83 at 19 and 5.90 at 24. Both are computed per pixel, as pyccd's `adjustpeek` and `adjustchgthresh` do; a series whose median gap is about 14.8 days or more keeps `peek_size` and `change_threshold` as given. The shared `min_observations` and the refit's `min_obs` are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 4–5 day cadence 12 observations are about 50–60 days, where at 16 days they are about half a year. A caller who wants them in time sets them from the cadence, as above.
+**Denser cadences.** The peek size follows the cadence: it is `round(peek_size * peek_reference_days / (median gap + 0.001))`, never below `peek_size`, where the gap is between consecutive observations the processing mask keeps, up to the shared `statistics_end`; at 8 days it is 12, at 5 days 19, at 4 days 24. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: with the defaults it is 9.24 at a peek of 12, 6.83 at 19 and 5.90 at 24. Both are computed per pixel, as pyccd's `adjustpeek` and `adjustchgthresh` do; a series whose median gap is about 14.8 days or more keeps `peek_size` and `change_threshold` as given. The shared `min_observations` and the refit's `min_obs` are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 4–5 day cadence 12 observations are about 50–60 days, where at 16 days they are about half a year. A caller who wants them in time sets them from the cadence, as above.
 
 ## Sensor Profiles
 
@@ -583,7 +583,7 @@ A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: th
 | `hls()` | reflectance 0..1 (`B* * 0.0001`), L30 and S30 | none | raw `Fmask` (uint8) | yes, with a caveat: Fmask over bright surfaces (T16SGC, 2020–2023) |
 | `sentinel2_l2a()` | reflectance 0..1 (`(DN + BOA_ADD_OFFSET) / 10000`) | none | raw `SCL` (uint8) | validated at median level on Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing not sampled |
 
-`landsat_c1_dn().input()` is `ccdcpp.Input(saturated=20000.0, thermal_saturated=20000.0)`, field for field: the defaults with the values a Collection-1 saturated observation holds, which the other presets do not declare (theirs are not verified). `landsat_c1_physical()` has `reflectance_unit` 1 and the identity thermal transform, so the configuration's values resolve to the DN ones divided by 10000: the same fit, with coefficients in the input's units. `landsat_c2()` reads the same way (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL`.
+`landsat_c1_dn().input()` is `ccdcpp.Input(saturation_code=20000.0, thermal_saturation_code=20000.0)`, field for field: the defaults with the values a Collection-1 saturated observation holds, which the other presets do not declare (theirs are not verified). `landsat_c1_physical()` has `reflectance_scale` 1 and the identity thermal transform, so the configuration's values resolve to the DN ones divided by 10000: the same fit, with coefficients in the input's units. `landsat_c2()` reads the same way (Collection 2's saturation range in DN, 7273..43636, is reflectance 0..1) and decodes `QA_PIXEL`.
 
 The HLS and Sentinel-2 presets read reflectance and degrees Celsius / 100 as `landsat_c1_physical()` does and saturation-screen every optical row; with `ccdc` they detect change on green, red, nir, swir1 and swir2 with the chi-squared(5) thresholds, use green and swir1 for Tmask, have no statistics cutoff and keep pyccd's cadence values.
 
@@ -640,7 +640,7 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 ```
 
 - **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no band list can name them.
-- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_OVER_100`) or `None`, `saturated` and `thermal_saturated` the values a saturated observation holds in the reflective and the thermal rows, as stored, or `None`.
+- **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_scale`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `at_100c`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_OVER_100`) or `None`, `saturation_code` and `thermal_saturation_code` the values a saturated observation holds in the reflective and the thermal rows, as stored, or `None`.
 - **QA**: `qa_table_builder`, a `ccdcpp.qa_tables` builder name or `None` for codes; `qa_table_options`, keyword arguments for it of exactly the types `ccdcpp.QA_TABLE_OPTIONS` lists.
 - A profile that breaks a layout rule (an unknown or repeated role, no green band, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
 
@@ -654,7 +654,7 @@ Before a procedure fits a pixel it builds the processing mask, the observations 
 | `add_qa` (`AddQa(codes)`) | also keep every observation whose code is in `codes`; must be followed by `dedupe` |
 | `thermal_range` (`ThermalRange(min, max, inclusive)`) | keep only observations whose thermal value is in the range, degrees Celsius; skipped without a thermal row |
 | `band_range` (`BandRange(bands, min, max, inclusive)`) | keep only observations on which every band (roles, tested in order, or `"reflective"`, the default: every row whose role is not thermal or other) is in the range, reflectance; an empty list is refused |
-| `green_median` (`GreenMedian(offset, scope)`) | drop observations at or above the median green over the kept observations dated up to the shared `stat_ord`, plus `offset` (reflectance), at the dates `scope` names |
+| `green_median` (`GreenMedian(offset, scope)`) | drop observations at or above the median green over the kept observations dated up to the shared `statistics_end`, plus `offset` (reflectance), at the dates `scope` names |
 | `dedupe` (`Dedupe()`) | keep the first kept observation of each date |
 
 A range keeps `min < x < max`; an inclusive end also keeps a value equal to it, and NaN passes only a range inclusive at both ends. A chain holds at most `CHAIN_CAPACITY` (8) steps.
@@ -715,7 +715,7 @@ from ccdcpp import Thermal
 # ((DN * 0.00341802 + 149.0) - 273.15) / 100
 c2_raw_thermal = dataclasses.replace(presets.landsat_c2(), name="landsat_c2_raw_thermal",
                                      thermal=Thermal(scale=3.41802e-5, offset=-1.2415,
-                                                     unit=1.0))
+                                                     at_100c=1.0))
 everywhere = ccdcpp.config("ccdc").replace(preprocess__snow__thermal_transform=True,
                                            preprocess__insufficient_clear__thermal_transform=True)
 

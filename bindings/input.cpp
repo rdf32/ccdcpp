@@ -48,13 +48,14 @@ const std::vector<std::pair<const char*, Setter>>& input_fields()
         {"qa_occlusion", set_member<std::uint8_t, &Input::qa_occlusion>},
         {"qa_table", set_qa_table},
         {"roles", set_member<std::vector<std::string>, &Input::roles>},
-        {"reflectance_unit", set_member<scalar_t, &Input::reflectance_unit>},
+        {"reflectance_scale", set_member<scalar_t, &Input::reflectance_scale>},
         {"reflectance_offset", set_member<scalar_t, &Input::reflectance_offset>},
         {"thermal_scale", set_member<scalar_t, &Input::thermal_scale>},
         {"thermal_offset", set_member<scalar_t, &Input::thermal_offset>},
-        {"thermal_unit", set_member<scalar_t, &Input::thermal_unit>},
-        {"saturated", set_member<std::optional<scalar_t>, &Input::saturated>},
-        {"thermal_saturated", set_member<std::optional<scalar_t>, &Input::thermal_saturated>},
+        {"thermal_at_100c", set_member<scalar_t, &Input::thermal_at_100c>},
+        {"saturation_code", set_member<std::optional<scalar_t>, &Input::saturation_code>},
+        {"thermal_saturation_code",
+         set_member<std::optional<scalar_t>, &Input::thermal_saturation_code>},
     };
     return fields;
 }
@@ -109,11 +110,11 @@ void bind_input(py::module_& m)
         m,
         "GreenFilterScope",
         "Which observations the green median filter drops. The threshold is "
-        "the median green of the masked observations dated <= stat_ord plus "
+        "the median green of the masked observations dated <= statistics_end plus "
         "the step's offset; a masked observation whose green is >= it is "
-        "dropped at any date (All), only when dated <= stat_ord (StatWindow, "
+        "dropped at any date (All), only when dated <= statistics_end (StatWindow, "
         "the scope pyccd computes the mask for), or never (Off). With no "
-        "masked observation dated <= stat_ord nothing is dropped. The "
+        "masked observation dated <= statistics_end nothing is dropped. The "
         "green_median step's scope names them \"all\", \"stat_window\" and "
         "\"off\"."
     )
@@ -139,8 +140,8 @@ void bind_input(py::module_& m)
         "Immutable: Input(**fields) takes every field by keyword, each "
         "defaulting as below, and replace(**fields) returns a copy with those "
         "fields changed. Equal and hashed by value.\n\n"
-        "Example: ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0, "
-        "thermal_offset=0.0, thermal_unit=1.0)  # reflectance, Celsius / 100"
+        "Example: ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, "
+        "thermal_offset=0.0, thermal_at_100c=1.0)  # reflectance, Celsius / 100"
     )
     .def(py::init([](const py::kwargs& fields) { return with_fields(ccd::Input{}, fields, "Input()"); }))
     .def("replace",
@@ -172,41 +173,41 @@ void bind_input(py::module_& m)
     //     spectral[:6] = dn[:6] / 1e4             # reflectance 0..1
     //     spectral[6]  = (k10 * 10 - 27315) / 1e4 # degrees Celsius / 100
     //
-    //     i = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0,
-    //                      thermal_offset=0.0, thermal_unit=1.0)
+    //     i = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0,
+    //                      thermal_offset=0.0, thermal_at_100c=1.0)
     //
     // See docs/units.md for the measured equivalence and why plain Celsius
     // is not the physical unit.
     //--------------------------------------------------------------------------
     .def_readonly(
-        "reflectance_unit", &ccd::Input::reflectance_unit,
+        "reflectance_scale", &ccd::Input::reflectance_scale,
         "The value one unit of reflectance has in the data (default 10000, "
         "Collection-1 DN; 1 for reflectance): reflectance r is held as r * "
-        "reflectance_unit + reflectance_offset. The configuration's "
+        "reflectance_scale + reflectance_offset. The configuration's "
         "reflectance levels (band_range's bounds) resolve that way, its "
         "differences (alpha, coef_floor, green_median's offset) times "
-        "reflectance_unit only."
+        "reflectance_scale only."
     )
     .def_readonly(
         "reflectance_offset", &ccd::Input::reflectance_offset,
         "The data's value of reflectance 0 (default 0). Collection-2 DN, r = "
-        "DN * 2.75e-5 - 0.2, is reflectance_unit 1 / 2.75e-5 and "
+        "DN * 2.75e-5 - 0.2, is reflectance_scale 1 / 2.75e-5 and "
         "reflectance_offset 0.2 / 2.75e-5."
     )
     .def_readonly("thermal_scale", &ccd::Input::thermal_scale,
         "A procedure that transforms thermal reads thermal * thermal_scale + "
         "thermal_offset (default 10, Kelvin x 10 to Celsius x 100), in the "
-        "unit thermal_unit names.")
+        "unit thermal_at_100c names.")
     .def_readonly("thermal_offset", &ccd::Input::thermal_offset,
         "See thermal_scale (default -27315).")
-    .def_readonly("thermal_unit", &ccd::Input::thermal_unit,
+    .def_readonly("thermal_at_100c", &ccd::Input::thermal_at_100c,
         "The value 100 degrees Celsius has in the thermal row after the "
         "transform (default 10000, Celsius x 100; 1 for Celsius / 100). The "
-        "configuration's degrees Celsius c resolve to c * 100 * thermal_unit "
+        "configuration's degrees Celsius c resolve to c * 100 * thermal_at_100c "
         "/ 10000. It goes with the transform: Kelvin x 10 through (10, "
         "-27315) is 10000, Celsius / 100 through the identity is 1.")
     .def_readonly(
-        "saturated", &ccd::Input::saturated,
+        "saturation_code", &ccd::Input::saturation_code,
         "The value a saturated observation holds in the reflective rows, as "
         "the data stores it (before any transform; 20000 in Collection-1 DN), "
         "or None (the default) when the input does not declare one. Codes are "
@@ -214,7 +215,7 @@ void bind_input(py::module_& m)
         "refuses an input without one."
     )
     .def_readonly(
-        "thermal_saturated", &ccd::Input::thermal_saturated,
+        "thermal_saturation_code", &ccd::Input::thermal_saturation_code,
         "The value a saturated observation holds in the thermal row, as the "
         "data stores it (before the thermal transform; 20000 in Collection-1 "
         "DN), or None (the default)."
