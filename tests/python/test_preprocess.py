@@ -404,9 +404,10 @@ class Validation(unittest.TestCase):
                           "max_inclusive": False})
 
     def test_steps_are_listed(self):
+        # The library's steps; an extension may register more.
         steps = ccdcpp.steps()
-        self.assertEqual(set(steps), {"keep_qa", "add_qa", "thermal_range", "band_range",
-                                      "green_median", "dedupe"})
+        self.assertLessEqual({"keep_qa", "add_qa", "thermal_range", "band_range",
+                              "green_median", "dedupe"}, set(steps))
         units = {p["name"]: p["unit"] for p in steps["thermal_range"]}
         self.assertEqual(units["min"], "celsius")
         self.assertEqual({p["name"]: p["unit"] for p in steps["keep_qa"]}["codes"], "qa_codes")

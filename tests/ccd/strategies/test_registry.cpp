@@ -1274,12 +1274,25 @@ TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
     const auto build = [](const ccd::config::Config& config)
     { return ccd::Algorithm(config); };
 
+    // The message lists the registered steps: the library's, and an
+    // extension's if it registers more.
     ccd::config::Config unknown = golden::ccdc();
     unknown.preprocess.at("snow").steps.at(4).step = "keep_haze";
     expect_refused([&] { build(unknown); },
                    "preprocess snow step 4 is 'keep_haze', which is not a preprocessing step; "
-                   "the steps are add_qa, band_range, dedupe, green_median, keep_qa, "
-                   "thermal_range");
+                   "the steps are ");
+    try
+    {
+        build(unknown);
+    }
+    catch (const std::invalid_argument& e)
+    {
+        const std::string message = e.what();
+        const std::string listed = message.substr(message.find("the steps are "));
+        for (const char* step : {"add_qa", "band_range", "dedupe", "green_median", "keep_qa",
+                                 "thermal_range"})
+            EXPECT_NE(listed.find(step), std::string::npos) << step << ": " << message;
+    }
 
     ccd::config::Config missing = golden::ccdc();
     missing.preprocess.erase("snow");
