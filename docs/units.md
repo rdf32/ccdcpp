@@ -4,6 +4,38 @@ The input says only how to read the data. The configuration says what to do with
 physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
 exactly as today.
 
+## The boundary
+
+- **The storage domain** is the data as given: `spectral` in the input's encoding, its QA, and
+  its codes. Fill and saturation codes (`qa_fill`, `saturated`, `thermal_saturated`) belong
+  here and are compared on the raw stored values, before any transform. The outputs are in it
+  too: coefficients, intercepts, RMSEs and magnitudes are in the input's units (DN in, DN out).
+- **The physical domain** is the configuration only: reflectance levels (0–1), reflectance
+  differences (`alpha`, `coef_floor`, the green median's offset), degrees Celsius, days,
+  observations, probabilities, bands by role and QA codes by name.
+- **The conversion.** The run converts the configuration into the storage domain once, when
+  it resolves it against the input: levels as `r * reflectance_unit + reflectance_offset`,
+  differences as `r * reflectance_unit`, degrees Celsius as `c * 100 * thermal_unit / 10000`.
+  The one conversion of the data is the thermal transform, `thermal * thermal_scale +
+  thermal_offset`, applied to the thermal row of the procedures whose chain sets
+  `thermal_transform`, with its output unit stated by `thermal_unit` (the value 100 °C has
+  after it).
+
+On Collection-1 DN (`ccdcpp.Input()`: `reflectance_unit` 10000, `reflectance_offset` 0, the
+transform (10, -27315) to Celsius x 100, `thermal_unit` 10000), "ccdc" resolves to:
+
+| Configuration (physical) | Resolved (storage) | Conversion |
+|---|---|---|
+| `band_range` 0 to 1 | 0 to 10000 | level: `r * 10000 + 0` |
+| `thermal_range` -93.2 to 70.7 °C | -9320 to 7070 | `c * 100 * 10000 / 10000` |
+| `alpha` 1e-4 | 1.0 | difference: `r * 10000` |
+| `green_median` offset +0.04 | +400 | difference: `r * 10000` |
+
+`ccdcpp.plan_of(config, input)` shows the resolved preprocessing and `Config.resolve(input)`
+every resolved value.
+
+## The encoding
+
 `ccd::Input` (`include/ccd/input/input.hpp`, `ccdcpp.Input`) states the data's encoding:
 
 - reflectance `r` is held as `r * reflectance_unit + reflectance_offset` (Collection-1 DN:

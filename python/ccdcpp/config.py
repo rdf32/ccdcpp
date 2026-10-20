@@ -224,6 +224,11 @@ class Config:
     physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
     exactly as today.
 
+    docs/units.md states the boundary: a configuration is in the physical domain
+    (reflectance levels and differences, degrees Celsius), and a run converts it once into
+    the input's storage encoding (on Collection-1 DN, band_range 0–1 is 0–10000, -93.2–70.7
+    degrees Celsius is -9320–7070, alpha 1e-4 is 1.0, the green offset 0.04 is 400).
+
     Example: ``cfg = ccdcpp.config("ccdc").replace(shared__change_probability=0.995)``
     """
 

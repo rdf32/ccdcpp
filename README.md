@@ -454,7 +454,7 @@ The input says only how to read the data. The configuration says what to do with
 | `thermal_unit` | `10000.0` | the value 100 °C has after the transform (Celsius x 100: 10000; Celsius / 100: 1); `thermal_range`'s bounds, in degrees Celsius, resolve to `c * 100 * thermal_unit / 10000` |
 | `saturated`, `thermal_saturated` | `None`, `None` | the value a saturated observation holds in the reflective rows and in the thermal row, as the data stores it (before any transform; Collection-1 DN: 20000 and 20000), or `None`; no public step reads them |
 
-The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is reflectance with Celsius / 100 thermal and the identity transform (the measured equivalence is in [docs/units.md](docs/units.md)). The bounds and the green median filter are steps of the configuration's preprocessing, in physical units ([Preprocessing](#preprocessing)):
+[docs/units.md](docs/units.md) states the boundary: the data, its codes and the outputs are in the storage domain (DN in, DN out), the configuration in the physical one, and the run converts the configuration once. The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset (`presets.landsat_c1_physical()`) is reflectance with Celsius / 100 thermal and the identity transform (the measured equivalence is in [docs/units.md](docs/units.md)). The bounds and the green median filter are steps of the configuration's preprocessing, in physical units ([Preprocessing](#preprocessing)):
 
 | Step parameter | `ccdc` | |
 |-------|---------|---------|
