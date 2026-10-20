@@ -40,7 +40,7 @@ const std::vector<Field<KeepQa::Params>>& KeepQa::schema()
     return s;
 }
 
-std::optional<Step> KeepQa::make(const Params& params, const Input&)
+std::optional<Step> KeepQa::make(const Params& params, const Input&, const config::StepContext&)
 {
     return Step::keep_qa(set_of(params.codes));
 }
@@ -55,7 +55,7 @@ const std::vector<Field<AddQa::Params>>& AddQa::schema()
     return s;
 }
 
-std::optional<Step> AddQa::make(const Params& params, const Input&)
+std::optional<Step> AddQa::make(const Params& params, const Input&, const config::StepContext&)
 {
     return Step::add_qa(set_of(params.codes));
 }
@@ -75,7 +75,7 @@ const std::vector<Field<ThermalRange::Params>>& ThermalRange::schema()
     return s;
 }
 
-std::optional<Step> ThermalRange::make(const Params& params, const Input& input)
+std::optional<Step> ThermalRange::make(const Params& params, const Input& input, const config::StepContext&)
 {
     const index_t thermal = input.index("thermal");
     if (thermal == NO_BAND)
@@ -109,7 +109,7 @@ void BandRange::validate(const Params& params)
                                     "or \"reflective\"");
 }
 
-std::optional<Step> BandRange::make(const Params& params, const Input&)
+std::optional<Step> BandRange::make(const Params& params, const Input&, const config::StepContext&)
 {
     return Step::band_range(
         params.bands, range_of(params.min, params.min_inclusive, params.max, params.max_inclusive));
@@ -137,7 +137,7 @@ void GreenMedian::validate(const Params& params)
                                     "'; it is all, stat_window or off");
 }
 
-std::optional<Step> GreenMedian::make(const Params& params, const Input& input)
+std::optional<Step> GreenMedian::make(const Params& params, const Input& input, const config::StepContext&)
 {
     return Step::green_median(input.index("green"), params.offset, params.max_date,
                               *green_filter_scope(params.scope));
@@ -149,7 +149,7 @@ const std::vector<Field<Dedupe::Params>>& Dedupe::schema()
     return s;
 }
 
-std::optional<Step> Dedupe::make(const Params&, const Input&)
+std::optional<Step> Dedupe::make(const Params&, const Input&, const config::StepContext&)
 {
     return Step::dedupe();
 }

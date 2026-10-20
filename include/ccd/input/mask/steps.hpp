@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ccd/config/params.hpp"
+#include "ccd/config/preprocess.hpp"
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/input/input.hpp"
@@ -27,7 +28,8 @@ namespace preprocess
 //     struct S {
 //         struct Params { ... };                     // its parameters
 //         static const std::vector<config::Field<Params>>& schema();
-//         static std::optional<Step> make(const Params&, const Input&);
+//         static std::optional<Step> make(const Params&, const Input&,
+//                                         const config::StepContext&);
 //     };
 //
 // and optionally `static void validate(const Params&)`, which throws
@@ -36,7 +38,10 @@ namespace preprocess
 // DN, the Landsat rows), a schema's default_value the physical one, as for
 // the strategies (config/params.hpp). make() builds the step from parameters
 // resolved against `input` (its units, rows and codes), or none where the
-// step does not apply to the input. A registry's other step types are the
+// step does not apply to the input; `context` is where the step is (its
+// procedure, whether the procedure applies the thermal transform, its
+// position; config/preprocess.hpp). A std::invalid_argument it throws is
+// refused naming the step ("preprocess standard step 2 'band_range': ..."). A registry's other step types are the
 // same, and return a Step::of() a preprocess::CustomStep.
 //
 //==============================================================================
@@ -49,7 +54,8 @@ struct KeepQa
         std::vector<std::int64_t> codes = {0, 1};
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input);
+    static std::optional<Step> make(const Params& params, const Input& input,
+                                   const config::StepContext& context);
 };
 
 // add_qa: also keep every observation whose QA code is one of `codes`,
@@ -61,7 +67,8 @@ struct AddQa
         std::vector<std::int64_t> codes = {3};
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input);
+    static std::optional<Step> make(const Params& params, const Input& input,
+                                   const config::StepContext& context);
 };
 
 // thermal_range: keep only the observations whose thermal row lies within
@@ -79,7 +86,8 @@ struct ThermalRange
         bool max_inclusive = false;
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input);
+    static std::optional<Step> make(const Params& params, const Input& input,
+                                   const config::StepContext& context);
 };
 
 // band_range: keep only the observations on which every one of `bands`
@@ -98,7 +106,8 @@ struct BandRange
     };
     static const std::vector<config::Field<Params>>& schema();
     static void validate(const Params& params);
-    static std::optional<Step> make(const Params& params, const Input& input);
+    static std::optional<Step> make(const Params& params, const Input& input,
+                                   const config::StepContext& context);
 };
 
 // green_median: InsufficientClear's cloud screen. Drop the kept
@@ -116,7 +125,8 @@ struct GreenMedian
     };
     static const std::vector<config::Field<Params>>& schema();
     static void validate(const Params& params);
-    static std::optional<Step> make(const Params& params, const Input& input);
+    static std::optional<Step> make(const Params& params, const Input& input,
+                                   const config::StepContext& context);
 };
 
 // dedupe: keep the first kept observation of each date.
@@ -126,7 +136,8 @@ struct Dedupe
     {
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input);
+    static std::optional<Step> make(const Params& params, const Input& input,
+                                   const config::StepContext& context);
 };
 
 } // namespace preprocess

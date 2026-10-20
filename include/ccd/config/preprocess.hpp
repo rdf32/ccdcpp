@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <map>
 #include <string>
 #include <vector>
@@ -62,6 +63,23 @@ inline bool operator!=(const ProcedureConfig& a, const ProcedureConfig& b)
 
 // The procedures, by name.
 using PreprocessConfig = std::map<std::string, ProcedureConfig>;
+
+// Where a step of a configuration's chain is, as its type's make() is handed
+// it (Registry::add_step()): its procedure ("standard", "snow",
+// "insufficient_clear"), whether that procedure reads the thermal row
+// through the input's transform, and the step's position in the chain.
+struct StepContext
+{
+    std::string procedure;
+    bool thermal_transform = false;
+    std::size_t position = 0;
+
+    // "preprocess standard step 2", as a refusal names the step.
+    std::string where() const
+    {
+        return "preprocess " + procedure + " step " + std::to_string(position);
+    }
+};
 
 // The procedures a preprocess section holds, each once: "standard", "snow",
 // "insufficient_clear".

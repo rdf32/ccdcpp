@@ -54,7 +54,8 @@ namespace config
 //     registry.add<I, S>("span-factor");
 //
 // A preprocessing step type (input/mask/steps.hpp) is registered the same
-// way, by the name the configuration's chains give it:
+// way, by the name the configuration's chains give it, and its make() is
+// handed where each step of it is (StepContext, config/preprocess.hpp):
 //
 //     registry.add_step<preprocess::KeepQa>("keep_qa");
 //
@@ -234,11 +235,19 @@ public:
                                         where + " parameter '" + field.name + "'");
             return to_values(S::schema(), params);
         };
-        type.make = [](const Values& values, const Input& input, const std::string& where)
+        type.make = [](const Values& values, const Input& input, const StepContext& context,
+                       const std::string& where)
         {
             typename S::Params params;
             apply(S::schema(), values, params, where);
-            return S::make(params, input);
+            try
+            {
+                return S::make(params, input, context);
+            }
+            catch (const std::invalid_argument& e)
+            {
+                throw std::invalid_argument(where + ": " + e.what());
+            }
         };
     }
 
@@ -336,13 +345,14 @@ private:
     using Resolver = std::function<Values(const Values&, const Resolving&)>;
 
     // A step type: its parameters, how a chain's step of it resolves (given
-    // values, as at `where`), and its step from resolved values on an input.
+    // values, as at `where`), and its step from resolved values on an input,
+    // at a place in a chain.
     struct StepType
     {
         std::vector<ParameterInfo> info;
         std::function<Values(const Values&, const Resolving&, const std::string&)> resolve;
         std::function<std::optional<preprocess::Step>(const Values&, const Input&,
-                                                      const std::string&)>
+                                                      const StepContext&, const std::string&)>
             make;
     };
 

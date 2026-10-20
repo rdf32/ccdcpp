@@ -750,7 +750,7 @@ ccd::RunSpec spec_with_snow(const ccd::Input& input)
 }
 ```
 
-A configuration is checked when it is built (an unknown step, QA code name or scope, a missing procedure, a chain over capacity) and its plan when it is resolved against an input (`preprocess::validate()`: a band not below the band count, a role the input lacks, a transformed band also tested by a `band_range` of its procedure, an `add_qa` not followed by a `dedupe`), with `std::invalid_argument` (`ValueError` in Python) naming the procedure and the step, before any pixel runs. A C++ build extension may register more step types (`Registry::add_step()`).
+A configuration is checked when it is built (an unknown step, QA code name or scope, a missing procedure, a chain over capacity) and its plan when it is resolved against an input (`preprocess::validate()`: a band not below the band count, a role the input lacks, a transformed band also tested by a `band_range` of its procedure, an `add_qa` not followed by a `dedupe`), with `std::invalid_argument` (`ValueError` in Python) naming the procedure and the step, before any pixel runs. A C++ build extension may register more step types (`Registry::add_step()`); a step type's `make()` is handed each step's context (`config::StepContext`: its procedure, whether that procedure applies the thermal transform, its position), and a refusal from it names the step.
 
 # Build and test
 

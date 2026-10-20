@@ -412,7 +412,7 @@ PreprocessConfig Registry::resolve_preprocess(const PreprocessConfig& preprocess
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
         {
             const StepConfig& step = chain.steps[i];
-            const std::string at = "preprocess " + procedure + " step " + std::to_string(i);
+            const std::string at = StepContext{procedure, chain.thermal_transform, i}.where();
             const StepType& type = step_type(step.step, at);
             resolved.steps.push_back(
                 {step.step, type.resolve(step.params, with, at + " '" + step.step + "'")});
@@ -524,9 +524,9 @@ Resolved Registry::resolve(const Config& config, const Input& input) const
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
         {
             const StepConfig& step = chain.steps[i];
-            const std::string at =
-                "preprocess " + procedure + " step " + std::to_string(i) + " '" + step.step + "'";
-            if (auto built = steps_.at(step.step).make(step.params, input, at))
+            const StepContext context{procedure, chain.thermal_transform, i};
+            const std::string at = context.where() + " '" + step.step + "'";
+            if (auto built = steps_.at(step.step).make(step.params, input, context, at))
                 plan.chain.push_back(*built);
         }
     }

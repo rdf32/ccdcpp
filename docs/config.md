@@ -191,7 +191,7 @@ your own registered and named.
 | another preprocessing | `cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)`, `cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(...))` |
 | a sweep | `[ccdcpp.detect_cube(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |
 | a new decision rule | a C++ strategy class for its stage, registered by name (below) |
-| a new preprocessing step | a C++ step type, registered by name (`Registry::add_step()`, `include/ccd/input/mask/steps.hpp`) |
+| a new preprocessing step | a C++ step type, registered by name (`Registry::add_step()`, `include/ccd/input/mask/steps.hpp`); its `make()` is handed each step's context (`config::StepContext`: the procedure, whether it applies the thermal transform, the position) |
 
 A strategy of your own is a class for its stage's interface
 (`include/ccd/strategies/stages.hpp`) with a `Params` struct and its schema, registered once:
