@@ -10,6 +10,7 @@ namespace preprocess
 using config::Field;
 using config::Source;
 using config::Unit;
+using config::Value;
 
 namespace
 {
@@ -87,7 +88,8 @@ const std::vector<Field<BandRange::Params>>& BandRange::schema()
 {
     static const std::vector<Field<Params>> s = {
         {"bands", &Params::bands, Unit::Bands, config::any(),
-         "the bands tested, in order; none: the input's saturation bands"},
+         "the bands tested, in order: roles, rows, or \"reflective\" (every row but "
+         "thermal and other)", Source::Own, nullptr, Value(std::string(config::REFLECTIVE))},
         {"min", &Params::min, Unit::Reflectance, config::any(),
          "the lower bound of every band", Source::Own, nullptr, config::real(0.0)},
         {"max", &Params::max, Unit::Reflectance, config::any(),
@@ -100,11 +102,17 @@ const std::vector<Field<BandRange::Params>>& BandRange::schema()
     return s;
 }
 
-std::optional<Step> BandRange::make(const Params& params, const Input& input)
+void BandRange::validate(const Params& params)
+{
+    if (params.bands.empty())
+        throw std::invalid_argument("parameter 'bands' is empty; it names the bands tested, "
+                                    "or \"reflective\"");
+}
+
+std::optional<Step> BandRange::make(const Params& params, const Input&)
 {
     return Step::band_range(
-        params.bands.empty() ? input.saturation_bands : params.bands,
-        range_of(params.min, params.min_inclusive, params.max, params.max_inclusive));
+        params.bands, range_of(params.min, params.min_inclusive, params.max, params.max_inclusive));
 }
 
 const std::vector<Field<GreenMedian::Params>>& GreenMedian::schema()

@@ -14,8 +14,8 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   call's output made with `record=True`. C++: `ccd::run_pixel` / `ccd::run_cube` with
 >   `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`): the encoding only: the QA codes and `qa_table` (the
->   decoder of raw QA, or none), `roles`, `saturation_bands`, `reflectance_unit`
->   and `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and 0), `thermal_scale`/`thermal_offset` with
+>   decoder of raw QA, or none), `roles`, `reflectance_unit` and
+>   `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and 0), `thermal_scale`/`thermal_offset` with
 >   `thermal_unit` (the value of 100 °C after the transform) and `saturated`.
 >   `input=` takes an `Input` or a `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
@@ -438,9 +438,9 @@ Input arrays are never modified. The cube entry points read the spectral cube in
 
 ## Band Layout
 
-`ccdcpp.Input` says which row of `spectral` plays which role (`roles`, one per row; `ccdcpp.ROLES` lists them). The default is the Landsat layout, seven bands in the order blue, green, red, nir, swir1, swir2, thermal. Every row is fitted and reported, so results have one band per row, in row order. `"green"` is required (the green median filter reads it); without `"thermal"` the thermal transform and range are skipped. `saturation_bands` are the rows a saturated value can appear in (`[0, 1, 2, 3, 4, 5]`), the rows `band_range` tests when the configuration names none.
+`ccdcpp.Input` says which row of `spectral` plays which role (`roles`, one per row; `ccdcpp.ROLES` lists them). The default is the Landsat layout, seven bands in the order blue, green, red, nir, swir1, swir2, thermal. Every row is fitted and reported, so results have one band per row, in row order. `"green"` is required (the green median filter reads it); without `"thermal"` the thermal transform and range are skipped.
 
-The configuration names its bands by role (the shared `detection_bands`, green, red, nir, swir1 and swir2, whose count is the chi-squared degrees of freedom of the change and outlier thresholds; `window_screen__bands`, green and swir1), resolved to the input's rows when a run resolves the configuration, so one configuration fits any band order. An input that does not fit (wrong band count, an unknown or repeated role, no green row, thermal in the saturation rows, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs, as does a configuration naming a role the input lacks.
+The configuration names its bands by role (the shared `detection_bands`, green, red, nir, swir1 and swir2, whose count is the chi-squared degrees of freedom of the change and outlier thresholds; `window_screen__bands`, green and swir1; `band_range`'s `bands`, `"reflective"` in `ccdc`: every row whose role is not thermal or other, in row order), resolved to the input's rows when a run resolves the configuration, so one configuration fits any band order. An input that does not fit (wrong band count, an unknown or repeated role, no green row, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs, as does a configuration naming a role the input lacks.
 
 ## Input Unit Convention
 
@@ -458,7 +458,7 @@ The defaults are Collection 1 DN, as pyccd consumes it; the physical-unit preset
 
 | Step parameter | `ccdc` | |
 |-------|---------|---------|
-| `band_range` `min`, `max` | `0.0`, `1.0` (reflectance) | the saturation range, on the input's `saturation_bands` |
+| `band_range` `bands`, `min`, `max` | `"reflective"`, `0.0`, `1.0` (reflectance) | the saturation range, on every row whose role is not thermal or other |
 | `thermal_range` `min`, `max` | `-93.2`, `70.7` (degrees Celsius) | the thermal range, on the `"thermal"` row |
 | `*_inclusive` | `False` | whether a value equal to a bound is kept |
 | `green_median` `offset`, `scope` | `0.04` (reflectance), `"stat_window"` | the InsufficientClear green median filter |
@@ -565,7 +565,7 @@ A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises
 
 ## Sensor Profiles
 
-A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the saturation bands by role, the units, the thermal transform, the value a saturated observation holds and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `input=` takes one wherever it takes a `ccdcpp.Input`.
+A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the units, the thermal transform, the value a saturated observation holds and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `input=` takes one wherever it takes a `ccdcpp.Input`.
 
 - `profile.input()` is its `ccdcpp.Input`, the QA table included, built once per profile and shared (copy it before changing it).
 - `spectral` is checked against the profile's band count (`ValueError`), and only the count. `band_names=` (keyword only, only with a profile) names the rows as the caller holds them; a stack in another order then raises `ValueError` naming the first row that differs, before anything runs. A Sentinel-2 store that keeps B08 with the 10 m bands is refused by `sentinel2_l2a()` this way rather than having B08 read as red edge 1.
@@ -627,7 +627,6 @@ def landsat_oli_c2():
         name="landsat_oli_c2",
         band_names=("SR_B1", "SR_B2", "SR_B3", "SR_B4", "SR_B5", "SR_B6", "SR_B7", "ST_B10"),
         roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"),
-        saturation=("coastal", "blue", "green", "red", "nir", "swir1", "swir2"),
         units=REFLECTANCE,
         thermal=CELSIUS_HUNDREDTHS,
         qa_table_builder="landsat_c2_qa_pixel",
@@ -643,10 +642,10 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 8 [2, 3, 4, 5, 6] 7
 ```
 
-- **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no band list can name them. The saturation list keeps the order the profile gives.
+- **Roles**: `blue`, `green`, `red`, `nir`, `swir1`, `swir2`, `thermal`, `coastal`, `red_edge_1`, `red_edge_2`, `red_edge_3`, `nir_broad` and `other` (`ccdcpp.ROLES`). `nir` is the 865 nm band (TM/ETM+ band 4, OLI band 5, Sentinel-2 B8A); the broad 842 nm B08 is `nir_broad`. Each role but `other` names at most one band; `other` bands are fitted and reported but no band list can name them.
 - **Units and thermal**: `units` is a `ccdcpp.Units` (`reflectance_unit`, `offset`; `ccdcpp.DN` and `ccdcpp.REFLECTANCE`), `thermal` a `ccdcpp.Thermal` (`scale`, `offset`, `unit`; `ccdcpp.KELVIN_TENTHS`, `ccdcpp.CELSIUS_HUNDREDTHS`) or `None`, `saturated` the value a saturated observation holds or `None`.
 - **QA**: `qa_table_builder`, a `ccdcpp.qa_tables` builder name or `None` for codes; `qa_table_options`, keyword arguments for it of exactly the types `ccdcpp.QA_TABLE_OPTIONS` lists.
-- A profile that breaks a layout rule (an unknown or repeated role, a saturation role the profile lacks, no green band, thermal in the saturation list, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
+- A profile that breaks a layout rule (an unknown or repeated role, no green band, a thermal band without `thermal=`) raises `ValueError` when it is constructed.
 
 ## Preprocessing
 
@@ -657,7 +656,7 @@ Before a procedure fits a pixel it builds the processing mask, the observations 
 | `keep_qa` (`KeepQa(codes)`) | keep only observations whose QA code is in `codes` (names: `ccdcpp.QA_CODE_NAMES`, or ints) |
 | `add_qa` (`AddQa(codes)`) | also keep every observation whose code is in `codes`; must be followed by `dedupe` |
 | `thermal_range` (`ThermalRange(min, max, inclusive)`) | keep only observations whose thermal value is in the range, degrees Celsius; skipped without a thermal row |
-| `band_range` (`BandRange(bands, min, max, inclusive)`) | keep only observations on which every band (by role; none: the input's `saturation_bands`) is in the range, reflectance, tested in order |
+| `band_range` (`BandRange(bands, min, max, inclusive)`) | keep only observations on which every band (roles, tested in order, or `"reflective"`, the default: every row whose role is not thermal or other) is in the range, reflectance; an empty list is refused |
 | `green_median` (`GreenMedian(offset, scope)`) | drop observations at or above the median green over the kept observations dated up to the shared `stat_ord`, plus `offset` (reflectance), at the dates `scope` names |
 | `dedupe` (`Dedupe()`) | keep the first kept observation of each date |
 

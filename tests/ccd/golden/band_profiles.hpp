@@ -74,8 +74,16 @@ inline ccd::Input s2_layout()
     ccd::Input h;
     h.roles = {"blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
                "nir", "other", "swir1", "swir2"};
-    h.saturation_bands = band_list(iota(10));
     return h;
+}
+
+// `config` with band_range testing every row of the S2 layout, its "other"
+// row 7 too (by row: no role names it).
+inline ccd::config::Config s2_config(const ccd::config::Config& config)
+{
+    std::vector<ccd::index_t> rows = iota(10);
+    return golden::with_steps(config, "band_range", "bands",
+                              ccd::config::bands(ccd::BandList(rows)));
 }
 
 // The default configuration's detection bands (green, red, nir, swir1,
@@ -85,13 +93,12 @@ inline std::vector<Profile> profiles()
     std::vector<Profile> out;
 
     // Sentinel-2-like: 10 bands, no thermal.
-    out.push_back({"s2_b10", S2_SPECS, s2_layout(), golden::pyccd()});
+    out.push_back({"s2_b10", S2_SPECS, s2_layout(), s2_config(golden::pyccd())});
 
     // HLS L30-like: coastal, blue, green, red, nir, swir1, swir2, thermal.
     {
         ccd::Input h;
         h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
-        h.saturation_bands = band_list(iota(7));
         out.push_back({"hls_l30_b8",
             {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, golden::pyccd()});
     }
@@ -100,7 +107,6 @@ inline std::vector<Profile> profiles()
     {
         ccd::Input h;
         h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2"};
-        h.saturation_bands = band_list(iota(7));
         out.push_back({"hls_b7",
             {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, golden::pyccd()});
     }
@@ -112,7 +118,7 @@ inline std::vector<Profile> profiles()
             golden::pyccd(), "detection_bands",
             ccd::config::roles({"green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
                                 "swir1", "swir2"}));
-        out.push_back({"s2_b10_df8", S2_SPECS, s2_layout(), c});
+        out.push_back({"s2_b10_df8", S2_SPECS, s2_layout(), s2_config(c)});
 
     }
 

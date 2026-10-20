@@ -81,18 +81,14 @@ struct Input
     // thermal transform and filter are skipped.
     //
     // The configuration names bands by role (its detection bands, Tmask's
-    // bands), resolved to rows through this list, so one configuration fits
-    // any band order.
+    // bands, band_range's), or band_range's as "reflective", every row whose
+    // role is not "thermal" or "other", in row order; either resolves to
+    // rows through this list, so one configuration fits any band order.
     //
     // The default is the Landsat layout: blue, green, red, nir, swir1,
     // swir2, thermal.
     //--------------------------------------------------------------------------
     std::vector<std::string> roles = {"blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
-
-    // The rows a saturated value can appear in, in order: the rows
-    // band_range tests when the configuration names none. May be empty; must
-    // not hold the thermal row.
-    BandList saturation_bands = {0, 1, 2, 3, 4, 5};
 
     //--------------------------------------------------------------------------
     // Units

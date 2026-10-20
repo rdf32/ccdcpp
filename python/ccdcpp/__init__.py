@@ -21,6 +21,7 @@ from .ccdcpp import Input
 from .preprocess import (
     PROCEDURES,
     QA_CODE_NAMES,
+    REFLECTIVE,
     AddQa,
     BandRange,
     Dedupe,

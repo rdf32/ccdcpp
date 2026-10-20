@@ -25,7 +25,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   data: the QA codes (`qa_fill`, ...), the QA table that decodes raw QA (`qa_table`, which
   replaces every `qa_table=` argument and `RunSpec::qa_table`; a `QaTable` is immutable and
   digests its codes once), a role per row (`roles`, replacing `NUM_BANDS` and the `*_IDX`
-  fields), `saturation_bands`, `reflectance_unit` (Collection-1 DN 10000, reflectance 1), the
+  fields), `reflectance_unit` (Collection-1 DN 10000, reflectance 1), the
   thermal transform (`thermal_scale`, `thermal_offset`) and `saturated` (the value a saturated
   observation holds; 20000 by default, `None` for none). `CLEAR_OBSERVATION_THRESHOLD`, which
   nothing read, is gone. Every algorithm field of 0.10.0 (`MEOW_SIZE`, `PEEK_SIZE`, ...,
@@ -47,10 +47,10 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   transform and its steps (`keep_qa`, `add_qa`, `thermal_range` in degrees Celsius,
   `band_range` in reflectance, `green_median` with its offset and scope, `dedupe`). The input's
   `REFL_*`, `THERM_*`, `MEDIAN_GREEN_FILTER` and `GREEN_FILTER_SCOPE` are those steps'
-  parameters. `preprocess=`, `RunSpec::plan`, `default_plan()` and `validate_plan()` are gone;
+  parameters, and `SATURATION_BANDS` is `band_range`'s `bands`: roles, or `"reflective"` (the
+  "ccdc" value), every row whose role is not thermal or other, in row order. `preprocess=`, `RunSpec::plan`, `default_plan()` and `validate_plan()` are gone;
   `plan_of(config, input)` (C++ and Python) returns the resolved plan for inspection.
-- **Profiles describe the data only**: a `SensorProfile` holds band names and roles, the
-  saturation bands, `units` (`reflectance_unit`), `thermal` (`scale`, `offset`), `saturated`
+- **Profiles describe the data only**: a `SensorProfile` holds band names and roles, `units` (`reflectance_unit`), `thermal` (`scale`, `offset`), `saturated`
   and the QA table builder. `profile.input()` replaces `profile.options()` and carries the QA
   table (`profile.qa_table()` is gone); `config()`, `alpha`, `coef_floor`, `detection`,
   `tmask`, `cadence`, `stat_ord`, `green_filter_scope`, `preprocess` and the bounds of `Units`

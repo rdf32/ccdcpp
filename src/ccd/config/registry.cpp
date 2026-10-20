@@ -51,8 +51,8 @@ std::optional<double> number_of(const Value& value)
 // `value` of a field in `unit`, as the input holds it (Unit): a reflectance
 // level times input->reflectance_unit plus input->reflectance_offset, a
 // reflectance difference times input->reflectance_unit, degrees Celsius in
-// the thermal row's unit (input->thermal_unit), a band list by role as the
-// input's rows, QA code names as its codes. Without an input (a check), the
+// the thermal row's unit (input->thermal_unit), a band list by role or
+// REFLECTIVE as the input's rows, QA code names as its codes. Without an input (a check), the
 // value as written, and none for a list by name once its names are known
 // ones. `at` names the field in messages.
 std::optional<Value> convert(Unit unit, const Value& value, const std::string& at,
@@ -111,9 +111,25 @@ std::optional<Value> convert(Unit unit, const Value& value, const std::string& a
     }
     if (unit == Unit::Bands)
     {
+        if (const auto* selector = std::get_if<std::string>(&value))
+        {
+            if (*selector != REFLECTIVE)
+                throw std::invalid_argument(at + " is '" + *selector +
+                                            "'; a band list is roles, rows or \"" +
+                                            REFLECTIVE + "\"");
+            if (!input)
+                return std::nullopt;
+            std::vector<std::int64_t> rows;
+            for (index_t row = 0; row < input->bands(); ++row)
+                if (input->roles[row] != "thermal" && input->roles[row] != "other")
+                    rows.push_back(static_cast<std::int64_t>(row));
+            return Value(std::move(rows));
+        }
         const auto* roles = std::get_if<std::vector<std::string>>(&value);
         if (!roles)
             return value;
+        if (roles->empty())
+            return Value(std::vector<std::int64_t>{});
         std::vector<std::int64_t> rows;
         for (const std::string& role : *roles)
         {
@@ -177,6 +193,8 @@ index_t resolve_shared(const Values& given, const Input* input, Shared& shared)
     }
     apply(schema, values, shared, "shared");
 
+    if (std::holds_alternative<std::string>(merged.at("detection_bands")))
+        throw std::invalid_argument("shared value 'detection_bands' is a list of roles or rows");
     const index_t detection = list_size(merged.at("detection_bands"));
     if (detection == 0)
         throw std::invalid_argument("shared value 'detection_bands' is empty");

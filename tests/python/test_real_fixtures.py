@@ -290,10 +290,10 @@ class Findings(unittest.TestCase):
                 self.assertEqual(int(coastal_only.sum()), count)
                 self.assertFalse(out["processing_mask"][coastal_only].any())
                 profile = getattr(presets, preset)()
-                unscreened = dataclasses.replace(
-                    profile, saturation=tuple(r for r in profile.saturation if r != "coastal"))
+                unscreened = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=[
+                    r for r in profile.roles if r not in ("coastal", "thermal", "other")])
                 other = ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                                      input=unscreened, band_names=names)
+                                      input=profile, config=unscreened, band_names=names)
                 self.assertNotEqual(as_stored(other), as_stored(out))
 
     def test_s2_store_order_is_refused(self):

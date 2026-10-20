@@ -159,7 +159,6 @@ ccd::Input ten_band_layout()
     ccd::Input h;
     h.roles = {"blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
                "nir", "other", "swir1", "swir2"};
-    h.saturation_bands = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     return h;
 }
 
@@ -202,19 +201,18 @@ TEST(Validation, LayoutRules)
         EXPECT_NO_THROW(ccd::validate(h, ccd::CCD_MAX_BANDS));
     }
 
-    // A row >= B, in each list: the input's, and the configuration's
-    // (against the input, when it is resolved).
+    // A row >= B, in each of the configuration's lists (against the input,
+    // when it is resolved).
     expect_config_error(
         golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({1, 2, 10})),
         ten_band_layout(), "shared value 'detection_bands'", "holds band 10; the input has 10 bands");
     expect_config_error(
         golden::with(golden::pyccd(), "window_screen", "bands", ccd::config::bands({1, 12})),
         ten_band_layout(), "window_screen 'tmask'", "holds band 12; the input has 10 bands");
-    {
-        auto h = ten_band_layout();
-        h.saturation_bands = {0, 31};
-        expect_layout_error(h, 10, "saturation_bands holds band 31; spectral has 10 bands");
-    }
+    expect_config_error(
+        golden::with_steps(golden::pyccd(), "band_range", "bands", ccd::config::bands({0, 31})),
+        ten_band_layout(), "preprocess standard step 2 'band_range' parameter 'bands'",
+        "holds band 31; the input has 10 bands");
 
     // Duplicates, in each list.
     expect_config_error(
@@ -223,24 +221,29 @@ TEST(Validation, LayoutRules)
     expect_config_error(
         golden::with(golden::pyccd(), "window_screen", "bands", ccd::config::bands({8, 8})),
         ten_band_layout(), "window_screen 'tmask'", "holds band 8 twice");
-    {
-        auto h = ten_band_layout();
-        h.saturation_bands = {0, 1, 0};
-        expect_layout_error(h, 10, "saturation_bands holds band 0 more than once");
-    }
+    expect_config_error(
+        golden::with_steps(golden::pyccd(), "band_range", "bands", ccd::config::bands({0, 1, 0})),
+        ten_band_layout(), "preprocess standard step 2 'band_range' parameter 'bands'",
+        "holds band 0 twice");
 
-    // Empty detection or tmask list; an empty saturation list is allowed.
+    // An empty list, in each.
     expect_config_error(
         golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({})),
         ten_band_layout(), "shared value 'detection_bands'", "is empty");
     expect_config_error(
         golden::with(golden::pyccd(), "window_screen", "bands", ccd::config::bands({})),
         ten_band_layout(), "window_screen 'tmask'", "is empty");
-    {
-        auto h = ten_band_layout();
-        h.saturation_bands = {};
-        EXPECT_NO_THROW(ccd::validate(h, 10));
-    }
+    for (const ccd::config::Value& empty : {ccd::config::bands({}), ccd::config::roles({})})
+        expect_config_error(golden::with_steps(golden::pyccd(), "band_range", "bands", empty),
+                            ten_band_layout(), "preprocess standard step 2 'band_range'",
+                            "parameter 'bands' is empty");
+
+    // band_range's one selector is "reflective".
+    expect_config_error(
+        golden::with_steps(golden::pyccd(), "band_range", "bands",
+                           ccd::config::Value(std::string("optical"))),
+        ten_band_layout(), "preprocess standard step 2 'band_range' parameter 'bands'",
+        "is 'optical'; a band list is roles, rows or \"reflective\"");
 
     // Roles: green required, each known, none but "other" twice.
     {
@@ -257,23 +260,6 @@ TEST(Validation, LayoutRules)
         auto h = ten_band_layout();
         h.roles[7] = "green";
         expect_layout_error(h, 10, "roles holds 'green' more than once");
-    }
-
-    // The thermal row in saturation_bands.
-    {
-        auto h = ten_band_layout();
-        h.roles[9] = "thermal";
-        expect_layout_error(h, 10, "saturation_bands holds the thermal row (9)");
-
-        h.saturation_bands = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-        EXPECT_NO_THROW(ccd::validate(h, 10));
-    }
-
-    // The default layout's thermal band is outside its saturation list.
-    {
-        ccd::Input h;
-        h.saturation_bands = {0, 1, 2, 3, 4, 5, 6};
-        expect_layout_error(h, 7, "saturation_bands holds the thermal row (6)");
     }
 
     // A unit of reflectance is a positive number.

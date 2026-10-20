@@ -6,7 +6,7 @@ as today.
 
 - **`ccdcpp.Input` replaces `HarmonicOptions`** and holds the data's encoding only: the QA
   codes and the table that decodes raw QA (`qa_table`), a role per row (`roles`),
-  `saturation_bands`, `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
+  `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
   reflectance 1 and 0), the thermal
   transform (`thermal_scale`, `thermal_offset`, with `thermal_unit`, the value of 100 °C after
   it) and `saturated`. Every algorithm value of
@@ -44,7 +44,7 @@ as today.
 
 ### Profiles
 
-A `SensorProfile` describes the data: `name`, `band_names`, `roles`, `saturation`, `units`
+A `SensorProfile` describes the data: `name`, `band_names`, `roles`, `units`
 (`Units(reflectance_unit, offset)`), `thermal` (`Thermal(scale, offset, unit)`), `saturated`,
 `qa_table_builder` and `qa_table_options`. `profile.input()` is its `ccdcpp.Input`, QA table
 included.
@@ -114,7 +114,7 @@ probability.
 | `QA_FILL` ... `QA_OCCLUSION` | | `Input.qa_fill` ... `Input.qa_occlusion` |
 | `THERMAL_SCALE`, `THERMAL_OFFSET` | 10, -27315 | `Input.thermal_scale`, `Input.thermal_offset` |
 | `NUM_BANDS`, `*_IDX` | | `Input.roles` (one role per row) |
-| `SATURATION_BANDS` | [0..5] | `Input.saturation_bands` |
+| `SATURATION_BANDS` | [0..5] | `band_range`'s `bands`: `"reflective"` (every row but thermal and other) or roles |
 | `CLEAR_OBSERVATION_THRESHOLD` | | none (nothing read it) |
 | `REFL_MIN`, `REFL_MAX` and their flags | 0, 10000 | `band_range`'s `min`, `max` (reflectance: 0, 1) and flags |
 | `THERM_MIN`, `THERM_MAX` and their flags | -9320, 7070 | `thermal_range`'s `min`, `max` (degrees Celsius: -93.2, 70.7) and flags |

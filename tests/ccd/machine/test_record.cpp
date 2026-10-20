@@ -351,7 +351,6 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         {"qa_snow", [](auto& h) { h.qa_snow = 7; }},
         {"qa_occlusion", [](auto& h) { h.qa_occlusion = 11; }},
         {"roles", [](auto& h) { h.roles[0] = "coastal"; }},
-        {"saturation_bands", [](auto& h) { h.saturation_bands = {0, 1, 2, 3, 4}; }},
         {"reflectance_unit", [](auto& h) { h.reflectance_unit = 1.0; }},
         {"reflectance_offset", [](auto& h) { h.reflectance_offset = 0.5; }},
         {"saturated", [](auto& h) { h.saturated = 65535.0; }},
@@ -467,7 +466,11 @@ TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)
                         else if constexpr (std::is_same_v<T, double>)
                             return ccd::config::real(v + 0.5);
                         else if constexpr (std::is_same_v<T, std::string>)
+                        {
+                            if (v == ccd::config::REFLECTIVE)
+                                return ccd::config::roles({"blue", "green"});
                             return std::string(v == "all" ? "off" : "all");
+                        }
                         else if constexpr (std::is_same_v<T, std::vector<std::string>>)
                         {
                             v.push_back("cloud");
@@ -513,7 +516,7 @@ TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)
 // struct of the plan needs one.
 TEST(OptionsDigest, TheInputIsTheOneItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::Input), 152u);
+    EXPECT_EQ(sizeof(ccd::Input), 112u);
 }
 
 //------------------------------------------------------------------------------

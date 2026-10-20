@@ -17,32 +17,6 @@ std::string count_text(index_t bands)
     return "spectral has " + std::to_string(bands) + " bands";
 }
 
-// `name` holds only indices below `bands`, each once.
-void validate_list(const char* name, const BandList& list, index_t bands)
-{
-    for (index_t i = 0; i < list.size(); ++i)
-    {
-        if (list[i] >= bands)
-        {
-            throw std::invalid_argument(
-                std::string(name) + " holds band " + std::to_string(list[i]) +
-                "; " + count_text(bands)
-            );
-        }
-
-        for (index_t j = 0; j < i; ++j)
-        {
-            if (list[j] == list[i])
-            {
-                throw std::invalid_argument(
-                    std::string(name) + " holds band " +
-                    std::to_string(list[i]) + " more than once"
-                );
-            }
-        }
-    }
-}
-
 } // namespace
 
 void validate(const Input& input, index_t bands)
@@ -87,17 +61,6 @@ void validate(const Input& input, index_t bands)
     {
         throw std::invalid_argument(
             "roles has no 'green'; the green median filter needs a green band"
-        );
-    }
-
-    validate_list("saturation_bands", input.saturation_bands, bands);
-
-    const index_t thermal = input.index("thermal");
-    if (thermal != NO_BAND && input.saturation_bands.contains(thermal))
-    {
-        throw std::invalid_argument(
-            "saturation_bands holds the thermal row (" + std::to_string(thermal) +
-            "); the thermal band has its own bounds"
         );
     }
 

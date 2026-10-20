@@ -380,15 +380,17 @@ namespace
 ccd::Input landsat_layout(ccd::Input h)
 {
     h.roles = {"blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
-    h.saturation_bands = band_list({0, 1, 2, 3, 4, 5});
     return h;
 }
 
 ccd::config::Config by_rows()
 {
-    return golden::with(
-        golden::with_shared(golden::pyccd(), "detection_bands", ccd::config::bands({1, 2, 3, 4, 5})),
-        "window_screen", "bands", ccd::config::bands({1, 4}));
+    return golden::with_steps(
+        golden::with(
+            golden::with_shared(golden::pyccd(), "detection_bands",
+                                ccd::config::bands({1, 2, 3, 4, 5})),
+            "window_screen", "bands", ccd::config::bands({1, 4})),
+        "band_range", "bands", ccd::config::bands({0, 1, 2, 3, 4, 5}));
 }
 
 } // namespace
@@ -414,24 +416,32 @@ TEST(Bands, GenericLayoutEqualsDefault)
 // Row r of the permuted input holds row perm[r] of the original, and its
 // role. The configuration's lists, by role, follow their bands, and each
 // keeps its order of roles, so the detection sums run over the same bands in
-// the same order; the saturation list is remapped likewise. The fits come
-// back in the permuted row order; put back, they are bit-identical.
+// the same order; band_range's "reflective" is the same rows in the permuted
+// row order (its test does not depend on the order), and a list by row is
+// remapped. The fits come back in the permuted row order; put back, they are
+// bit-identical.
 //==============================================================================
 
 namespace
 {
 
+// `config` with every band_range's list by row remapped through `inv`.
+ccd::config::Config permute_rows(ccd::config::Config config, const std::vector<ccd::index_t>& inv)
+{
+    for (auto& [procedure, chain] : config.preprocess)
+        for (auto& step : chain.steps)
+            if (step.step == "band_range")
+                if (auto* rows = std::get_if<std::vector<std::int64_t>>(&step.params.at("bands")))
+                    for (std::int64_t& row : *rows)
+                        row = static_cast<std::int64_t>(inv[static_cast<std::size_t>(row)]);
+    return config;
+}
+
 ccd::Input permute_layout(
     ccd::Input h,
-    const std::vector<ccd::index_t>& perm,
-    const std::vector<ccd::index_t>& inv
+    const std::vector<ccd::index_t>& perm
 )
 {
-    ccd::BandList saturation;
-    for (const ccd::index_t b : h.saturation_bands)
-        saturation.push_back(inv[b]);
-    h.saturation_bands = saturation;
-
     std::vector<std::string> roles(perm.size());
     for (ccd::index_t r = 0; r < perm.size(); ++r)
         roles[r] = h.roles[perm[r]];
@@ -453,11 +463,11 @@ void expect_permutation_invariant(
         inv[perm[r]] = r;
 
     const Series permuted = take_rows(s, perm);
-    const ccd::Input hp = permute_layout(h, perm, inv);
+    const ccd::Input hp = permute_layout(h, perm);
 
     // The same configuration: its bands, by role, are the permuted rows.
     EXPECT_EQ(
-        dump_series(permuted, hp, config,
+        dump_series(permuted, hp, permute_rows(config, inv),
 
             [&](const ccd::FitResult& r) { return select_bands(r, inv); }),
         dump_series(s, h, config));

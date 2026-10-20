@@ -34,8 +34,6 @@ namespace ccd
 //   * a role is not one of ROLES, or a role other than "other" is held
 //     twice;
 //   * the input has no "green" row;
-//   * saturation_bands holds a row not below `bands`, holds one twice, or
-//     holds the "thermal" row;
 //   * reflectance_unit or thermal_unit is not a positive number, or
 //     reflectance_offset is not a finite one.
 //

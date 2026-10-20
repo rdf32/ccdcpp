@@ -153,7 +153,6 @@ def ten_band_layout():
     bands 1 and 8."""
     h = ccdcpp.Input()
     h.roles = TEN_ROLES
-    h.saturation_bands = list(range(10))
     return h
 
 
@@ -180,7 +179,9 @@ class BandLayout(unittest.TestCase):
                          ["green", "swir1"])
         self.assertEqual(resolved()["shared"]["detection_bands"], [1, 2, 3, 4, 5])
         self.assertEqual(resolved()["stages"]["window_screen"]["params"]["bands"], [1, 4])
-        self.assertEqual(h.saturation_bands, [0, 1, 2, 3, 4, 5])
+        band_range = [s for s in preset()["preprocess"]["standard"]["steps"]
+                      if s["step"] == "band_range"]
+        self.assertEqual([s["bands"] for s in band_range], ["reflective"])
         # The millworks nlcd plugin checks these.
         self.assertEqual([h.index(r) for r in h.roles], [0, 1, 2, 3, 4, 5, 6])
         self.assertEqual(h.index("coastal"), ccdcpp.NO_BAND)
@@ -201,32 +202,23 @@ class BandLayout(unittest.TestCase):
                 self.assertNotIn("Informational", getattr(ccdcpp.Input, name).__doc__)
 
     def test_lists_keep_their_order(self):
-        h = ccdcpp.Input()
-        h.saturation_bands = (4, 1)
-        self.assertEqual(h.saturation_bands, [4, 1])
-        h.saturation_bands = []
-        self.assertEqual(h.saturation_bands, [])
         cfg = preset(shared__detection_bands=[5, 1, 3])
         self.assertEqual(resolved(cfg)["shared"]["detection_bands"], [5, 1, 3])
         cfg = preset(shared__detection_bands=["swir2", "green", "nir"])
         self.assertEqual(resolved(cfg)["shared"]["detection_bands"], [5, 1, 3])
 
-    def test_list_setter_rejects_what_it_cannot_hold(self):
-        h = ccdcpp.Input()
-        with self.assertRaises(ValueError):
-            h.saturation_bands = [1, 32]
-        with self.assertRaises(ValueError):
-            h.saturation_bands = [0] * 33
-        with self.assertRaises(TypeError):
-            h.saturation_bands = [1, -1]
-        self.assertEqual(h.saturation_bands, [0, 1, 2, 3, 4, 5])
+    def test_band_lists_refuse_what_they_cannot_hold(self):
+        for bands in ([1, 32], [0] * 33, [1, -1]):
+            with self.subTest(bands=bands):
+                with self.assertRaises(ValueError):
+                    resolved(preset(preprocess__band_range__bands=bands))
 
     def test_explicit_landsat_layout_equals_default(self):
         h = ccdcpp.Input()
         h.roles = ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"]
-        h.saturation_bands = [0, 1, 2, 3, 4, 5]
         args = noisy(7, 120)
-        by_rows = preset(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5])
+        by_rows = preset(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5],
+                         preprocess__band_range__bands=[0, 1, 2, 3, 4, 5])
         self.assertEqual(
             repr(ccdcpp.detect(*args, input=h, config=by_rows)),
             repr(ccdcpp.detect(*args, **options())))
@@ -290,12 +282,9 @@ class LayoutValidation(unittest.TestCase):
         cases = [
             (self.broken(), 7, "spectral has 7 bands; the input has 10 (a row per role)"),
             (self.broken(roles=TEN_ROLES + ["other"] * 23), 33, "ccdcpp accepts at most 32"),
-            (self.broken(saturation_bands=[0, 31]), 10, "saturation_bands holds band 31"),
-            (self.broken(saturation_bands=[3, 3]), 10, "saturation_bands holds band 3 more than once"),
             (self.broken(roles=roles(r1="other")), 10, "roles has no 'green'"),
             (self.broken(roles=roles(r7="nir8a")), 10, "roles holds 'nir8a', which is not a role"),
             (self.broken(roles=roles(r7="red")), 10, "roles holds 'red' more than once"),
-            (self.broken(roles=roles(r9="thermal")), 10, "saturation_bands holds the thermal row (9)"),
             (self.broken(reflectance_unit=0.0), 10, "reflectance_unit is 0; it must be a positive number"),
         ]
         for h, bands, expected in cases:
@@ -320,6 +309,17 @@ class LayoutValidation(unittest.TestCase):
                                 ([], "is empty")):
             self.assert_rejected(self.broken(), 10, tmask + expected,
                                  config=ten_band_config(window_screen__bands=bands))
+
+        # band_range's bands are its parameter, checked against the input's
+        # bands.
+        band = "preprocess standard step 2 'band_range' parameter 'bands' "
+        for bands, expected in (([0, 31], "holds band 31; the input has 10 bands"),
+                                ([3, 3], "holds band 3 twice"),
+                                ([], "is empty"),
+                                ("optical", "is 'optical'; a band list is roles, rows or "
+                                            "\"reflective\"")):
+            self.assert_rejected(self.broken(), 10, band + expected,
+                                 config=ten_band_config(preprocess__band_range__bands=bands))
 
     def test_cadence_rules(self):
         # The cadence parameters are the configuration's: the schemas refuse
@@ -349,10 +349,6 @@ class LayoutValidation(unittest.TestCase):
         for changes, expected in cases:
             self.assert_rejected(ccdcpp.Input(), 7, expected, config=preset(**changes))
 
-    def test_empty_saturation_list_is_allowed(self):
-        h = self.broken(saturation_bands=[])
-        ccdcpp.detect(*inputs(10, 40), input=h, config=ten_band_config())
-
 
 class CadenceParameters(unittest.TestCase):
     """The configuration's cadence and change-probability parameters, and
@@ -381,7 +377,7 @@ class CadenceParameters(unittest.TestCase):
 
     # The Input's fields: the data's band layout, QA codes and units.
     INPUT_FIELDS = {
-        "roles", "saturation_bands", "bands", "index", "digest", "reflectance_unit",
+        "roles", "bands", "index", "digest", "reflectance_unit",
         "reflectance_offset", "saturated",
         "qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud",
         "qa_cirrus1", "qa_cirrus2", "qa_occlusion", "qa_table",

@@ -125,12 +125,37 @@ bool flag(const ccd::config::Values& values, const char* name)
 // independently of the registry's resolution.
 struct Bounds
 {
+    ccd::BandList bands;   // band_range's rows
     pp::Range reflectance;
     pp::Range thermal;
     scalar_t green_offset;
     ccd::GreenFilterScope scope;
     std::int64_t stat_ord;
 };
+
+// band_range's bands as rows of `input`: "reflective" is every row whose
+// role is not thermal or other, in row order; roles are their rows.
+ccd::BandList band_rows(const ccd::config::Value& bands, const ccd::Input& input)
+{
+    ccd::BandList rows;
+    if (std::holds_alternative<std::string>(bands))
+    {
+        for (index_t r = 0; r < input.bands(); ++r)
+            if (input.roles[r] != "thermal" && input.roles[r] != "other")
+                rows.push_back(r);
+    }
+    else if (const auto* roles = std::get_if<std::vector<std::string>>(&bands))
+    {
+        for (const std::string& role : *roles)
+            rows.push_back(input.index(role));
+    }
+    else
+    {
+        for (const std::int64_t r : std::get<std::vector<std::int64_t>>(bands))
+            rows.push_back(static_cast<index_t>(r));
+    }
+    return rows;
+}
 
 Bounds bounds_of(const Options& options)
 {
@@ -143,6 +168,7 @@ Bounds bounds_of(const Options& options)
     const scalar_t tu = options.input.thermal_unit;
     const auto celsius = [tu](double c) { return c * 100.0 * tu / 10000.0; };
     return {
+        band_rows(band.at("bands"), options.input),
         {{number(band, "min") * u, flag(band, "min_inclusive")},
          {number(band, "max") * u, flag(band, "max_inclusive")}},
         {{celsius(number(thermal, "min")), flag(thermal, "min_inclusive")},
@@ -184,7 +210,7 @@ ccd::ProcessingMask reference_standard(
 
     ccd::filter::apply_saturation_filter(
         px.spectral,
-        options.input.saturation_bands,
+        bounds_of(options).bands,
         bounds_of(options).reflectance,
         mask
     );
@@ -575,11 +601,13 @@ Series random_series(golden::Rng& rng, const Unit& unit)
     }
     s.h.config = golden::with_shared(s.h.config, "stat_ord", ccd::config::integer(stat_ord));
 
-    // Some series have no thermal band to test, or no saturation bands.
+    // Some series have no thermal band to test, or band_range on two bands,
+    // out of row order.
     if (rng.uniform() < 0.1)
         h.roles[6] = "other";
     if (rng.uniform() < 0.05)
-        h.saturation_bands = ccd::BandList{};
+        s.h.config = golden::with_steps(s.h.config, "band_range", "bands",
+                                        ccd::config::roles({"swir2", "blue"}));
 
     return s;
 }
@@ -704,7 +732,7 @@ std::string fields(const pp::PreprocessPlan& plan)
 
 // pyccd's plan of `input` written out with the Step constructors: the
 // thermal range (therm_lo, therm_hi) on the thermal row when it has one, the
-// reflectance range (0, refl_hi) on its saturation rows, the green median
+// reflectance range (0, refl_hi) on its reflective rows, the green median
 // `green` above, up to stat_ord 736694, Standard transformed by `transform`.
 pp::PreprocessPlan pyccds_plan(const ccd::Input& input, double therm_lo, double therm_hi,
                                double refl_hi, double green,
@@ -715,7 +743,8 @@ pp::PreprocessPlan pyccds_plan(const ccd::Input& input, double therm_lo, double 
     if (input.index("thermal") != ccd::NO_BAND)
         common.push_back(pp::Step::thermal_range(input.index("thermal"),
                                                  {{therm_lo, false}, {therm_hi, false}}));
-    common.push_back(pp::Step::band_range(input.saturation_bands, {{0.0, false}, {refl_hi, false}}));
+    common.push_back(pp::Step::band_range(band_rows(ccd::config::Value(std::string("reflective")), input),
+                                          {{0.0, false}, {refl_hi, false}}));
     common.push_back(pp::Step::dedupe());
 
     pp::PreprocessPlan plan;
@@ -841,7 +870,7 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
     const ccd::config::Values thermal = {{"min", real(-93.2)}, {"max", real(70.7)},
                                          {"min_inclusive", flag(false)},
                                          {"max_inclusive", flag(false)}};
-    const ccd::config::Values band = {{"bands", ccd::config::Value(std::vector<std::string>{})},
+    const ccd::config::Values band = {{"bands", ccd::config::Value(std::string("reflective"))},
                                       {"min", real(0.0)}, {"max", real(1.0)},
                                       {"min_inclusive", flag(false)},
                                       {"max_inclusive", flag(false)}};

@@ -100,7 +100,7 @@ class Plans(unittest.TestCase):
         # pyccd's DN bounds, exactly: -93.2 and 70.7 degrees Celsius, reflectance (0, 1).
         self.assertEqual((therm.band, therm.min, therm.max, therm.inclusive),
                          (6, -9320.0, 7070.0, (False, False)))
-        self.assertEqual((band.bands, band.min, band.max), (h.saturation_bands, 0.0, 10000.0))
+        self.assertEqual((band.bands, band.min, band.max), ([0, 1, 2, 3, 4, 5], 0.0, 10000.0))
         green = plan.insufficient_clear.chain[4]
         self.assertEqual((green.band, green.green_offset, green.max_date, green.scope),
                          (1, 400.0, ccdcpp.NO_STAT_CUTOFF, ccdcpp.GreenFilterScope.StatWindow))

@@ -83,19 +83,21 @@ struct ThermalRange
 };
 
 // band_range: keep only the observations on which every one of `bands`
-// lies within (min, max), in reflectance, the bands tested in order; no
-// bands (the default) are the input's saturation_bands.
+// lies within (min, max), in reflectance, the bands tested in order: roles,
+// rows, or "reflective" (the default), every row whose role is not thermal
+// or other, in row order. An empty list is refused.
 struct BandRange
 {
     struct Params
     {
-        BandList bands;
+        BandList bands = {0, 1, 2, 3, 4, 5};
         double min = 0.0;
         double max = 10000.0;
         bool min_inclusive = false;
         bool max_inclusive = false;
     };
     static const std::vector<config::Field<Params>>& schema();
+    static void validate(const Params& params);
     static std::optional<Step> make(const Params& params, const Input& input);
 };
 

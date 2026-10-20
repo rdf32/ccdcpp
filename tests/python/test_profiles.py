@@ -218,6 +218,13 @@ def strip_band_names(outs):
     }
 
 
+def band_range_rows(input, config="ccdc"):
+    """The rows the Standard chain's band_range step tests on ``input``."""
+    (step,) = [s for s in ccdcpp.plan_of(config, input).standard.chain
+               if s.kind == ccdcpp.StepKind.BandRange]
+    return step.bands
+
+
 def with_table(input, table):
     """A copy of ``input`` (a ccdcpp.Input) decoding its QA through ``table``."""
     h = copy.copy(input)
@@ -387,9 +394,6 @@ class Check(unittest.TestCase):
             (dict(roles=base.roles[:6] + ("nir_narrow",)), "unknown roles ['nir_narrow']"),
             (dict(roles=("blue", "other") + base.roles[2:]), "no 'green' band"),
             (dict(thermal=None), "a 'thermal' band and thermal= go together"),
-            (dict(saturation=("green", "coastal")), "saturation names 'coastal'"),
-            (dict(saturation=("green", "green")), "saturation repeats a role"),
-            (dict(saturation=("green", "thermal")), "saturation holds 'thermal'"),
             (dict(qa_table_builder="landsat_c3"), "no builder 'landsat_c3'"),
             (dict(band_names=tuple(map(str, range(33))), roles=("green",) + ("other",) * 32),
              "has 33 bands"),
@@ -400,11 +404,13 @@ class Check(unittest.TestCase):
                     dataclasses.replace(base, **change)
                 self.assertIn(expected, str(caught.exception))
         # An 'other' band is fitted, and no list can name it.
-        other = dict(roles=base.roles[:5] + ("other", "thermal"))
-        self.assertEqual(dataclasses.replace(base, **other, saturation=()).input().bands(), 7)
+        other = dataclasses.replace(base, roles=base.roles[:6] + ("other",), thermal=None)
+        self.assertEqual(other.input().bands(), 7)
+        self.assertEqual(band_range_rows(other), [0, 1, 2, 3, 4, 5])
         with self.assertRaises(ValueError) as caught:
-            dataclasses.replace(base, **other, saturation=("green", "other"))
-        self.assertIn("saturation names 'other'", str(caught.exception))
+            ccdcpp.plan_of(ccdcpp.config("ccdc").replace(
+                preprocess__band_range__bands=["green", "other"]), other)
+        self.assertIn("holds 'other', which no band list names", str(caught.exception))
 
 
 class Roles(unittest.TestCase):
@@ -420,7 +426,7 @@ class Roles(unittest.TestCase):
         h = p.input()
         self.assertEqual(p.index("nir_broad"), 6)
         self.assertEqual(h.index("nir"), 7)
-        self.assertIn(6, h.saturation_bands)
+        self.assertIn(6, band_range_rows(h))
         cfg = ccdcpp.config("ccdc").replace(
             shared__detection_bands=["green", "red", "nir_broad", "nir", "swir1", "swir2"])
         self.assertEqual(cfg.resolve(h)["shared"]["detection_bands"], [1, 2, 6, 7, 8, 9])
@@ -937,8 +943,6 @@ def ten_band_profile():
         band_names=("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"),
         roles=("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad",
                "nir", "swir1", "swir2"),
-        saturation=("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
-                    "nir_broad", "nir", "swir1", "swir2"),
         units=ccdcpp.REFLECTANCE,
         qa_table_builder="sentinel2_scl",
     )
@@ -1000,7 +1004,6 @@ class TenBand(unittest.TestCase):
         h = ccdcpp.Input()
         h.roles = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
                    "nir_broad", "nir", "swir1", "swir2"]
-        h.saturation_bands = list(range(10))
         h.reflectance_unit = 1.0
         h.saturated = None
         cfg = ccdcpp.config("ccdc").replace(
@@ -1126,11 +1129,11 @@ _MSI = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_b
 _HLS = ["coastal", "blue", "green", "red", "nir", "swir1", "swir2"]
 EXPECTED = {
     "hls_l30": dict(
-        PHYSICAL, roles=_HLS + ["thermal"], saturation_bands=[0, 1, 2, 3, 4, 5, 6],
+        PHYSICAL, roles=_HLS + ["thermal"],
         thermal_scale=1.0, thermal_offset=0.0, thermal_unit=1.0),
-    "hls_s30": dict(PHYSICAL, roles=["coastal"] + _MSI, saturation_bands=list(range(11))),
-    "hls": dict(PHYSICAL, roles=_HLS, saturation_bands=list(range(7))),
-    "sentinel2_l2a": dict(PHYSICAL, roles=_MSI, saturation_bands=list(range(10))),
+    "hls_s30": dict(PHYSICAL, roles=["coastal"] + _MSI),
+    "hls": dict(PHYSICAL, roles=_HLS),
+    "sentinel2_l2a": dict(PHYSICAL, roles=_MSI),
 }
 #: Each preset's detection rows, as "ccdc" resolves them on its input.
 DETECTION = {"hls_l30": [2, 3, 4, 5, 6], "hls_s30": [2, 3, 8, 9, 10], "hls": [2, 3, 4, 5, 6],
@@ -1194,6 +1197,23 @@ class SensorPresets(unittest.TestCase):
                                      name, (("exclude_high_aerosol", False),)))
                 np.testing.assert_array_equal(preset().input().qa_table.codes, table.codes)
 
+    def test_band_range_tests_the_rows_the_profiles_listed(self):
+        # Each shipped profile listed the rows a saturated value can appear
+        # in, in row order: its every row but thermal, which is what "ccdc"'s
+        # band_range tests ("reflective"), in every procedure.
+        listed = {"landsat_c1_dn": list(range(6)), "landsat_c1_physical": list(range(6)),
+                  "landsat_c2": list(range(6)), "hls_l30": list(range(7)),
+                  "hls_s30": list(range(11)), "hls": list(range(7)),
+                  "sentinel2_l2a": list(range(10))}
+        self.assertEqual(sorted(listed), sorted(presets.__all__))
+        for name, rows in listed.items():
+            with self.subTest(preset=name):
+                plan = ccdcpp.plan_of("ccdc", getattr(presets, name)())
+                for procedure in ccdcpp.PROCEDURES:
+                    steps = [s for s in getattr(plan, procedure).chain
+                             if s.kind == ccdcpp.StepKind.BandRange]
+                    self.assertEqual([s.bands for s in steps], [rows])
+
     def test_red_edge_and_broad_nir_are_fitted_not_detected(self):
         for preset in (presets.hls_s30, presets.sentinel2_l2a):
             with self.subTest(preset=preset.__name__):
@@ -1202,7 +1222,7 @@ class SensorPresets(unittest.TestCase):
                 detection = ccdcpp.config("ccdc").resolve(h)["shared"]["detection_bands"]
                 for role in ("red_edge_1", "red_edge_2", "red_edge_3", "nir_broad"):
                     self.assertNotIn(p.index(role), detection)
-                    self.assertIn(p.index(role), h.saturation_bands)
+                    self.assertIn(p.index(role), band_range_rows(h))
                 self.assertEqual(p.band_names[p.index("nir")], "B8A")
                 self.assertEqual(p.band_names[p.index("nir_broad")], "B08")
 

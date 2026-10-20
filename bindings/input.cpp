@@ -67,15 +67,6 @@ void bind_input(py::module_& m)
         "the band count every call must pass. \"green\" is required; without "
         "\"thermal\" the thermal transform and filter are skipped."
     )
-    .def_property(
-        "saturation_bands",
-        [](const ccd::Input& self) { return self.saturation_bands.to_vector(); },
-        [](ccd::Input& self, const std::vector<ccd::index_t>& bands)
-        { self.saturation_bands = ccd::BandList(bands); },
-        "The rows a saturated value can appear in, in order (default [0, 1, "
-        "2, 3, 4, 5]): the rows band_range tests when the configuration names "
-        "none. May be empty; must not hold the thermal row."
-    )
     .def("bands", &ccd::Input::bands, "The band count: one row per role.")
     .def("index", &ccd::Input::index, py::arg("role"),
          "The row of `role`, or ccdcpp.NO_BAND when the input has none.")

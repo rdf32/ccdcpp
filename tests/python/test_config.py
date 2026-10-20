@@ -190,7 +190,6 @@ class Replace(unittest.TestCase):
             ccdcpp.config().replace(refit__factor=0.0).check()
         three = ccdcpp.Input()
         three.roles = ["blue", "green", "red"]
-        three.saturation_bands = [0, 1, 2]
         with self.assertRaisesRegex(ValueError, "holds 'nir', which the input does not have; "
                                                 "its rows are blue, green, red"):
             ccdcpp.config().check(three)

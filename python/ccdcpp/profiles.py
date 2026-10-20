@@ -24,8 +24,6 @@ values are not validated, and ccdcpp.presets does not contain it::
                         "SR_B7", "ST_B10"),
             roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2",
                    "thermal"),
-            saturation=("coastal", "blue", "green", "red", "nir", "swir1",
-                        "swir2"),
             units=REFLECTANCE,
             thermal=CELSIUS_HUNDREDTHS,
             qa_table_builder="landsat_c2_qa_pixel",
@@ -132,11 +130,6 @@ class SensorProfile:
     roles
         One role from :data:`ROLES` per band, in the same order. ``"green"``
         is required; ``"thermal"`` requires ``thermal=``.
-    saturation
-        Role names: the bands a saturated value can appear in
-        (``Input.saturation_bands``, the rows the configuration's band_range
-        tests by default; may be empty, must not hold thermal), in the order
-        they are tested.
     units
         The reflective bands' units, a :class:`Units`.
     thermal
@@ -174,7 +167,6 @@ class SensorProfile:
     name: str
     band_names: Tuple[str, ...]
     roles: Tuple[str, ...]
-    saturation: Tuple[str, ...]
     units: Units
     thermal: Optional[Thermal] = None
     saturated: Optional[float] = None
@@ -182,7 +174,7 @@ class SensorProfile:
     qa_table_options: QaTableOptions = field(default=())
 
     def __post_init__(self):
-        for name in ("band_names", "roles", "saturation"):
+        for name in ("band_names", "roles"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
         if self.saturated is not None:
             object.__setattr__(self, "saturated", float(self.saturated))
@@ -212,16 +204,6 @@ class SensorProfile:
             self._fail("has no 'green' band; InsufficientClear's green filter reads it")
         if ("thermal" in self.roles) != (self.thermal is not None):
             self._fail("a 'thermal' band and thermal= go together")
-        for role in self.saturation:
-            if role == "other" or role not in self.roles:
-                self._fail(
-                    f"saturation names {role!r}, which is not a role of this "
-                    f"profile's bands {dict(zip(self.band_names, self.roles))}"
-                )
-        if len(set(self.saturation)) != len(self.saturation):
-            self._fail(f"saturation repeats a role: {self.saturation}")
-        if "thermal" in self.saturation:
-            self._fail("saturation holds 'thermal'; the thermal bounds test it")
         if self.qa_table_builder is not None and not callable(
             getattr(qa_tables, self.qa_table_builder, None)
         ):
@@ -302,8 +284,7 @@ class SensorProfile:
         """The ``ccdcpp.Input`` of this profile's data, built once per profile
         and shared: copy it (``copy.copy``) before changing it.
 
-        Roles are the profile's; ``saturation`` becomes row indices, in its
-        own order; ``qa_table`` is the ``ccdcpp.QaTable`` of
+        Roles are the profile's; ``qa_table`` is the ``ccdcpp.QaTable`` of
         ``qa_table_builder`` with ``qa_table_options``, built with the
         input's codes, or None for pre-classified uint8 codes. Every field
         the profile does not describe keeps its ``Input()`` default.
@@ -385,7 +366,6 @@ def _build_table(builder, codes, builder_options=()):
 def _input_of(profile):
     h = Input()
     h.roles = list(profile.roles)
-    h.saturation_bands = [profile.index(r) for r in profile.saturation]
     h.reflectance_unit = profile.units.reflectance_unit
     h.reflectance_offset = profile.units.offset
     h.saturated = profile.saturated

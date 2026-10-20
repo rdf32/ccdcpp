@@ -19,10 +19,13 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 __all__ = ["AddQa", "BandRange", "Dedupe", "GreenMedian", "KeepQa", "PROCEDURES", "Preprocess",
-           "ProcedureChain", "QA_CODE_NAMES", "ThermalRange"]
+           "ProcedureChain", "QA_CODE_NAMES", "REFLECTIVE", "ThermalRange"]
 
 #: The procedures of a configuration's preprocess section.
 PROCEDURES = ("standard", "snow", "insufficient_clear")
+
+#: The band list of every row whose role is not thermal or other, in row order.
+REFLECTIVE = "reflective"
 
 #: The QA code names a step takes; each is the ``ccdcpp.Input`` field ``qa_<name>``.
 QA_CODE_NAMES = ("fill", "clear", "water", "shadow", "snow", "cloud", "cirrus1", "cirrus2",
@@ -120,25 +123,30 @@ class ThermalRange:
 
 @dataclass(frozen=True)
 class BandRange:
-    """band_range: keep only the observations on which every band of ``bands`` (roles, in
-    order) lies in ``(min, max)``, reflectance; an inclusive end also keeps a value equal to
-    it. None: the input's ``saturation_bands``, 0 and 1, exclusive."""
+    """band_range: keep only the observations on which every band of ``bands`` lies in
+    ``(min, max)``, reflectance; an inclusive end also keeps a value equal to it. ``bands`` is
+    roles (or rows), tested in order, or ``"reflective"``: every row whose role is not thermal
+    or other, in row order. An empty list is refused. None: ``"reflective"``, 0 and 1,
+    exclusive."""
 
-    bands: Optional[Tuple[str, ...]] = None
+    bands: Optional[Union[str, Tuple[str, ...]]] = None
     min: Optional[float] = None
     max: Optional[float] = None
     inclusive: Optional[Tuple[bool, bool]] = None
 
     def __post_init__(self):
-        if self.bands is not None:
+        if self.bands is not None and self.bands != REFLECTIVE:
             bands = (self.bands,) if isinstance(self.bands, str) else tuple(self.bands)
+            if not bands:
+                raise ValueError(f"BandRange: bands is empty; name the bands tested, or "
+                                 f"{REFLECTIVE!r}")
             object.__setattr__(self, "bands", bands)
         object.__setattr__(self, "inclusive", _pair(self.inclusive, "inclusive"))
 
     def to_dict(self):
         out = _range("band_range", self.min, self.max, self.inclusive)
         if self.bands is not None:
-            out["bands"] = list(self.bands)
+            out["bands"] = self.bands if self.bands == REFLECTIVE else list(self.bands)
         return out
 
 

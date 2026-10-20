@@ -422,9 +422,19 @@ TEST(Registry, RolesAreTheInputsRows)
               (std::vector<std::int64_t>{4, 0}));
     EXPECT_NE(got.digest, r.resolve(golden::ccdc(), ccd::Input{}).digest);
 
+    // band_range's "reflective": every row but thermal and other, in row
+    // order; a list by role keeps its own order.
+    ccd::Input mixed;
+    mixed.roles = {"thermal", "swir1", "other", "green", "red", "nir", "swir2"};
+    const auto band_rows = [&](const ccd::config::Config& c)
+    { return golden::plan_of(c, mixed).standard.chain[2].bands; };
+    EXPECT_EQ(band_rows(golden::ccdc()), (ccd::BandList{1, 3, 4, 5, 6}));
+    EXPECT_EQ(band_rows(golden::with_steps(golden::ccdc(), "band_range", "bands",
+                                           ccd::config::roles({"red", "swir1"}))),
+              (ccd::BandList{4, 1}));
+
     ccd::Input four;
     four.roles = {"blue", "green", "red", "nir"};
-    four.saturation_bands = {0, 1, 2, 3};
     expect_refused([&] { r.resolve(golden::ccdc(), four); },
                    "shared value 'detection_bands' holds 'swir1', which the input does not have; "
                    "its rows are blue, green, red, nir");
@@ -1140,7 +1150,6 @@ TEST(Registry, BandListsAreCheckedAgainstTheInput)
 
     ccd::Input four;
     four.roles = {"blue", "green", "red", "nir"};
-    four.saturation_bands = {0, 1, 2, 3};
     tree.shared["detection_bands"] = ccd::config::bands({1, 2, 3});
     expect_refused([&] { r.resolve(tree, four); },
                    "window_screen 'tmask' parameter 'bands' holds band 4; the input has 4 bands");

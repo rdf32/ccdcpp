@@ -57,7 +57,6 @@ _BANDS = ("blue", "green", "red", "nir", "swir1", "swir2", "thermal")
 _LANDSAT = dict(
     band_names=_BANDS,
     roles=_BANDS,
-    saturation=("blue", "green", "red", "nir", "swir1", "swir2"),
 )
 
 
@@ -178,7 +177,6 @@ def hls_l30():
         name="hls_l30",
         band_names=("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10"),
         roles=("coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"),
-        saturation=("coastal", "blue", "green", "red", "nir", "swir1", "swir2"),
         thermal=CELSIUS_HUNDREDTHS,
         qa_table_builder="hls_fmask",
         **_PHYSICAL,
@@ -226,7 +224,6 @@ def hls_s30():
         name="hls_s30",
         band_names=("B01",) + _MSI_BANDS,
         roles=("coastal",) + _MSI_ROLES,
-        saturation=("coastal",) + _MSI_ROLES,
         qa_table_builder="hls_fmask",
         **_PHYSICAL,
     )
@@ -275,7 +272,6 @@ def hls():
         name="hls",
         band_names=_HLS_ROLES,
         roles=_HLS_ROLES,
-        saturation=_HLS_ROLES,
         qa_table_builder="hls_fmask",
         **_PHYSICAL,
     )
@@ -341,7 +337,6 @@ def sentinel2_l2a():
         name="sentinel2_l2a",
         band_names=_MSI_BANDS,
         roles=_MSI_ROLES,
-        saturation=_MSI_ROLES,
         qa_table_builder="sentinel2_scl",
         **_PHYSICAL,
     )
