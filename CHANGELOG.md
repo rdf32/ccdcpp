@@ -96,7 +96,8 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   supported element type (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`), dispatched
   once per call; a resume is an argument (`PixelResume`, `CubeResumeFrom`). `detect` returns
   a `PixelOutput` (result, record, status, header), `detect_cube` a `CubeOutput` (`CubeResult`'s
-  fields).
+  fields, the cube's shape and, with `masks`, every pixel's processing mask in one (H, W, T)
+  array that each pixel writes its mask into, `CubeOutput::masks`).
   Underneath, a `ccd::Run` is built once per call and a `ccd::Worker` per thread; `Run::pixel`
   is the per-pixel pipeline as named steps. Gone from `ccd.hpp`: `Recorded` and `Resumed` (both
   `PixelOutput`), `DetectScratch` (`Worker`), `options_digest()` (the header's `digest` is the

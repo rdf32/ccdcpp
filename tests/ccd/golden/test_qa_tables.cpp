@@ -155,7 +155,7 @@ std::string dump(const ccd::CubeOutput& cube)
         golden::dump_pixel(
             out,
             std::to_string(px.row) + "," + std::to_string(px.col),
-            px.result);
+            cube, px);
     return out;
 }
 

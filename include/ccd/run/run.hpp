@@ -89,9 +89,9 @@ using CubeQa = std::variant<
 //   record              also return each pixel's resume record and the
 //                       call's header
 //   masks               also return each pixel's processing mask (T bytes
-//                       per pixel), FitResult::mask; without it the mask is
-//                       dropped once the pixel is done and FitResult::mask
-//                       is empty
+//                       per pixel): detect's FitResult::mask, detect_cube's
+//                       CubeOutput::masks; without it the mask is dropped
+//                       once the pixel is done
 //   observer, observe   where the observed pixels report each step
 //                       (results/diagnostics.hpp): detect's pixel, or
 //                       detect_cube's pixels at the flat indices `observe`
@@ -187,6 +187,12 @@ struct CubeFailure
 // `pixels` and `failures` are in raster order (row-major over H x W),
 // independent of the thread count and schedule.
 //
+// With RunSpec::masks, `masks` holds every pixel's processing mask as one
+// (H, W, T) array, row-major: each pixel's T bytes are written into it as the
+// pixel finishes, and its PixelResult::result.mask stays empty, so the masks
+// take T bytes per pixel once. A failed pixel's are zeros. Without
+// RunSpec::masks `masks` is empty.
+//
 //==============================================================================
 
 struct CubeOutput
@@ -194,6 +200,21 @@ struct CubeOutput
     std::vector<PixelResult> pixels;
     std::vector<CubeFailure> failures;
     int threads = 0;
+
+    // The cube's shape: H, W and T.
+    index_t height = 0;
+    index_t width = 0;
+    index_t timesteps = 0;
+
+    // Every pixel's processing mask, (H, W, T), with RunSpec::masks.
+    std::vector<std::uint8_t> masks;
+
+    // The processing mask of pixel (row, col): T values of `masks`.
+    ArrayView<const std::uint8_t, 1> mask(index_t row, index_t col) const
+    {
+        return ArrayView<const std::uint8_t, 1>::contiguous(
+            masks.data() + (row * width + col) * timesteps, {timesteps});
+    }
 
     // The call's resume header (RunSpec::record, or a resume).
     ResumeHeader header;

@@ -614,6 +614,7 @@ CubeOutput cube_loop(
 {
     const index_t H = spectral.extent(0);
     const index_t W = spectral.extent(1);
+    const index_t T = spectral.extent(3);
 
     // threads == 0 keeps the historical behaviour: let the OpenMP runtime
     // decide, which is OMP_NUM_THREADS or the core count. A positive value is
@@ -633,6 +634,16 @@ CubeOutput cube_loop(
     std::vector<PixelResult> by_pixel(static_cast<std::size_t>(npixels));
     std::vector<std::uint8_t> succeeded(static_cast<std::size_t>(npixels), 0);
     std::vector<std::vector<CubeFailure>> thread_failures(requested);
+
+    // With RunSpec::masks, each pixel's mask goes straight into its T bytes
+    // of the result's (H, W, T) array, and the pixel keeps none.
+    CubeOutput merged;
+    merged.height = H;
+    merged.width = W;
+    merged.timesteps = T;
+    const bool masks = run.spec().masks;
+    if (masks)
+        merged.masks.assign(static_cast<std::size_t>(npixels) * T, std::uint8_t{0});
 
     int used = requested;
 
@@ -697,6 +708,15 @@ CubeOutput cube_loop(
                 PixelOutcome outcome =
                     run.pixel_typed<Value, Qa>(spect_view, qa_view, prior, worker);
 
+                if (masks)
+                {
+                    const std::vector<std::uint8_t>& bits = outcome.result.mask.data();
+                    if (bits.size() != T)
+                        throw std::logic_error("the pixel's processing mask is not T long");
+                    std::copy(bits.begin(), bits.end(), merged.masks.begin() + at * T);
+                    outcome.result.mask = ProcessingMask();
+                }
+
                 by_pixel[at] = PixelResult{row, col, std::move(outcome.result),
                                            std::move(outcome.record), outcome.status};
 
@@ -728,7 +748,6 @@ CubeOutput cube_loop(
     //----------------------------------------------------------------------
     // Collect, in raster order
     //----------------------------------------------------------------------
-    CubeOutput merged;
     merged.threads = used;
 
     std::size_t total = 0;

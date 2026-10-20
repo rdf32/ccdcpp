@@ -188,7 +188,7 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
 }
 ```
 
-`detect` returns a `ccd::PixelOutput` (`result`, its `mask` with `RunSpec::masks`, and with `RunSpec::record` or a resume, `record`, `status` and `header`); `detect_cube` a `ccd::CubeOutput` (`pixels` in raster order, `failures`, `threads`, `header`). Both throw `std::invalid_argument` before any pixel runs on an input, dates or a configuration they refuse.
+`detect` returns a `ccd::PixelOutput` (`result`, its `mask` with `RunSpec::masks`, and with `RunSpec::record` or a resume, `record`, `status` and `header`); `detect_cube` a `ccd::CubeOutput` (`pixels` in raster order, `failures`, `threads`, `header`, the cube's shape, and with `RunSpec::masks` every pixel's mask in one (H, W, T) array, `masks`, read per pixel by `mask(row, col)`). Both throw `std::invalid_argument` before any pixel runs on an input, dates or a configuration they refuse.
 
 # Configuring the algorithm
 

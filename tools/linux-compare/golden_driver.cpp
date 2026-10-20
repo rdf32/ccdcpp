@@ -242,7 +242,7 @@ int main(int argc, char** argv)
                         return a.row != b.row ? a.row < b.row : a.col < b.col; });
                 std::string cs;
                 for (const auto& p : cube.pixels)
-                    golden::dump_pixel(cs, std::to_string(p.row) + "," + std::to_string(p.col), p.result);
+                    golden::dump_pixel(cs, std::to_string(p.row) + "," + std::to_string(p.col), cube, p);
                 for (const auto& f : cube.failures)
                     cs += "F " + std::to_string(f.row) + "," + std::to_string(f.col) + " " + f.message + "\n";
                 write_text(out + "/cube_" + spec.name + "_" + o.name + "_t" + std::to_string(threads) + ".txt", cs);

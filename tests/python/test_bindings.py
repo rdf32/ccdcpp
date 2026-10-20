@@ -126,7 +126,9 @@ class BandCount(unittest.TestCase):
                                          masks=True)
                 mask = out["processing_mask"]
                 self.assertEqual((mask.dtype, mask.shape), (np.uint8, (H, W, T)))
-                self.assertTrue(mask.flags.c_contiguous and mask.flags.owndata)
+                # The run's own (H, W, T) array, not a view of another ndarray.
+                self.assertTrue(mask.flags.c_contiguous and mask.flags.writeable)
+                self.assertNotIsInstance(mask.base, np.ndarray)
                 self.assertFalse(mask[1, 2].any())
                 for r in range(H):
                     for c in range(W):

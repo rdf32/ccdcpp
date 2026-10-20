@@ -528,7 +528,9 @@ static py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures
 // The processing mask is absent unless asked for (masks=True): it is the
 // single largest allocation, T bytes per pixel, and the change-detection
 // schema this feeds has no column for it. Asked for, it is one more array,
-// one contiguous uint8 array over the cube's pixels (not per segment):
+// one contiguous uint8 array over the cube's pixels (not per segment): the
+// run's CubeOutput::masks, which each pixel wrote its mask into, handed over
+// without a copy:
 //
 //   processing_mask       uint8 [H, W, T]  [r, c]: pixel (r, c)'s mask, 1
 //                                          where the observation is kept;
@@ -574,7 +576,7 @@ static py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures
 // must derive the count from curve_qa and must not test values against zero.
 //------------------------------------------------------------------------------
 
-static py::dict cube_columns(const ccd::CubeOutput& cube, const CubeInput& views, bool masks)
+static py::dict cube_columns(ccd::CubeOutput& cube, const CubeInput& views, bool masks)
 {
     std::size_t n = 0;
     std::size_t with_segments = 0;
@@ -666,18 +668,15 @@ static py::dict cube_columns(const ccd::CubeOutput& cube, const CubeInput& views
 
     if (masks)
     {
-        const auto T = static_cast<py::ssize_t>(views.T);
-        py::array_t<std::uint8_t> mask_arr(std::vector<py::ssize_t>{
-            static_cast<py::ssize_t>(views.H), static_cast<py::ssize_t>(views.W), T});
-        std::uint8_t* const mask_v = mask_arr.mutable_data();
-        std::fill(mask_v, mask_v + mask_arr.size(), std::uint8_t{0});
-        for (const auto& pixel : cube.pixels)
-        {
-            const auto& mask = pixel.result.mask.data();
-            std::copy(mask.begin(), mask.end(),
-                      mask_v + (pixel.row * views.W + pixel.col) * views.T);
-        }
-        output["processing_mask"] = mask_arr;
+        // The cube's (H, W, T) masks become the array's memory, without a copy.
+        auto* held = new std::vector<std::uint8_t>(std::move(cube.masks));
+        const py::capsule owner(
+            held, [](void* p) { delete static_cast<std::vector<std::uint8_t>*>(p); });
+        output["processing_mask"] = py::array_t<std::uint8_t>(
+            std::vector<py::ssize_t>{static_cast<py::ssize_t>(views.H),
+                                     static_cast<py::ssize_t>(views.W),
+                                     static_cast<py::ssize_t>(views.T)},
+            held->data(), owner);
     }
     return output;
 }

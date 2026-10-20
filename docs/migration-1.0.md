@@ -148,7 +148,7 @@ probability.
 | `detect(d, s, q, h, l, table, plan)` | `detect(spec, d, s, q).result`, `spec.encoding` holding its `qa_table` and the configuration its preprocessing |
 | `detect_recorded(...)` | `detect` with `RunSpec::record = true` |
 | `resume(d, s, q, h, l, header, record, segments)` | `detect(spec, d, s, q, PixelResume{header, record, segments})` |
-| `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `detect_cube(spec, d, s, q, threads)`; the masks with `RunSpec::masks = true` (default false, where `keep_masks` defaulted to true) |
+| `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `detect_cube(spec, d, s, q, threads)`; the masks with `RunSpec::masks = true` (default false, where `keep_masks` defaulted to true), in `CubeOutput::masks`, one (H, W, T) array |
 | `resume_cube(..., from, ...)` | `detect_cube(..., threads, &from)` |
 | `Recorded`, `Resumed`; `DetectScratch` | `PixelOutput`; `Worker` |
 | `CubeResult` | `CubeOutput` |

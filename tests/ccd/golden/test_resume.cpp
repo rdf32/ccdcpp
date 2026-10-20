@@ -57,6 +57,14 @@ std::string dump(const ccd::FitResult& r)
     return out;
 }
 
+// A cube pixel's dump, its mask as the cube holds it.
+std::string dump(const ccd::CubeOutput& cube, const ccd::PixelResult& px)
+{
+    std::string out;
+    golden::dump_pixel(out, "pixel", cube, px);
+    return out;
+}
+
 ccd::PixelOutput resume_on(const Series& whole, const ccd::PixelOutput& stored)
 {
     return ccd::detect(
@@ -556,7 +564,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
                 expect_same_record(stored.pixels[p].record, alone.record, at + " stored");
 
                 const ccd::PixelOutput one = resume_on(s, alone);
-                EXPECT_EQ(dump(resumed.pixels[p].result), dump(one.result)) << at;
+                EXPECT_EQ(dump(resumed, resumed.pixels[p]), dump(one.result)) << at;
                 expect_same_record(resumed.pixels[p].record, one.record, at);
                 EXPECT_EQ(resumed.pixels[p].status, one.status) << at;
             }

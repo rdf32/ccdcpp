@@ -630,6 +630,14 @@ std::string dump(const ccd::FitResult& r)
     return out;
 }
 
+// A cube pixel's dump, its mask as the cube holds it.
+std::string dump(const ccd::CubeOutput& cube, const ccd::PixelResult& px)
+{
+    std::string out;
+    golden::dump_pixel(out, "px", cube, px);
+    return out;
+}
+
 // detect() under `config`.
 ccd::FitResult run_detect(
     const PixelView& px,
@@ -934,7 +942,7 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
             2);
         std::string out;
         for (const auto& px : r.pixels)
-            out += dump(px.result);
+            out += dump(r, px);
         return out;
     };
 
@@ -1058,7 +1066,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
         4);
     std::string from_cube;
     for (const auto& px : cube.pixels)
-        from_cube += dump(px.result);
+        from_cube += dump(cube, px);
     EXPECT_EQ(from_cube, per_pixel);
 }
 

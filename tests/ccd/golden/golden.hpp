@@ -68,21 +68,26 @@ inline void dump_models(std::string& out, const ccd::FitResult& result)
     }
 }
 
-inline void dump_mask(std::string& out, const ccd::ProcessingMask& mask)
+inline void dump_mask(std::string& out, ccd::ArrayView<const std::uint8_t, 1> bits)
 {
     static const char* HEX = "0123456789abcdef";
 
-    append(out, "K %zu ", static_cast<std::size_t>(mask.size()));
+    append(out, "K %zu ", static_cast<std::size_t>(bits.size()));
 
-    const auto& bits = mask.data();
     for (std::size_t i = 0; i < bits.size(); i += 4)
     {
         unsigned nibble = 0;
         for (std::size_t j = 0; j < 4 && i + j < bits.size(); ++j)
-            nibble |= (bits[i + j] ? 1u : 0u) << j;
+            nibble |= (bits(i + j) ? 1u : 0u) << j;
         out.push_back(HEX[nibble]);
     }
     out.push_back('\n');
+}
+
+inline void dump_mask(std::string& out, const ccd::ProcessingMask& mask)
+{
+    const auto& bits = mask.data();
+    dump_mask(out, ccd::ArrayView<const std::uint8_t, 1>::contiguous(bits.data(), {bits.size()}));
 }
 
 inline void dump_pixel(
@@ -96,6 +101,23 @@ inline void dump_pixel(
     dump_models(out, result);
     if (with_mask)
         dump_mask(out, result.mask);
+}
+
+// A cube pixel's dump, as detect()'s: its models and, as the cube holds it,
+// its processing mask (CubeOutput::masks, with RunSpec::masks).
+inline void dump_pixel(
+    std::string& out,
+    const std::string& label,
+    const ccd::CubeOutput& cube,
+    const ccd::PixelResult& pixel
+)
+{
+    append(out, "P %s %zu\n", label.c_str(), pixel.result.models.size());
+    dump_models(out, pixel.result);
+    if (cube.masks.empty())
+        dump_mask(out, pixel.result.mask);
+    else
+        dump_mask(out, cube.mask(pixel.row, pixel.col));
 }
 
 //------------------------------------------------------------------------------

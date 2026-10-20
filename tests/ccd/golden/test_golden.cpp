@@ -41,6 +41,7 @@
 //==============================================================================
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -261,7 +262,12 @@ std::string run_corpus()
                 {
                     EXPECT_EQ(cube.pixels[i].row * c.W + cube.pixels[i].col, i)
                         << "detect_cube(threads=" << threads << ") is not in raster order";
+                    EXPECT_EQ(cube.pixels[i].result.mask.size(), 0u)
+                        << "a cube pixel holds its mask outside CubeOutput::masks";
                 }
+                EXPECT_EQ(cube.masks.size(), N * T);
+                EXPECT_EQ((std::array<std::size_t, 3>{cube.height, cube.width, cube.timesteps}),
+                          (std::array<std::size_t, 3>{c.H, c.W, T}));
 
                 std::sort(
                     cube.pixels.begin(),
@@ -276,7 +282,7 @@ std::string run_corpus()
                     golden::dump_pixel(
                         from_cube,
                         pixel_label(spec.name, o.name, px.row, px.col),
-                        px.result);
+                        cube, px);
 
                 EXPECT_TRUE(from_cube == single)
                     << "detect_cube(threads=" << threads << ") differs from detect() on "
@@ -386,7 +392,7 @@ std::string cube_dump(ccd::CubeOutput cube)
         golden::dump_pixel(
             out,
             std::to_string(px.row) + "," + std::to_string(px.col),
-            px.result);
+            cube, px);
     return out;
 }
 

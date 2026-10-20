@@ -225,7 +225,8 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         True to also return "processing_mask", every pixel's processing mask
         as detect() returns it, in one contiguous uint8 array (H, W, T):
         [r, c] is pixel (r, c)'s (zeros for a failed pixel). T bytes per
-        pixel, kept while the cube runs.
+        pixel: each pixel writes its mask into the array as it finishes, and
+        the array is returned as it is, without a copy.
 
     Returns a dict of arrays with one entry per segment: row, col,
     start_day, end_day, break_day, curve_qa, observation_count,

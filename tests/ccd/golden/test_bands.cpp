@@ -297,7 +297,7 @@ TEST(Bands, BitIdenticalToFixture)
                         from_cube_dump,
                         std::string(profile.name) + ":" + spec.name + ":" +
                             std::to_string(px.row) + "," + std::to_string(px.col),
-                        px.result);
+                        cube, px);
 
                 EXPECT_TRUE(from_cube_dump == single)
                     << "detect_cube(threads=" << threads << ") differs from detect() on "
