@@ -118,9 +118,8 @@ struct Input
     //
     // docs/units.md has the physical-unit input (reflectance and degrees
     // Celsius / 100) and its measured equivalence with DN, why degrees
-    // Celsius itself is not the unit, Collection 2, the thermal range on the
-    // procedures without the transform, and the guards of every unit-bearing
-    // value (tests/ccd/machine/test_units.cpp).
+    // Celsius itself is not the unit, Collection 2, the thermal range, and
+    // the guards of every unit-bearing value (tests/ccd/machine/test_units.cpp).
     //--------------------------------------------------------------------------
     scalar_t reflectance_unit = 10000.0;
 

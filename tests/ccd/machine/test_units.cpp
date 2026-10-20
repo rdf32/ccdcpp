@@ -712,7 +712,7 @@ TEST(Units, Collection2DnResolvesReflectanceZeroToOne)
         EXPECT_FALSE(ccd::filter::in_range(dn, band.range)) << dn;
 
     // The differences carry no offset.
-    EXPECT_EQ(plan.insufficient_clear.chain[4].green_offset, 0.04 * h.reflectance_unit);
+    EXPECT_EQ(plan.insufficient_clear.chain[3].green_offset, 0.04 * h.reflectance_unit);
     const ccd::config::Resolved r = golden::resolved(golden::pyccd(), h);
     EXPECT_EQ(r.shared.alpha, 1e-4 * h.reflectance_unit);
     EXPECT_EQ(r.shared.coef_floor, 1e-4 * h.reflectance_unit);
@@ -729,10 +729,9 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     );
 
     // Thermal is K x 10 / SCALE here, not Celsius -- see plain_divide's
-    // comment -- inside the thermal bounds, -0.932..0.707, as K x 10 is
-    // inside -9320..7070.
+    // comment; the InsufficientClear chain tests no thermal range.
     const ccd::Input h = physical_input();
-    ASSERT_EQ(golden::plan_of(golden::pyccd(), h).insufficient_clear.chain[4].green_offset, 0.04);
+    ASSERT_EQ(golden::plan_of(golden::pyccd(), h).insufficient_clear.chain[3].green_offset, 0.04);
 
     const auto phys =
         run_insufficient_clear(obs, scaled, h, golden::pyccd(), physical_solver());

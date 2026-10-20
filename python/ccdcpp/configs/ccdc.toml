@@ -98,7 +98,6 @@ steps = [
 thermal_transform = false
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
     { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
     { step = "dedupe" },
     { step = "add_qa", codes = ["snow"] },
@@ -109,7 +108,6 @@ steps = [
 thermal_transform = false
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
     { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
     { step = "dedupe" },
     { step = "green_median", offset = 0.04, scope = "stat_window" },

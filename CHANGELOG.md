@@ -15,6 +15,10 @@ removed name to its replacement; `docs/config.md` describes the configuration.
 
 ### Changed
 
+- **"ccdc" tests the thermal range in the Standard procedure only**: the PermanentSnow and
+  InsufficientClear chains have no `thermal_range` step, where pyccd tests their untransformed
+  thermal band against the Celsius bounds; Collection-1 DN outputs are unchanged, and inputs in
+  other units keep the clear and water observations that test dropped there.
 - **The "ccdc" configuration has no statistics cutoff** (`shared.stat_ord` is
   `NO_STAT_CUTOFF`): the procedure choice, the cadence, the variogram and the green median read
   the whole series. 0.10.0 and pyccd stop them at 2017-12-31 (ordinal 736694), so a series with

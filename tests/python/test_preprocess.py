@@ -51,9 +51,10 @@ def keeps_snow(base=CCDC):
 
 def written_default():
     """pyccd's chain, written out step by step with every field left to its default."""
-    common = (KeepQa(), ThermalRange(), BandRange(), Dedupe())
+    common = (KeepQa(), BandRange(), Dedupe())
     return Preprocess(
-        standard=ProcedureChain(steps=common, thermal_transform=True),
+        standard=ProcedureChain(steps=(KeepQa(), ThermalRange(), BandRange(), Dedupe()),
+                                thermal_transform=True),
         snow=ProcedureChain(steps=common + (AddQa(), Dedupe())),
         insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), Dedupe())),
     )
@@ -62,14 +63,14 @@ def written_default():
 def written_default_explicit():
     """pyccd's chain with every value spelled out, in physical terms."""
     sat = ("blue", "green", "red", "nir", "swir1", "swir2")
-    common = (
-        KeepQa(("clear", "water")),
-        ThermalRange(min=-93.2, max=70.7, inclusive=(False, False)),
-        BandRange(bands=sat, min=0.0, max=1.0, inclusive=(False, False)),
-        Dedupe(),
-    )
+    keep = KeepQa(("clear", "water"))
+    band = BandRange(bands=sat, min=0.0, max=1.0, inclusive=(False, False))
+    common = (keep, band, Dedupe())
     return Preprocess(
-        standard=ProcedureChain(steps=common, thermal_transform=True),
+        standard=ProcedureChain(
+            steps=(keep, ThermalRange(min=-93.2, max=70.7, inclusive=(False, False)), band,
+                   Dedupe()),
+            thermal_transform=True),
         snow=ProcedureChain(steps=common + (AddQa(("snow",)), Dedupe())),
         insufficient_clear=ProcedureChain(steps=common + (
             GreenMedian(offset=0.04, scope="stat_window"), Dedupe(),
@@ -86,8 +87,9 @@ class Plans(unittest.TestCase):
         h = ccdcpp.Input()
         plan = ccdcpp.plan_of("ccdc", h)
         K = ccdcpp.StepKind
-        common = [K.KeepQa, K.ThermalRange, K.BandRange, K.Dedupe]
-        self.assertEqual([s.kind for s in plan.standard.chain], common)
+        common = [K.KeepQa, K.BandRange, K.Dedupe]
+        self.assertEqual([s.kind for s in plan.standard.chain],
+                         [K.KeepQa, K.ThermalRange, K.BandRange, K.Dedupe])
         self.assertEqual([s.kind for s in plan.snow.chain], common + [K.AddQa, K.Dedupe])
         self.assertEqual([s.kind for s in plan.insufficient_clear.chain],
                          common + [K.GreenMedian, K.Dedupe])
@@ -101,13 +103,13 @@ class Plans(unittest.TestCase):
         self.assertEqual((therm.band, therm.min, therm.max, therm.inclusive),
                          (6, -9320.0, 7070.0, (False, False)))
         self.assertEqual((band.bands, band.min, band.max), ([0, 1, 2, 3, 4, 5], 0.0, 10000.0))
-        green = plan.insufficient_clear.chain[4]
+        green = plan.insufficient_clear.chain[3]
         self.assertEqual((green.band, green.green_offset, green.max_date, green.scope),
                          (1, 400.0, ccdcpp.NO_STAT_CUTOFF, ccdcpp.GreenFilterScope.StatWindow))
         # The step's values and the shared stat_ord, in the input's units.
         cfg = CCDC.replace(preprocess__green_median__offset=0.05,
                            preprocess__green_median__scope="all", shared__stat_ord=730000)
-        green = ccdcpp.plan_of(cfg, h).insufficient_clear.chain[4]
+        green = ccdcpp.plan_of(cfg, h).insufficient_clear.chain[3]
         self.assertEqual((green.green_offset, green.max_date, green.scope),
                          (0.05 * 10000.0, 730000, ccdcpp.GreenFilterScope.All))
         self.assertEqual(plan.snow.chain[-2].codes, [h.qa_snow])
@@ -119,7 +121,7 @@ class Plans(unittest.TestCase):
         _, therm, band, _ = plan.standard.chain
         self.assertEqual((therm.min, therm.max), (-0.932, 0.707))
         self.assertEqual((band.min, band.max), (0.0, 1.0))
-        self.assertEqual(plan.insufficient_clear.chain[4].green_offset, 0.04)
+        self.assertEqual(plan.insufficient_clear.chain[3].green_offset, 0.04)
         self.assertEqual(plan, ccdcpp.plan_of(CCDC, phys.input()))
 
     def test_without_thermal_and_identity_transform(self):
@@ -134,14 +136,14 @@ class Plans(unittest.TestCase):
         h = ccdcpp.Input(qa_clear=10, qa_water=11, qa_snow=13)
         plan = ccdcpp.plan_of(keeps_snow(), h)
         self.assertEqual(plan.standard.chain[0].codes, [10, 11, 13])
-        self.assertEqual(plan.snow.chain[4].codes, [13])
+        self.assertEqual(plan.snow.chain[3].codes, [13])
         # Ints are codes as given.
         plan = ccdcpp.plan_of(CCDC.replace(preprocess__snow__add_qa__codes=[7, 3]), h)
-        self.assertEqual(plan.snow.chain[4].codes, [3, 7])
+        self.assertEqual(plan.snow.chain[3].codes, [3, 7])
 
     def test_band_range_by_role(self):
         cfg = CCDC.replace(preprocess__band_range__bands=["swir2", "green"])
-        band = ccdcpp.plan_of(cfg, ccdcpp.Input()).snow.chain[2]
+        band = ccdcpp.plan_of(cfg, ccdcpp.Input()).snow.chain[1]
         self.assertEqual(band.bands, [5, 1])
 
     def test_equality(self):
@@ -163,8 +165,8 @@ class Plans(unittest.TestCase):
         for line in ("standard", "  transform  band 6 <- x * 10 - 27315",
                      "  0  KeepQa codes {0, 1}", "  1  ThermalRange band 6, -9320 < x < 7070",
                      "  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000", "  3  Dedupe",
-                     "snow", "  transform  none", "  4  AddQa codes {3}", "insufficient_clear",
-                     "  4  GreenMedian band 1, drop x >= median(dates <= 736694) + 400, "
+                     "snow", "  transform  none", "  3  AddQa codes {3}", "insufficient_clear",
+                     "  3  GreenMedian band 1, drop x >= median(dates <= 736694) + 400, "
                      "scope StatWindow"):
             self.assertIn(line, text.splitlines())
         inclusive = CCDC.replace(preprocess__standard__band_range__min_inclusive=True,
@@ -280,11 +282,12 @@ class CustomChains(unittest.TestCase):
 class Replace(unittest.TestCase):
     def test_each_form(self):
         cfg = CCDC.replace(preprocess__insufficient_clear__green_median__offset=0.05)
-        self.assertEqual(cfg.preprocess("insufficient_clear")["steps"][4]["offset"], 0.05)
+        self.assertEqual(cfg.preprocess("insufficient_clear")["steps"][3]["offset"], 0.05)
         self.assertEqual(cfg.preprocess("snow"), CCDC.preprocess("snow"))
-        every = CCDC.replace(preprocess__thermal_range__min=-80.0)
+        every = CCDC.replace(preprocess__band_range__min=-0.5)
         for procedure in ccdcpp.PROCEDURES:
-            self.assertEqual(every.preprocess(procedure)["steps"][1]["min"], -80.0)
+            (band,) = [s for s in every.preprocess(procedure)["steps"] if s["step"] == "band_range"]
+            self.assertEqual(band["min"], -0.5)
         flag = CCDC.replace(preprocess__snow__thermal_transform=True)
         self.assertTrue(flag.preprocess("snow")["thermal_transform"])
         chain = CCDC.replace(preprocess__snow=[KeepQa(), Dedupe()])
@@ -298,7 +301,7 @@ class Replace(unittest.TestCase):
         self.assertEqual(whole.preprocess("standard"), CCDC.preprocess("standard"))
         # An int given for a real is a real.
         self.assertEqual(
-            CCDC.replace(preprocess__band_range__max=1).preprocess("snow")["steps"][2]["max"],
+            CCDC.replace(preprocess__band_range__max=1).preprocess("snow")["steps"][1]["max"],
             1.0)
 
     def test_refusals_in_replace(self):
@@ -356,7 +359,7 @@ class Validation(unittest.TestCase):
 
         def with_max_date():
             tree = CCDC.to_dict()
-            tree["preprocess"]["insufficient_clear"]["steps"][4]["max_date"] = 1
+            tree["preprocess"]["insufficient_clear"]["steps"][3]["max_date"] = 1
             return ccdcpp.Config(tree)
 
         cases = {

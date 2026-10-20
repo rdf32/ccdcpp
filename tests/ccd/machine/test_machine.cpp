@@ -1261,7 +1261,7 @@ TEST(StandardHooks, TheModesExtraMaskStepsFollowTheChain)
     r.edit([](index_t b, index_t i, double v) { return (b == 1 && (i == 30 || i == 50)) ? v + 5000 : v; });
     const auto green = ccd::preprocess::Step::green_median(
         r.options.index("green"),
-        r.resolved.plan.insufficient_clear.chain[4].green_offset,
+        r.resolved.plan.insufficient_clear.chain[3].green_offset,
         r.shared.stat_ord,
         ccd::GreenFilterScope::All);
     const ccd::preprocess::Chain chain{ccd::preprocess::Step::dedupe()};

@@ -72,14 +72,17 @@ class Presets(unittest.TestCase):
         clear = ccdcpp.config("ccdc").preprocess("insufficient_clear")
         self.assertFalse(clear["thermal_transform"])
         self.assertEqual([s["step"] for s in clear["steps"]],
-                         ["keep_qa", "thermal_range", "band_range", "dedupe", "green_median",
-                          "dedupe"])
+                         ["keep_qa", "band_range", "dedupe", "green_median", "dedupe"])
         self.assertEqual(clear["steps"][0]["codes"], ["clear", "water"])
-        self.assertEqual((clear["steps"][1]["min"], clear["steps"][1]["max"]), (-93.2, 70.7))
-        self.assertEqual((clear["steps"][2]["min"], clear["steps"][2]["max"]), (0.0, 1.0))
-        self.assertEqual(clear["steps"][4], {"step": "green_median", "offset": 0.04,
+        self.assertEqual((clear["steps"][1]["min"], clear["steps"][1]["max"]), (0.0, 1.0))
+        self.assertEqual(clear["steps"][3], {"step": "green_median", "offset": 0.04,
                                              "scope": "stat_window"})
-        self.assertTrue(ccdcpp.config("ccdc").preprocess("standard")["thermal_transform"])
+        standard = ccdcpp.config("ccdc").preprocess("standard")
+        self.assertTrue(standard["thermal_transform"])
+        self.assertEqual([s["step"] for s in standard["steps"]],
+                         ["keep_qa", "thermal_range", "band_range", "dedupe"])
+        self.assertEqual((standard["steps"][1]["min"], standard["steps"][1]["max"]),
+                         (-93.2, 70.7))
 
     def test_a_preset_by_name_is_built_once(self):
         self.assertIs(ccdcpp.config("ccdc"), ccdcpp.config("ccdc"))
@@ -100,10 +103,11 @@ class Presets(unittest.TestCase):
         self.assertEqual(r["shared"]["detection_bands"], [1, 2, 3, 4, 5])
         clear = r["preprocess"]["insufficient_clear"]["steps"]
         self.assertEqual(clear[0]["codes"], [0, 1])
-        self.assertEqual((clear[1]["min"], clear[1]["max"]), (-9320.0, 7070.0))
-        self.assertEqual((clear[2]["min"], clear[2]["max"]), (0.0, 10000.0))
-        self.assertEqual(clear[4], {"step": "green_median", "offset": 400.0,
+        self.assertEqual((clear[1]["min"], clear[1]["max"]), (0.0, 10000.0))
+        self.assertEqual(clear[3], {"step": "green_median", "offset": 400.0,
                                     "scope": "stat_window", "max_date": ccdcpp.NO_STAT_CUTOFF})
+        thermal = r["preprocess"]["standard"]["steps"][1]
+        self.assertEqual((thermal["min"], thermal["max"]), (-9320.0, 7070.0))
 
     def test_a_file_extends_a_preset(self):
         path = os.path.join(_ROOT, "variant.toml")

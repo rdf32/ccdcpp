@@ -334,8 +334,8 @@ struct PreprocessPlan
 //
 // A procedure whose configuration sets thermal_transform reads its thermal
 // row through it: "ccdc" sets it for Standard only, matching pyccd, where
-// kelvin_to_celsius() is called inside standard_procedure(). See
-// docs/units.md for the consequences for the other two procedures.
+// kelvin_to_celsius() is called inside standard_procedure(), and tests the
+// thermal range there only (docs/units.md).
 //
 //------------------------------------------------------------------------------
 std::optional<Affine> thermal_transform(const Input& input);

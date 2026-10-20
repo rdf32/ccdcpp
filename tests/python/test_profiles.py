@@ -657,10 +657,10 @@ class Bounds(unittest.TestCase):
                         preprocess__band_range__max_inclusive=refl[1],
                         preprocess__thermal_range__min_inclusive=therm[0],
                         preprocess__thermal_range__max_inclusive=therm[1])
-                    for chain in (ccdcpp.plan_of(cfg, base).snow.chain,
-                                  ccdcpp.plan_of(cfg, base).standard.chain):
-                        self.assertEqual(chain[1].inclusive, therm)
-                        self.assertEqual(chain[2].inclusive, refl)
+                    plan = ccdcpp.plan_of(cfg, base)
+                    self.assertEqual(plan.standard.chain[1].inclusive, therm)
+                    self.assertEqual(plan.standard.chain[2].inclusive, refl)
+                    self.assertEqual(plan.snow.chain[1].inclusive, refl)
 
     def test_units_hashable_and_picklable(self):
         for u in (ccdcpp.DN, ccdcpp.REFLECTANCE, ccdcpp.KELVIN_TENTHS,

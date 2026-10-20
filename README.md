@@ -411,7 +411,7 @@ ccdcpp recreates pyccd. Where pyccd's code does not do what it evidently intends
 - **Green median filter.** pyccd's `insufficient_clear_filter` computes the green mask for the observations up to its statistics cutoff and applies it with `standard_mask[standard_mask][:n] &= green_mask` (`ccd/qa.py`), which writes into a copy, so the filter drops nothing. ccdcpp applies it, with the `StatWindow` scope by default.
 - **Seasonal RMSE ties.** pyccd's `find_closest_doy` (`ccd/change.py`) takes the 24 fit-window observations closest in day of year to the last peek date with `np.argsort(d_yr)[:num]`, which is not a stable sort. Observations a multiple of 1461 days apart are exactly equally distant, so which of the tied observations are kept depends on the sort. ccdcpp breaks ties in window order, so the seasonal RMSE, and with it the change magnitudes, can differ on dense series.
 
-On the synthetic corpus, with pyccd patched for these four (the convergence test as `|x0 - x| > tol`, a stable date sort, the green mask written through `standard_mask[np.flatnonzero(standard_mask)[:n]] &= green_mask`, and `np.argsort(d_yr, kind="stable")` in `find_closest_doy`), ccdcpp's defaults, with the Standard procedure as pyccd's, match pyccd to 1e-6 on every InsufficientClear pixel (175 in DN) and on every pixel where a saturation-band value on a bound reaches the saturation filter (106, and the golden test's bounds pixel); with the green filter left unpatched, `Off` matches on the same 175. One more difference is kept on purpose: an undefined raw QA value decodes to fill where pyccd raises (see [QA Input](#qa-input)). One pyccd quirk is kept for parity: the PermanentSnow and InsufficientClear procedures test the untransformed thermal band against the Celsius bounds (their chains in `ccdc` do not set `thermal_transform`; see [docs/units.md](docs/units.md)).
+On the synthetic corpus, with pyccd patched for these four (the convergence test as `|x0 - x| > tol`, a stable date sort, the green mask written through `standard_mask[np.flatnonzero(standard_mask)[:n]] &= green_mask`, and `np.argsort(d_yr, kind="stable")` in `find_closest_doy`), ccdcpp's defaults, with the Standard procedure as pyccd's, match pyccd to 1e-6 on every InsufficientClear pixel (175 in DN) and on every pixel where a saturation-band value on a bound reaches the saturation filter (106, and the golden test's bounds pixel); with the green filter left unpatched, `Off` matches on the same 175. One more difference is kept on purpose: an undefined raw QA value decodes to fill where pyccd raises (see [QA Input](#qa-input)). The PermanentSnow and InsufficientClear procedures test no thermal range: pyccd tests their untransformed thermal band against the Celsius bounds, which rejects nothing on Collection-1 DN and drops observations on any other encoding ([docs/units.md](docs/units.md)).
 
 The Standard procedure (`ccd/procedures.py`) is pyccd's with five such corrections, each checked against Zhu's MATLAB reference, TrendSeasonalFit, and each in one function of the state machine (see [CCDC as a state machine](docs/ccdc-state-machine.md)):
 
@@ -673,22 +673,20 @@ standard
 snow
   transform  none
   0  KeepQa codes {0, 1}
-  1  ThermalRange band 6, -9320 < x < 7070
-  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
-  3  Dedupe
-  4  AddQa codes {3}
-  5  Dedupe
+  1  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
+  2  Dedupe
+  3  AddQa codes {3}
+  4  Dedupe
 insufficient_clear
   transform  none
   0  KeepQa codes {0, 1}
-  1  ThermalRange band 6, -9320 < x < 7070
-  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
-  3  Dedupe
-  4  GreenMedian band 1, drop x >= median(every date) + 400, scope StatWindow
-  5  Dedupe
+  1  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
+  2  Dedupe
+  3  GreenMedian band 1, drop x >= median(every date) + 400, scope StatWindow
+  4  Dedupe
 ```
 
-Only `standard` sets `thermal_transform` (the input's `thermal_scale`/`thermal_offset`, none when that is the identity), so the other two test the thermal band in the caller's unit, as pyccd does. The chain written out step by step as a configuration gives the same output, to the bit, as `ccdc`.
+Only `standard` sets `thermal_transform` (the input's `thermal_scale`/`thermal_offset`, none when that is the identity) and tests the thermal range, on the transformed row; the other two read the thermal band in the caller's unit and test no thermal range. The chain written out step by step as a configuration gives the same output, to the bit, as `ccdc`.
 
 ### A custom chain
 

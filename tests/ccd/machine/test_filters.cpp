@@ -364,7 +364,7 @@ struct Series
 
 TEST(GreenScope, DefaultIsStatWindow)
 {
-    EXPECT_EQ(golden::plan_of(golden::ccdc()).insufficient_clear.chain[4].scope,
+    EXPECT_EQ(golden::plan_of(golden::ccdc()).insufficient_clear.chain[3].scope,
               ccd::GreenFilterScope::StatWindow);
 }
 

@@ -205,7 +205,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     // Physical: alpha in reflectance, probabilities, roles, the cutoff.
     EXPECT_EQ(preset.shared.at("alpha"), real(1e-4));
     EXPECT_EQ(preset.shared.at("coef_floor"), real(1e-4));
-    EXPECT_EQ(preset.preprocess.at("insufficient_clear").steps.at(4).params.at("offset"),
+    EXPECT_EQ(preset.preprocess.at("insufficient_clear").steps.at(3).params.at("offset"),
               real(0.04));
     EXPECT_EQ(preset.shared.at("change_probability"), real(0.99));
     EXPECT_EQ(preset.shared.at("outlier_probability"), real(1.0 - 1e-6));
@@ -283,7 +283,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     const ccd::config::Shared& shared = got.shared;
     EXPECT_EQ(shared.detection_bands, (ccd::BandList{1, 2, 3, 4, 5}));
     EXPECT_EQ(shared.stat_ord, ccd::config::NO_STAT_CUTOFF);
-    const ccd::config::Values& green = got.preprocess.at("insufficient_clear").steps.at(4).params;
+    const ccd::config::Values& green = got.preprocess.at("insufficient_clear").steps.at(3).params;
     EXPECT_EQ(green.at("offset"), real(400.0));
     EXPECT_EQ(green.at("scope"), ccd::config::Value(std::string("stat_window")));
     EXPECT_EQ(shared.alpha, 1.0);
@@ -343,7 +343,7 @@ TEST(Registry, SharedValuesReachTheirStages)
                   0.5 * 10000.0)
             << stage;
     }
-    EXPECT_EQ(r.resolve(golden::ccdc(), reflectance).plan.insufficient_clear.chain[4].green_offset,
+    EXPECT_EQ(r.resolve(golden::ccdc(), reflectance).plan.insufficient_clear.chain[3].green_offset,
               0.04);
     EXPECT_EQ(r.resolve(golden::ccdc(), reflectance).shared.alpha, 1e-4);
 
@@ -395,7 +395,7 @@ TEST(Registry, SharedValuesReachTheirStages)
             r.check(golden::with_steps(golden::ccdc(), "green_median", "scope",
                                        ccd::config::Value(std::string("some"))));
         },
-        "preprocess insufficient_clear step 4 'green_median' parameter 'scope' is 'some'; "
+        "preprocess insufficient_clear step 3 'green_median' parameter 'scope' is 'some'; "
         "it is all, stat_window or off");
 
     // The listing names each parameter's source.
@@ -1203,7 +1203,7 @@ TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
     EXPECT_EQ(standard.at(2).params.at("max"), real(5000.0));
     EXPECT_TRUE(got.plan.standard.chain[0].codes.test(24));
     EXPECT_FALSE(got.plan.standard.chain[0].codes.test(0));
-    EXPECT_EQ(got.plan.snow.chain[4].codes, ccd::preprocess::qa_set({23}));
+    EXPECT_EQ(got.plan.snow.chain[3].codes, ccd::preprocess::qa_set({23}));
 
     ccd::Input reflectance = golden::physical_input();
     const ccd::config::Resolved phys = r.resolve(config, reflectance);
@@ -1318,14 +1318,14 @@ TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
             build(golden::with_steps(golden::ccdc(), "green_median", "scope",
                                      ccd::config::Value(std::string("clouds"))));
         },
-        "preprocess insufficient_clear step 4 'green_median' parameter 'scope' is 'clouds'; "
+        "preprocess insufficient_clear step 3 'green_median' parameter 'scope' is 'clouds'; "
         "it is all, stat_window or off");
 
     ccd::config::Config dated = golden::ccdc();
-    dated.preprocess.at("insufficient_clear").steps.at(4).params["max_date"] =
+    dated.preprocess.at("insufficient_clear").steps.at(3).params["max_date"] =
         ccd::config::integer(736694);
     expect_refused([&] { build(dated); },
-                   "preprocess insufficient_clear step 4 'green_median' parameter 'max_date' is "
+                   "preprocess insufficient_clear step 3 'green_median' parameter 'max_date' is "
                    "the shared value 'stat_ord'; set shared 'stat_ord' instead");
 
     ccd::config::Config typo = golden::ccdc();

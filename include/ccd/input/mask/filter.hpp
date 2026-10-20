@@ -107,11 +107,9 @@ void remove_duplicate_dates(
 // An observation is kept when its thermal value is in_range() of `range`
 // (the thermal_range step's bounds, exclusive on both ends by default). The
 // bounds are in the unit of the thermal row after the input's transform; the
-// row is tested as `spectral` holds it AT THE POINT THIS RUNS -- transformed
-// in a procedure that applies the transform (pyccd's Standard), the caller's
-// own unit in one that does not (pyccd's PermanentSnow and
-// InsufficientClear). See docs/units.md for why that asymmetry is
-// deliberate.
+// row is tested as `spectral` holds it AT THE POINT THIS RUNS, so a chain
+// tests it after its procedure's transform ("ccdc" tests it in Standard
+// only; docs/units.md).
 //
 //------------------------------------------------------------------------------
 

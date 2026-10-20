@@ -98,24 +98,17 @@ Collection-2 DN says so with `reflectance_unit = 1 / 2.75e-5` and `reflectance_o
 43636 (`tests/ccd/machine/test_units.cpp`, `Collection2DnResolvesReflectanceZeroToOne`). In
 physical units there is no collection branch.
 
-## The thermal range on the procedures without the transform
+## The thermal range
 
-`thermal_range`'s bounds are in the transformed unit, and `ccdc` transforms for the Standard
-procedure only (its preprocess section's `thermal_transform`). That asymmetry is pyccd's:
-`kelvin_to_celsius()` is called inside `standard_procedure()` while `snow_procedure_filter()`
-applies `filter_thermal_celsius()` to values nothing converted. On a DN input the PermanentSnow
-and InsufficientClear procedures therefore test Kelvin x 10 against Celsius x 100 bounds, and
-since Kelvin x 10 is about 2200..3300, inside [-9320, 7070], the filter rejects nothing a sensor
-records there. It is kept for parity: ccdcpp is a recreation of pyccd and the regression
-references encode it.
-
-On the physical-unit input thermal is already Celsius / 100 for every procedure, so
-PermanentSnow and InsufficientClear test converted values against converted bounds, as
-Standard does, and the filter is live there: a clear or water observation outside (-93.20,
-70.70) degrees Celsius is dropped (PermanentSnow then adds back every snow observation
-regardless). The DN input keeps that observation. On those two procedures the two inputs agree
-only while no clear or water observation's thermal value is out of range; the equivalence
-measured above is on a Standard pixel.
+`thermal_range`'s bounds are in the transformed unit, and `ccdc` tests them in the Standard
+procedure only, the one whose chain applies the thermal transform. The PermanentSnow and
+InsufficientClear chains read the thermal row as the input holds it and test no thermal range.
+pyccd tests those two procedures' untransformed thermal band against the Celsius bounds
+(`snow_procedure_filter()` applies `filter_thermal_celsius()` to values nothing converted):
+on Collection-1 DN that compares Kelvin x 10, about 2200..3300, with [-9320, 7070] and rejects
+nothing, so leaving the step out changes no DN output; on any other encoding it would drop
+clear and water observations by a meaningless test. A configuration that wants the range there
+adds the step to those chains with `thermal_transform`.
 
 ## The guards
 
