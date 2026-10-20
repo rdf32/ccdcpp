@@ -49,6 +49,8 @@
 
 #include <gtest/gtest.h>
 
+#include "specs.hpp"
+
 #include "ccd/ccd.hpp"
 
 #include "golden.hpp"
@@ -110,7 +112,7 @@ ccd::FitResult run_detect(
     const double* spectral,
     const std::uint8_t* qas,
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& l
+    const ccd::config::Legacy& l
 )
 {
     const std::size_t T = dates.size();
@@ -119,7 +121,7 @@ ccd::FitResult run_detect(
     std::vector<double> block(spectral, spectral + 7 * T);
 
     return ccd::run_pixel(
-        ccd::RunSpec{h, l},
+        golden::spec_of(h, l),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<double, 2>::contiguous(block.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas, {T})).result;
@@ -129,15 +131,15 @@ struct Options
 {
     const char* name;
     ccd::HarmonicOptions h;
-    ccd::LassoOptions l;
+    ccd::config::Legacy a;
     bool physical;
 };
 
 std::vector<Options> option_sets()
 {
     return {
-        {"dn", ccd::HarmonicOptions{}, ccd::LassoOptions{}, false},
-        {"phys", golden::physical_harmonic(), golden::physical_lasso(), true},
+        {"dn", ccd::HarmonicOptions{}, ccd::config::Legacy{}, false},
+        {"phys", golden::physical_harmonic(), golden::physical_algorithm(), true},
     };
 }
 
@@ -181,13 +183,13 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "pyccd:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::HarmonicOptions{}, ccd::LassoOptions{}));
+                ccd::HarmonicOptions{}, ccd::config::Legacy{}));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
         golden::dump_pixel(dump, "pyccd:phys",
             run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_harmonic(), golden::physical_lasso()));
+                golden::physical_harmonic(), golden::physical_algorithm()));
     }
     {
         // The reference pixel with saturation-band values on the bounds and a
@@ -198,19 +200,19 @@ std::string run_corpus()
 
         golden::dump_pixel(dump, "bounds:dn",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::HarmonicOptions{}, ccd::LassoOptions{}));
+                ccd::HarmonicOptions{}, ccd::config::Legacy{}));
 
         std::vector<double> phys = p.spectral;
         golden::to_physical(phys.data(), T);
         golden::dump_pixel(dump, "bounds:phys",
             run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_harmonic(), golden::physical_lasso()));
+                golden::physical_harmonic(), golden::physical_algorithm()));
     }
     {
         const Pixel p = read_csv("test002_c2.csv");
         golden::dump_pixel(dump, "c2:c2",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                golden::c2_harmonic(), ccd::LassoOptions{}));
+                golden::c2_harmonic(), ccd::config::Legacy{}));
     }
 
     //--------------------------------------------------------------------------
@@ -238,7 +240,7 @@ std::string run_corpus()
                     single,
                     pixel_label(spec.name, o.name, p / c.W, p % c.W),
                     run_detect(c.dates, c.spectral.data() + p * 7 * T,
-                        c.qas.data() + p * T, o.h, o.l));
+                        c.qas.data() + p * T, o.h, o.a));
             }
 
             for (int threads : {1, 4})
@@ -246,7 +248,7 @@ std::string run_corpus()
                 std::vector<double> cube_spectral = c.spectral;
 
                 ccd::CubeResult cube = ccd::run_cube(
-                    ccd::RunSpec{o.h, o.l},
+                    golden::spec_of(o.h, o.a),
                     ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
                     ccd::ArrayView<double, 4>::contiguous(cube_spectral.data(), {c.H, c.W, 7, T}),
                     ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -406,10 +408,10 @@ TEST(Golden, CubeDtypesAndLayouts)
     const auto qas =
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {H, W, T});
     const ccd::HarmonicOptions h;
-    const ccd::LassoOptions l;
+    const ccd::config::Legacy l;
 
     const std::string reference = cube_dump(ccd::run_cube(
-        ccd::RunSpec{h, l},
+        golden::spec_of(h, l),
         dates,
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
         qas,
@@ -417,7 +419,7 @@ TEST(Golden, CubeDtypesAndLayouts)
 
     EXPECT_EQ(c.spectral, original) << "detect_cube wrote to its input";
     EXPECT_EQ(reference, cube_dump(ccd::run_cube(
-        ccd::RunSpec{h, l},
+        golden::spec_of(h, l),
         dates,
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
         qas,
@@ -425,7 +427,7 @@ TEST(Golden, CubeDtypesAndLayouts)
 
     std::vector<float> f32(c.spectral.begin(), c.spectral.end());
     EXPECT_EQ(reference, cube_dump(ccd::run_cube(
-        ccd::RunSpec{h, l},
+        golden::spec_of(h, l),
         dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {H, W, 7, T}),
         qas,
@@ -435,7 +437,7 @@ TEST(Golden, CubeDtypesAndLayouts)
     for (std::size_t i = 0; i < u16.size(); ++i)
         u16[i] = static_cast<std::uint16_t>(c.spectral[i]);
     EXPECT_EQ(reference, cube_dump(ccd::run_cube(
-        ccd::RunSpec{h, l},
+        golden::spec_of(h, l),
         dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {H, W, 7, T}),
         qas,
@@ -448,7 +450,7 @@ TEST(Golden, CubeDtypesAndLayouts)
             for (std::size_t t = 0; t < T; ++t)
                 hwtb[(p * T + t) * 7 + b] = c.spectral[(p * 7 + b) * T + t];
     EXPECT_EQ(reference, cube_dump(ccd::run_cube(
-        ccd::RunSpec{h, l},
+        golden::spec_of(h, l),
         dates,
         ccd::ArrayView<const double, 4>::strided(hwtb.data(), {H, W, 7, T}, {W * T * 7, T * 7, 1, 7}),
         qas,
@@ -467,13 +469,13 @@ TEST(Golden, DetectDoesNotWriteItsInput)
 
     std::string first, second;
     golden::dump_pixel(first, "", ccd::run_pixel(
-        ccd::RunSpec{ccd::HarmonicOptions{}, ccd::LassoOptions{}},
+        golden::spec_of(ccd::HarmonicOptions{}, ccd::config::Legacy{}),
         dates,
         view,
         qas).result);
     EXPECT_EQ(buffer, p.spectral);
     golden::dump_pixel(second, "", ccd::run_pixel(
-        ccd::RunSpec{ccd::HarmonicOptions{}, ccd::LassoOptions{}},
+        golden::spec_of(ccd::HarmonicOptions{}, ccd::config::Legacy{}),
         dates,
         view,
         qas).result);

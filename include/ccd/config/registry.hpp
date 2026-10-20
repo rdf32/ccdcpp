@@ -58,6 +58,16 @@ struct StageConfig
     Values params;
 };
 
+inline bool operator==(const StageConfig& a, const StageConfig& b)
+{
+    return a.strategy == b.strategy && a.params == b.params;
+}
+
+inline bool operator!=(const StageConfig& a, const StageConfig& b)
+{
+    return !(a == b);
+}
+
 // The whole configuration, by stage name.
 using ConfigTree = std::map<std::string, StageConfig>;
 

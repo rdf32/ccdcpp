@@ -41,64 +41,15 @@ void bind_options(py::module_& m)
     )
     .def(py::init<>())
 
-    .def_property(
-        "METHOD",
-        [](const ccd::HarmonicOptions& o) { return std::string(ccd::method_name(o.METHOD)); },
-        [](ccd::HarmonicOptions& o, const std::string& name)
-        { o.METHOD = ccd::method_from_name(name); },
-        "The Standard procedure's change detection: \"ccdc\" (the default; "
-        "ccdcpp.METHODS; ValueError otherwise). Setting it changes "
-        "only the method; ccdcpp.with_method() also sets the parameters the "
-        "method fixes."
-    )
 
-    .def_readwrite(
-        "MEOW_SIZE",
-        &ccd::HarmonicOptions::MEOW_SIZE
-    )
-    .def_readwrite(
-        "PEEK_SIZE",
-        &ccd::HarmonicOptions::PEEK_SIZE,
-        "Observations (default 6). The Standard procedure's peek window at "
-        "PEEK_REFERENCE_DAYS; at least 2, else ccdcpp.detect* raise "
-        "ValueError."
-    )
-    .def_readwrite(
-        "DAY_DELTA",
-        &ccd::HarmonicOptions::DAY_DELTA
-    )
 
-    .def_readwrite(
-        "OUTLIER_THRESHOLD",
-        &ccd::HarmonicOptions::OUTLIER_THRESHOLD
-    )
-    .def_readwrite(
-        "CHANGE_THRESHOLD",
-        &ccd::HarmonicOptions::CHANGE_THRESHOLD
-    )
 
     .def_readwrite(
         "CLEAR_OBSERVATION_THRESHOLD",
         &ccd::HarmonicOptions::CLEAR_OBSERVATION_THRESHOLD
     )
 
-    .def_readwrite(
-        "CLEAR_PCT_THRESHOLD",
-        &ccd::HarmonicOptions::CLEAR_PCT_THRESHOLD
-    )
 
-    .def_readwrite(
-        "COEFFICIENT_MIN",
-        &ccd::HarmonicOptions::COEFFICIENT_MIN
-    )
-    .def_readwrite(
-        "COEFFICIENT_MID",
-        &ccd::HarmonicOptions::COEFFICIENT_MID
-    )
-    .def_readwrite(
-        "COEFFICIENT_MAX",
-        &ccd::HarmonicOptions::COEFFICIENT_MAX
-    )
 
     //--------------------------------------------------------------------------
     // Input unit convention
@@ -119,15 +70,10 @@ void bind_options(py::module_& m)
     //     o.THERM_MIN, o.THERM_MAX = -0.9320, 0.7070
     //     o.MEDIAN_GREEN_FILTER    = 0.04
     //
-    //     lo = ccdcpp.LassoOptions()
-    //     lo.alpha = lo.coef_floor = 1e-4
-    //
-    // Both LassoOptions fields are required, and neither omission raises.
-    // Measured on the pyccd reference pixel: alpha alone left at 1.0 zeroes
-    // 89 % of the coefficients and returns 4 segments instead of 5;
-    // coef_floor alone left at 1.0 returns the right sparsity and the right
-    // segments with coefficients wrong by up to 163 %. See harmonic.hpp for
-    // the measured equivalence and why plain Celsius is not the preset.
+    // with the configuration's reflectance parameters (the Lasso's alpha and
+    // coef_floor) converted by the profile (ccdcpp.Units.per_reflectance). See
+    // harmonic.hpp for the measured equivalence and why plain Celsius is not
+    // the preset.
     //--------------------------------------------------------------------------
     .def_readwrite(
         "THERMAL_SCALE",
@@ -230,20 +176,8 @@ void bind_options(py::module_& m)
         },
         "Bands whose residuals make up the change magnitude, in order "
         "(default [1, 2, 3, 4, 5]). The count is the chi-squared degrees of "
-        "freedom behind CHANGE_THRESHOLD and OUTLIER_THRESHOLD, whose "
-        "defaults are chi2(5) quantiles."
-    )
-    .def_property(
-        "TMASK_BANDS",
-        [](const ccd::HarmonicOptions& self)
-        {
-            return self.TMASK_BANDS.to_vector();
-        },
-        [](ccd::HarmonicOptions& self, const std::vector<ccd::index_t>& bands)
-        {
-            self.TMASK_BANDS = ccd::BandList(bands);
-        },
-        "Bands the Tmask outlier screen fits (default [1, 4])."
+        "freedom behind the configuration's change and outlier thresholds, "
+        "whose defaults are chi2(5) quantiles."
     )
     .def_property(
         "SATURATION_BANDS",
@@ -310,96 +244,11 @@ void bind_options(py::module_& m)
     .def_readwrite("QA_OCCLUSION", &ccd::HarmonicOptions::QA_OCCLUSION,
         "Informational; not read by ccdcpp (default 10).")
 
-    //--------------------------------------------------------------------------
-    // Remaining thresholds
-    //
-    // SNOW_PCT_THRESHOLD and T_CONST were the last two HarmonicOptions fields
-    // reachable only from C++; STAT_ORD and NUM_OBS_FACTOR likewise. All four
-    // are scale-invariant (fractions, rmse-normalised residuals, an ordinal
-    // date and a count) so they are not part of the unit block above.
-    //--------------------------------------------------------------------------
-    .def_readwrite(
-        "SNOW_PCT_THRESHOLD",
-        &ccd::HarmonicOptions::SNOW_PCT_THRESHOLD
-    )
-    .def_readwrite(
-        "T_CONST",
-        &ccd::HarmonicOptions::T_CONST
-    )
     .def_readwrite(
         "STAT_ORD",
         &ccd::HarmonicOptions::STAT_ORD
     )
-    .def_readwrite(
-        "NUM_OBS_FACTOR",
-        &ccd::HarmonicOptions::NUM_OBS_FACTOR
-    )
-
-    //--------------------------------------------------------------------------
-    // Cadence and change probability
-    //
-    // The Standard procedure's constants about the revisit interval of the
-    // input and the false-alarm rate of the change test. Defaults are
-    // pyccd's, for 16-day Landsat. ccdcpp.detect* raise ValueError on zero
-    // or negative days, counts below 1, a probability outside (0, 1) and a
-    // non-positive factor or divisor. See harmonic.hpp.
-    //--------------------------------------------------------------------------
-    .def_readwrite(
-        "PEEK_REFERENCE_DAYS",
-        &ccd::HarmonicOptions::PEEK_REFERENCE_DAYS,
-        "Days (default 16.0). The Standard procedure's peek size is "
-        "PEEK_SIZE * PEEK_REFERENCE_DAYS / (median gap between the "
-        "statistics-window observations, in days), rounded, and never below "
-        "PEEK_SIZE."
-    )
-    .def_readwrite(
-        "VARIOGRAM_MIN_LAG_DAYS",
-        &ccd::HarmonicOptions::VARIOGRAM_MIN_LAG_DAYS,
-        "Days (default 30). The Standard procedure's variogram uses the "
-        "smallest lag whose most common separation exceeds this, over the "
-        "pairs further apart than this."
-    )
-    .def_readwrite(
-        "RETRAIN_MIN_OBS",
-        &ccd::HarmonicOptions::RETRAIN_MIN_OBS,
-        "Observations (default 24). Read by the Standard procedure's "
-        "Extend: it refits while the model window holds fewer than "
-        "this, and a window of at most this many compares against the model "
-        "RMSE instead of the seasonal RMSE. Not scaled with the cadence."
-    )
-    .def_readwrite(
-        "RETRAIN_SPAN_FACTOR",
-        &ccd::HarmonicOptions::RETRAIN_SPAN_FACTOR,
-        "Unitless ratio of spans (default 1.33). Read by the Standard "
-        "procedure's Extend: it refits once the model window spans at "
-        "least this times the span of the last fit. Not scaled with the "
-        "cadence."
-    )
-    .def_readwrite(
-        "SEASONAL_RMSE_COUNT",
-        &ccd::HarmonicOptions::SEASONAL_RMSE_COUNT,
-        "Observations (default 24). Read by the Standard procedure's "
-        "Extend: the seasonal RMSE takes the fit residuals of this many "
-        "observations closest in day of year to the last peek observation."
-    )
-    .def_readwrite(
-        "SEASONAL_RMSE_DIVISOR",
-        &ccd::HarmonicOptions::SEASONAL_RMSE_DIVISOR,
-        "Unitless (default 4.0). Read by the Standard procedure's "
-        "Extend: the seasonal RMSE is the norm of those residuals "
-        "divided by this. pyccd's 4 is sqrt(24 - 8); this is not derived "
-        "from SEASONAL_RMSE_COUNT."
-    )
-    .def_readwrite(
-        "CHANGE_PROBABILITY",
-        &ccd::HarmonicOptions::CHANGE_PROBABILITY,
-        "Probability in (0, 1) (default 0.99). Read by the Standard "
-        "procedure's change-threshold adjustment: a peek window of `peek` "
-        "observations longer than the default `defpeek` uses the chi2 "
-        "quantile at 1 - (1 - CHANGE_PROBABILITY) ** (defpeek / peek). "
-        "CHANGE_THRESHOLD is ccdcpp.chi2_quantile(CHANGE_PROBABILITY, 5) by "
-        "default; set both together."
-    );
+;
 
     m.def(
         "chi2_quantile",
@@ -409,58 +258,10 @@ void bind_options(py::module_& m)
         "The chi-squared quantile at probability p with df degrees of "
         "freedom, from the same boost call the Standard procedure's "
         "change-threshold adjustment makes. chi2_quantile(0.99, 5) is the "
-        "CHANGE_THRESHOLD default; df is the DETECTION_BANDS count."
+        "change_threshold default; df is the DETECTION_BANDS count."
     );
 
 
-    py::class_<ccd::LassoOptions>(
-        m,
-        "LassoOptions"
-    )
-    .def(py::init<>())
 
-    .def_readwrite(
-        "max_iter",
-        &ccd::LassoOptions::max_iter
-    )
-    // alpha and coef_floor are ABSOLUTE, so both are statements about the
-    // unit of y. Defaults are calibrated for Collection-1 DN; reflectance
-    // needs 1e-4 for both. Getting this wrong does not raise -- it returns
-    // all-zero coefficients, faster. See LassoOptions in lasso_solver.hpp.
-    .def_readwrite(
-        "alpha",
-        &ccd::LassoOptions::alpha
-    )
-    .def_readwrite(
-        "coef_floor",
-        &ccd::LassoOptions::coef_floor
-    )
-    .def_readwrite(
-        "tolerance",
-        &ccd::LassoOptions::tolerance
-    )
-    .def_readwrite(
-        "fit_intercept",
-        &ccd::LassoOptions::fit_intercept
-    )
-    .def_readwrite(
-        "warm_start",
-        &ccd::LassoOptions::warm_start
-    )
-    .def_readwrite(
-        "unbiased_rmse",
-        &ccd::LassoOptions::unbiased_rmse
-    );
 
-    m.def(
-        "with_method",
-        [](const ccd::HarmonicOptions& options, const std::string& method)
-        { return ccd::with_method(options, ccd::method_from_name(method)); },
-        py::arg("options"),
-        py::arg("method"),
-        "A copy of options for a run of method (ccdcpp.METHODS; ValueError "
-        "otherwise): METHOD set and the parameters the "
-        "method fixes set to its values, every other field as given."
-    );
-    m.attr("METHODS") = py::make_tuple("ccdc");
 }

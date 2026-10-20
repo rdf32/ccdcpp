@@ -116,12 +116,12 @@ inline ccd::HarmonicOptions physical_harmonic()
     return h;
 }
 
-inline ccd::LassoOptions physical_lasso()
+inline ccd::config::Legacy physical_algorithm()
 {
-    ccd::LassoOptions lo;
-    lo.alpha = 1.0 / SCALE;
-    lo.coef_floor = 1.0 / SCALE;
-    return lo;
+    ccd::config::Legacy a;
+    a.lasso.alpha = 1.0 / SCALE;
+    a.lasso.coef_floor = 1.0 / SCALE;
+    return a;
 }
 
 // DN (7, T) block -> the preset's units, in place.

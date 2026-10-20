@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../golden/specs.hpp"
+
 #include "ccd/ccd.hpp"
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
@@ -21,7 +23,8 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/standard.hpp"
-#include "ccd/config/from_options.hpp"
+#include "ccd/config/legacy.hpp"
+#include "../golden/specs.hpp"
 
 
 using Clock = std::chrono::high_resolution_clock;
@@ -363,9 +366,7 @@ TEST(CCD, DetectStandard)
     ccd::FitResult result = fit_procedure.run(
         hworkspace,
         ccd::filter::standard(hworkspace),
-        lworkspace,
-        solver,
-        ccd::config::strategies_for(hoptions, loptions)
+        golden::strategies_of()
     );
 
     ::print_change_models(result.models);
@@ -500,7 +501,7 @@ TEST(CCD, DetectStandardHalfDayMedianGap)
     const ccd::LassoOptions loptions;
 
     const auto result = ccd::run_pixel(
-        ccd::RunSpec{hoptions, loptions},
+        golden::spec_of(hoptions, loptions),
         dates,
         spectral,
         qas).result;

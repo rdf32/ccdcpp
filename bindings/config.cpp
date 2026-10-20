@@ -7,7 +7,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "ccd/config/from_options.hpp"
+#include "ccd/config/legacy.hpp"
 #include "ccd/config/registry.hpp"
 #include "ccd/strategies/register_core.hpp"
 
@@ -128,7 +128,7 @@ ConfigPtr required(const py::object& config)
 ConfigPtr config_from_python(const py::object& config)
 {
     if (config.is_none())
-        return nullptr;
+        return std::make_shared<const ccd::config::ConfigTree>(ccd::config::preset("ccdc"));
     // A ccdcpp.Config holds its tree in `_tree`.
     const py::object tree_obj = py::hasattr(config, "_tree") ? config.attr("_tree") : config;
     if (!py::isinstance<py::dict>(tree_obj))
@@ -178,11 +178,10 @@ py::dict config_to_python(const ccd::config::ConfigTree& tree)
 void bind_config(py::module_& m)
 {
     m.def(
-        "_config_from_options",
-        [](const ccd::HarmonicOptions& h, const ccd::LassoOptions& l)
-        { return config_to_python(ccd::config::from_options(h, l)); },
-        py::arg("hoptions"), py::arg("loptions"),
-        "The configuration the options describe, as a dict of stages.");
+        "_config_preset",
+        [](const std::string& name) { return config_to_python(ccd::config::preset(name)); },
+        py::arg("name"),
+        "A preset built into the library, as a dict of stages in the input's units (C1 DN).");
     m.def(
         "_config_digest",
         [](const py::object& config) { return ccd::config::digest(*required(config)); },

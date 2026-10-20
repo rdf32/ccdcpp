@@ -81,6 +81,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../golden/specs.hpp"
+
 #include "ccd/ccd.hpp"
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
@@ -202,7 +204,7 @@ ccd::HarmonicOptions physical_harmonic()
     return h;
 }
 
-ccd::LassoOptions physical_lasso()
+ccd::LassoOptions physical_algorithm()
 {
     ccd::LassoOptions lo;
 
@@ -228,7 +230,7 @@ ccd::FitResult run(
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
         obs.qas.data(), {obs.T});
 
-    return ccd::run_pixel(ccd::RunSpec{h, lo}, dates, spec, qas).result;
+    return ccd::run_pixel(golden::spec_of(h, lo), dates, spec, qas).result;
 }
 
 //------------------------------------------------------------------------------
@@ -284,8 +286,8 @@ ccd::FitResult run_insufficient_clear(
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
         ccd::filter::insufficientclear(hworkspace),
-        hworkspace.options().MEOW_SIZE,
-        hworkspace.options().COEFFICIENT_MIN,
+        ccd::config::Legacy{}.MEOW_SIZE,
+        ccd::config::Legacy{}.COEFFICIENT_MIN,
         lworkspace,
         solver
     );
@@ -362,7 +364,7 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 
     const auto phys = run(
         obs, to_physical(obs.spectral, obs.T),
-        physical_harmonic(), physical_lasso()
+        physical_harmonic(), physical_algorithm()
     );
 
     // Structure first: if the segmentation moved, comparing coefficients is
@@ -438,7 +440,7 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 
     const auto dn = run(obs, obs.spectral, dn_h, ccd::LassoOptions{});
     const auto phys = run(
-        obs, to_physical(obs.spectral, obs.T), phys_h, physical_lasso());
+        obs, to_physical(obs.spectral, obs.T), phys_h, physical_algorithm());
 
     // The filter mask, before any fitting: the inclusive bound keeps the
     // moved observations, the exclusive one drops them, in both units.
@@ -501,7 +503,7 @@ TEST(Units, AlphaIsAUnitConstant)
         ccd::HarmonicOptions{}, ccd::LassoOptions{}
     );
 
-    ccd::LassoOptions lo = physical_lasso();
+    ccd::LassoOptions lo = physical_algorithm();
     lo.alpha = 1.0;                       // the DN value, left behind
 
     const auto bad = run(
@@ -542,7 +544,7 @@ TEST(Units, CoefFloorIsAUnitConstant)
         ccd::HarmonicOptions{}, ccd::LassoOptions{}
     );
 
-    ccd::LassoOptions lo = physical_lasso();
+    ccd::LassoOptions lo = physical_algorithm();
     lo.coef_floor = 1.0;                  // the DN value, left behind
 
     const auto quiet = run(
@@ -642,7 +644,7 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;     // here, not Celsius -- see
                                                 // plain_divide's comment
 
-    const auto phys = run_insufficient_clear(obs, scaled, h, physical_lasso());
+    const auto phys = run_insufficient_clear(obs, scaled, h, physical_algorithm());
 
     ASSERT_EQ(dn.models.size(), phys.models.size());
     ASSERT_GT(dn.models.size(), 0u);
@@ -655,7 +657,7 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     bad.MEDIAN_GREEN_FILTER = 400.0;            // the DN value, left behind
 
     const auto out = run_insufficient_clear(
-        obs, scaled, bad, physical_lasso()
+        obs, scaled, bad, physical_algorithm()
     );
 
     // Compared against the DN fit, not against `phys` -- worst_relative()

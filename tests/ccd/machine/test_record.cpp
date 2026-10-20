@@ -26,6 +26,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../golden/specs.hpp"
+
 #include "ccd/ccd.hpp"
 
 #include "characterisation.hpp"
@@ -55,7 +57,7 @@ ccd::ArrayView<const std::uint8_t, 1> qas_of(const golden::CharPixel& p)
 ccd::PixelRun recorded(const golden::CharPixel& p)
 {
     return ccd::run_pixel(
-        ccd::RunSpec{p.h, p.l, nullptr, nullptr, true},
+        golden::spec_of(p.h, p.a, nullptr, nullptr, true),
         dates_of(p),
         spectral_of(p),
         qas_of(p));
@@ -63,7 +65,7 @@ ccd::PixelRun recorded(const golden::CharPixel& p)
 
 ccd::FitResult detected(const golden::CharPixel& p)
 {
-    return ccd::run_pixel(ccd::RunSpec{p.h, p.l}, dates_of(p), spectral_of(p), qas_of(p)).result;
+    return ccd::run_pixel(golden::spec_of(p.h, p.a), dates_of(p), spectral_of(p), qas_of(p)).result;
 }
 
 std::string dump(const ccd::FitResult& r)
@@ -127,7 +129,8 @@ TEST(Record, TheHeaderNamesTheRun)
     EXPECT_EQ(r.header.series_end, p.dates.back());
     EXPECT_EQ(r.header.statistics_end, p.dates.back());
     EXPECT_EQ(r.header.options_digest,
-              ccd::options_digest(p.h, p.l, ccd::preprocess::default_plan(p.h), nullptr));
+              ccd::options_digest(p.h, ccd::config::legacy_config(p.a),
+                                  ccd::preprocess::default_plan(p.h), nullptr));
 }
 
 TEST(Record, EachExitAndItsSuspension)
@@ -202,14 +205,14 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
             qas_of(p), p.h);
         series.reset(ws, r.result.mask);
         ccd::LassoWorkspace lasso(0);
-        ccd::LassoSolver solver(p.l);
+        ccd::LassoSolver solver(p.a.lasso);
         std::vector<ccd::LassoResult> fits;
         const ccd::Window fit(s.window.start, s.fit_stop);
         ccd::fit_bands(
             series.dates().slice(ccd::range(fit.start, fit.stop)),
             series.spectral().slice(ccd::all(), ccd::range(fit.start, fit.stop)),
-            ccd::CoefficientRule{p.h.COEFFICIENT_MIN, p.h.COEFFICIENT_MID, p.h.COEFFICIENT_MAX,
-                                 p.h.NUM_OBS_FACTOR}.count(fit.size()),
+            ccd::CoefficientRule{p.a.COEFFICIENT_MIN, p.a.COEFFICIENT_MID, p.a.COEFFICIENT_MAX,
+                                 p.a.NUM_OBS_FACTOR}.count(fit.size()),
             ccd::KeepResiduals::No, lasso, solver, fits);
         for (std::size_t b = 0; b < fits.size(); ++b)
         {
@@ -292,10 +295,11 @@ namespace
 
 std::uint64_t digest_of(
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& l = ccd::LassoOptions{},
+    const ccd::config::Legacy& a = ccd::config::Legacy{},
     const ccd::QaTable* table = nullptr)
 {
-    return ccd::options_digest(h, l, ccd::preprocess::default_plan(h), table);
+    return ccd::options_digest(h, ccd::config::legacy_config(a), ccd::preprocess::default_plan(h),
+                               table);
 }
 
 } // namespace
@@ -303,8 +307,33 @@ std::uint64_t digest_of(
 TEST(OptionsDigest, EqualOptionsEqualDigests)
 {
     EXPECT_EQ(digest_of(ccd::HarmonicOptions{}), digest_of(ccd::HarmonicOptions{}));
-    EXPECT_EQ(digest_of(golden::physical_harmonic(), golden::physical_lasso()),
-              digest_of(golden::physical_harmonic(), golden::physical_lasso()));
+    EXPECT_EQ(digest_of(golden::physical_harmonic(), golden::physical_algorithm()),
+              digest_of(golden::physical_harmonic(), golden::physical_algorithm()));
+}
+
+// A configuration 0.10's options describe digests as 0.10 digested those
+// options, so 0.10.0's resume records stay valid: 0.10.0's digests of the
+// default run, of two variants and of the Collection-2 options.
+TEST(OptionsDigest, AConfigurationOfTheOptionsKeepsTheirDigest)
+{
+    EXPECT_EQ(digest_of(ccd::HarmonicOptions{}), 10514528273867247594ull);
+    ccd::config::Legacy threshold;
+    threshold.CHANGE_THRESHOLD = 11.0;
+    EXPECT_EQ(digest_of(ccd::HarmonicOptions{}, threshold), 8596613333196416811ull);
+    ccd::config::Legacy alpha;
+    alpha.lasso.alpha = 2.0;
+    EXPECT_EQ(digest_of(ccd::HarmonicOptions{}, alpha), 13857117797823812633ull);
+
+    // A configuration no options describe: its own digest, and another.
+    const ccd::HarmonicOptions h;
+    ccd::config::ConfigTree tree = ccd::config::preset("ccdc");
+    EXPECT_TRUE(ccd::config::recover(tree));
+    tree["lookback"].params["peek"] = ccd::config::integer(6);
+    EXPECT_FALSE(ccd::config::recover(tree));
+    const std::uint64_t own =
+        ccd::options_digest(h, tree, ccd::preprocess::default_plan(h), nullptr);
+    EXPECT_NE(own, digest_of(h));
+    EXPECT_EQ(own, ccd::options_digest(h, tree, ccd::preprocess::default_plan(h), nullptr));
 }
 
 TEST(OptionsDigest, EveryGroupOfFieldsMoves)
@@ -313,26 +342,14 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
 
     using Set = std::function<void(ccd::HarmonicOptions&)>;
     const std::pair<const char*, Set> harmonic[] = {
-        {"MEOW_SIZE", [](auto& h) { h.MEOW_SIZE = 13; }},
-        {"PEEK_SIZE", [](auto& h) { h.PEEK_SIZE = 7; }},
-        {"DAY_DELTA", [](auto& h) { h.DAY_DELTA = 366; }},
         {"QA_SNOW", [](auto& h) { h.QA_SNOW = 7; }},
         {"QA_OCCLUSION", [](auto& h) { h.QA_OCCLUSION = 11; }},
-        {"CLEAR_PCT_THRESHOLD", [](auto& h) { h.CLEAR_PCT_THRESHOLD = 0.26; }},
-        {"OUTLIER_THRESHOLD", [](auto& h) { h.OUTLIER_THRESHOLD = 36.0; }},
-        {"T_CONST", [](auto& h) { h.T_CONST = 4.9; }},
-        {"VARIOGRAM_MIN_LAG_DAYS", [](auto& h) { h.VARIOGRAM_MIN_LAG_DAYS = 31; }},
-        {"RETRAIN_MIN_OBS", [](auto& h) { h.RETRAIN_MIN_OBS = 25; }},
-        {"SEASONAL_RMSE_DIVISOR", [](auto& h) { h.SEASONAL_RMSE_DIVISOR = 4.5; }},
         {"THERMAL_OFFSET", [](auto& h) { h.THERMAL_OFFSET = -2731.0; }},
         {"REFL_MAX_INCLUSIVE", [](auto& h) { h.REFL_MAX_INCLUSIVE = true; }},
         {"THERM_MIN", [](auto& h) { h.THERM_MIN = -9000.0; }},
         {"GREEN_FILTER_SCOPE", [](auto& h) { h.GREEN_FILTER_SCOPE = ccd::GreenFilterScope::All; }},
         {"STAT_ORD", [](auto& h) { h.STAT_ORD = 736695; }},
-        {"COEFFICIENT_MID", [](auto& h) { h.COEFFICIENT_MID = 7; }},
-        {"NUM_OBS_FACTOR", [](auto& h) { h.NUM_OBS_FACTOR = 4; }},
         {"DETECTION_BANDS", [](auto& h) { h.DETECTION_BANDS = {1, 2, 3, 4}; }},
-        {"TMASK_BANDS", [](auto& h) { h.TMASK_BANDS = {1, 5}; }},
         {"SATURATION_BANDS", [](auto& h) { h.SATURATION_BANDS = {0, 1, 2, 3, 4}; }},
         {"QA_IDX", [](auto& h) { h.QA_IDX = 8; }},
     };
@@ -343,28 +360,38 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         EXPECT_NE(digest_of(h), base) << name;
     }
 
-    using SetLasso = std::function<void(ccd::LassoOptions&)>;
-    const std::pair<const char*, SetLasso> lasso[] = {
-        {"max_iter", [](auto& l) { l.max_iter = 999; }},
-        {"alpha", [](auto& l) { l.alpha = 2.0; }},
-        {"tolerance", [](auto& l) { l.tolerance = 1e-5; }},
-        {"coef_floor", [](auto& l) { l.coef_floor = 2.0; }},
-        {"fit_intercept", [](auto& l) { l.fit_intercept = false; }},
-        {"warm_start", [](auto& l) { l.warm_start = true; }},
-        {"unbiased_rmse", [](auto& l) { l.unbiased_rmse = false; }},
+    // The algorithm's options, each in the configuration they describe.
+    using SetLegacy = std::function<void(ccd::config::Legacy&)>;
+    const std::pair<const char*, SetLegacy> legacy[] = {
+        {"MEOW_SIZE", [](auto& a) { a.MEOW_SIZE = 13; }},
+        {"PEEK_SIZE", [](auto& a) { a.PEEK_SIZE = 7; }},
+        {"DAY_DELTA", [](auto& a) { a.DAY_DELTA = 366; }},
+        {"CLEAR_PCT_THRESHOLD", [](auto& a) { a.CLEAR_PCT_THRESHOLD = 0.26; }},
+        {"OUTLIER_THRESHOLD", [](auto& a) { a.OUTLIER_THRESHOLD = 36.0; }},
+        {"T_CONST", [](auto& a) { a.T_CONST = 4.9; }},
+        {"VARIOGRAM_MIN_LAG_DAYS", [](auto& a) { a.VARIOGRAM_MIN_LAG_DAYS = 31; }},
+        {"RETRAIN_MIN_OBS", [](auto& a) { a.RETRAIN_MIN_OBS = 25; }},
+        {"SEASONAL_RMSE_DIVISOR", [](auto& a) { a.SEASONAL_RMSE_DIVISOR = 4.5; }},
+        {"COEFFICIENT_MID", [](auto& a) { a.COEFFICIENT_MID = 7; }},
+        {"NUM_OBS_FACTOR", [](auto& a) { a.NUM_OBS_FACTOR = 4; }},
+        {"TMASK_BANDS", [](auto& a) { a.TMASK_BANDS = {1, 5}; }},
+        {"max_iter", [](auto& a) { a.lasso.max_iter = 999; }},
+        {"alpha", [](auto& a) { a.lasso.alpha = 2.0; }},
+        {"tolerance", [](auto& a) { a.lasso.tolerance = 1e-5; }},
+        {"coef_floor", [](auto& a) { a.lasso.coef_floor = 2.0; }},
     };
-    for (const auto& [name, set] : lasso)
+    for (const auto& [name, set] : legacy)
     {
-        ccd::LassoOptions l;
-        set(l);
-        EXPECT_NE(digest_of(ccd::HarmonicOptions{}, l), base) << name;
+        ccd::config::Legacy a;
+        set(a);
+        EXPECT_NE(digest_of(ccd::HarmonicOptions{}, a), base) << name;
     }
 }
 
 TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 {
     const ccd::HarmonicOptions h;
-    const ccd::LassoOptions l;
+    const ccd::config::ConfigTree l = ccd::config::preset("ccdc");
     const auto plan = ccd::preprocess::default_plan(h);
     const std::uint64_t base = ccd::options_digest(h, l, plan, nullptr);
 
@@ -391,8 +418,8 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 // for, and a test that fails here is a reminder, not a platform difference.
 TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 448u);
-    EXPECT_EQ(sizeof(ccd::LassoOptions), 40u);
+    EXPECT_EQ(sizeof(ccd::HarmonicOptions), 256u);
+    EXPECT_EQ(sizeof(ccd::config::Legacy), 232u);
     EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
     EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);
 }

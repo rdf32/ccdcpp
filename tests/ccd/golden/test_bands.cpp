@@ -44,6 +44,8 @@
 #include <boost/math/distributions/chi_squared.hpp>
 #include <gtest/gtest.h>
 
+#include "specs.hpp"
+
 #include "ccd/ccd.hpp"
 
 #include "golden.hpp"
@@ -71,14 +73,14 @@ ccd::FitResult run_detect(
     std::size_t B,
     const std::uint8_t* qas,
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& l
+    const ccd::config::Legacy& l
 )
 {
     const std::size_t T = dates.size();
     std::vector<double> block(spectral, spectral + B * T);
 
     return ccd::run_pixel(
-        ccd::RunSpec{h, l},
+        golden::spec_of(h, l),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(block.data(), {B, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas, {T})).result;
@@ -166,7 +168,7 @@ template<typename Map>
 std::string dump_series(
     const Series& s,
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& l,
+    const ccd::config::Legacy& l,
     Map map
 )
 {
@@ -184,7 +186,7 @@ std::string dump_series(
 std::string dump_series(
     const Series& s,
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& l
+    const ccd::config::Legacy& l
 )
 {
     return dump_series(s, h, l, [](ccd::FitResult r) { return r; });
@@ -240,7 +242,7 @@ TEST(Bands, BitIdenticalToFixture)
     for (std::size_t pi = 0; pi < profiles().size(); ++pi)
     {
         const Profile profile = profiles()[pi];
-        const ccd::LassoOptions l;
+        const ccd::config::Legacy& l = profile.a;
         const std::size_t B = profile.specs.size();
         Coverage coverage;
 
@@ -280,7 +282,7 @@ TEST(Bands, BitIdenticalToFixture)
             for (int threads : {1, 4})
             {
                 ccd::CubeResult cube = ccd::run_cube(
-                    ccd::RunSpec{profile.h, l},
+                    golden::spec_of(profile.h, l),
                     ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
                     ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, B, c.T}),
                     ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, c.T}),
@@ -378,7 +380,6 @@ ccd::HarmonicOptions landsat_layout(ccd::HarmonicOptions h)
 {
     h.NUM_BANDS = 7;
     h.DETECTION_BANDS = band_list({1, 2, 3, 4, 5});
-    h.TMASK_BANDS = band_list({1, 4});
     h.SATURATION_BANDS = band_list({0, 1, 2, 3, 4, 5});
     h.GREEN_IDX = 1;
     h.THERMAL_IDX = 6;
@@ -392,13 +393,13 @@ TEST(Bands, GenericLayoutEqualsDefault)
     for (const auto& s : landsat_corpus())
     {
         EXPECT_EQ(
-            dump_series(s, landsat_layout(ccd::HarmonicOptions{}), ccd::LassoOptions{}),
-            dump_series(s, ccd::HarmonicOptions{}, ccd::LassoOptions{}));
+            dump_series(s, landsat_layout(ccd::HarmonicOptions{}), ccd::config::Legacy{}),
+            dump_series(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}));
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
-            dump_series(phys, landsat_layout(golden::physical_harmonic()), golden::physical_lasso()),
-            dump_series(phys, golden::physical_harmonic(), golden::physical_lasso()));
+            dump_series(phys, landsat_layout(golden::physical_harmonic()), golden::physical_algorithm()),
+            dump_series(phys, golden::physical_harmonic(), golden::physical_algorithm()));
     }
 }
 
@@ -428,7 +429,6 @@ ccd::HarmonicOptions permute_layout(
     };
 
     h.DETECTION_BANDS = remap(h.DETECTION_BANDS);
-    h.TMASK_BANDS = remap(h.TMASK_BANDS);
     h.SATURATION_BANDS = remap(h.SATURATION_BANDS);
     h.GREEN_IDX = inv[h.GREEN_IDX];
     if (h.THERMAL_IDX != ccd::NO_BAND)
@@ -439,7 +439,7 @@ ccd::HarmonicOptions permute_layout(
 void expect_permutation_invariant(
     const Series& s,
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& l,
+    const ccd::config::Legacy& l,
     const std::vector<ccd::index_t>& perm
 )
 {
@@ -451,9 +451,14 @@ void expect_permutation_invariant(
 
     const Series permuted = take_rows(s, perm);
     const ccd::HarmonicOptions hp = permute_layout(h, inv);
+    ccd::config::Legacy lp = l;   // the Tmask bands follow theirs too
+    ccd::BandList tmask;
+    for (const ccd::index_t b : l.TMASK_BANDS)
+        tmask.push_back(inv[b]);
+    lp.TMASK_BANDS = tmask;
 
     EXPECT_EQ(
-        dump_series(permuted, hp, l,
+        dump_series(permuted, hp, lp,
             [&](const ccd::FitResult& r) { return select_bands(r, inv); }),
         dump_series(s, h, l));
 }
@@ -466,9 +471,9 @@ TEST(Bands, PermutationInvariantSevenBands)
 
     for (const auto& s : landsat_corpus())
     {
-        expect_permutation_invariant(s, ccd::HarmonicOptions{}, ccd::LassoOptions{}, perm);
+        expect_permutation_invariant(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}, perm);
         expect_permutation_invariant(
-            to_physical(s), golden::physical_harmonic(), golden::physical_lasso(), perm);
+            to_physical(s), golden::physical_harmonic(), golden::physical_algorithm(), perm);
     }
 }
 
@@ -485,7 +490,7 @@ TEST(Bands, PermutationInvariantTenBands)
         {
             const Series s = from_cube(golden::make_band_cube(
                 500 + spec.seed, spec.regime, spec.H, spec.W, profile.specs));
-            expect_permutation_invariant(s, profile.h, ccd::LassoOptions{}, perm);
+            expect_permutation_invariant(s, profile.h, profile.a, perm);
         }
     }
 }
@@ -512,15 +517,15 @@ TEST(Bands, InertBandsChangeNothingElse)
             const Series wide = with_inert_rows(s, k, 900 + k);
 
             EXPECT_EQ(
-                dump_series(wide, h, ccd::LassoOptions{},
+                dump_series(wide, h, ccd::config::Legacy{},
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(s, ccd::HarmonicOptions{}, ccd::LassoOptions{}));
+                dump_series(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}));
 
             const Series phys = to_physical(s);
             EXPECT_EQ(
-                dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::physical_lasso(),
+                dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::physical_algorithm(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(phys, golden::physical_harmonic(), golden::physical_lasso()));
+                dump_series(phys, golden::physical_harmonic(), golden::physical_algorithm()));
         }
     }
 
@@ -535,9 +540,9 @@ TEST(Bands, InertBandsChangeNothingElse)
         h.NUM_BANDS = 10;
 
         EXPECT_EQ(
-            dump_series(with_inert_rows(s, 2, 77), h, ccd::LassoOptions{},
+            dump_series(with_inert_rows(s, 2, 77), h, l30.a,
                 [](const ccd::FitResult& r) { return select_bands(r, iota(8)); }),
-            dump_series(s, l30.h, ccd::LassoOptions{}));
+            dump_series(s, l30.h, l30.a));
     }
 }
 
@@ -600,26 +605,26 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
         const Series stripped = take_rows(s, optical);
         const std::string absent =
-            dump_series(stripped, no_thermal(ccd::HarmonicOptions{}), ccd::LassoOptions{});
+            dump_series(stripped, no_thermal(ccd::HarmonicOptions{}), ccd::config::Legacy{});
 
         EXPECT_EQ(
             absent,
-            dump_series(s, open_thermal(ccd::HarmonicOptions{}), ccd::LassoOptions{}, optical_only));
+            dump_series(s, open_thermal(ccd::HarmonicOptions{}), ccd::config::Legacy{}, optical_only));
 
         default_bounds_differ = default_bounds_differ ||
-            absent != dump_series(s, ccd::HarmonicOptions{}, ccd::LassoOptions{}, optical_only);
+            absent != dump_series(s, ccd::HarmonicOptions{}, ccd::config::Legacy{}, optical_only);
 
         const Series phys = to_physical(s);
         EXPECT_EQ(
             dump_series(take_rows(phys, optical), no_thermal(golden::physical_harmonic()),
-                golden::physical_lasso()),
+                golden::physical_algorithm()),
             dump_series(phys, open_thermal(golden::physical_harmonic()),
-                golden::physical_lasso(), optical_only));
+                golden::physical_algorithm(), optical_only));
 
         for (std::size_t p = 0; p < s.N; ++p)
         {
             for (const auto& m : run_detect(stripped.dates, stripped.pixel(p), 6,
-                     stripped.qa(p), no_thermal(ccd::HarmonicOptions{}), ccd::LassoOptions{}).models)
+                     stripped.qa(p), no_thermal(ccd::HarmonicOptions{}), ccd::config::Legacy{}).models)
             {
                 if (m.curve_qa == ccd::CurveQA::PersistentSnow) ++coverage.snow;
                 else if (m.curve_qa == ccd::CurveQA::InsufficientClear) ++coverage.insufficient;

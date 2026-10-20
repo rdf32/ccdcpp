@@ -25,7 +25,8 @@ struct Tmask final : WindowScreen
 
     static const std::vector<config::Field<Params>>& schema();
 
-    explicit Tmask(const Params& p) : p_(p) {}
+    // Refuses an empty band list.
+    explicit Tmask(const Params& p);
 
     ProcessingMask screen(ArrayView<const std::int64_t, 1> dates,
                           ArrayView<const scalar_t, 2> spectral,

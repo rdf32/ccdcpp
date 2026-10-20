@@ -18,6 +18,7 @@
 #include "ccd/machine/fit.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
+#include "ccd/config/legacy.hpp"
 
 
 using Clock = std::chrono::high_resolution_clock;
@@ -365,8 +366,8 @@ TEST(CCD, DetectClear)
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
         ccd::filter::insufficientclear(hworkspace),
-        hworkspace.options().MEOW_SIZE,
-        hworkspace.options().COEFFICIENT_MIN,
+        ccd::config::Legacy{}.MEOW_SIZE,
+        ccd::config::Legacy{}.COEFFICIENT_MIN,
         lworkspace,
         solver
     );

@@ -25,7 +25,7 @@ int omp_get_thread_num() { return 0; }
 #include "ccd/input/quality.hpp"
 #include "ccd/core/logger.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
-#include "ccd/config/from_options.hpp"
+#include "ccd/config/legacy.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 #include "../core/fnv.hpp"
@@ -337,7 +337,6 @@ FitResult run_steps(
     const QaTable* qa_table,
     const preprocess::PreprocessPlan& plan,
     const HarmonicOptions& options,
-    const LassoOptions& loptions,
     const Strategies& strategies,
     Worker& worker,
     const PassRequest& request,
@@ -366,11 +365,10 @@ FitResult run_steps(
                                 mask);
 
     // Step 5. The fit: the run's change detector, or the stored run continued.
-    LassoSolver solver(loptions);
     standard::Detector& detector = worker.standard;
 
     if (!request.record && !request.continue_from)
-        return detector.fit(mode, pixel, std::move(mask), worker.lasso, solver, strategies,
+        return detector.fit(mode, pixel, std::move(mask), strategies,
                             worker.observe);
 
     // A pixel its mode filters or caps is fitted again, as a whole-series
@@ -382,10 +380,10 @@ FitResult run_steps(
         drops_unambiguous(request.continue_from->excluded_days, dates, mask);
 
     FitResult result = continues
-        ? detector.resume(pixel, std::move(mask), worker.lasso, solver, strategies,
+        ? detector.resume(pixel, std::move(mask), strategies,
                           request.continue_from->standard, request.continue_from->excluded_days,
                           worker.observe, request.carried_change)
-        : detector.fit(mode, pixel, std::move(mask), worker.lasso, solver, strategies,
+        : detector.fit(mode, pixel, std::move(mask), strategies,
                        worker.observe);
     continued = continues;
 
@@ -424,15 +422,7 @@ Run::Run(
     if (spec_.record || resume)
     {
         header_.options_digest =
-            options_digest(spec_.hoptions, spec_.loptions, plan_, spec_.qa_table.get());
-        // A run under a configuration of its own: the configuration too.
-        if (spec_.config)
-        {
-            detail::Fnv h;
-            h.integer(static_cast<std::int64_t>(header_.options_digest));
-            h.integer(static_cast<std::int64_t>(config::digest(*spec_.config)));
-            header_.options_digest = h.value();
-        }
+            options_digest(spec_.hoptions, spec_.config, plan_, spec_.qa_table.get());
         header_.series_end = dates.size() > 0
             ? dates(dates.size() - 1)
             : std::numeric_limits<std::int64_t>::min();
@@ -455,15 +445,9 @@ Run::Run(
         run_plan_ = plan_;
     }
 
-    // The run's strategies: its configuration's, or the one its options
-    // describe.
-    if (spec_.config)
-    {
-        strategies::library_registry().check_bands(*spec_.config, bands_);
-        strategies_ = strategies::build_strategies(strategies::library_registry(), *spec_.config);
-    }
-    else
-        strategies_ = config::strategies_for(options_, spec_.loptions);
+    // The run's strategies, its configuration's.
+    strategies::library_registry().check_bands(spec_.config, bands_);
+    strategies_ = strategies::build_strategies(strategies::library_registry(), spec_.config);
 }
 
 Observe Run::observed(index_t at) const
@@ -509,7 +493,7 @@ PixelOutcome Run::pixel_typed(
             request.through = header_.series_end;
         }
         out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, options_,
-                                          spec_.loptions, strategies_, worker, request, continued);
+                                          strategies_, worker, request, continued);
         if (!spec_.keep_masks)
             out.result.mask = ProcessingMask();
         return out;
@@ -546,7 +530,7 @@ PixelOutcome Run::pixel_typed(
     const index_t carried = from.standard.final_segments;
     request.carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
     out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, options_,
-                                      spec_.loptions, strategies_, worker, request, continued);
+                                      strategies_, worker, request, continued);
 
     // The machine may still not continue (a stored drop on a date the plan
     // keeps twice): then its result is a whole rerun, without the stored

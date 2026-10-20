@@ -307,15 +307,13 @@ std::string summary(const State& state);
 // Context
 //
 // What the transitions read and use but never change the meaning of: the
-// caller's options (never written), the pixel, and the Lasso solver with its
-// workspace.
+// caller's options (never written), the pixel, and the run's strategies (each
+// holds its own solver and buffers in the State's scratch).
 //------------------------------------------------------------------------------
 struct Context
 {
     const HarmonicOptions& options;
     const HarmonicWorkspace& pixel;
-    LassoWorkspace& lasso;
-    LassoSolver& solver;
     // The run's strategies, one per stage (strategies/stages.hpp).
     const Strategies& strategies;
     // Where the pixel reports what it does (results/diagnostics.hpp).
@@ -537,8 +535,6 @@ public:
     FitResult run(
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver,
         const Strategies& strategies,
         Observe observe = {},
         index_t max_coefficients = 0
@@ -548,8 +544,6 @@ public:
     FitResult resume(
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver,
         const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days,
@@ -593,8 +587,6 @@ public:
         const PixelMode& mode,
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver,
         const Strategies& strategies,
         Observe observe = {}
     );
@@ -604,8 +596,6 @@ public:
     FitResult resume(
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
-        LassoWorkspace& lworkspace,
-        LassoSolver& solver,
         const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days,

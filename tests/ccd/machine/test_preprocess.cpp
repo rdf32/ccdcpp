@@ -41,6 +41,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../golden/specs.hpp"
+
 #include "ccd/ccd.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/preprocess.hpp"
@@ -533,7 +535,7 @@ ccd::FitResult run_detect(
     const ccd::PreprocessPlanPtr& plan
 )
 {
-    return ccd::run_pixel(ccd::RunSpec{h, l, nullptr, plan}, px.dates, px.spectral, px.qas).result;
+    return ccd::run_pixel(golden::spec_of(h, l, nullptr, plan), px.dates, px.spectral, px.qas).result;
 }
 
 } // namespace
@@ -692,7 +694,7 @@ TEST(CustomPlan, NullIsTheDefaultPlan)
     auto cube = [&](const ccd::PreprocessPlanPtr& given)
     {
         const ccd::CubeResult r = ccd::run_cube(
-            ccd::RunSpec{h, l, nullptr, given},
+            golden::spec_of(h, l, nullptr, given),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -815,7 +817,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     EXPECT_EQ(standard_changed, 0u);
 
     const ccd::CubeResult cube = ccd::run_cube(
-        ccd::RunSpec{h, l, nullptr, plan},
+        golden::spec_of(h, l, nullptr, plan),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -952,7 +954,7 @@ TEST(PlanValidation, EntryPointsReject)
 
     EXPECT_THROW(
         ccd::run_cube(
-            ccd::RunSpec{h, l, nullptr, plan},
+            golden::spec_of(h, l, nullptr, plan),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),

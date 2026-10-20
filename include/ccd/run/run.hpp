@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ccd/core/array_view.hpp"
+#include "ccd/config/legacy.hpp"
 #include "ccd/config/registry.hpp"
 #include "ccd/input/harmonic.hpp"
 #include "ccd/input/mask/preprocess.hpp"
@@ -77,7 +78,14 @@ using CubeQa = std::variant<
 //
 // What a call runs.
 //
-//   hoptions, loptions  the options (validate() checks them)
+//   hoptions            the input's description (validate() checks it)
+//   config              the algorithm: one strategy per stage by name, with
+//                       its parameters (config/registry.hpp), in the
+//                       library's registry with its extensions; the "ccdc"
+//                       preset by default (config::preset()). It is checked
+//                       when the run is built (names, parameters,
+//                       capabilities, band lists against the input's bands)
+//                       and is part of the resume digest
 //   qa_table            decodes raw QA; null: `qas` are the codes. Required
 //                       for uint16 QA.
 //   plan                the preprocessing plan; null: default_plan(hoptions)
@@ -90,13 +98,6 @@ using CubeQa = std::variant<
 //                       run_cube's pixels at the flat indices `observe`
 //                       (row * W + col; empty: every pixel). With
 //                       CCD_OBSERVE=OFF nothing is reported
-//   config              the algorithm's configuration, one strategy per stage
-//                       by name (config/registry.hpp), in the library's
-//                       registry with its extensions; null: the one hoptions
-//                       and loptions describe (config::from_options()). A
-//                       configuration is checked when the run is built (names,
-//                       parameters, capabilities, band lists against the
-//                       input's bands) and is part of the resume digest
 //
 // A resume is an input of the call (run_pixel's and run_cube's `resume`),
 // not part of what it runs.
@@ -105,12 +106,11 @@ using CubeQa = std::variant<
 struct RunSpec
 {
     HarmonicOptions hoptions;
-    LassoOptions loptions;
+    config::ConfigTree config = config::preset("ccdc");
     QaTablePtr qa_table = nullptr;
     PreprocessPlanPtr plan = nullptr;
     bool record = false;
     bool keep_masks = true;
-    std::shared_ptr<const config::ConfigTree> config = nullptr;
     std::shared_ptr<Observer> observer = nullptr;
     std::vector<index_t> observe;
 };
@@ -213,8 +213,6 @@ struct CubeResult
 //------------------------------------------------------------------------------
 struct Worker
 {
-    LassoWorkspace lasso{0};
-
     // Where the pixel being run reports (the run sets it per pixel).
     Observe observe;
 

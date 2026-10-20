@@ -1,4 +1,5 @@
-"""Sensor profiles: one sensor's band layout, input units and options, by role.
+"""Sensor profiles: one sensor's band layout, input units and options, by role, and the
+configuration it writes for its input (``SensorProfile.config()``).
 
 A :class:`SensorProfile` names the rows of the ``spectral`` array and says
 which role each one plays. The detection, Tmask and saturation lists are
@@ -37,7 +38,7 @@ values are not validated, and ccdcpp.presets does not contain it::
 
 The detection count sets the chi-squared degrees of freedom of the change and
 outlier thresholds; a profile with other than five detection bands gets
-thresholds computed for its count (see :meth:`SensorProfile.options`).
+thresholds computed for its count (see :meth:`SensorProfile.config`).
 
 A profile's ``preprocess=`` is a :class:`Preprocess`: per procedure, the
 filter steps that build the processing mask and the transform before them,
@@ -68,7 +69,6 @@ from .ccdcpp import (
     Chain,
     GreenFilterScope,
     HarmonicOptions,
-    LassoOptions,
     PreprocessPlan,
     ProcedurePlan,
     Step,
@@ -112,8 +112,9 @@ _INDEX_FIELDS = {
     "thermal": "THERMAL_IDX",
 }
 
-#: The ``HarmonicOptions`` fields ``cadence=`` may set: the cadence and
-#: change-probability options and the two window sizes.
+#: The options ``cadence=`` may set (``ccdcpp.OPTION_PARAMS`` names the
+#: configuration parameters each one sets): the cadence and change-probability
+#: options and the two window sizes.
 CADENCE_FIELDS = (
     "MEOW_SIZE",
     "PEEK_SIZE",
@@ -126,9 +127,13 @@ CADENCE_FIELDS = (
     "CHANGE_PROBABILITY",
 )
 
-#: The probability behind the ``OUTLIER_THRESHOLD`` default:
+#: The probability behind the outlier threshold's default:
 #: ``chi2_quantile(OUTLIER_PROBABILITY, 5)`` is that default to the last bit.
 OUTLIER_PROBABILITY = 1.0 - 1e-6
+
+# The chi2(5) thresholds, the "ccdc" preset's.
+_CHI2_5_CHANGE = 15.086272469388987
+_CHI2_5_OUTLIER = 35.888186879610423
 
 #: ``green_filter_scope`` names -> ``ccdcpp.GreenFilterScope`` values.
 GREEN_FILTER_SCOPES = {
@@ -535,7 +540,7 @@ class Preprocess:
         the ``options`` of the run (default: the profile's own). Raises
         ValueError when the plan does not fit the profile
         (``ccdcpp.validate_plan``)."""
-        h = profile.options()[0] if options is None else options
+        h = profile.options() if options is None else options
         default = default_plan(h)
         plan = PreprocessPlan(
             *(getattr(default, name) if getattr(self, name) is None
@@ -578,32 +583,35 @@ class SensorProfile:
     detection, tmask, saturation
         Role names. ``detection`` is the change-magnitude bands
         (``DETECTION_BANDS``), ``tmask`` the Tmask outlier screen
-        (``TMASK_BANDS``), ``saturation`` the bands tested against the
+        (``window_screen``'s ``bands``, :meth:`config`), ``saturation`` the bands tested against the
         saturation bounds (``SATURATION_BANDS``; may be empty, must not hold
         thermal). Each list keeps its order, which is the order the
         procedures accumulate in.
     units
         The reflective thresholds, a :class:`Units`.
     alpha, coef_floor
-        ``LassoOptions.alpha`` and ``coef_floor``. Both are absolute and
-        statements about the input unit; a wrong value does not raise, it
-        fits sparser or wronger coefficients, so neither has a default.
+        The Lasso's ``alpha`` and ``coef_floor`` (:meth:`config`). Both are
+        absolute and statements about the input unit; a wrong value does not
+        raise, it fits sparser or wronger coefficients, so neither has a
+        default.
     thermal
         A :class:`Thermal`, or None for an input without a thermal band
         (``THERMAL_IDX = NO_BAND``, which skips the transform and filter).
     cadence
-        ``HarmonicOptions`` field -> value, from :data:`CADENCE_FIELDS`.
-        Fields not named keep pyccd's 16-day Landsat values.
+        Option -> value, from :data:`CADENCE_FIELDS`, which :meth:`config`
+        sets in the configuration (``ccdcpp.OPTION_PARAMS``). Options not
+        named keep the base configuration's values (pyccd's 16-day Landsat
+        values in "ccdc").
     stat_ord
         ``STAT_ORD``, the last date of the statistics window, as a proleptic
         Gregorian ordinal; None for no cutoff (:data:`NO_STAT_CUTOFF`). The
         Landsat value, 2017-12-31, would put a series that starts later
         entirely outside the window.
     change_threshold, outlier_threshold
-        None (the default) computes ``chi2_quantile(CHANGE_PROBABILITY, n)``
+        None (the default) computes ``chi2_quantile(change_probability, n)``
         and ``chi2_quantile(OUTLIER_PROBABILITY, n)`` for ``n`` detection
-        bands, which for five bands are the ``HarmonicOptions`` defaults to
-        the last bit. A number is used as given.
+        bands, which for five bands are the "ccdc" preset's values to the
+        last bit (:meth:`config`). A number is used as given.
     qa_table_builder
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
@@ -799,23 +807,16 @@ class SensorProfile:
         return self.roles.index(role)
 
     def options(self):
-        """``(HarmonicOptions, LassoOptions)`` for this profile, new objects.
+        """The ``HarmonicOptions`` of this profile's input, a new object.
 
-        Roles become row indices: each list in its own order, each index
-        the role's position in ``band_names``. Every field the profile does
-        not describe keeps its ``HarmonicOptions()`` / ``LassoOptions()``
-        default.
-
-        Warns (``UserWarning``) when the detection count is not 5 and a
-        threshold is still the chi2(5) default, which tests the change
-        magnitude against the wrong distribution.
+        Roles become row indices: each list in its own order, each index the
+        role's position in ``band_names``. Every field the profile does not
+        describe keeps its ``HarmonicOptions()`` default.
         """
-        h, lo = HarmonicOptions(), LassoOptions()
-        defaults = HarmonicOptions()
+        h = HarmonicOptions()
 
         h.NUM_BANDS = len(self.band_names)
         h.DETECTION_BANDS = [self.index(r) for r in self.detection]
-        h.TMASK_BANDS = [self.index(r) for r in self.tmask]
         h.SATURATION_BANDS = [self.index(r) for r in self.saturation]
         for role, attr in _INDEX_FIELDS.items():
             setattr(h, attr, self.index(role) if role in self.roles else NO_BAND)
@@ -831,24 +832,46 @@ class SensorProfile:
             h.THERM_MIN = self.thermal.min
             h.THERM_MAX = self.thermal.max
             h.THERM_MIN_INCLUSIVE, h.THERM_MAX_INCLUSIVE = self.thermal.inclusive
-
-        for key, value in self.cadence:
-            setattr(h, key, value)
         h.STAT_ORD = NO_STAT_CUTOFF if self.stat_ord is None else self.stat_ord
+        return h
+
+    def config(self, base="ccdc"):
+        """``base`` (a ``ccdcpp.config()`` source) written for this profile's input, a
+        ``ccdcpp.Config``: its Lasso ``alpha`` and ``coef_floor``, its Tmask bands, its
+        ``cadence``, and change and outlier thresholds for its detection-band count
+        (``chi2_quantile(change_probability, n)`` and
+        ``chi2_quantile(OUTLIER_PROBABILITY, n)`` unless given), each where ``base``'s
+        strategies have those parameters (``Config.with_options()``). A run with
+        ``profile=`` and no ``config=`` uses ``profile.config()``.
+
+        Warns (``UserWarning``) when the detection count is not 5 and a threshold is
+        given as the chi2(5) default, which tests the change magnitude against the wrong
+        distribution.
+        """
+        from .config import config as _config
+
+        cfg = _config(base)
+        fields = {"TMASK_BANDS": [self.index(r) for r in self.tmask]}
+        fields.update(dict(self.cadence))
+        probability = fields.get("CHANGE_PROBABILITY")
+        if probability is None:
+            params = cfg.params("change_test") if "change_test" in cfg.stages() else {}
+            probability = params.get("change_probability", 0.99)
 
         df = len(self.detection)
-        h.CHANGE_THRESHOLD = (
-            chi2_quantile(h.CHANGE_PROBABILITY, df)
+        fields["CHANGE_THRESHOLD"] = (
+            chi2_quantile(probability, df)
             if self.change_threshold is None else self.change_threshold
         )
-        h.OUTLIER_THRESHOLD = (
+        fields["OUTLIER_THRESHOLD"] = (
             chi2_quantile(OUTLIER_PROBABILITY, df)
             if self.outlier_threshold is None else self.outlier_threshold
         )
         if df != 5:
             stale = [
-                name for name in ("CHANGE_THRESHOLD", "OUTLIER_THRESHOLD")
-                if getattr(h, name) == getattr(defaults, name)
+                name for name, default in (("CHANGE_THRESHOLD", _CHI2_5_CHANGE),
+                                           ("OUTLIER_THRESHOLD", _CHI2_5_OUTLIER))
+                if fields[name] == default
             ]
             if stale:
                 warnings.warn(
@@ -858,10 +881,9 @@ class SensorProfile:
                     UserWarning,
                     stacklevel=2,
                 )
-
-        lo.alpha = self.alpha
-        lo.coef_floor = self.coef_floor
-        return h, lo
+        fields["alpha"] = self.alpha
+        fields["coef_floor"] = self.coef_floor
+        return cfg.with_options(**fields)
 
     def qa_table(self, options=None):
         """The ``ccdcpp.QaTable`` of ``qa_table_builder``, or None for
@@ -874,7 +896,7 @@ class SensorProfile:
         """
         if self.qa_table_builder is None:
             return None
-        h = self.options()[0] if options is None else options
+        h = self.options() if options is None else options
         codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
         return _build_table(self.qa_table_builder, codes, self.qa_table_options)
 
@@ -885,7 +907,7 @@ class SensorProfile:
         (default: the profile's own; pass the options the run uses), or
         ``ccdcpp.default_plan(options)`` when ``preprocess`` is None.
         """
-        h = self.options()[0] if options is None else options
+        h = self.options() if options is None else options
         if self.preprocess is None:
             return default_plan(h)
         return self.preprocess.plan(self, h)

@@ -22,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../golden/specs.hpp"
+
 #include "ccd/ccd.hpp"
 
 #include "../golden/characterisation.hpp"
@@ -63,7 +65,7 @@ ccd::FitResult run_detect(
     const std::vector<std::uint8_t> qas(qa_count, 0);
 
     return ccd::run_pixel(
-        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
+        ccd::RunSpec{},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {date_count}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {B, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {qa_count})).result;
@@ -90,7 +92,7 @@ ccd::CubeResult run_cube(
     const std::vector<std::uint8_t> qas(H * W * T, 0);
 
     return ccd::run_cube(
-        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
+        ccd::RunSpec{},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {date_count}),
         ccd::ArrayView<const Value, 4>::contiguous(spectral.data(), {H, W, B, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
@@ -112,6 +114,26 @@ void expect_band_error(F&& f, ccd::index_t bands)
         EXPECT_NE(message.find("has " + std::to_string(bands) + " bands"),
                   std::string::npos) << message;
         EXPECT_NE(message.find("expects 7"), std::string::npos) << message;
+    }
+}
+
+// A configuration of `a` refused for an input of `bands` bands, the message
+// holding `where` and `what`.
+void expect_config_error(const ccd::config::Legacy& a, ccd::index_t bands,
+                         const std::string& where, const std::string& what)
+{
+    try
+    {
+        const ccd::config::ConfigTree tree = ccd::config::legacy_config(a);
+        ccd::strategies::library_registry().check_bands(tree, bands);
+        ccd::strategies::build_strategies(ccd::strategies::library_registry(), tree);
+        FAIL() << "no exception for " << where;
+    }
+    catch (const std::invalid_argument& e)
+    {
+        const std::string message = e.what();
+        EXPECT_NE(message.find(where), std::string::npos) << message;
+        EXPECT_NE(message.find(what), std::string::npos) << message;
     }
 }
 
@@ -140,7 +162,6 @@ ccd::HarmonicOptions ten_band_layout()
     ccd::HarmonicOptions h;
     h.NUM_BANDS = 10;
     h.DETECTION_BANDS = {1, 2, 6, 8, 9};
-    h.TMASK_BANDS = {1, 8};
     h.SATURATION_BANDS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     h.GREEN_IDX = 1;
     h.THERMAL_IDX = ccd::NO_BAND;
@@ -193,9 +214,9 @@ TEST(Validation, LayoutRules)
         expect_layout_error(h, 10, "DETECTION_BANDS holds band 10; spectral has 10 bands");
     }
     {
-        auto h = ten_band_layout();
-        h.TMASK_BANDS = {1, 12};
-        expect_layout_error(h, 10, "TMASK_BANDS holds band 12; spectral has 10 bands");
+        ccd::config::Legacy a;
+        a.TMASK_BANDS = {1, 12};
+        expect_config_error(a, 10, "window_screen 'tmask'", "holds band 12; the input has 10 bands");
     }
     {
         auto h = ten_band_layout();
@@ -210,9 +231,9 @@ TEST(Validation, LayoutRules)
         expect_layout_error(h, 10, "DETECTION_BANDS holds band 2 more than once");
     }
     {
-        auto h = ten_band_layout();
-        h.TMASK_BANDS = {8, 8};
-        expect_layout_error(h, 10, "TMASK_BANDS holds band 8 more than once");
+        ccd::config::Legacy a;
+        a.TMASK_BANDS = {8, 8};
+        expect_config_error(a, 10, "window_screen 'tmask'", "holds band 8 twice");
     }
     {
         auto h = ten_band_layout();
@@ -227,9 +248,9 @@ TEST(Validation, LayoutRules)
         expect_layout_error(h, 10, "DETECTION_BANDS is empty");
     }
     {
-        auto h = ten_band_layout();
-        h.TMASK_BANDS = {};
-        expect_layout_error(h, 10, "TMASK_BANDS is empty");
+        ccd::config::Legacy a;
+        a.TMASK_BANDS = {};
+        expect_config_error(a, 10, "window_screen 'tmask'", "is empty");
     }
     {
         auto h = ten_band_layout();
@@ -272,117 +293,100 @@ TEST(Validation, LayoutRules)
     }
 }
 
-// The cadence and change-probability options: zero or negative days, counts
-// below 1, a probability outside (0, 1), a non-positive factor or divisor.
+// The configuration's cadence and change-probability parameters, as 0.10's
+// options set them: zero or negative days, counts below 1, a probability
+// outside (0, 1), a non-positive factor or divisor, a peek below 2.
 TEST(Validation, CadenceRules)
 {
     const double nan = std::nan("");
 
-    const auto expect_error = [](auto set, const std::string& expected)
+    const auto expect_error = [](auto set, const std::string& where, const std::string& what)
     {
-        ccd::HarmonicOptions h;
-        set(h);
-        expect_layout_error(h, 7, expected);
+        ccd::config::Legacy a;
+        set(a);
+        expect_config_error(a, 7, where, what);
     };
 
     for (const double days : {0.0, -16.0, nan})
-        expect_error([&](auto& h) { h.PEEK_REFERENCE_DAYS = days; },
-            "PEEK_REFERENCE_DAYS is ");
-    expect_error([](auto& h) { h.PEEK_REFERENCE_DAYS = 0.0; },
-        "PEEK_REFERENCE_DAYS is 0.000000; it must be greater than 0 days");
+        expect_error([&](auto& a) { a.PEEK_REFERENCE_DAYS = days; },
+            "change_test 'chi2' parameter 'peek_reference_days'", "it must be greater than 0");
 
     for (const std::int64_t days : {0, -30})
-        expect_error([&](auto& h) { h.VARIOGRAM_MIN_LAG_DAYS = days; },
-            "VARIOGRAM_MIN_LAG_DAYS is " + std::to_string(days) +
-            "; it must be greater than 0 days");
+        expect_error([&](auto& a) { a.VARIOGRAM_MIN_LAG_DAYS = days; },
+            "noise_floor 'variogram' parameter 'min_lag_days'", "it must be");
 
-    expect_error([](auto& h) { h.RETRAIN_MIN_OBS = 0; },
-        "RETRAIN_MIN_OBS is 0; it must be at least 1");
-    expect_error([](auto& h) { h.SEASONAL_RMSE_COUNT = 0; },
-        "SEASONAL_RMSE_COUNT is 0; it must be at least 1");
+    // RETRAIN_MIN_OBS is two parameters; the first stage refused names its own.
+    expect_error([](auto& a) { a.RETRAIN_MIN_OBS = 0; },
+        "change_test 'chi2' parameter 'model_rmse_up_to' is 0", "it must be at least 1");
+    expect_error([](auto& a) { a.SEASONAL_RMSE_COUNT = 0; },
+        "change_test 'chi2' parameter 'seasonal_count'", "it must be at least 1");
 
     for (const double factor : {0.0, -1.33, nan})
-        expect_error([&](auto& h) { h.RETRAIN_SPAN_FACTOR = factor; },
-            "RETRAIN_SPAN_FACTOR is ");
+        expect_error([&](auto& a) { a.RETRAIN_SPAN_FACTOR = factor; },
+            "refit 'span-factor' parameter 'factor'", "it must be greater than 0");
     for (const double divisor : {0.0, -4.0, nan})
-        expect_error([&](auto& h) { h.SEASONAL_RMSE_DIVISOR = divisor; },
-            "SEASONAL_RMSE_DIVISOR is ");
+        expect_error([&](auto& a) { a.SEASONAL_RMSE_DIVISOR = divisor; },
+            "change_test 'chi2' parameter 'seasonal_divisor'", "it must be greater than 0");
 
     for (const double p : {0.0, 1.0, -0.5, 1.5, nan})
-        expect_error([&](auto& h) { h.CHANGE_PROBABILITY = p; },
-            "CHANGE_PROBABILITY is ");
-    expect_error([](auto& h) { h.CHANGE_PROBABILITY = 1.0; },
-        "CHANGE_PROBABILITY is 1.000000; it must be in (0, 1)");
+        expect_error([&](auto& a) { a.CHANGE_PROBABILITY = p; },
+            "parameter 'change_probability'", "");
 
-    // PEEK_SIZE 0 and 1 leave a peek empty (they crashed run_pixel() before
-    // the check).
-    expect_error([](auto& h) { h.PEEK_SIZE = 0; },
-        "PEEK_SIZE is 0; it must be at least 2");
-    expect_error([](auto& h) { h.PEEK_SIZE = 1; },
-        "PEEK_SIZE is 1; it must be at least 2");
+    // A peek of 0 or 1 would leave a peek empty.
+    expect_error([](auto& a) { a.PEEK_SIZE = 0; },
+        "change_test 'chi2' parameter 'peek_size' is 0", "it must be at least 2");
+    expect_error([](auto& a) { a.PEEK_SIZE = 1; },
+        "change_test 'chi2' parameter 'peek_size' is 1", "it must be at least 2");
 
     // The smallest accepted values.
-    ccd::HarmonicOptions h;
-    h.PEEK_SIZE = 2;
-    h.PEEK_REFERENCE_DAYS = 1e-9;
-    h.VARIOGRAM_MIN_LAG_DAYS = 1;
-    h.RETRAIN_MIN_OBS = 1;
-    h.RETRAIN_SPAN_FACTOR = 1e-9;
-    h.SEASONAL_RMSE_COUNT = 1;
-    h.SEASONAL_RMSE_DIVISOR = 1e-9;
-    h.CHANGE_PROBABILITY = 1e-9;
-    EXPECT_NO_THROW(ccd::validate(h, 7));
-    h.CHANGE_PROBABILITY = 1.0 - 1e-9;
-    EXPECT_NO_THROW(ccd::validate(h, 7));
+    ccd::config::Legacy a;
+    a.PEEK_SIZE = 2;
+    a.PEEK_REFERENCE_DAYS = 1e-9;
+    a.VARIOGRAM_MIN_LAG_DAYS = 1;
+    a.RETRAIN_MIN_OBS = 1;
+    a.RETRAIN_SPAN_FACTOR = 1e-9;
+    a.SEASONAL_RMSE_COUNT = 1;
+    a.SEASONAL_RMSE_DIVISOR = 1e-9;
+    a.CHANGE_PROBABILITY = 1e-9;
+    EXPECT_NO_THROW(golden::strategies_of(a));
+    a.CHANGE_PROBABILITY = 1.0 - 1e-9;
+    EXPECT_NO_THROW(golden::strategies_of(a));
 }
 
+// The model's coefficient rule (CoefficientRule::check()).
 TEST(Validation, CoefficientRules)
 {
-    const auto expect_error = [](auto set, const std::string& expected)
+    const auto expect_error = [](auto set, const std::string& what)
     {
-        ccd::HarmonicOptions h;
-        set(h);
-        expect_layout_error(h, 7, expected);
+        ccd::config::Legacy a;
+        set(a);
+        expect_config_error(a, 7, "lasso: ", what);
     };
 
-    expect_error([](auto& h) { h.COEFFICIENT_MIN = 0; },
-        "COEFFICIENT_MIN is 0; it must be at least 1");
-    expect_error([](auto& h) { h.COEFFICIENT_MIN = 7; },
-        "COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX are 7, 6, 8; they must not decrease");
-    expect_error([](auto& h) { h.COEFFICIENT_MAX = 5; },
-        "COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX are 4, 6, 5; they must not decrease");
-    expect_error([](auto& h) { h.COEFFICIENT_MAX = 9; },
-        "COEFFICIENT_MAX is 9; the harmonic basis has at most 8");
+    // COEFFICIENT_MIN is also the edge fit's count, refused first.
+    {
+        ccd::config::Legacy a;
+        a.COEFFICIENT_MIN = 0;
+        expect_config_error(a, 7, "edge_fit 'lasso' parameter 'coefficients' is 0",
+                            "it must be at least 1");
+    }
+    expect_error([](auto& a) { a.COEFFICIENT_MIN = 7; },
+        "coefficient_min, coefficient_mid, coefficient_max are 7, 6, 8; they must not decrease");
+    expect_error([](auto& a) { a.COEFFICIENT_MAX = 5; },
+        "coefficient_min, coefficient_mid, coefficient_max are 4, 6, 5; they must not decrease");
+    expect_error([](auto& a) { a.COEFFICIENT_MAX = 9; },
+        "coefficient_max is 9; the harmonic basis has at most 8");
 
     // The extremes accepted: a count of 1 throughout (the trend and annual
     // basis, as 4, with 1 degree of freedom), and 8.
-    ccd::HarmonicOptions h;
-    h.COEFFICIENT_MIN = h.COEFFICIENT_MID = h.COEFFICIENT_MAX = 1;
-    EXPECT_NO_THROW(ccd::validate(h, 7));
-    h.COEFFICIENT_MIN = h.COEFFICIENT_MID = h.COEFFICIENT_MAX = 8;
-    EXPECT_NO_THROW(ccd::validate(h, 7));
+    ccd::config::Legacy a;
+    a.COEFFICIENT_MIN = a.COEFFICIENT_MID = a.COEFFICIENT_MAX = 1;
+    EXPECT_NO_THROW(golden::strategies_of(a));
+    a.COEFFICIENT_MIN = a.COEFFICIENT_MID = a.COEFFICIENT_MAX = 8;
+    EXPECT_NO_THROW(golden::strategies_of(a));
 }
 
-// A method's name and back; with_method() sets METHOD and keeps every other
-// field; a name this build does not have is refused.
-TEST(Validation, ChangeMethods)
-{
-    EXPECT_EQ(ccd::method_from_name(ccd::method_name(ccd::ChangeMethod::Ccdc)), ccd::ChangeMethod::Ccdc);
-    EXPECT_STREQ(ccd::method_name(ccd::ChangeMethod::Ccdc), "ccdc");
-    EXPECT_THROW(ccd::method_from_name("CCDC"), std::invalid_argument);
-    EXPECT_THROW(ccd::method_from_name(""), std::invalid_argument);
-
-    ccd::HarmonicOptions h;
-    h.PEEK_SIZE = 9;
-    h.STAT_ORD = 736695;
-    const ccd::HarmonicOptions c = ccd::with_method(h, ccd::ChangeMethod::Ccdc);
-    EXPECT_EQ(c.METHOD, ccd::ChangeMethod::Ccdc);
-    EXPECT_EQ(c.PEEK_SIZE, 9u);
-    EXPECT_EQ(c.STAT_ORD, 736695);
-    EXPECT_NO_THROW(ccd::validate(c, 7));
-}
-
-// The cadence options are checked at the entry points too.
+// The configuration is checked at the entry points too.
 TEST(Validation, DetectRejectsACadenceOption)
 {
     constexpr ccd::index_t T = 40;
@@ -390,19 +394,19 @@ TEST(Validation, DetectRejectsACadenceOption)
     const auto spectral = make_spectral<double>(7, T);
     const std::vector<std::uint8_t> qas(T, 0);
 
-    ccd::HarmonicOptions h;
-    h.SEASONAL_RMSE_DIVISOR = 0.0;
+    ccd::config::Legacy a;
+    a.SEASONAL_RMSE_DIVISOR = 0.0;
 
     EXPECT_THROW(
         ccd::run_pixel(
-            ccd::RunSpec{h, ccd::LassoOptions()},
+            golden::spec_of(ccd::HarmonicOptions{}, a),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})),
         std::invalid_argument);
 
     EXPECT_THROW(ccd::run_cube(
-        ccd::RunSpec{h, ccd::LassoOptions()},
+        golden::spec_of(ccd::HarmonicOptions{}, a),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {1, 1, T}),
@@ -420,21 +424,21 @@ TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
         const auto run = [&]()
         {
             return ccd::run_pixel(
-                ccd::RunSpec{p.h, p.l},
+                golden::spec_of(p.h, p.a),
                 ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
                 ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
         };
 
-        p.h.PEEK_SIZE = 1;
+        p.a.PEEK_SIZE = 1;
         EXPECT_THROW(run(), std::invalid_argument) << p.name;
 
-        p.h.PEEK_SIZE = 2;
+        p.a.PEEK_SIZE = 2;
         EXPECT_NO_THROW(run()) << p.name;
     }
 }
 
-// The extreme coefficient counts validate() accepts run every transition the
+// The extreme coefficient counts the rule accepts run every transition the
 // characterization pixels take.
 TEST(Validation, CoefficientExtremesThroughDetect)
 {
@@ -443,10 +447,10 @@ TEST(Validation, CoefficientExtremesThroughDetect)
         for (auto p : golden::characterisation_pixels())
         {
             const std::size_t T = p.dates.size();
-            p.h.COEFFICIENT_MIN = p.h.COEFFICIENT_MID = p.h.COEFFICIENT_MAX = count;
+            p.a.COEFFICIENT_MIN = p.a.COEFFICIENT_MID = p.a.COEFFICIENT_MAX = count;
             ccd::FitResult r;
             EXPECT_NO_THROW(r = ccd::run_pixel(
-                ccd::RunSpec{p.h, p.l},
+                golden::spec_of(p.h, p.a),
                 ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
                 ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result) << p.name << " " << count;
@@ -487,7 +491,7 @@ TEST(Validation, EntryPointsRejectALayout)
 
     EXPECT_THROW(
         ccd::run_pixel(
-            ccd::RunSpec{h, ccd::LassoOptions()},
+            golden::spec_of(h),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})),
@@ -500,19 +504,19 @@ TEST(Validation, EntryPointsRejectALayout)
     const auto q = ccd::ArrayView<const std::uint8_t, 3>::contiguous(cube_qas.data(), {1, 1, T});
 
     EXPECT_THROW(ccd::run_cube(
-        ccd::RunSpec{h, ccd::LassoOptions()},
+        golden::spec_of(h),
         d,
         ccd::ArrayView<const double, 4>::contiguous(spectral.data(), {1, 1, 7, T}),
         q,
         1), std::invalid_argument);
     EXPECT_THROW(ccd::run_cube(
-        ccd::RunSpec{h, ccd::LassoOptions()},
+        golden::spec_of(h),
         d,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 1, 7, T}),
         q,
         1), std::invalid_argument);
     EXPECT_THROW(ccd::run_cube(
-        ccd::RunSpec{h, ccd::LassoOptions()},
+        golden::spec_of(h),
         d,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 1, 7, T}),
         q,
@@ -572,7 +576,7 @@ TEST(Validation, SeriesNoLongerThanBandCountRuns)
             const std::vector<std::uint8_t> qas(T, qa);
 
             const auto result = ccd::run_pixel(
-                ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
+                ccd::RunSpec{},
                 ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
                 ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})).result;
@@ -604,7 +608,7 @@ ccd::CubeResult run_cube_dates(const std::vector<std::int64_t>& dates)
     const std::vector<std::uint8_t> qas(H * W * T, 0);
 
     return ccd::run_cube(
-        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
+        ccd::RunSpec{},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const Value, 4>::contiguous(spectral.data(), {H, W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
@@ -618,7 +622,7 @@ ccd::FitResult run_detect_dates(const std::vector<std::int64_t>& dates)
     const std::vector<std::uint8_t> qas(T, 0);
 
     return ccd::run_pixel(
-        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions()},
+        ccd::RunSpec{},
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})).result;
@@ -677,7 +681,7 @@ TEST(Validation, DetectRejectsUnsortedDates)
     const auto spectral = make_spectral<double>(7, 40);
     const std::vector<std::uint16_t> raw(40, 0);
     EXPECT_THROW(ccd::run_pixel(
-        ccd::RunSpec{ccd::HarmonicOptions(), ccd::LassoOptions(), std::make_shared<ccd::QaTable>()},
+        [] { ccd::RunSpec r; r.qa_table = std::make_shared<ccd::QaTable>(); return r; }(),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {40}),
         ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, 40}),
         ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {40})), std::invalid_argument);

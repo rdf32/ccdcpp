@@ -1,9 +1,11 @@
 #include "ccd/ccd.hpp"
 
+#include <optional>
 #include <stdexcept>
 #include <string>
 
 #include "core/fnv.hpp"
+#include "ccd/config/legacy.hpp"
 
 namespace ccd 
 {
@@ -52,95 +54,6 @@ void validate_nonempty(const char* name, const BandList& list)
     }
 }
 
-// `value` > 0; written so that NaN fails too.
-void validate_positive(const char* name, scalar_t value, const char* unit)
-{
-    if (!(value > 0.0))
-    {
-        throw std::invalid_argument(
-            std::string(name) + " is " + std::to_string(value) +
-            "; it must be greater than 0" + unit
-        );
-    }
-}
-
-void validate_count(const char* name, index_t value)
-{
-    if (value < 1)
-    {
-        throw std::invalid_argument(
-            std::string(name) + " is " + std::to_string(value) +
-            "; it must be at least 1"
-        );
-    }
-}
-
-// The cadence and change-probability options.
-void validate_cadence(const HarmonicOptions& options)
-{
-    validate_positive("PEEK_REFERENCE_DAYS", options.PEEK_REFERENCE_DAYS, " days");
-
-    if (options.VARIOGRAM_MIN_LAG_DAYS <= 0)
-    {
-        throw std::invalid_argument(
-            "VARIOGRAM_MIN_LAG_DAYS is " +
-            std::to_string(options.VARIOGRAM_MIN_LAG_DAYS) +
-            "; it must be greater than 0 days"
-        );
-    }
-
-    validate_count("RETRAIN_MIN_OBS", options.RETRAIN_MIN_OBS);
-    validate_positive("RETRAIN_SPAN_FACTOR", options.RETRAIN_SPAN_FACTOR, "");
-    validate_count("SEASONAL_RMSE_COUNT", options.SEASONAL_RMSE_COUNT);
-    validate_positive("SEASONAL_RMSE_DIVISOR", options.SEASONAL_RMSE_DIVISOR, "");
-
-    if (!(options.CHANGE_PROBABILITY > 0.0 && options.CHANGE_PROBABILITY < 1.0))
-    {
-        throw std::invalid_argument(
-            "CHANGE_PROBABILITY is " +
-            std::to_string(options.CHANGE_PROBABILITY) +
-            "; it must be in (0, 1)"
-        );
-    }
-}
-
-// Initialize fits COEFFICIENT_MIN coefficients, Extend up to
-// COEFFICIENT_MAX, and both peek bases are COEFFICIENT_MAX wide, which must
-// hold every model's coefficients and fit the harmonic basis (the intercept
-// and CCD_MAX_COEFS columns).
-void validate_coefficients(const HarmonicOptions& options)
-{
-    const index_t widest = CCD_MAX_COEFS + 1;
-
-    if (options.COEFFICIENT_MIN < 1)
-    {
-        throw std::invalid_argument(
-            "COEFFICIENT_MIN is " + std::to_string(options.COEFFICIENT_MIN) +
-            "; it must be at least 1"
-        );
-    }
-
-    if (!(options.COEFFICIENT_MIN <= options.COEFFICIENT_MID &&
-          options.COEFFICIENT_MID <= options.COEFFICIENT_MAX))
-    {
-        throw std::invalid_argument(
-            "COEFFICIENT_MIN, COEFFICIENT_MID, COEFFICIENT_MAX are " +
-            std::to_string(options.COEFFICIENT_MIN) + ", " +
-            std::to_string(options.COEFFICIENT_MID) + ", " +
-            std::to_string(options.COEFFICIENT_MAX) +
-            "; they must not decrease"
-        );
-    }
-
-    if (options.COEFFICIENT_MAX > widest)
-    {
-        throw std::invalid_argument(
-            "COEFFICIENT_MAX is " + std::to_string(options.COEFFICIENT_MAX) +
-            "; the harmonic basis has at most " + std::to_string(widest)
-        );
-    }
-}
-
 } // namespace
 
 void validate(const HarmonicOptions& options, index_t bands)
@@ -162,10 +75,8 @@ void validate(const HarmonicOptions& options, index_t bands)
     }
 
     validate_nonempty("DETECTION_BANDS", options.DETECTION_BANDS);
-    validate_nonempty("TMASK_BANDS", options.TMASK_BANDS);
 
     validate_list("DETECTION_BANDS", options.DETECTION_BANDS, bands);
-    validate_list("TMASK_BANDS", options.TMASK_BANDS, bands);
     validate_list("SATURATION_BANDS", options.SATURATION_BANDS, bands);
 
     if (options.GREEN_IDX == NO_BAND)
@@ -202,20 +113,6 @@ void validate(const HarmonicOptions& options, index_t bands)
             );
         }
     }
-    // A change is PEEK_SIZE consecutive observations that all exceed the
-    // threshold, and both peeks read the magnitude of their first: with a
-    // PEEK_SIZE of 1 a single outlier would be a change, and with 0 a peek
-    // would be empty.
-    if (options.PEEK_SIZE < 2)
-    {
-        throw std::invalid_argument(
-            "PEEK_SIZE is " + std::to_string(options.PEEK_SIZE) +
-            "; it must be at least 2"
-        );
-    }
-
-    validate_cadence(options);
-    validate_coefficients(options);
 }
 
 void validate_dates(ArrayView<const std::int64_t, 1> dates)
@@ -236,24 +133,35 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates)
 namespace
 {
 
-void digest(detail::Fnv& h, const HarmonicOptions& o)
+// The input's fields of the options, in 0.10's order, with the algorithm's
+// where 0.10's options held them (`legacy`, when the configuration is one
+// they describe): with them, the digest is 0.10's, so its records stay valid.
+void digest(detail::Fnv& h, const HarmonicOptions& o, const config::Legacy* legacy)
 {
-    for (const index_t v : {o.MEOW_SIZE, o.PEEK_SIZE})
-        h.integer(static_cast<std::int64_t>(v));
-    h.integer(o.DAY_DELTA);
+    if (legacy)
+    {
+        for (const index_t v : {legacy->MEOW_SIZE, legacy->PEEK_SIZE})
+            h.integer(static_cast<std::int64_t>(v));
+        h.integer(legacy->DAY_DELTA);
+    }
     for (const std::uint8_t v : {o.QA_FILL, o.QA_CLEAR, o.QA_WATER, o.QA_SHADOW, o.QA_SNOW,
                                  o.QA_CLOUD, o.QA_CIRRUS1, o.QA_CIRRUS2, o.QA_OCCLUSION})
         h.integer(v);
     h.integer(static_cast<std::int64_t>(o.CLEAR_OBSERVATION_THRESHOLD));
-    for (const scalar_t v : {o.CLEAR_PCT_THRESHOLD, o.SNOW_PCT_THRESHOLD, o.OUTLIER_THRESHOLD,
-                             o.CHANGE_THRESHOLD, o.T_CONST, o.PEEK_REFERENCE_DAYS})
-        h.real(v);
-    h.integer(o.VARIOGRAM_MIN_LAG_DAYS);
-    h.integer(static_cast<std::int64_t>(o.RETRAIN_MIN_OBS));
-    h.real(o.RETRAIN_SPAN_FACTOR);
-    h.integer(static_cast<std::int64_t>(o.SEASONAL_RMSE_COUNT));
-    for (const scalar_t v : {o.SEASONAL_RMSE_DIVISOR, o.CHANGE_PROBABILITY, o.THERMAL_SCALE,
-                             o.THERMAL_OFFSET, o.REFL_MIN, o.REFL_MAX})
+    if (legacy)
+    {
+        for (const scalar_t v : {legacy->CLEAR_PCT_THRESHOLD, legacy->SNOW_PCT_THRESHOLD,
+                                 legacy->OUTLIER_THRESHOLD, legacy->CHANGE_THRESHOLD,
+                                 legacy->T_CONST, legacy->PEEK_REFERENCE_DAYS})
+            h.real(v);
+        h.integer(legacy->VARIOGRAM_MIN_LAG_DAYS);
+        h.integer(static_cast<std::int64_t>(legacy->RETRAIN_MIN_OBS));
+        h.real(legacy->RETRAIN_SPAN_FACTOR);
+        h.integer(static_cast<std::int64_t>(legacy->SEASONAL_RMSE_COUNT));
+        h.real(legacy->SEASONAL_RMSE_DIVISOR);
+        h.real(legacy->CHANGE_PROBABILITY);
+    }
+    for (const scalar_t v : {o.THERMAL_SCALE, o.THERMAL_OFFSET, o.REFL_MIN, o.REFL_MAX})
         h.real(v);
     h.flag(o.REFL_MIN_INCLUSIVE);
     h.flag(o.REFL_MAX_INCLUSIVE);
@@ -264,19 +172,18 @@ void digest(detail::Fnv& h, const HarmonicOptions& o)
     h.real(o.MEDIAN_GREEN_FILTER);
     h.integer(static_cast<std::int64_t>(o.GREEN_FILTER_SCOPE));
     h.integer(o.STAT_ORD);
-    for (const index_t v : {o.COEFFICIENT_MIN, o.COEFFICIENT_MID, o.COEFFICIENT_MAX,
-                            o.NUM_OBS_FACTOR, o.NUM_BANDS})
-        h.integer(static_cast<std::int64_t>(v));
+    if (legacy)
+        for (const index_t v : {legacy->COEFFICIENT_MIN, legacy->COEFFICIENT_MID,
+                                legacy->COEFFICIENT_MAX, legacy->NUM_OBS_FACTOR})
+            h.integer(static_cast<std::int64_t>(v));
+    h.integer(static_cast<std::int64_t>(o.NUM_BANDS));
     h.bands(o.DETECTION_BANDS);
-    h.bands(o.TMASK_BANDS);
+    if (legacy)
+        h.bands(legacy->TMASK_BANDS);
     h.bands(o.SATURATION_BANDS);
     for (const index_t v : {o.BLUE_IDX, o.GREEN_IDX, o.RED_IDX, o.NIR_IDX, o.SWIR1_IDX,
                             o.SWIR2_IDX, o.THERMAL_IDX, o.QA_IDX})
         h.integer(static_cast<std::int64_t>(v));
-    // ccdc adds nothing, so its digest is the one it has always had; another
-    // method adds its value (and its parameters).
-    if (o.METHOD != ChangeMethod::Ccdc)
-        h.integer(static_cast<std::int64_t>(o.METHOD));
 }
 
 void digest(detail::Fnv& h, const LassoOptions& o)
@@ -323,14 +230,18 @@ void digest(detail::Fnv& h, const preprocess::ProcedurePlan& plan)
 
 std::uint64_t options_digest(
     const HarmonicOptions& hoptions,
-    const LassoOptions& loptions,
+    const config::ConfigTree& config,
     const preprocess::PreprocessPlan& plan,
     const QaTable* qa_table
 )
 {
     detail::Fnv h;
-    digest(h, hoptions);
-    digest(h, loptions);
+    const std::optional<config::Legacy> legacy = config::recover(config);
+    digest(h, hoptions, legacy ? &*legacy : nullptr);
+    if (legacy)
+        digest(h, legacy->lasso);
+    else
+        h.integer(static_cast<std::int64_t>(config::digest(config)));
     for (const preprocess::ProcedurePlan* procedure :
          {&plan.standard, &plan.snow, &plan.insufficient_clear})
         digest(h, *procedure);

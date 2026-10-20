@@ -25,6 +25,7 @@
 
 #include "ccd/ccd.hpp"
 
+#include "specs.hpp"
 #include "synthetic.hpp"
 
 namespace golden
@@ -37,7 +38,7 @@ struct CharPixel
     std::vector<double> spectral;      // (7, T), band-major
     std::vector<std::uint8_t> qas;     // (T)
     ccd::HarmonicOptions h;
-    ccd::LassoOptions l;
+    ccd::config::Legacy a;               // the algorithm's options
 };
 
 // What a pixel's spectral series is made of.
@@ -391,7 +392,7 @@ inline std::vector<CharPixel> characterisation_pixels()
         // COEFFICIENT_MIN raised to 6: Initialize, Extend's coefficient
         // schedule and the Start/End fits all read it.
         CharPixel p = sparse_random("coefficient_min_6", 3);
-        p.h.COEFFICIENT_MIN = 6;
+        p.a.COEFFICIENT_MIN = 6;
         out.push_back(std::move(p));
     }
     out.push_back(lookback_near_break(2, 5));

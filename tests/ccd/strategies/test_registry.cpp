@@ -40,11 +40,25 @@
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
-#include "ccd/config/from_options.hpp"
+#include "ccd/config/legacy.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 namespace
 {
+
+// 0.10's options as a configuration (config::Legacy): `a` with the Lasso's
+// parameters `l`, and its strategies.
+ccd::config::ConfigTree from_options(ccd::config::Legacy a, const ccd::LassoOptions& l)
+{
+    a.lasso = l;
+    return ccd::config::legacy_config(a);
+}
+
+ccd::Strategies strategies_for(const ccd::config::Legacy& a, const ccd::LassoOptions& l)
+{
+    return ccd::strategies::build_strategies(ccd::strategies::library_registry(),
+                                             from_options(a, l));
+}
 
 using ccd::config::StageConfig;
 using ccd::config::Values;
@@ -170,13 +184,13 @@ TEST(Registry, RefusesAStrategyRegisteredTwice)
 
 TEST(Registry, TheOptionsConfigurationIsTheirs)
 {
-    ccd::HarmonicOptions h;
+    ccd::config::Legacy h;
     h.RETRAIN_MIN_OBS = 30;
     h.RETRAIN_SPAN_FACTOR = 1.5;
-    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    const auto tree = from_options(h, ccd::LassoOptions{});
     const StageConfig& refit = tree.at("refit");
     EXPECT_EQ(refit.strategy, "span-factor");
-    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const auto s = strategies_for(h, ccd::LassoOptions{});
     EXPECT_TRUE(s.refit->due(30, 1.0, 12, 1.0));
     EXPECT_FALSE(s.refit->due(31, 149.0, 12, 100.0));
     EXPECT_TRUE(s.refit->due(31, 150.0, 12, 100.0));
@@ -189,7 +203,7 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
     // RETRAIN_MIN_OBS past what a configuration holds: refit at every step.
     h.RETRAIN_MIN_OBS = std::numeric_limits<ccd::index_t>::max();
-    EXPECT_TRUE(ccd::config::strategies_for(h, ccd::LassoOptions{}).refit->due(1u << 20, 1.0, 12, 100.0));
+    EXPECT_TRUE(strategies_for(h, ccd::LassoOptions{}).refit->due(1u << 20, 1.0, 12, 100.0));
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
@@ -201,9 +215,9 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     ccd::LassoOptions l;
     l.alpha = 0.5;
     l.max_iter = 300;
-    const auto tree = ccd::config::from_options(ccd::HarmonicOptions{}, l);
+    const auto tree = from_options(ccd::config::Legacy{}, l);
     EXPECT_EQ(tree.at("model").strategy, "lasso");
-    const auto s = ccd::config::strategies_for(ccd::HarmonicOptions{}, l);
+    const auto s = strategies_for(ccd::config::Legacy{}, l);
     const auto& lasso = static_cast<const ccd::strategies::Lasso&>(*s.model);
     EXPECT_EQ(lasso.solver_options().alpha, 0.5);
     EXPECT_EQ(lasso.solver_options().max_iter, 300u);
@@ -256,9 +270,9 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     EXPECT_TRUE(got[1].empty());   // band 1 was not fitted
 
     const auto& r = ccd::strategies::core_registry();
-    ccd::HarmonicOptions nan_threshold;
+    ccd::config::Legacy nan_threshold;
     nan_threshold.CHANGE_THRESHOLD = NAN;
-    expect_refused([&] { ccd::config::strategies_for(nan_threshold, l); },
+    expect_refused([&] { strategies_for(nan_threshold, l); },
                    "stability_rule 'pyccd' parameter 'change_threshold' is nan");
     expect_refused(
         [&] { r.make<ccd::MonitoringModel>({"lasso", {{"alpha", ccd::config::real(-1)}}}); },
@@ -271,8 +285,8 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
 // for every sequence of arguments.
 TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
 {
-    const ccd::HarmonicOptions h;
-    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const ccd::config::Legacy h;
+    const auto s = strategies_for(h, ccd::LassoOptions{});
     const auto scratch = s.change_test->make_scratch();
     for (const std::int64_t gap : {16, 8, 5})
     {
@@ -283,7 +297,7 @@ TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
             dates.data(), {dates.size()});
 
         const ccd::PeekPlan plan =
-            s.change_test->prepare(view, h.DETECTION_BANDS.size(), *scratch);
+            s.change_test->prepare(view, ccd::HarmonicOptions{}.DETECTION_BANDS.size(), *scratch);
         EXPECT_TRUE(plan.full);
         EXPECT_EQ(plan.min_window, 0u);
         const ccd::index_t peek = plan.peek;
@@ -297,7 +311,7 @@ TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
     // Fewer than two dates: the default peek.
     const std::int64_t one = 730000;
     EXPECT_EQ(s.change_test->prepare(ccd::ArrayView<const std::int64_t, 1>::contiguous(&one, {1}),
-                                     h.DETECTION_BANDS.size(), *scratch).peek,
+                                     ccd::HarmonicOptions{}.DETECTION_BANDS.size(), *scratch).peek,
               h.PEEK_SIZE);
 
     ccd::ChangeThresholdMemo memo;
@@ -407,7 +421,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
     ccd::config::Registry r;
     ccd::strategies::register_core_strategies(r);
     r.add<ccd::MonitoringModel, Opaque>("opaque");
-    auto tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    auto tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
     EXPECT_NO_THROW(ccd::strategies::build_strategies(r, tree));
     tree["model"] = {"opaque", {}};
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
@@ -424,7 +438,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
 
     // The stability rule's needs, from the stability fit; Lookback's too.
     r.add<ccd::StabilityFit, OpaqueFit>("opaque");
-    tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
     tree["stability_fit"] = {"opaque", {}};
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
                    "stability_rule 'pyccd' needs model_rmse, in_window_residuals, which "
@@ -437,7 +451,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
                    "provide");
 
     // A configuration without an outlier stage.
-    tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
     tree.erase("outlier");
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
                    "the configuration has no 'outlier' stage");
@@ -445,11 +459,11 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
 
 TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 {
-    ccd::HarmonicOptions h;
+    ccd::config::Legacy h;
     h.OUTLIER_THRESHOLD = 10.0;
-    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    const auto tree = from_options(h, ccd::LassoOptions{});
     EXPECT_EQ(tree.at("outlier").strategy, "floored");
-    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const auto s = strategies_for(h, ccd::LassoOptions{});
 
     const std::int64_t day = 730000;
     const std::vector<std::vector<double>> residuals;
@@ -479,9 +493,9 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 
 TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
 {
-    const ccd::HarmonicOptions h;
-    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
-    EXPECT_EQ(ccd::config::from_options(h, ccd::LassoOptions{}).at("stability_rule").strategy,
+    const ccd::config::Legacy h;
+    const auto s = strategies_for(h, ccd::LassoOptions{});
+    EXPECT_EQ(from_options(h, ccd::LassoOptions{}).at("stability_rule").strategy,
               "pyccd");
 
     // 24 observations, 16 days apart, of a flat series with noise: a fit
@@ -500,7 +514,7 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
     }
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
     const ccd::Variogram variogram{std::vector<double>(bands, 20.0)};
-    const ccd::BandList detection = h.DETECTION_BANDS;
+    const ccd::BandList detection = ccd::HarmonicOptions{}.DETECTION_BANDS;
 
     const auto scratch = s.stability_rule->make_scratch();
     s.stability_rule->prepare(ccd::PeekPlan{h.PEEK_SIZE, true, 0, h.PEEK_SIZE}, detection.size(),
@@ -568,11 +582,11 @@ TEST(Params, ABandListTakesBandIndices)
 
 TEST(WindowScreen, TmaskIsTmaskOfItsBands)
 {
-    ccd::HarmonicOptions h;
+    ccd::config::Legacy h;
     h.TMASK_BANDS = {2, 5};
     h.T_CONST = 3.5;
-    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
-    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    const auto s = strategies_for(h, ccd::LassoOptions{});
+    const auto tree = from_options(h, ccd::LassoOptions{});
     const auto& screen = tree.at("window_screen");
     EXPECT_EQ(screen.strategy, "tmask");
     EXPECT_EQ(std::get<std::vector<std::int64_t>>(screen.params.at("bands")),
@@ -605,12 +619,12 @@ TEST(WindowScreen, TmaskIsTmaskOfItsBands)
 
 TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
 {
-    ccd::HarmonicOptions h;
+    ccd::config::Legacy h;
     h.MEOW_SIZE = 10;
     h.DAY_DELTA = 200;
-    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    const auto tree = from_options(h, ccd::LassoOptions{});
     EXPECT_EQ(tree.at("start_search").strategy, "pyccd");
-    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const auto s = strategies_for(h, ccd::LassoOptions{});
     const ccd::StartSearch& search = *s.start_search;
 
     EXPECT_TRUE(search.too_few(10));
@@ -643,15 +657,15 @@ TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
     EXPECT_FALSE(search.usable(d(9)));   // 9 observations
 
     h.MEOW_SIZE = 0;
-    expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
+    expect_refused([&] { strategies_for(h, ccd::LassoOptions{}); },
                    "start_search 'pyccd' parameter 'meow_size' is 0; it must be at least 1");
 }
 
 TEST(Lookback, PyccdTakesItsParametersFromTheOptions)
 {
-    ccd::HarmonicOptions h;
+    ccd::config::Legacy h;
     h.OUTLIER_THRESHOLD = 20.0;
-    const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
+    const auto tree = from_options(h, ccd::LassoOptions{});
     const auto& lookback = tree.at("lookback");
     EXPECT_EQ(lookback.strategy, "pyccd");
     EXPECT_EQ(std::get<std::int64_t>(lookback.params.at("peek")), 0);   // the test's
@@ -660,7 +674,7 @@ TEST(Lookback, PyccdTakesItsParametersFromTheOptions)
     EXPECT_EQ(std::get<double>(lookback.params.at("outlier_threshold")), 20.0);
 
     h.OUTLIER_THRESHOLD = NAN;
-    expect_refused([&] { ccd::config::strategies_for(h, ccd::LassoOptions{}); },
+    expect_refused([&] { strategies_for(h, ccd::LassoOptions{}); },
                    "lookback 'pyccd' parameter 'outlier_threshold' is nan");
 }
 
@@ -732,12 +746,12 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
 
 TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 {
-    ccd::HarmonicOptions h;
+    ccd::config::Legacy h;
     h.COEFFICIENT_MIN = 6;
     h.MEOW_SIZE = 15;
     ccd::LassoOptions l;
     l.alpha = 0.5;
-    const auto tree = ccd::config::from_options(h, l);
+    const auto tree = from_options(h, l);
     const auto& edges = tree.at("edge_fit");
     EXPECT_EQ(edges.strategy, "lasso");
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients")), 6);
@@ -746,7 +760,7 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     EXPECT_EQ(tree.at("segment_fit").strategy, "model-fit");
     EXPECT_EQ(tree.at("mode").strategy, "pyccd");
 
-    const auto s = ccd::config::strategies_for(h, l);
+    const auto s = strategies_for(h, l);
     const ccd::index_t n = 40, bands = 3;
     std::vector<std::int64_t> dates(n);
     std::vector<double> spectral(bands * n);
@@ -779,9 +793,9 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 
 TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
 {
-    ccd::HarmonicOptions h;
+    ccd::config::Legacy h;
     h.VARIOGRAM_MIN_LAG_DAYS = 45;
-    const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
+    const auto s = strategies_for(h, ccd::LassoOptions{});
     const ccd::index_t n = 50, bands = 3;
     std::vector<std::int64_t> dates(n);
     std::vector<double> spectral(bands * n);
@@ -794,7 +808,7 @@ TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
     const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
     EXPECT_EQ(s.noise_floor->estimate(d, x), ccd::adjusted_variogram(d, x, 45));
-    EXPECT_EQ(std::get<std::int64_t>(ccd::config::from_options(h, ccd::LassoOptions{})
+    EXPECT_EQ(std::get<std::int64_t>(from_options(h, ccd::LassoOptions{})
                                          .at("noise_floor")
                                          .params.at("min_lag_days")),
               45);
@@ -802,7 +816,7 @@ TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
 
 TEST(ConfigDigest, EqualTreesAndOnlyThem)
 {
-    const auto a = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    const auto a = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
     auto b = a;
     EXPECT_EQ(ccd::config::digest(a), ccd::config::digest(b));
     b["refit"].params["factor"] = ccd::config::real(1.34);
@@ -817,7 +831,7 @@ TEST(ConfigDigest, EqualTreesAndOnlyThem)
 TEST(Registry, BandListsAreCheckedAgainstTheInputAsSetAndByDefault)
 {
     const auto& r = ccd::strategies::core_registry();
-    auto tree = ccd::config::from_options(ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    auto tree = from_options(ccd::config::Legacy{}, ccd::LassoOptions{});
     EXPECT_NO_THROW(r.check_bands(tree, 7));
     expect_refused([&] { r.check_bands(tree, 4); },
                    "window_screen 'tmask' parameter 'bands' holds band 4; the input has 4 bands");

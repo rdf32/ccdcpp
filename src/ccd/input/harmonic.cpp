@@ -6,30 +6,6 @@
 namespace ccd
 {
 
-const char* method_name(ChangeMethod method)
-{
-    switch (method)
-    {
-        case ChangeMethod::Ccdc: return "ccdc";
-    }
-    return "?";
-}
-
-ChangeMethod method_from_name(const std::string& name)
-{
-    for (const ChangeMethod m : {ChangeMethod::Ccdc})
-        if (name == method_name(m))
-            return m;
-    throw std::invalid_argument(
-        "unknown change detection method \"" + name + "\": ccdc");
-}
-
-HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method)
-{
-    options.METHOD = method;
-    return options;
-}
-
 MaskedData apply_mask(
     const HarmonicWorkspace& workspace,
     const ProcessingMask& mask

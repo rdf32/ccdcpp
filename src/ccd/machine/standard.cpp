@@ -1165,15 +1165,13 @@ FitResult resume(
 FitResult Procedure::resume(
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver,
     const Strategies& strategies,
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days,
     Observe observe,
     bool carried_change
 ) {
-    const Context context{hworkspace.options(), hworkspace, lworkspace, solver, strategies,
+    const Context context{hworkspace.options(), hworkspace, strategies,
                           observe};
     return standard::resume(context, state_, std::move(mask), from, excluded_days,
                             carried_change);
@@ -1182,8 +1180,6 @@ FitResult Procedure::resume(
 FitResult Detector::resume(
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver,
     const Strategies& strategies,
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days,
@@ -1191,15 +1187,13 @@ FitResult Detector::resume(
     bool carried_change
 )
 {
-    return procedure_.resume(hworkspace, std::move(mask), lworkspace, solver, strategies, from,
+    return procedure_.resume(hworkspace, std::move(mask), strategies, from,
                              excluded_days, observe, carried_change);
 }
 
 FitResult Procedure::run(
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver,
     const Strategies& strategies,
     Observe observe,
     index_t max_coefficients
@@ -1207,8 +1201,6 @@ FitResult Procedure::run(
     const Context context{
         hworkspace.options(),
         hworkspace,
-        lworkspace,
-        solver,
         strategies,
         observe,
         max_coefficients
@@ -1227,8 +1219,6 @@ FitResult Detector::fit(
     const PixelMode& mode,
     const HarmonicWorkspace& hworkspace,
     ProcessingMask mask,
-    LassoWorkspace& lworkspace,
-    LassoSolver& solver,
     const Strategies& strategies,
     Observe observe
 )
@@ -1236,7 +1226,7 @@ FitResult Detector::fit(
     if (mode.procedure == PixelProcedure::Standard)
     {
         LOG_DEBUG("Standard");
-        return procedure_.run(hworkspace, std::move(mask), lworkspace, solver, strategies, observe,
+        return procedure_.run(hworkspace, std::move(mask), strategies, observe,
                               mode.max_coefficients);
     }
 

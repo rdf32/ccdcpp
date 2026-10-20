@@ -27,6 +27,7 @@
 
 #include "characterisation.hpp"
 #include "golden.hpp"
+#include "specs.hpp"
 #include "synthetic.hpp"
 
 namespace golden
@@ -39,7 +40,7 @@ struct Series
     std::vector<double> spectral;   // (7, T), band-major
     std::vector<std::uint8_t> qas;
     ccd::HarmonicOptions h;
-    ccd::LassoOptions l;
+    ccd::config::Legacy a;   // the algorithm's options
 
     std::size_t size() const
     {
@@ -81,7 +82,7 @@ inline ccd::FitResult detect_at(const Series& s, std::int64_t stat_ord)
     ccd::HarmonicOptions h = s.h;
     h.STAT_ORD = stat_ord;
     return ccd::run_pixel(
-        ccd::RunSpec{h, s.l},
+        golden::spec_of(h, s.a),
         s.date_view(),
         s.spectral_view(),
         s.qa_view()).result;
@@ -93,7 +94,7 @@ inline ccd::PixelRun recorded_at(const Series& s, std::int64_t stat_ord)
     ccd::HarmonicOptions h = s.h;
     h.STAT_ORD = stat_ord;
     return ccd::run_pixel(
-        ccd::RunSpec{h, s.l, nullptr, nullptr, true},
+        golden::spec_of(h, s.a, nullptr, nullptr, true),
         s.date_view(),
         s.spectral_view(),
         s.qa_view());
@@ -140,7 +141,7 @@ inline std::vector<Series> characterization_series()
 {
     std::vector<Series> out;
     for (const auto& p : characterisation_pixels())
-        out.push_back(Series{p.name, p.dates, p.spectral, p.qas, p.h, p.l});
+        out.push_back(Series{p.name, p.dates, p.spectral, p.qas, p.h, p.a});
     return out;
 }
 
@@ -184,7 +185,7 @@ inline std::vector<Series> synthetic_series()
                 {
                     to_physical(s.spectral.data(), T);
                     s.h = physical_harmonic();
-                    s.l = physical_lasso();
+                    s.a = physical_algorithm();
                 }
                 out.push_back(std::move(s));
             }

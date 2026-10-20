@@ -240,7 +240,6 @@ static py::dict pixel_wrapper(
     py::object qas_obj,
 
     ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
     bool record,
@@ -352,9 +351,12 @@ static py::dict pixel_wrapper(
     ccd::PixelRecord pixel_record;
     ccd::ResumeStatus status = ccd::ResumeStatus::Resumed;
 
-    ccd::RunSpec spec{hoptions, loptions, qa_table, preprocess};
+    ccd::RunSpec spec;
+    spec.hoptions = hoptions;
+    spec.qa_table = qa_table;
+    spec.plan = preprocess;
     spec.record = record;
-    spec.config = config;
+    spec.config = *config;
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
     spec.observer = recording;
 
@@ -474,7 +476,6 @@ py::dict detect_wrapper(
     py::array_t<ccd::scalar_t, py::array::c_style> spectral,
     py::object qas_obj,
     ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess_plan,
     bool resume_record,
@@ -482,7 +483,7 @@ py::dict detect_wrapper(
     bool trace
 )
 {
-    return pixel_wrapper(dates, spectral, qas_obj, hoptions, loptions, std::move(qa_table),
+    return pixel_wrapper(dates, spectral, qas_obj, hoptions, std::move(qa_table),
                          preprocess_plan, resume_record, nullptr, config_from_python(config),
                          trace);
 }
@@ -492,7 +493,6 @@ py::dict resume_wrapper(
     py::array_t<ccd::scalar_t, py::array::c_style> spectral,
     py::object qas_obj,
     ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions,
     py::dict resume,
     py::dict resume_header,
     py::list models,
@@ -505,7 +505,7 @@ py::dict resume_wrapper(
         header_from_python(resume_header),
         record_from_python(resume),
         segments_from_python(models)};
-    return pixel_wrapper(dates, spectral, qas_obj, hoptions, loptions, std::move(qa_table),
+    return pixel_wrapper(dates, spectral, qas_obj, hoptions, std::move(qa_table),
                          preprocess_plan, true, &from, config_from_python(config));
 }
 
@@ -652,7 +652,6 @@ static CubeInput check_cube(
 static ccd::CubeResult run_cube(
     const CubeInput& in,
     const ccd::HarmonicOptions& hoptions,
-    const ccd::LassoOptions& loptions,
     int threads,
     bool keep_masks,
     bool record = false,
@@ -676,8 +675,11 @@ static ccd::CubeResult run_cube(
         ? ccd::CubeQa(strided_view<std::uint16_t, 3>(in.qas))
         : ccd::CubeQa(strided_view<std::uint8_t, 3>(in.qas));
 
-    ccd::RunSpec spec{hoptions, loptions, in.qa_table, in.preprocess};
-    spec.config = in.config;
+    ccd::RunSpec spec;
+    spec.hoptions = hoptions;
+    spec.qa_table = in.qa_table;
+    spec.plan = in.preprocess;
+    spec.config = *in.config;
     spec.observer = in.observer;
     spec.observe = in.observe;
     spec.keep_masks = keep_masks;
@@ -721,7 +723,6 @@ py::list detect_cube_wrapper(
     py::object qas,
 
     ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions,
     int threads,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess,
@@ -745,7 +746,6 @@ py::list detect_cube_wrapper(
             run_cube(
                 views,
                 hoptions,
-                loptions,
                 threads,
                 true
             );
@@ -1089,7 +1089,6 @@ py::dict detect_cube_columns_wrapper(
     py::object qas,
 
     ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions,
     int threads,
     std::shared_ptr<ccd::QaTable> qa_table,
     const ccd::preprocess::PreprocessPlan* preprocess,
@@ -1128,7 +1127,7 @@ py::dict detect_cube_columns_wrapper(
     {
         py::gil_scoped_release release;
 
-        cube = run_cube(views, hoptions, loptions, threads,
+        cube = run_cube(views, hoptions, threads,
                         false,   // no column holds the mask
                         resume_record);
     }
@@ -1154,7 +1153,6 @@ py::dict resume_cube_columns_wrapper(
     py::object spectral,
     py::object qas,
     ccd::HarmonicOptions hoptions,
-    ccd::LassoOptions loptions,
     int threads,
     py::dict resume,
     py::dict resume_header,
@@ -1174,7 +1172,7 @@ py::dict resume_cube_columns_wrapper(
     {
         py::gil_scoped_release release;
 
-        cube = run_cube(views, hoptions, loptions, threads, false, true, &from);
+        cube = run_cube(views, hoptions, threads, false, true, &from);
     }
 
     py::dict output = cube_columns(cube, views);
@@ -1205,7 +1203,6 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::arg("hoptions"),
-        py::arg("loptions"),
         py::kw_only(),
         py::arg("qa_table") = py::none(),
         py::arg("preprocess") = py::none(),
@@ -1220,7 +1217,6 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::arg("hoptions"),
-        py::arg("loptions"),
         py::kw_only(),
         py::arg("resume"),
         py::arg("resume_header"),
@@ -1236,7 +1232,6 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::arg("hoptions"),
-        py::arg("loptions"),
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("qa_table") = py::none(),
@@ -1250,7 +1245,6 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::arg("hoptions"),
-        py::arg("loptions"),
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("qa_table") = py::none(),
@@ -1266,7 +1260,6 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::arg("hoptions"),
-        py::arg("loptions"),
         py::arg("threads") = 0,
         py::kw_only(),
         py::arg("resume"),

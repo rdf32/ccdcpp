@@ -183,6 +183,8 @@
 
 #include <gtest/gtest.h>
 
+#include "specs.hpp"
+
 #include "ccd/ccd.hpp"
 
 #include "characterisation.hpp"
@@ -203,7 +205,7 @@ ccd::FitResult run_detect(const golden::CharPixel& p)
     std::vector<double> block = p.spectral;
 
     return ccd::run_pixel(
-        ccd::RunSpec{p.h, p.l},
+        golden::spec_of(p.h, p.a),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<double, 2>::contiguous(block.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;

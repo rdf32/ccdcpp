@@ -43,28 +43,6 @@ enum class GreenFilterScope : std::uint8_t
 
 //==============================================================================
 //
-// ChangeMethod
-//
-// The change detection a pixel taking the Standard procedure runs. The
-// PermanentSnow and InsufficientClear procedures are the same whichever
-// method a run uses (pixel_procedure.hpp).
-//
-//   Ccdc       "ccdc": the Standard machine (standard.hpp), pyccd's
-//              procedure as pyccd intends it (the default).
-//
-// with_method() gives a run's options for a method. Another procedure is a
-// configuration of the same machine (docs/ccdc-state-machine.md, "Another
-// procedure"), not a method.
-//
-//==============================================================================
-
-enum class ChangeMethod : std::uint8_t
-{
-    Ccdc
-};
-
-//==============================================================================
-//
 // HarmonicOptions
 //
 // Parameters controlling CCD harmonic processing.
@@ -75,22 +53,6 @@ enum class ChangeMethod : std::uint8_t
 
 struct HarmonicOptions
 {
-    // The Standard procedure's change detection (ChangeMethod above). Set it
-    // with with_method(), which also sets the parameters the method fixes.
-    ChangeMethod METHOD = ChangeMethod::Ccdc;
-
-    //----------------------------------------------------------------------
-    // Processing window parameters
-    //----------------------------------------------------------------------
-    index_t MEOW_SIZE = 12;
-
-    // At least 2 (ccd::validate()): a change is this many consecutive
-    // observations over the threshold, so 1 would make every outlier a
-    // change.
-    index_t PEEK_SIZE = 6;
-
-    std::int64_t DAY_DELTA = 365;
-    
     //--------------------------------------------------------------------------
     // QA Values
     //
@@ -125,70 +87,6 @@ struct HarmonicOptions
     // Minimum number of clear observations required.
     index_t CLEAR_OBSERVATION_THRESHOLD = 3;
 
-    // Minimum clear/water percentage required.
-    scalar_t CLEAR_PCT_THRESHOLD = 0.25;
-
-    // Snow classification threshold.
-    scalar_t SNOW_PCT_THRESHOLD = 0.75;
-
-    scalar_t OUTLIER_THRESHOLD = 35.888186879610423L;
-
-    scalar_t CHANGE_THRESHOLD   = 15.086272469388987l;
-
-    scalar_t T_CONST = 4.89;
-
-    //--------------------------------------------------------------------------
-    // Cadence and change probability
-    //
-    // The Standard procedure's constants that are statements about the
-    // revisit interval of the input or the false-alarm rate of the change
-    // test. The defaults are pyccd's, tuned for 16-day Landsat. ccd::validate()
-    // rejects zero or negative days, counts below 1, a probability outside
-    // (0, 1) and a non-positive factor or divisor.
-    //
-    // MEOW_SIZE and the RETRAIN_* constants are observation counts and are
-    // not scaled with the cadence, here or in pyccd: at a denser cadence the
-    // same count spans less time.
-    //--------------------------------------------------------------------------
-
-    // Days. adjust_peek() scales PEEK_SIZE by PEEK_REFERENCE_DAYS over the
-    // median gap between the statistics-window observations, and never below
-    // PEEK_SIZE.
-    scalar_t PEEK_REFERENCE_DAYS = 16.0;
-
-    // Days. adjusted_variogram() raises the lag until the most common
-    // separation exceeds this, then keeps only the pairs further apart than
-    // it.
-    std::int64_t VARIOGRAM_MIN_LAG_DAYS = 30;
-
-    // Observations. Extend refits the models while the window holds at
-    // most RETRAIN_MIN_OBS observations, or once the window spans at least
-    // RETRAIN_SPAN_FACTOR times the span of the last fit. A window of at
-    // most RETRAIN_MIN_OBS observations compares against the model RMSE; a
-    // longer one against the seasonal RMSE below.
-    index_t RETRAIN_MIN_OBS = 24;
-
-    // Unitless ratio of spans; see RETRAIN_MIN_OBS.
-    scalar_t RETRAIN_SPAN_FACTOR = 1.33;
-
-    // Observations. The seasonal RMSE takes the fit-window residuals of the
-    // SEASONAL_RMSE_COUNT observations closest in day of year to the last
-    // peek observation...
-    index_t SEASONAL_RMSE_COUNT = 24;
-
-    // ...and is the norm of those residuals divided by SEASONAL_RMSE_DIVISOR.
-    // Unitless. The default is pyccd's 4, sqrt(24 - 8): 24 residuals less the
-    // 8 coefficients of the full model. It is a separate option and is not
-    // derived from SEASONAL_RMSE_COUNT.
-    scalar_t SEASONAL_RMSE_DIVISOR = 4.0;
-
-    // Probability, in (0, 1). For a peek window of `peek` observations longer
-    // than the default `defpeek`, adjust_change_threshold() takes the chi2
-    // quantile at 1 - (1 - CHANGE_PROBABILITY)^(defpeek / peek). The default
-    // CHANGE_THRESHOLD is the chi2(5) quantile at this probability, so a
-    // caller changing one sets the other to match (ccdcpp.chi2_quantile).
-    scalar_t CHANGE_PROBABILITY = 0.99;
-
     //--------------------------------------------------------------------------
     // Input unit convention
     //
@@ -212,7 +110,10 @@ struct HarmonicOptions
     //     REFL_MIN      = 0.0       REFL_MAX       = 1.0
     //     THERM_MIN     = -0.9320   THERM_MAX      = 0.7070
     //     MEDIAN_GREEN_FILTER = 0.04
-    //     LassoOptions::alpha = 1e-4    LassoOptions::coef_floor = 1e-4
+    //
+    // with the configuration's Lasso alpha and coef_floor (model,
+    // stability_fit, edge_fit) at 1e-4 (Python's profiles convert them:
+    // Units.per_reflectance)
     //
     // and the caller pre-divides its own array by 10000:
     //
@@ -234,7 +135,7 @@ struct HarmonicOptions
     // WHY DEGREES CELSIUS ITSELF IS NOT THE PRESET
     //
     // Feeding plain Celsius is the obvious choice and it is wrong, for a
-    // reason that is invisible from here: LassoOptions::alpha is ONE value
+    // reason that is invisible from here: the Lasso's alpha is ONE value
     // shared by all seven band fits, and it is an absolute soft-threshold, so
     // the preset can only hold if every band shares one scale factor. Optical
     // DN is 10000x reflectance; the DN thermal path lands on Celsius x 100, so
@@ -359,35 +260,13 @@ struct HarmonicOptions
     std::int64_t STAT_ORD = 736694;
 
     //--------------------------------------------------------------------------
-    // Harmonic Coefficients
-    //--------------------------------------------------------------------------
-    // Coefficient counts, the intercept included. ccd::validate() refuses a
-    // COEFFICIENT_MIN below 1, counts that decrease from MIN to MAX, and a
-    // COEFFICIENT_MAX above 8, the harmonic basis's width. The fit takes
-    // whole harmonics: a count below 6 fits the trend and the annual pair
-    // (as 4 does), 6 or 7 adds the semi-annual pair, 8 the third; the count
-    // is also the RMSE's degrees of freedom.
-
-    // Minimum coefficient count: constant + trend + annual harmonic.
-    index_t COEFFICIENT_MIN = 4;
-    // Add second harmonic.
-    index_t COEFFICIENT_MID = 6;
-    // Add third harmonic.
-    index_t COEFFICIENT_MAX = 8;
-
-    // Value used to determine the 
-    // minimum number of observations required for
-    // defined number of coefficients
-    // e.g. COEFFICIENT_MIN * NUM_OBS_FACTOR = 12
-    index_t NUM_OBS_FACTOR = 3;
-
-    //--------------------------------------------------------------------------
     // Band layout
     //
     // The rows of the spectral array. NUM_BANDS is the band count every call
     // must pass. Each row is fitted and reported -- ChangeModel::bands has
-    // one entry per row, whatever its role -- and the three lists and two
-    // indices below are the only places a procedure reads a band by role.
+    // one entry per row, whatever its role -- and the lists and indices
+    // below are where a procedure reads a band by role (the configuration's
+    // band lists, window_screen's, are its own).
     // ccd::validate() checks them against the input once per call.
     //
     // The defaults are the Landsat layout: blue, green, red, nir, swir1,
@@ -397,14 +276,11 @@ struct HarmonicOptions
 
     // Bands whose residuals make up the change magnitude, accumulated in
     // this order. The count is the degrees of freedom of the chi-squared
-    // distribution behind the thresholds: CHANGE_THRESHOLD and
-    // OUTLIER_THRESHOLD above are chi2(5) quantiles, so a caller changing the
-    // count sets them to match, and adjust_change_threshold() takes its df
-    // from here.
+    // distribution behind the thresholds: the configuration's change and
+    // outlier thresholds are chi2(5) quantiles by default, so a caller
+    // changing the count sets them to match, and adjust_change_threshold()
+    // takes its df from here.
     BandList DETECTION_BANDS = {1, 2, 3, 4, 5};
-
-    // Bands the Tmask outlier screen fits.
-    BandList TMASK_BANDS = {1, 4};
 
     // Bands the saturation filter tests against REFL_MIN and REFL_MAX. May be
     // empty; must not hold THERMAL_IDX.
@@ -426,16 +302,6 @@ struct HarmonicOptions
     index_t QA_IDX      = 7;
 
 };
-
-// A method's name ("ccdc") and the method of a name;
-// method_from_name() throws std::invalid_argument on any other name.
-const char* method_name(ChangeMethod method);
-ChangeMethod method_from_name(const std::string& name);
-
-// `options` for a run of `method`: METHOD set, and the parameters the method
-// fixes set to its values; every other field as given, so a sensor profile's
-// unit constants carry through. ccdc fixes none.
-HarmonicOptions with_method(HarmonicOptions options, ChangeMethod method);
 
 
 //==============================================================================

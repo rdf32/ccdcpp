@@ -13,7 +13,8 @@ del sys
 
 from . import ccdcpp as _extension
 from . import presets
-from .config import Config, config, strategies
+from .config import OPTION_PARAMS, Config, config, strategies
+from .config import config as _config
 from .profiles import (
     CADENCE_FIELDS,
     CELSIUS_HUNDREDTHS,
@@ -48,8 +49,8 @@ from .profiles import (
 #
 # Each forwards to the extension function of the same name
 # (ccdcpp.ccdcpp.detect, ...). Without profile= the arguments reach it as
-# given, so a call is the extension call. hoptions and loptions are optional
-# only together with a profile, and band_names is accepted only with one.
+# given, so a call is the extension call. hoptions is optional only together
+# with a profile, and band_names is accepted only with one.
 #------------------------------------------------------------------------------
 
 class _FromProfile:
@@ -82,22 +83,20 @@ def _plan(entry, preprocess, profile, hoptions):
     return preprocess
 
 
-def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
-             band_names=None, method=None):
+def _resolve(entry, spectral, hoptions, qa_table, preprocess, profile, band_names, config):
+    """The arguments as the extension takes them: (hoptions, qa_table, plan, the
+    configuration's dict of stages)."""
     if profile is None:
         if band_names is not None:
             raise TypeError(
                 f"{entry}(): band_names= is checked against a profile's band "
                 f"names and needs profile="
             )
-        if hoptions is None or loptions is None:
-            raise TypeError(
-                f"{entry}() needs hoptions and loptions, or profile="
-            )
-        if method is not None:
-            hoptions = _extension.with_method(hoptions, method)
-        return (hoptions, loptions, (None if qa_table is _FROM_PROFILE else qa_table),
-                _plan(entry, preprocess, None, hoptions))
+        if hoptions is None:
+            raise TypeError(f"{entry}() needs hoptions, or profile=")
+        cfg = _config(config if config is not None else "ccdc")
+        return (hoptions, (None if qa_table is _FROM_PROFILE else qa_table),
+                _plan(entry, preprocess, None, hoptions), cfg._tree)
 
     if not isinstance(profile, SensorProfile):
         raise TypeError(
@@ -105,20 +104,17 @@ def _resolve(entry, spectral, hoptions, loptions, qa_table, preprocess, profile,
             f"{type(profile).__name__}"
         )
     profile.check(spectral, band_names)
-    if hoptions is None or loptions is None:
-        h, lo = profile.options()
-        hoptions = h if hoptions is None else hoptions
-        loptions = lo if loptions is None else loptions
-    if method is not None:
-        hoptions = _extension.with_method(hoptions, method)
+    if hoptions is None:
+        hoptions = profile.options()
     if qa_table is _FROM_PROFILE:
         qa_table = profile.qa_table(hoptions)
-    return hoptions, loptions, qa_table, _plan(entry, preprocess, profile, hoptions)
+    cfg = profile.config() if config is None else _config(config)
+    return hoptions, qa_table, _plan(entry, preprocess, profile, hoptions), cfg._tree
 
 
-def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
+def detect(dates, spectral, qas, hoptions=None, *,
            qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-           band_names=None, resume_record=False, method=None, config=None, trace=False):
+           band_names=None, resume_record=False, config=None, trace=False):
     """CCD on one pixel.
 
     dates
@@ -129,8 +125,8 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         (B, T) float64, one row per band.
     qas
         (T,) uint8 QA codes, or raw uint8/uint16 QA with qa_table.
-    hoptions, loptions
-        ccdcpp.HarmonicOptions and ccdcpp.LassoOptions. Required unless
+    hoptions
+        A ccdcpp.HarmonicOptions, the input's description. Required unless
         profile is given.
     qa_table
         A ccdcpp.QaTable that decodes raw qas, or None for codes.
@@ -141,7 +137,7 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         too. Checked against the band count first (ValueError).
     profile
         A ccdcpp.SensorProfile (see ccdcpp.presets) that supplies hoptions,
-        loptions, qa_table and preprocess. Any of them passed explicitly is
+        qa_table, preprocess and the configuration (profile.config()). Any of them passed explicitly is
         used instead, whole; qa_table=None for pre-classified codes,
         preprocess=None for the default plan. The table and the plan are
         built with the hoptions the run uses. spectral is checked against
@@ -152,16 +148,12 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
         in the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked
         and a misordered stack runs. Needs profile= (TypeError otherwise).
-    method
-        The Standard procedure's change detection, one of ccdcpp.METHODS
-        ("ccdc"), applied to the run's hoptions with
-        ccdcpp.with_method() before the QA table and the plan are built;
-        None (the default) runs hoptions.METHOD, "ccdc" unless set.
     config
         A ccdcpp.Config (or a dict of stages): the algorithm, one strategy
         and its parameters per stage (ccdcpp.config(), ccdcpp.strategies()).
-        None, the default, runs the configuration hoptions and loptions
-        describe. Checked before the pixel runs (ValueError); a resume
+        Any ccdcpp.config() source (a preset's name, a TOML file's path); in
+        the input's units. None, the default, runs profile.config() with a
+        profile and the "ccdc" preset without one. Checked before the pixel runs (ValueError); a resume
         record of a configured run continues only under the same one.
     trace
         True to also return "trace": the pixel's run step by step, one dict
@@ -179,20 +171,20 @@ def detect(dates, spectral, qas, hoptions=None, loptions=None, *,
     B entries in row order), processing_mask and num_bands, plus band_names
     (a tuple) with a profile.
     """
-    hoptions, loptions, qa_table, preprocess = _resolve(
-        "detect", spectral, hoptions, loptions, qa_table, preprocess, profile,
-        band_names, method)
+    hoptions, qa_table, preprocess, tree = _resolve(
+        "detect", spectral, hoptions, qa_table, preprocess, profile, band_names,
+        config)
     out = _extension.detect(
-        dates, spectral, qas, hoptions, loptions, qa_table=qa_table,
-        preprocess=preprocess, resume_record=resume_record, config=config, trace=trace)
+        dates, spectral, qas, hoptions, qa_table=qa_table,
+        preprocess=preprocess, resume_record=resume_record, config=tree, trace=trace)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
 
 
-def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
+def detect_cube(dates, spectral, qas, hoptions=None, threads=0,
                 *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE, profile=None,
-                band_names=None, method=None, config=None):
+                band_names=None, config=None):
     """CCD on every pixel of a cube, in parallel.
 
     dates
@@ -202,8 +194,8 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
         (H, W, B, T) float64, float32 or uint16, any non-negative strides.
     qas
         (H, W, T) uint8 QA codes, or raw uint8/uint16 QA with qa_table.
-    hoptions, loptions
-        ccdcpp.HarmonicOptions and ccdcpp.LassoOptions. Required unless
+    hoptions
+        A ccdcpp.HarmonicOptions, the input's description. Required unless
         profile is given.
     threads
         OpenMP threads; 0 for the library's default.
@@ -216,7 +208,7 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
         too. Checked against the band count first (ValueError).
     profile
         A ccdcpp.SensorProfile (see ccdcpp.presets) that supplies hoptions,
-        loptions, qa_table and preprocess. Any of them passed explicitly is
+        qa_table, preprocess and the configuration (profile.config()). Any of them passed explicitly is
         used instead, whole; qa_table=None for pre-classified codes,
         preprocess=None for the default plan. The table and the plan are
         built with the hoptions the run uses. spectral is checked against
@@ -227,27 +219,21 @@ def detect_cube(dates, spectral, qas, hoptions=None, loptions=None, threads=0,
         in the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked
         and a misordered stack runs. Needs profile= (TypeError otherwise).
-    method
-        The Standard procedure's change detection, one of ccdcpp.METHODS
-        ("ccdc"), applied to the run's hoptions with
-        ccdcpp.with_method() before the QA table and the plan are built;
-        None (the default) runs hoptions.METHOD, "ccdc" unless set.
 
     Returns a list of per-pixel dicts in raster order: row, col, models and
     processing_mask, as detect's. They carry no band_names.
     """
-    hoptions, loptions, qa_table, preprocess = _resolve(
-        "detect_cube", spectral, hoptions, loptions, qa_table, preprocess, profile,
-        band_names, method)
+    hoptions, qa_table, preprocess, tree = _resolve(
+        "detect_cube", spectral, hoptions, qa_table, preprocess, profile, band_names,
+        config)
     return _extension.detect_cube(
-        dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
-        preprocess=preprocess, config=config)
+        dates, spectral, qas, hoptions, threads, qa_table=qa_table,
+        preprocess=preprocess, config=tree)
 
 
-def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
-                        threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
+def detect_cube_columns(dates, spectral, qas, hoptions=None, threads=0, *, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
                         profile=None, band_names=None, resume_record=False,
-                        method=None, config=None, trace_pixels=None):
+                        config=None, trace_pixels=None):
     """CCD on every pixel of a cube, in parallel, as columns.
 
     Arguments as detect_cube. Returns a dict of arrays with one entry per
@@ -263,21 +249,21 @@ def detect_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     excluded_offsets[i + 1]]), and "resume_header", the call's: what
     resume_cube_columns() takes back.
     """
-    hoptions, loptions, qa_table, preprocess = _resolve(
-        "detect_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
-        profile, band_names, method)
+    hoptions, qa_table, preprocess, tree = _resolve(
+        "detect_cube_columns", spectral, hoptions, qa_table, preprocess, profile, band_names,
+        config)
     out = _extension.detect_cube_columns(
-        dates, spectral, qas, hoptions, loptions, threads, qa_table=qa_table,
-        preprocess=preprocess, resume_record=resume_record, config=config,
+        dates, spectral, qas, hoptions, threads, qa_table=qa_table,
+        preprocess=preprocess, resume_record=resume_record, config=tree,
         trace_pixels=trace_pixels)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
 
 
-def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
+def resume(dates, spectral, qas, hoptions=None, *, resume,
            resume_header, models, qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-           profile=None, band_names=None, method=None, config=None):
+           profile=None, band_names=None, config=None):
     """Continue a recorded run on one pixel's longer series.
 
     dates, spectral, qas
@@ -289,7 +275,7 @@ def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
     models
         The stored run's segments, as detect() returned them; the first
         resume["final_segments"] are kept as given.
-    hoptions, loptions, qa_table, preprocess, profile, band_names, method
+    hoptions, qa_table, preprocess, profile, band_names, config
         As detect(), and the same as the stored run's: other options, plan
         or QA table raise ValueError, as do another record format or results
         version.
@@ -301,22 +287,22 @@ def resume(dates, spectral, qas, hoptions=None, loptions=None, *, resume,
     observations up to the stored series end differ from the stored run's
     and it was rerun in full.
     """
-    hoptions, loptions, qa_table, preprocess = _resolve(
-        "resume", spectral, hoptions, loptions, qa_table, preprocess, profile,
-        band_names, method)
+    hoptions, qa_table, preprocess, tree = _resolve(
+        "resume", spectral, hoptions, qa_table, preprocess, profile, band_names,
+        config)
     out = _extension.resume(
-        dates, spectral, qas, hoptions, loptions, resume=resume,
+        dates, spectral, qas, hoptions, resume=resume,
         resume_header=resume_header, models=models, qa_table=qa_table,
-        preprocess=preprocess, config=config)
+        preprocess=preprocess, config=tree)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
 
 
-def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
+def resume_cube_columns(dates, spectral, qas, hoptions=None,
                         threads=0, *, resume, resume_header, segments,
                         qa_table=_FROM_PROFILE, preprocess=_FROM_PROFILE,
-                        profile=None, band_names=None, method=None, config=None):
+                        profile=None, band_names=None, config=None):
     """Continue a recorded cube run on its longer series, as columns.
 
     dates, spectral, qas
@@ -347,13 +333,13 @@ def resume_cube_columns(dates, spectral, qas, hoptions=None, loptions=None,
     resume_header["options_digest"] and resume["input_fingerprint"] are
     uint64 (store them unsigned, or as int64 bits: both are read back).
     """
-    hoptions, loptions, qa_table, preprocess = _resolve(
-        "resume_cube_columns", spectral, hoptions, loptions, qa_table, preprocess,
-        profile, band_names, method)
+    hoptions, qa_table, preprocess, tree = _resolve(
+        "resume_cube_columns", spectral, hoptions, qa_table, preprocess, profile, band_names,
+        config)
     out = _extension.resume_cube_columns(
-        dates, spectral, qas, hoptions, loptions, threads, resume=resume,
+        dates, spectral, qas, hoptions, threads, resume=resume,
         resume_header=resume_header, segments=segments, qa_table=qa_table,
-        preprocess=preprocess, config=config)
+        preprocess=preprocess, config=tree)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out

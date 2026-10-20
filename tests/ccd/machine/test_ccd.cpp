@@ -1,5 +1,7 @@
 #include "ccd/ccd.hpp"
 
+#include "../golden/specs.hpp"
+
 #include <chrono>
 #include <iostream>
 #include <fstream>
@@ -127,7 +129,7 @@ int main() {
     ccd::HarmonicOptions hoptions;
     ccd::LassoOptions loptions;
 
-    auto results = ccd::run_pixel(ccd::RunSpec{hoptions, loptions}, dates, spectral, qas).result;
+    auto results = ccd::run_pixel(golden::spec_of(hoptions, loptions), dates, spectral, qas).result;
 
     const auto tf = std::chrono::steady_clock::now();
 
