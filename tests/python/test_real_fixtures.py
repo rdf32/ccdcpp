@@ -118,7 +118,7 @@ def preset_input(preset, pixel, apply_offset=True):
 def run(preset, pixel, **kw):
     dates, spectral, qa, names = preset_input(preset, pixel, **kw)
     return ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                         input=getattr(presets, preset)(), band_names=names)
+                         encoding=getattr(presets, preset)(), band_names=names)
 
 
 def as_stored(out):
@@ -293,7 +293,7 @@ class Findings(unittest.TestCase):
                 unscreened = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=[
                     r for r in profile.roles if r not in ("coastal", "thermal", "other")])
                 other = ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                                      input=profile, config=unscreened, band_names=names)
+                                      encoding=profile, config=unscreened, band_names=names)
                 self.assertNotEqual(as_stored(other), as_stored(out))
 
     def test_s2_store_order_is_refused(self):
@@ -302,7 +302,7 @@ class Findings(unittest.TestCase):
         rows = [names.index(b) for b in store]
         with self.assertRaises(ValueError):
             ccdcpp.detect(dates, np.ascontiguousarray(spectral[rows]), scl,
-                          input=presets.sentinel2_l2a(), band_names=store)
+                          encoding=presets.sentinel2_l2a(), band_names=store)
 
 
 if __name__ == "__main__":

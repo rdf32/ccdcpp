@@ -1,7 +1,7 @@
 """bench_cell.py <ccdcpp_package_parent> <cube.zarr> [threads=8] [strip=50] [statistics_end]
 
 The real-cell timing of the ccdcpp state-machine refactor: a 500 x 500 cell of a Landsat C2
-ARD cube, through detect_cube with input=presets.landsat_c2() (raw QA_PIXEL decoded by the
+ARD cube, through detect_cube with encoding=presets.landsat_c2() (raw QA_PIXEL decoded by the
 Landsat C2 table) and the "ccdc" configuration (with its shared statistics_end set to the
 argument `statistics_end`, an ordinal day, when given: 736694 is pyccd's 2017-12-31), `threads` threads, in strips of `strip` rows as the nlcd plugin runs
 it. The refactor's cell is h024v013 chunk 00030008 (rows 4000-4499, cols 1500-1999 of the
@@ -76,7 +76,7 @@ for r0 in range(0, N, STRIP):
     qa = np.ascontiguousarray(s[r0:r1, :, 6])
     del opt, t
     tic = time.perf_counter()
-    out = ccdcpp.detect_cube(dates, sp, qa, input=profile, config=CONFIG, threads=THREADS)
+    out = ccdcpp.detect_cube(dates, sp, qa, encoding=profile, config=CONFIG, threads=THREADS)
     toc = time.perf_counter()
     t_det += toc - tic
     print(f"  rows {r0}-{r1 - 1}: convert {tic - t_conv:.1f} s, detect {toc - tic:.1f} s", flush=True)

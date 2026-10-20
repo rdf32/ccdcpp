@@ -204,9 +204,9 @@ class WrittenChains(unittest.TestCase):
         for written in (written_default(), written_default_explicit()):
             with self.subTest(written=written):
                 cfg = tp.PYCCD.replace(preprocess=written)
-                assert_same(self, every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+                assert_same(self, every_entry(DATES, CUBE_DN, CODES, encoding=ccdcpp.Input(),
                                               config=cfg),
-                            every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+                            every_entry(DATES, CUBE_DN, CODES, encoding=ccdcpp.Input(),
                                         config=tp.PYCCD))
 
     def test_ten_band_default(self):
@@ -222,9 +222,9 @@ class WrittenChains(unittest.TestCase):
         self.assertEqual(ccdcpp.plan_of(cfg, profile),
                          ccdcpp.plan_of(tp.TEN_BAND_CONFIG, profile))
         assert_same(self,
-                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
+                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, encoding=profile,
                                                config=cfg), "threads"),
-                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
+                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, encoding=profile,
                                                config=tp.TEN_BAND_CONFIG), "threads"))
 
 
@@ -232,31 +232,31 @@ class CustomChains(unittest.TestCase):
     def test_standard_keeps_snow(self):
         dates, ref, qa = tp.reference_pixel()
         h = ccdcpp.Input()
-        base = ccdcpp.detect(dates, ref, qa, input=h, config=tp.PYCCD)
-        snowy = ccdcpp.detect(dates, ref, qa, input=h, config=keeps_snow(tp.PYCCD))
+        base = ccdcpp.detect(dates, ref, qa, encoding=h, config=tp.PYCCD)
+        snowy = ccdcpp.detect(dates, ref, qa, encoding=h, config=keeps_snow(tp.PYCCD))
         self.assertNotIn(54, [m["curve_qa"] for m in snowy["models"]])
         self.assertEqual(snow_kept(base, qa), 0)
         self.assertGreater(snow_kept(snowy, qa), 0)
         self.assertNotEqual(repr(base), repr(snowy))
         # The same chain on a profile's input.
-        assert_same(self, without(ccdcpp.detect(dates, ref, qa, input=presets.landsat_c1_dn(),
+        assert_same(self, without(ccdcpp.detect(dates, ref, qa, encoding=presets.landsat_c1_dn(),
                                                 config=keeps_snow(tp.PYCCD)), "band_names"),
                     snowy)
 
     def test_cube_entry_point(self):
         h = ccdcpp.Input()
-        plain = every_entry(DATES, CUBE_DN, CODES, input=h, config=keeps_snow())
-        assert_same(self, strip(every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(),
+        plain = every_entry(DATES, CUBE_DN, CODES, encoding=h, config=keeps_snow())
+        assert_same(self, strip(every_entry(DATES, CUBE_DN, CODES, encoding=presets.landsat_c1_dn(),
                                             config=keeps_snow())), plain)
-        self.assertNotEqual(repr(plain), repr(every_entry(DATES, CUBE_DN, CODES, input=h)))
+        self.assertNotEqual(repr(plain), repr(every_entry(DATES, CUBE_DN, CODES, encoding=h)))
 
     def test_codes_follow_the_run_input(self):
         h = ccdcpp.Input(qa_clear=10, qa_water=11, qa_snow=13)
         renumbered = np.vectorize({255: 255, 0: 10, 1: 11, 2: 2, 3: 13, 4: 4}.get,
                                   otypes=[np.uint8])(CODES)
         assert_same(self,
-                    every_entry(DATES, CUBE_DN, renumbered, input=h, config=keeps_snow()),
-                    every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+                    every_entry(DATES, CUBE_DN, renumbered, encoding=h, config=keeps_snow()),
+                    every_entry(DATES, CUBE_DN, CODES, encoding=ccdcpp.Input(),
                                 config=keeps_snow()))
 
     def test_transform_on_every_procedure(self):
@@ -270,13 +270,13 @@ class CustomChains(unittest.TestCase):
         converted = cube.copy()
         converted[..., 6, :] = converted[..., 6, :] * 10.0 - 27315.0
         h = ccdcpp.Input(thermal_scale=1.0, thermal_offset=0.0)
-        got = without(ccdcpp.detect_cube(DATES, cube, CODES, threads=2, input=ccdcpp.Input(),
+        got = without(ccdcpp.detect_cube(DATES, cube, CODES, threads=2, encoding=ccdcpp.Input(),
                                          config=everywhere), "threads")
-        assert_same(self, got, without(ccdcpp.detect_cube(DATES, converted, CODES, input=h,
+        assert_same(self, got, without(ccdcpp.detect_cube(DATES, converted, CODES, encoding=h,
                                                           threads=2), "threads"))
         self.assertNotEqual(
             repr(got), repr(without(ccdcpp.detect_cube(DATES, cube, CODES, threads=2,
-                                                       input=ccdcpp.Input()), "threads")))
+                                                       encoding=ccdcpp.Input()), "threads")))
 
 
 class Replace(unittest.TestCase):
@@ -381,7 +381,7 @@ class Validation(unittest.TestCase):
         h = ccdcpp.Input()
         no_dedupe = CCDC.replace(preprocess__snow=[KeepQa(), AddQa()])
         with self.assertRaisesRegex(ValueError, "must be followed by a Dedupe"):
-            ccdcpp.detect(d, s, q, input=h, config=no_dedupe)
+            ccdcpp.detect(d, s, q, encoding=h, config=no_dedupe)
         # A band the input lacks, against the input.
         with self.assertRaisesRegex(ValueError, "'coastal', which the input does not have"):
             ccdcpp.plan_of(CCDC.replace(preprocess__band_range__bands=["coastal"]), h)

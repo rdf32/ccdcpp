@@ -252,23 +252,23 @@ class Runs(unittest.TestCase):
     def test_the_preset_runs_as_the_default(self):
         d, s, q = pixel()
         h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
+        plain = ccdcpp.detect(d, s, q, encoding=h)
         self.assertGreater(len(plain["models"]), 1)
         for cfg in ("ccdc", ccdcpp.config("ccdc"),
                     ccdcpp.Config(ccdcpp.ccdcpp._config_preset("ccdc"))):
-            configured = ccdcpp.detect(d, s, q, input=h, config=cfg)
+            configured = ccdcpp.detect(d, s, q, encoding=h, config=cfg)
             self.assertEqual(plain["models"], configured["models"])
         # The extension's own default (config=None) is the same built-in preset.
-        bare = ccdcpp.ccdcpp.detect(d, s, q, input=h)
+        bare = ccdcpp.ccdcpp.detect(d, s, q, encoding=h)
         self.assertEqual(plain["models"], bare["models"])
 
     def test_config_is_a_config_or_a_preset_name(self):
         d, s, q = pixel()
         with self.assertRaisesRegex(TypeError, "a ccdcpp.Config or a preset's name"):
-            ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=ccdcpp.config().to_dict())
+            ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(), config=ccdcpp.config().to_dict())
         path = os.path.join(_PACKAGE, "configs", "ccdc.toml")
         with self.assertRaisesRegex(TypeError, "not a path; pass ccdcpp.config"):
-            ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=path)
+            ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(), config=path)
 
     def test_a_config_is_checked_and_compiled_when_built(self):
         with self.assertRaisesRegex(ValueError, "refit 'span-factor' parameter 'factor' is 0"):
@@ -280,12 +280,12 @@ class Runs(unittest.TestCase):
     def test_a_configuration_changes_the_run(self):
         d, s, q = pixel()
         h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
-        sparse = ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(shared__alpha=0.01))
+        plain = ccdcpp.detect(d, s, q, encoding=h)
+        sparse = ccdcpp.detect(d, s, q, encoding=h, config=ccdcpp.config().replace(shared__alpha=0.01))
         # A hundred times the Lasso penalty in every Lasso stage: other coefficients.
         self.assertNotEqual(sparse["models"], plain["models"])
         strict = ccdcpp.detect(
-            d, s, q, input=h, config=ccdcpp.config().replace(change_test__peek_size=200))
+            d, s, q, encoding=h, config=ccdcpp.config().replace(change_test__peek_size=200))
         # No peek of 200 observations fits after the change: it is not found.
         self.assertLess(len(strict["models"]), len(plain["models"]))
 
@@ -295,8 +295,8 @@ class Runs(unittest.TestCase):
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
         cfg = ccdcpp.config("ccdc")
-        a = ccdcpp.detect_cube(d, cube, qc, input=h, threads=1)
-        b = ccdcpp.detect_cube(d, cube, qc, input=h, threads=1, config=cfg)
+        a = ccdcpp.detect_cube(d, cube, qc, encoding=h, threads=1)
+        b = ccdcpp.detect_cube(d, cube, qc, encoding=h, threads=1, config=cfg)
         for key in a:
             if key != "failures":
                 np.testing.assert_array_equal(a[key], b[key], err_msg=key)
@@ -305,8 +305,8 @@ class Runs(unittest.TestCase):
     def test_a_trace_records_the_run(self):
         d, s, q = pixel()
         h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
-        traced = ccdcpp.detect(d, s, q, input=h, trace=True)
+        plain = ccdcpp.detect(d, s, q, encoding=h)
+        traced = ccdcpp.detect(d, s, q, encoding=h, trace=True)
         self.assertEqual(plain["models"], traced["models"])
         rows = traced["trace"]
         if not rows:
@@ -319,7 +319,7 @@ class Runs(unittest.TestCase):
         self.assertTrue(any(r["outcome"] == "change" for r in tests))
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
-        out = ccdcpp.detect_cube(d, cube, qc, input=h, threads=2, trace_pixels=[(1, 0)])
+        out = ccdcpp.detect_cube(d, cube, qc, encoding=h, threads=2, trace_pixels=[(1, 0)])
         self.assertEqual(list(out["traces"]), [(1, 0)])
         self.assertEqual(out["traces"][(1, 0)], rows)
 
@@ -329,12 +329,12 @@ class Runs(unittest.TestCase):
         tree = ccdcpp.config().to_dict()
         tree["stages"]["refit"] = {"strategy": "nope", "params": {}}
         with self.assertRaisesRegex(ValueError, "refit has no strategy 'nope'"):
-            ccdcpp.detect(d, s, q, input=h, config=ccdcpp.Config(tree))
+            ccdcpp.detect(d, s, q, encoding=h, config=ccdcpp.Config(tree))
         with self.assertRaisesRegex(ValueError, "the configuration has no 'mode' stage"):
-            ccdcpp.detect(d, s, q, input=h,
+            ccdcpp.detect(d, s, q, encoding=h,
                           config=ccdcpp.Config({"stages": {"refit": {"strategy": "span-factor"}}}))
         with self.assertRaisesRegex(ValueError, "refit 'span-factor' parameter 'factor' is 0"):
-            ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(refit__factor=0.0))
+            ccdcpp.detect(d, s, q, encoding=h, config=ccdcpp.config().replace(refit__factor=0.0))
 
 
 if __name__ == "__main__":

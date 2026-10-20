@@ -8,7 +8,7 @@ All numbers are for ccdcpp 0.10.0 on one machine:
 - Apple M5 Max, 18 cores (6 performance, 12 efficiency), 64 GB, macOS 26.7.
 - Release build (`-O3`, Apple clang 21, libomp), Python 3.11, numpy 1.26.4.
 - The default input and configuration (`ccdcpp.Input()` and the `ccdc` preset, at pyccd's
-  statistics cutoff as 0.10.0 ran it), or `input=presets.landsat_c2()` for the real cell.
+  statistics cutoff as 0.10.0 ran it), or `encoding=presets.landsat_c2()` for the real cell.
 - The machine was not otherwise idle: the 1-minute load is given with each table. A
   comparison is only made between runs of the same session.
 - Memory is the peak resident set size of the process (`/usr/bin/time -l`), which includes the
@@ -19,7 +19,7 @@ All numbers are for ccdcpp 0.10.0 on one machine:
 | Name | What it is |
 |---|---|
 | Synthetic | `make_corpus.cpp`'s 2000 pixels at a 16-day cadence, tiled 2 x 2 (8000 pixels, float64 input), through `detect_cube` as columns ("cols") or as a dict per pixel ("cube"). Small and repeatable: the per-change bench. |
-| Atlanta cell | A real 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 7 bands, uint16), through `detect_cube` with `input=presets.landsat_c2()` in strips of 50 rows, as a production plugin runs it. 250,000 pixels, 455,231 segments. Read whole before timing; only detection is timed. |
+| Atlanta cell | A real 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 7 bands, uint16), through `detect_cube` with `encoding=presets.landsat_c2()` in strips of 50 rows, as a production plugin runs it. 250,000 pixels, 455,231 segments. Read whole before timing; only detection is timed. |
 | Annual update | The same cell recorded up to 2022-12-31, then resumed to 2023 with `detect_cube(resume=...)`, against a full run to 2023. |
 | PyCCD pixels | Pixels run one at a time through PyCCD's `ccd.detect` and `ccdcpp.detect`. |
 

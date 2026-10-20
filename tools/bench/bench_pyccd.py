@@ -104,7 +104,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
         if only != "ccdcpp":
             run_pyccd(d, s64, q8)
         if only != "pyccd":
-            ccdcpp.detect(d, s64, q8, input=hopt, config=PYCCD)
+            ccdcpp.detect(d, s64, q8, encoding=hopt, config=PYCCD)
         before = peak_mb()
         continue
     py = cpp = None
@@ -116,7 +116,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
         best = None
         for _ in range(5):
             t0 = time.perf_counter()
-            cpp = ccdcpp.detect(d, s64, q8, input=hopt, config=PYCCD)
+            cpp = ccdcpp.detect(d, s64, q8, encoding=hopt, config=PYCCD)
             el = time.perf_counter() - t0
             best = el if best is None else min(best, el)
         cpp_t.append(best)

@@ -13,11 +13,11 @@ stage its strategy and that strategy's parameters, and for every procedure its
 > physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
 > exactly as today.
 >
-> - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False,
->   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, input,
+> - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, encoding, config="ccdc", record=False,
+>   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, encoding,
 >   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
 >   masks=False)`, which returns columns (with `masks=True` also every pixel's processing
->   mask, one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
+>   mask, one `(H, W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
 >   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::run_pixel` /
 >   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
@@ -25,7 +25,7 @@ stage its strategy and that strategy's parameters, and for every procedure its
 >   or none), `roles`, `reflectance_scale` and `reflectance_offset` (Collection-1 DN 10000 and 0,
 >   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_at_100c` (the value of
 >   100 °C after the transform) and the saturation codes `saturation_code` and `thermal_saturation_code`
->   (stored values). `input=` takes an `Input` or a
+>   (stored values). `encoding=` takes an `Input` or a
 >   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
@@ -64,8 +64,8 @@ cfg2 = cfg.replace(shared__change_probability=0.95, refit__factor=2.0)
 cfg3 = cfg.replace(refit="span-factor")
 
 # Run with it: detect and detect_cube take config= (a Config or a preset's name).
-out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), config=cfg2)
-cube = ccdcpp.detect_cube(dates, stack, qas, input=..., threads=8, config=cfg2)
+out = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2(), config=cfg2)
+cube = ccdcpp.detect_cube(dates, stack, qas, encoding=..., threads=8, config=cfg2)
 ```
 
 Mistakes are refused by name, before any pixel runs:

@@ -6,11 +6,11 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 > physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
 > exactly as today.
 >
-> - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False,
->   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, input,
+> - **Two calls**: `ccdcpp.detect(dates, spectral, qas, *, encoding, config="ccdc", record=False,
+>   resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *, encoding,
 >   config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
 >   masks=False)`, which returns columns (with `masks=True` also every pixel's processing
->   mask, one `(H * W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
+>   mask, one `(H, W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
 >   `resume=` is an earlier call's output made with `record=True`. C++: `ccd::run_pixel` /
 >   `ccd::run_cube` with `RunSpec{input, algorithm, record, ...}`.
 > - **Input** (`ccdcpp.Input`, `ccd::Input`; immutable in Python, `Input(**fields)` and
@@ -18,7 +18,7 @@ ccdcpp is a C++17 implementation of the Continuous Change Detection and Classifi
 >   or none), `roles`, `reflectance_scale` and `reflectance_offset` (Collection-1 DN 10000 and 0,
 >   reflectance 1 and 0), `thermal_scale`/`thermal_offset` with `thermal_at_100c` (the value of
 >   100 °C after the transform) and the saturation codes `saturation_code` and `thermal_saturation_code`
->   (stored values). `input=` takes an `Input` or a
+>   (stored values). `encoding=` takes an `Input` or a
 >   `SensorProfile`; a profile describes the data only.
 > - **Configuration** (`ccdcpp.Config`, `config::Config`): `shared` values, the 13 `stages` and
 >   the `preprocess` chain per procedure, in physical units (reflectance, degrees Celsius,
@@ -93,7 +93,7 @@ spectral[6] = 0.20 + 0.10 * season
 qas = np.full(T, 21824, dtype=np.uint16)   # QA_PIXEL clear
 qas[rng.random(T) < 0.15] = 22280          # QA_PIXEL cloud
 
-out = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2())
+out = ccdcpp.detect(dates, spectral, qas, encoding=presets.landsat_c2())
 
 for m in out["models"]:
     print(date.fromordinal(m["start_day"]), date.fromordinal(m["end_day"]),
@@ -110,7 +110,7 @@ print(sorted(out["models"][0]["bands"][0]))
 ['coefficients', 'intercept', 'magnitude', 'rmse']
 ```
 
-Two segments: the change on the first clear observation after 2012-06-01 (change probability 1), and the last curve, which ends at the series end (change probability 0). Each segment has one fit per row (`bands`): intercept, seven harmonic coefficients, RMSE and change magnitude. The result also holds the `processing_mask`, the observations the fit used. `input=` takes a profile or a `ccdcpp.Input` (the data's encoding; its defaults are Collection 1 DN with pre-classified QA codes, [Input unit convention](#input-unit-convention)); the run uses the `ccdc` configuration unless `config=` names another ([Configuring the algorithm](#configuring-the-algorithm)).
+Two segments: the change on the first clear observation after 2012-06-01 (change probability 1), and the last curve, which ends at the series end (change probability 0). Each segment has one fit per row (`bands`): intercept, seven harmonic coefficients, RMSE and change magnitude. The result also holds the `processing_mask`, the observations the fit used. `encoding=` takes a profile or a `ccdcpp.Input` (the data's encoding; its defaults are Collection 1 DN with pre-classified QA codes, [Input unit convention](#input-unit-convention)); the run uses the `ccdc` configuration unless `config=` names another ([Configuring the algorithm](#configuring-the-algorithm)).
 
 The examples below continue from this one.
 
@@ -123,7 +123,7 @@ H, W = 3, 4
 cube = np.ascontiguousarray(np.broadcast_to(spectral, (H, W, 7, T)) + rng.normal(0, 0.002, (H, W, 7, T)))
 cube_qa = np.ascontiguousarray(np.broadcast_to(qas, (H, W, T)))
 
-cols = ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4)
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=presets.landsat_c2(), threads=4)
 
 print(cols["pixels_total"], cols["pixels_with_segments"], len(cols["row"]), cols["failures"])
 print(cols["coefficients"].shape)
@@ -136,7 +136,7 @@ print(sorted(k for k in cols if not k.startswith("pixels")))
 ['band_names', 'break_day', 'change_probability', 'coefficients', 'col', 'curve_qa', 'end_day', 'failures', 'intercept', 'magnitude', 'num_bands', 'observation_count', 'rmse', 'row', 'start_day', 'threads']
 ```
 
-`threads=0` (the default) uses the OpenMP runtime's thread count. A pixel that raises does not stop the cube: it is listed in `failures` with its row, column and message. The columns hold no processing mask; `masks=True` adds `processing_mask`, every pixel's mask as `detect` returns it in one contiguous `(H * W, T)` uint8 array (row `r * W + c` for pixel `(r, c)`, zeros for a failed one), and `width`, W; `to_pixels` then gives each pixel its row.
+`threads=0` (the default) uses the OpenMP runtime's thread count. A pixel that raises does not stop the cube: it is listed in `failures` with its row, column and message. The columns hold no processing mask; `masks=True` adds `processing_mask`, every pixel's mask as `detect` returns it in one contiguous `(H, W, T)` uint8 array (`[r, c]` for pixel `(r, c)`, zeros for a failed one); `to_pixels` then gives each pixel its mask.
 
 ## From C++
 
@@ -216,7 +216,7 @@ A configuration's values are physical, so one configuration means the same on ev
 c2 = presets.landsat_c2()
 base = ccdcpp.config("ccdc")
 stricter = base.replace(shared__change_probability=0.999, refit__factor=2.0)
-out2 = ccdcpp.detect(dates, spectral, qas, input=c2, config=stricter)
+out2 = ccdcpp.detect(dates, spectral, qas, encoding=c2, config=stricter)
 print(base.hash() != stricter.hash())
 print(base.resolve(c2.input())["stages"]["model"]["params"]["alpha"])   # 1e-4 x reflectance_scale 1
 ```
@@ -260,13 +260,13 @@ factor | none | greater than 0 | 1.33 | refit once the window spans this many ti
 ```python
 import pandas as pd
 
-traced = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), trace=True)
+traced = ccdcpp.detect(dates, spectral, qas, encoding=presets.landsat_c2(), trace=True)
 trace = pd.DataFrame(traced["trace"])
 print(trace.kind.value_counts().to_dict())
 print(trace[trace.kind == "segment"][["day", "day_to", "outcome", "observations"]].to_string())
 print(trace[trace.kind == "exit"]["outcome"].item())
 
-cube_traced = ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4,
+cube_traced = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=presets.landsat_c2(), threads=4,
                                  trace_pixels=[(1, 2)])
 print(len(cube_traced["traces"][(1, 2)]))
 ```
@@ -291,17 +291,17 @@ c2 = presets.landsat_c2()
 n = int(np.searchsorted(dates, date(2019, 1, 1).toordinal()))   # the first run: up to 2018
 
 first = ccdcpp.detect_cube(dates[:n], cube[..., :n], cube_qa[..., :n],
-                           input=c2, threads=4, record=True)
+                           encoding=c2, threads=4, record=True)
 # Store first's segment columns, first["resume"] (one entry per pixel) and first["resume_header"].
 
 SEGMENT_COLUMNS = ("row", "col", "start_day", "end_day", "break_day", "curve_qa",
                    "observation_count", "change_probability", "intercept", "coefficients",
                    "rmse", "magnitude")
-update = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, threads=4, resume=first)
+update = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=c2, threads=4, resume=first)
 
 print(update["counts"])
 capped = ccdcpp.config("ccdc").replace(shared__statistics_end=int(dates[n - 1]))
-full = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, config=capped, threads=4)
+full = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=c2, config=capped, threads=4)
 print(all(np.array_equal(update[k], full[k]) for k in SEGMENT_COLUMNS))
 ```
 
@@ -319,9 +319,9 @@ True
 
 ```python
 n = int(np.searchsorted(dates, date(2019, 1, 1).toordinal()))
-stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], input=c2, record=True)
-more = ccdcpp.detect(dates, spectral, qas, input=c2, resume=stored)
-print(more["status"], more["models"] == ccdcpp.detect(dates, spectral, qas, input=c2, config=capped)["models"])
+stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], encoding=c2, record=True)
+more = ccdcpp.detect(dates, spectral, qas, encoding=c2, resume=stored)
+print(more["status"], more["models"] == ccdcpp.detect(dates, spectral, qas, encoding=c2, config=capped)["models"])
 ```
 
 ```text
@@ -489,7 +489,7 @@ Any code other than `qa_clear` and `qa_water` keeps the observation out of the f
 ```python
 h = c2.input()                     # immutable: replace() returns a changed copy
 h = h.replace(qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel(h))
-explicit = ccdcpp.detect(dates, spectral, qas, input=h)
+explicit = ccdcpp.detect(dates, spectral, qas, encoding=h)
 print(explicit["models"] == out["models"])
 ```
 
@@ -562,7 +562,7 @@ A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises
 
 ## Sensor Profiles
 
-A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the units, the thermal transform, the values a saturated observation holds and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `input=` takes one wherever it takes a `ccdcpp.Input`.
+A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the units, the thermal transform, the values a saturated observation holds and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `encoding=` takes one wherever it takes a `ccdcpp.Input`.
 
 - `profile.input()` is its `ccdcpp.Input`, the QA table included, built once per profile and shared (copy it before changing it).
 - `spectral` is checked against the profile's band count (`ValueError`), and only the count. `band_names=` (keyword only, only with a profile) names the rows as the caller holds them; a stack in another order then raises `ValueError` naming the first row that differs, before anything runs. A Sentinel-2 store that keeps B08 with the 10 m bands is refused by `sentinel2_l2a()` this way rather than having B08 read as red edge 1.
@@ -699,7 +699,7 @@ snowy_cfg = ccdcpp.config("ccdc").replace(preprocess__standard=ProcedureChain(
     steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
     thermal_transform=True))
 print(ccdcpp.plan_of(snowy_cfg, ccdcpp.Input()).standard.chain[0])
-snowy = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), config=snowy_cfg)
+snowy = ccdcpp.detect(dates, spectral, qas, encoding=presets.landsat_c2(), config=snowy_cfg)
 ```
 
 ```text
@@ -721,7 +721,7 @@ everywhere = ccdcpp.config("ccdc").replace(preprocess__snow__thermal_transform=T
 
 raw = spectral.copy()
 raw[6] = (spectral[6] * 100 + 273.15 - 149.0) / 0.00341802   # ST_B10 DN
-from_raw = ccdcpp.detect(dates, raw, qas, input=c2_raw_thermal, config=everywhere)
+from_raw = ccdcpp.detect(dates, raw, qas, encoding=c2_raw_thermal, config=everywhere)
 ```
 
 In C++ a chain is a `config::ProcedureConfig` of the configuration's `preprocess` (`include/ccd/config/preprocess.hpp`), resolved with it:

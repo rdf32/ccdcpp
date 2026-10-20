@@ -5,7 +5,7 @@ rows of the ``spectral`` array, says which role each one plays, and gives the
 units and the QA decoding. Its ``input()`` is the ``ccdcpp.Input`` of the
 data, roles included, so a configuration that names bands by role holds for
 any band order. ``ccdcpp.detect`` and ``ccdcpp.detect_cube`` take one as
-``input=``; the configuration (``config=``, "ccdc" by default) is the same
+``encoding=``; the configuration (``config=``, "ccdc" by default) is the same
 for every profile.
 
 A new sensor is one constructor call; ``ccdcpp.presets`` writes its profiles
@@ -121,7 +121,7 @@ class SensorProfile:
     reflectance × 10000 = the 0–10000 DN check, exactly as today.
 
     Example: ``ccdcpp.detect(dates, spectral, qas,
-    input=ccdcpp.presets.landsat_c2())``
+    encoding=ccdcpp.presets.landsat_c2())``
 
     name
         A label for the profile, for messages and provenance.

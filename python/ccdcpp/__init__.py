@@ -47,27 +47,27 @@ from .profiles import (
 # The two calls: detect() on one pixel, detect_cube() on a cube, and
 # to_pixels() to read a cube's columns per pixel.
 #
-# Each takes the description of the data as input= (a ccdcpp.Input, or a
+# Each takes the description of the data as encoding= (a ccdcpp.Input, or a
 # SensorProfile that builds one) and the algorithm as config= (a
 # ccdcpp.Config, or a preset's name, built once), and calls the extension
 # function of the same name with the Input and the Config's compiled
 # Algorithm.
 #------------------------------------------------------------------------------
 
-def _input(entry, input, spectral, band_names):
-    """input= as the extension takes it: (the ccdcpp.Input, the profile or None)."""
-    if isinstance(input, SensorProfile):
-        input.check(spectral, band_names)
-        return input.input(), input
-    if isinstance(input, Input):
+def _encoding(entry, encoding, spectral, band_names):
+    """encoding= as the extension takes it: (the ccdcpp.Input, the profile or None)."""
+    if isinstance(encoding, SensorProfile):
+        encoding.check(spectral, band_names)
+        return encoding.input(), encoding
+    if isinstance(encoding, Input):
         if band_names is not None:
             raise TypeError(
                 f"{entry}(): band_names= is checked against a profile's band names; "
-                f"pass input= a ccdcpp.SensorProfile")
-        return input, None
+                f"pass encoding= a ccdcpp.SensorProfile")
+        return encoding, None
     raise TypeError(
-        f"{entry}(): input is a ccdcpp.Input or a ccdcpp.SensorProfile, not "
-        f"{type(input).__name__}")
+        f"{entry}(): encoding is a ccdcpp.Input or a ccdcpp.SensorProfile, not "
+        f"{type(encoding).__name__}")
 
 
 def _configuration(entry, config):
@@ -88,7 +88,7 @@ def _configuration(entry, config):
         f"{type(config).__name__}; ccdcpp.config() reads a file or a dict")
 
 
-def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=None,
+def detect(dates, spectral, qas, *, encoding, config="ccdc", record=False, resume=None,
            band_names=None, trace=False):
     """CCD on one pixel.
 
@@ -101,7 +101,7 @@ def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=N
     qas
         (T,) uint8 QA codes, or raw uint8/uint16 QA when the input has a
         qa_table.
-    input
+    encoding
         What the data is: a ccdcpp.Input, or a ccdcpp.SensorProfile (see
         ccdcpp.presets), whose input() is used. spectral is checked against a
         profile's band count first (ValueError).
@@ -130,7 +130,7 @@ def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=N
         list, say), or None. Given, they must be the profile's band_names in
         the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked and
-        a misordered stack runs. Needs input= a profile (TypeError otherwise).
+        a misordered stack runs. Needs encoding= a profile (TypeError otherwise).
     trace
         True to also return "trace": the pixel's run step by step, one dict
         per event (kind: transition, test, drop, segment or exit; phase and
@@ -142,16 +142,16 @@ def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=N
     B entries in row order), processing_mask and num_bands, plus band_names
     (a tuple) with a profile.
     """
-    h, profile = _input("detect", input, spectral, band_names)
+    h, profile = _encoding("detect", encoding, spectral, band_names)
     cfg = _configuration("detect", config)
-    out = _extension.detect(dates, spectral, qas, input=h, config=cfg._algorithm,
+    out = _extension.detect(dates, spectral, qas, encoding=h, config=cfg._algorithm,
                             record=record, resume=resume, trace=trace)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
 
 
-def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record=False,
+def detect_cube(dates, spectral, qas, *, encoding, config="ccdc", threads=0, record=False,
                 resume=None, band_names=None, trace_pixels=None, masks=False):
     """CCD on every pixel of a cube, in parallel, as columns.
 
@@ -163,7 +163,7 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
     qas
         (H, W, T) uint8 QA codes, or raw uint8/uint16 QA when the input has a
         qa_table.
-    input, config, band_names
+    encoding, config, band_names
         As detect().
     threads
         OpenMP threads; 0 for the library's default.
@@ -190,9 +190,9 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
         trace, in "traces": {(row, col): [event, ...]}.
     masks
         True to also return "processing_mask", every pixel's processing mask
-        as detect() returns it, in one contiguous uint8 array (H * W, T): row
-        r * W + c is pixel (r, c)'s (zeros for a failed pixel), with "width",
-        W. T bytes per pixel, kept while the cube runs.
+        as detect() returns it, in one contiguous uint8 array (H, W, T):
+        [r, c] is pixel (r, c)'s (zeros for a failed pixel). T bytes per
+        pixel, kept while the cube runs.
 
     Returns a dict of arrays with one entry per segment: row, col,
     start_day, end_day, break_day, curve_qa, observation_count,
@@ -202,9 +202,9 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
     pixel with no segment has no row (pixels_total - pixels_with_segments
     counts them). ccdcpp.to_pixels() reads it per pixel.
     """
-    h, profile = _input("detect_cube", input, spectral, band_names)
+    h, profile = _encoding("detect_cube", encoding, spectral, band_names)
     cfg = _configuration("detect_cube", config)
-    out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
+    out = _extension.detect_cube(dates, spectral, qas, encoding=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
                                  trace_pixels=trace_pixels, masks=masks)
     if profile is not None:
@@ -253,6 +253,6 @@ def to_pixels(out):
             i += 1
         pixel = {"row": row, "col": col, "models": models}
         if masks is not None:
-            pixel["processing_mask"] = masks[row * int(out["width"]) + col]
+            pixel["processing_mask"] = masks[row, col]
         pixels.append(pixel)
     return pixels

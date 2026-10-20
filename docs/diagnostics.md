@@ -11,7 +11,7 @@ run's output changes: an observed run's results are the unobserved run's, bit fo
 import pandas as pd
 import ccdcpp
 
-out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), trace=True)
+out = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2(), trace=True)
 trace = pd.DataFrame(out["trace"])
 print(trace[["kind", "phase", "next", "window_start", "window_stop", "day", "outcome"]].head())
 #          kind       phase        next  window_start  window_stop     day     outcome
@@ -31,7 +31,7 @@ trace[trace.kind == "segment"][["day", "day_to", "outcome", "observations"]]
 For a cube, name the pixels:
 
 ```python
-out = ccdcpp.detect_cube(dates, stack, qas, input=..., threads=8,
+out = ccdcpp.detect_cube(dates, stack, qas, encoding=..., threads=8,
                          trace_pixels=[(120, 37), (400, 12)])
 pd.DataFrame(out["traces"][(120, 37)])
 ```

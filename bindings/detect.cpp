@@ -527,13 +527,11 @@ static py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures
 // The processing mask is absent unless asked for (masks=True): it is the
 // single largest allocation, T bytes per pixel, and the change-detection
 // schema this feeds has no column for it. Asked for, it is one more array,
-// one row per pixel of the cube in raster order (not per segment), and
-// "width", the cube's W, which finds a pixel's row:
+// one contiguous uint8 array over the cube's pixels (not per segment):
 //
-//   processing_mask       uint8 [H * W, T]  row r * W + c: pixel (r, c)'s
-//                                           mask, 1 where the observation is
-//                                           kept; zeros for a failed pixel
-//   width                 int              W
+//   processing_mask       uint8 [H, W, T]  [r, c]: pixel (r, c)'s mask, 1
+//                                          where the observation is kept;
+//                                          zeros for a failed pixel
 //
 // Two passes: count segments, allocate, fill. Counting is cheap (it is a
 // vector size per pixel) and it is the only way to allocate exactly once.
@@ -668,8 +666,8 @@ static py::dict cube_columns(const ccd::CubeResult& cube, const CubeInput& views
     if (masks)
     {
         const auto T = static_cast<py::ssize_t>(views.T);
-        py::array_t<std::uint8_t> mask_arr(
-            std::vector<py::ssize_t>{static_cast<py::ssize_t>(views.H * views.W), T});
+        py::array_t<std::uint8_t> mask_arr(std::vector<py::ssize_t>{
+            static_cast<py::ssize_t>(views.H), static_cast<py::ssize_t>(views.W), T});
         std::uint8_t* const mask_v = mask_arr.mutable_data();
         std::fill(mask_v, mask_v + mask_arr.size(), std::uint8_t{0});
         for (const auto& pixel : cube.pixels)
@@ -679,7 +677,6 @@ static py::dict cube_columns(const ccd::CubeResult& cube, const CubeInput& views
                       mask_v + (pixel.row * views.W + pixel.col) * views.T);
         }
         output["processing_mask"] = mask_arr;
-        output["width"] = views.W;
     }
     return output;
 }
@@ -786,7 +783,7 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::kw_only(),
-        py::arg("input"),
+        py::arg("encoding"),
         py::arg("config") = py::none(),
         py::arg("record") = false,
         py::arg("resume") = py::none(),
@@ -800,7 +797,7 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::kw_only(),
-        py::arg("input"),
+        py::arg("encoding"),
         py::arg("config") = py::none(),
         py::arg("threads") = 0,
         py::arg("record") = false,

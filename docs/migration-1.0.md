@@ -14,9 +14,9 @@ as today.
   algorithm value of 0.10.0, `LassoOptions`' four, the bounds, the green filter and the statistics cutoff are the
   configuration's ([config.md](config.md)): `shared` values, `stage__parameter` parameters and
   the `preprocess` steps, in physical units.
-- **Two calls.** `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", ...)` and
-  `ccdcpp.detect_cube(..., *, input, config="ccdc", threads=0, ...)`, which returns columns;
-  `input=` is an `Input` or a `SensorProfile`, `config=` a `Config` or a preset's name.
+- **Two calls.** `ccdcpp.detect(dates, spectral, qas, *, encoding, config="ccdc", ...)` and
+  `ccdcpp.detect_cube(..., *, encoding, config="ccdc", threads=0, ...)`, which returns columns;
+  `encoding=` is an `Input` or a `SensorProfile`, `config=` a `Config` or a preset's name.
 - **Results are bit-identical** to 0.10.0 for the same input, configuration and statistics
   cutoff. The `ccdc` configuration has **no statistics cutoff**; 0.10.0's Landsat default was
   2017-12-31: `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` runs it, bit for bit.
@@ -31,12 +31,12 @@ as today.
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `detect(d, s, q, h, lo)` | `detect(d, s, q, input=h, config=cfg)` |
-| `detect(..., profile=p)` | `detect(..., input=p)` |
-| `detect_cube_columns(d, s, q, h, threads)` | `detect_cube(d, s, q, input=h, threads=threads)` (the same columns) |
+| `detect(d, s, q, h, lo)` | `detect(d, s, q, encoding=h, config=cfg)` |
+| `detect(..., profile=p)` | `detect(..., encoding=p)` |
+| `detect_cube_columns(d, s, q, h, threads)` | `detect_cube(d, s, q, encoding=h, threads=threads)` (the same columns) |
 | `detect_cube(...)` (a dict per pixel) | `ccdcpp.to_pixels(detect_cube(...))` (the models; the processing mask is `detect()`'s) |
 | `resume_record=True` | `record=True` |
-| `resume(d, s, q, h, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, input=h, resume=out)`, `out` the earlier `detect(..., record=True)` |
+| `resume(d, s, q, h, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, encoding=h, resume=out)`, `out` the earlier `detect(..., record=True)` |
 | `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)` |
 | `qa_table=t` | the input's `qa_table`: `h.replace(qa_table=t)` (a profile's `input()` carries its table) |
 | `preprocess=plan` | the configuration's `preprocess` section (`Config.replace(preprocess__...=)`) |
@@ -68,7 +68,7 @@ included.
 # 0.10.0
 out = ccdcpp.detect(dates, dn, codes, ccdcpp.HarmonicOptions(), ccdcpp.LassoOptions())
 # 1.0
-out = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input())
+out = ccdcpp.detect(dates, dn, codes, encoding=ccdcpp.Input())
 ```
 
 ```python
@@ -78,7 +78,7 @@ lo.alpha, lo.coef_floor = 1e-4, 1e-4
 out = ccdcpp.detect_cube_columns(dates, cube, codes, h_physical, lo, threads=4)
 # 1.0: the configuration is the same for every input; the input says the unit
 h = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0, thermal_at_100c=1.0)
-out = ccdcpp.detect_cube(dates, cube, codes, input=h, threads=4)   # or input=presets.landsat_c1_physical()
+out = ccdcpp.detect_cube(dates, cube, codes, encoding=h, threads=4)   # or encoding=presets.landsat_c1_physical()
 ```
 
 ```python
@@ -99,7 +99,7 @@ cfg = ccdcpp.config("ccdc").replace(
     shared__min_observations=16,             # the start window and a whole-series curve's least
     window_screen__bands=["green", "red", "swir1"],
     shared__max_iter=500)
-out = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=cfg)
+out = ccdcpp.detect(dates, dn, codes, encoding=ccdcpp.Input(), config=cfg)
 ```
 
 ## The options' fields and what they became

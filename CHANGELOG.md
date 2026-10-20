@@ -100,14 +100,14 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   `PixelRun`), `DetectScratch` (`Worker`), `options_digest()` (the header's `digest` is the
   resolution's), and the debugging helpers `Clock`, `elapsed_ms` and `print_change_model(s)`;
   `ccd.hpp` no longer includes `<iostream>`, `<chrono>`, `<string>` or `<vector>`.
-- **Python: two calls.** `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc",
+- **Python: two calls.** `ccdcpp.detect(dates, spectral, qas, *, encoding, config="ccdc",
   record=False, resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *,
-  input, config="ccdc", threads=0, record=False, resume=None, band_names=None,
+  encoding, config="ccdc", threads=0, record=False, resume=None, band_names=None,
   trace_pixels=None, masks=False)`, which returns the columns 0.10.0's `detect_cube_columns`
   returned, names and dtypes unchanged (with `masks=True` also `processing_mask`, every pixel's
-  mask in one `(H * W, T)` uint8 array, and `width`); `ccdcpp.to_pixels(out)` reads them per
-  pixel. `input=` is a
-  `ccdcpp.Input` or a `SensorProfile`; `config=` a `ccdcpp.Config` or a preset's name.
+  mask in one `(H, W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
+  `encoding=` (named so as not to shadow Python's `input()`) is a `ccdcpp.Input` or a
+  `SensorProfile`; `config=` a `ccdcpp.Config` or a preset's name.
   `resume=` is an earlier call's output made with `record=True` (replacing `resume_record=`),
   refused unless the input and configuration match. `profile=`, `hoptions=`, `qa_table=`,
   `preprocess=`, `ccdcpp.LassoOptions`, `loptions`, `ccdcpp.CADENCE_FIELDS`,
@@ -116,7 +116,7 @@ removed name to its replacement; `docs/config.md` describes the configuration.
 
   ```python
   cfg = ccdcpp.config("ccdc").replace(refit__factor=2.0, shared__change_probability=0.995)
-  out = ccdcpp.detect_cube(dates, cube, qa, input=ccdcpp.presets.landsat_c2(), config=cfg,
+  out = ccdcpp.detect_cube(dates, cube, qa, encoding=ccdcpp.presets.landsat_c2(), config=cfg,
                            threads=8)
   ```
 - **The pixel's data is `ccd::PixelSeries`** (`include/ccd/input/pixel_series.hpp`, replacing

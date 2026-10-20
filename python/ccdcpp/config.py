@@ -17,7 +17,7 @@ resume record of a configured run continues only under the same configuration.
     cfg = cfg.replace(shared__change_probability=0.95,
                       refit__factor=2.0)                 # shared__value=, stage__parameter=
     print(cfg)                                          # every shared value, stage and parameter
-    out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), config=cfg)
+    out = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2(), config=cfg)
 
 A configuration is written in physical terms, so it means the same on every input: the shared
 ``alpha`` and ``coef_floor`` and the preprocessing's bounds and offsets in reflectance (the run
