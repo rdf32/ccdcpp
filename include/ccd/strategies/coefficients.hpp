@@ -36,22 +36,20 @@ struct CoefficientRule
         return max;
     }
 
-    // Refuses a rule the harmonic basis cannot hold, naming `who`.
-    void check(const std::string& who) const
+    // Refuses a rule the harmonic basis cannot hold, as a schema refuses a
+    // parameter: `where` is the strategy ("model 'lasso'"). Each count is at
+    // least 1 by the strategy's schema.
+    void check(const std::string& where) const
     {
-        const auto fail = [&](const std::string& what)
-        { throw std::invalid_argument(who + ": " + what); };
-        if (min < 1)
-            fail("coefficient_min is 0; it must be at least 1");
         if (!(min <= mid && mid <= max))
-            fail("coefficient_min, coefficient_mid, coefficient_max are " +
-                 std::to_string(min) + ", " + std::to_string(mid) + ", " + std::to_string(max) +
-                 "; they must not decrease");
+            throw std::invalid_argument(
+                where + " parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' are " +
+                std::to_string(min) + ", " + std::to_string(mid) + ", " + std::to_string(max) +
+                "; they must not decrease");
         if (max > CCD_MAX_COEFS + 1)
-            fail("coefficient_max is " + std::to_string(max) + "; the harmonic basis has at most " +
-                 std::to_string(CCD_MAX_COEFS + 1));
-        if (per < 1)
-            fail("num_obs_factor is 0; it must be at least 1");
+            throw std::invalid_argument(
+                where + " parameter 'coefficient_max' is " + std::to_string(max) +
+                "; the harmonic basis has at most " + std::to_string(CCD_MAX_COEFS + 1));
     }
 };
 

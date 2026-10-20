@@ -63,8 +63,9 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates);
 //------------------------------------------------------------------------------
 
 // A fingerprint of everything besides the input that decides a run's
-// outputs: every field of the options, the configuration, every field of the
-// plan, and the QA table's codes (none when qa_table is null). Equal ones
+// outputs: every field of the options, the configuration (a run's resolved,
+// Registry::resolve()), every field of the plan, and the QA table's codes
+// (none when qa_table is null). Equal ones
 // give equal digests on every platform; unequal ones, different digests but
 // for a 64-bit collision. STAT_ORD is in it: a resumed run
 // is given the first run's options, and caps the cutoffs itself

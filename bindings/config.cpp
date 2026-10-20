@@ -7,8 +7,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "ccd/strategies/register_core.hpp"
 #include "ccd/config/registry.hpp"
+#include "ccd/machine/fit.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 #include "config.hpp"
@@ -227,4 +227,15 @@ void bind_config(py::module_& m)
             return out;
         },
         "Every stage's strategies and their parameters, from the library's registry.");
+
+    m.def(
+        "chi2_quantile",
+        &ccd::chi2_quantile,
+        py::arg("p"),
+        py::arg("df"),
+        "The chi-squared quantile at probability p with df degrees of "
+        "freedom, from the same boost call the change test's "
+        "threshold adjustment makes. chi2_quantile(0.99, 5) is the "
+        "change_threshold default; df is the DETECTION_BANDS count."
+    );
 }

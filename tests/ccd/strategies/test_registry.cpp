@@ -182,6 +182,39 @@ TEST(Registry, RefusesAStrategyRegisteredTwice)
                  std::logic_error);
 }
 
+TEST(Registry, RefusesAPresetRegisteredTwice)
+{
+    ccd::config::Registry r;
+    r.add_preset("mine", {});
+    EXPECT_THROW(r.add_preset("mine", {}), std::logic_error);
+}
+
+// resolve() spells out every parameter, so a partial tree and the full one
+// are the same tree (and digest).
+TEST(Registry, ResolveFillsTheDefaults)
+{
+    const ccd::config::Registry& r = ccd::strategies::library_registry();
+    const ccd::config::ConfigTree& ccdc = r.preset("ccdc");
+    EXPECT_EQ(r.resolve(ccdc), ccdc);
+
+    ccd::config::ConfigTree partial = ccdc;
+    partial["refit"].params = {{"factor", ccd::config::real(1.5)}};
+    ccd::config::ConfigTree full = ccdc;
+    full["refit"].params["factor"] = ccd::config::real(1.5);
+    EXPECT_NE(ccd::config::digest(partial), ccd::config::digest(full));
+    EXPECT_EQ(r.resolve(partial), full);
+
+    // A whole number for a real parameter is the real.
+    partial["refit"].params = {{"factor", ccd::config::integer(2)}};
+    full["refit"].params["factor"] = ccd::config::real(2.0);
+    EXPECT_EQ(r.resolve(partial), full);
+
+    partial["refit"].params = {{"nope", ccd::config::integer(2)}};
+    EXPECT_THROW(r.resolve(partial), std::invalid_argument);
+    partial["refit"].strategy = "none";
+    EXPECT_THROW(r.resolve(partial), std::invalid_argument);
+}
+
 TEST(Registry, TheOptionsConfigurationIsTheirs)
 {
     golden::Algorithm h;

@@ -244,24 +244,10 @@ void bind_options(py::module_& m)
     .def_readwrite("QA_OCCLUSION", &ccd::HarmonicOptions::QA_OCCLUSION,
         "Informational; not read by ccdcpp (default 10).")
 
-    .def_readwrite(
-        "STAT_ORD",
-        &ccd::HarmonicOptions::STAT_ORD
-    )
+    .def_readwrite("STAT_ORD", &ccd::HarmonicOptions::STAT_ORD,
+        "The statistics cutoff, an ordinal day: the procedure choice, the "
+        "cadence, the variogram and the green median read only the "
+        "observations dated <= STAT_ORD (default 736694, 2017-12-31, Landsat "
+        "CCD's historical cutoff; NO_STAT_CUTOFF for none).")
 ;
-
-    m.def(
-        "chi2_quantile",
-        &ccd::chi2_quantile,
-        py::arg("p"),
-        py::arg("df"),
-        "The chi-squared quantile at probability p with df degrees of "
-        "freedom, from the same boost call the Standard procedure's "
-        "change-threshold adjustment makes. chi2_quantile(0.99, 5) is the "
-        "change_threshold default; df is the DETECTION_BANDS count."
-    );
-
-
-
-
 }

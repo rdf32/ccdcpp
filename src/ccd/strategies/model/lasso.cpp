@@ -94,7 +94,7 @@ const std::vector<config::Field<Lasso::Params>>& Lasso::schema()
 
 Lasso::Lasso(const Params& p) : p_(p)
 {
-    coefficients().check("lasso");
+    coefficients().check("model 'lasso'");
 }
 
 CoefficientRule Lasso::coefficients() const

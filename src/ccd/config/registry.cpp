@@ -118,9 +118,21 @@ Values Registry::defaults(const std::string& stage, const std::string& strategy)
     return out;
 }
 
+ConfigTree Registry::resolve(const ConfigTree& config) const
+{
+    ConfigTree out;
+    for (const auto& [stage, chosen] : config)
+    {
+        find(stage, chosen.strategy);   // the same refusal as make()'s
+        out[stage] = {chosen.strategy, resolvers_.at(stage).at(chosen.strategy)(chosen.params)};
+    }
+    return out;
+}
+
 void Registry::add_preset(const std::string& name, ConfigTree config)
 {
-    presets_[name] = std::move(config);
+    if (!presets_.emplace(name, std::move(config)).second)
+        throw std::logic_error("preset '" + name + "' registered twice");
 }
 
 const ConfigTree& Registry::preset(const std::string& name) const

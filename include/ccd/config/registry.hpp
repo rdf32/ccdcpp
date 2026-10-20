@@ -107,6 +107,13 @@ public:
                     check_band_list(params.**member, bands,
                                     where + " parameter '" + field.name + "'");
         };
+        resolvers_[Interface::stage][name] = [name](const Values& values)
+        {
+            typename Strategy::Params params;
+            apply(Strategy::schema(), values, params,
+                  std::string(Interface::stage) + " '" + name + "'");
+            return to_values(Strategy::schema(), params);
+        };
         stage[name] = [name](const Values& values) -> std::shared_ptr<const void>
         {
             typename Strategy::Params params;
@@ -149,8 +156,14 @@ public:
     // an unknown one as make() does).
     Values defaults(const std::string& stage, const std::string& strategy) const;
 
+    // `config` with every strategy's parameters resolved: each one set, its
+    // defaults filling what `config` leaves out, so equal runs have equal
+    // trees (and digests). Refuses what make() refuses.
+    ConfigTree resolve(const ConfigTree& config) const;
+
     // Named configurations ("ccdc", and an extension's): add_preset()
-    // registers one, preset() returns it (std::invalid_argument naming the
+    // registers one (std::logic_error for a name already registered),
+    // preset() returns it (std::invalid_argument naming the
     // presets for another name), presets() lists them.
     void add_preset(const std::string& name, ConfigTree config);
     const ConfigTree& preset(const std::string& name) const;
@@ -167,6 +180,8 @@ private:
     std::map<std::string, std::map<std::string, Factory>> factories_;
     using BandCheck = std::function<void(const Values&, index_t, const std::string&)>;
     std::map<std::string, std::map<std::string, BandCheck>> band_checks_;
+    using Resolver = std::function<Values(const Values&)>;
+    std::map<std::string, std::map<std::string, Resolver>> resolvers_;
     std::map<std::string, std::map<std::string, std::vector<ParameterInfo>>> schemas_;
     std::map<std::string, ConfigTree> presets_;
 };

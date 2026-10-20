@@ -34,7 +34,7 @@ to its replacement; `docs/config.md` describes the configuration.
   algorithm when a run is built, with `std::invalid_argument` (`ValueError` in Python) naming
   stage, strategy and parameter: `PEEK_SIZE is 1; it must be at least 2` is `change_test 'chi2'
   parameter 'peek_size' is 1; it must be at least 2`, `COEFFICIENT_MAX is 9; the harmonic basis
-  has at most 8` is `lasso: coefficient_max is 9; the harmonic basis has at most 8`,
+  has at most 8` is `model 'lasso' parameter 'coefficient_max' is 9; the harmonic basis has at most 8`,
   `TMASK_BANDS is empty` is `window_screen 'tmask' parameter 'bands' is empty`, and a band list
   past the input is `window_screen 'tmask' parameter 'bands' holds band 12; the input has 10
   bands`. A `MEOW_SIZE` of 0, a NaN change or outlier threshold, and negative or NaN Lasso

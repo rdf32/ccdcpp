@@ -252,7 +252,7 @@ schemas when a run is built, by stage, strategy and parameter, and still throw
 | 0.10.0 | 1.0 |
 |---|---|
 | `PEEK_SIZE is 1; it must be at least 2` | `change_test 'chi2' parameter 'peek_size' is 1; it must be at least 2` |
-| `COEFFICIENT_MAX is 9; the harmonic basis has at most 8` | `lasso: coefficient_max is 9; the harmonic basis has at most 8` |
+| `COEFFICIENT_MAX is 9; the harmonic basis has at most 8` | `model 'lasso' parameter 'coefficient_max' is 9; the harmonic basis has at most 8` |
 | `TMASK_BANDS is empty` | `window_screen 'tmask' parameter 'bands' is empty` |
 
 A `MEOW_SIZE` of 0, a NaN change or outlier threshold and negative or NaN Lasso constants ran

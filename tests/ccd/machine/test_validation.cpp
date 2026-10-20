@@ -360,7 +360,7 @@ TEST(Validation, CoefficientRules)
     {
         golden::Algorithm a;
         set(a);
-        expect_config_error(a, 7, "lasso: ", what);
+        expect_config_error(a, 7, "model 'lasso' ", what);
     };
 
     // COEFFICIENT_MIN is also the edge fit's count, refused first.
@@ -371,11 +371,13 @@ TEST(Validation, CoefficientRules)
                             "it must be at least 1");
     }
     expect_error([](auto& a) { a.COEFFICIENT_MIN = 7; },
-        "coefficient_min, coefficient_mid, coefficient_max are 7, 6, 8; they must not decrease");
+        "model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' "
+        "are 7, 6, 8; they must not decrease");
     expect_error([](auto& a) { a.COEFFICIENT_MAX = 5; },
-        "coefficient_min, coefficient_mid, coefficient_max are 4, 6, 5; they must not decrease");
+        "model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' "
+        "are 4, 6, 5; they must not decrease");
     expect_error([](auto& a) { a.COEFFICIENT_MAX = 9; },
-        "coefficient_max is 9; the harmonic basis has at most 8");
+        "model 'lasso' parameter 'coefficient_max' is 9; the harmonic basis has at most 8");
 
     // The extremes accepted: a count of 1 throughout (the trend and annual
     // basis, as 4, with 1 degree of freedom), and 8.

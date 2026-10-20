@@ -418,10 +418,13 @@ Run::Run(
         plan_ = preprocess::default_plan(spec_.hoptions);
     preprocess::validate(plan_, bands);
 
+    const config::Registry& registry = strategies::library_registry();
+    const config::ConfigTree config = registry.resolve(spec_.config);
+
     if (spec_.record || resume)
     {
         header_.options_digest =
-            options_digest(spec_.hoptions, spec_.config, plan_, spec_.qa_table.get());
+            options_digest(spec_.hoptions, config, plan_, spec_.qa_table.get());
         header_.series_end = dates.size() > 0
             ? dates(dates.size() - 1)
             : std::numeric_limits<std::int64_t>::min();
@@ -445,8 +448,8 @@ Run::Run(
     }
 
     // The run's strategies, its configuration's.
-    strategies::library_registry().check_bands(spec_.config, bands_);
-    strategies_ = strategies::build_strategies(strategies::library_registry(), spec_.config);
+    registry.check_bands(config, bands_);
+    strategies_ = strategies::build_strategies(registry, config);
 }
 
 Observe Run::observed(index_t at) const

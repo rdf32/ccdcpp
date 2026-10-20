@@ -1,7 +1,7 @@
 # The ccdc preset: pyccd's algorithm, as ccdcpp corrects it (README), in Collection-1 DN (the
-# Lasso's alpha and coef_floor). The library's built-in "ccdc" (ccd::config::preset()), written
-# out by ccdcpp.Config(ccdcpp.ccdcpp._config_preset("ccdc")).to_toml(); a profile writes it for
-# its input (SensorProfile.config()).
+# Lasso's alpha and coef_floor). The library registry's "ccdc" preset
+# (ccd::strategies::library_registry().preset("ccdc")), written out by its Config's to_toml();
+# a profile writes it for its input (SensorProfile.config()).
 
 [change_test]
 strategy = "chi2"
