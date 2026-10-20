@@ -122,12 +122,10 @@ class OnePixel(unittest.TestCase):
                                  resume=dict(stored,
                                              resume_header=header or stored["resume_header"]))
 
-        other = ccdcpp.Input()
-        other.qa_occlusion += 1
+        other = ccdcpp.Input(qa_occlusion=ccdcpp.Input().qa_occlusion + 1)
         with self.assertRaisesRegex(ValueError, "another input or configuration"):
             call(h=other)
-        decoding = ccdcpp.Input()
-        decoding.qa_table = ccdcpp.qa_tables.landsat_c1_pixel_qa()
+        decoding = ccdcpp.Input(qa_table=ccdcpp.qa_tables.landsat_c1_pixel_qa())
         with self.assertRaisesRegex(ValueError, "another input or configuration"):
             call(h=decoding)
         stricter = ccdcpp._config_preset("ccdc")

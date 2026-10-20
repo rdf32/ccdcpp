@@ -126,9 +126,7 @@ def options():
 
 def with_table(table):
     """The default input decoding its raw QA through `table` (None: codes)."""
-    h = ccdcpp.Input()
-    h.qa_table = table
-    return h
+    return ccdcpp.Input(qa_table=table)
 
 
 def assert_same(test, a, b, where="out"):
@@ -195,9 +193,8 @@ class Tables(unittest.TestCase):
         self.assertEqual(table.codes[4], CLEAR)
 
     def test_renumbered_options(self):
-        h = ccdcpp.Input()
-        h.qa_fill, h.qa_clear, h.qa_water = 200, 10, 11
-        h.qa_shadow, h.qa_snow, h.qa_cloud = 12, 13, 14
+        h = ccdcpp.Input(qa_fill=200, qa_clear=10, qa_water=11, qa_shadow=12, qa_snow=13,
+                         qa_cloud=14)
         renumber = {FILL: 200, CLEAR: 10, WATER: 11, SHADOW: 12, SNOW: 13, CLOUD: 14}
         for name in SCHEMES:
             with self.subTest(name=name):
@@ -390,7 +387,7 @@ class Validation(unittest.TestCase):
         for value in wrong:
             with self.subTest(qa_table=type(value).__name__):
                 with self.assertRaises(TypeError):
-                    options().qa_table = value
+                    ccdcpp.Input(qa_table=value)
 
     def test_the_input_is_keyword_only(self):
         with self.assertRaises(TypeError):

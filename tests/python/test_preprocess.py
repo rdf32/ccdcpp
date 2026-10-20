@@ -123,18 +123,15 @@ class Plans(unittest.TestCase):
         self.assertEqual(plan, ccdcpp.plan_of(CCDC, phys.input()))
 
     def test_without_thermal_and_identity_transform(self):
-        h = ccdcpp.Input()
-        h.roles = h.roles[:6]
+        h = ccdcpp.Input(roles=ccdcpp.Input().roles[:6])
         plan = ccdcpp.plan_of("ccdc", h)
         self.assertNotIn(ccdcpp.StepKind.ThermalRange, [s.kind for s in plan.standard.chain])
         self.assertIsNone(plan.standard.transform)
-        h = ccdcpp.Input()
-        h.thermal_scale, h.thermal_offset = 1.0, 0.0
+        h = ccdcpp.Input(thermal_scale=1.0, thermal_offset=0.0)
         self.assertIsNone(ccdcpp.plan_of("ccdc", h).standard.transform)
 
     def test_codes_follow_the_input(self):
-        h = ccdcpp.Input()
-        h.qa_clear, h.qa_water, h.qa_snow = 10, 11, 13
+        h = ccdcpp.Input(qa_clear=10, qa_water=11, qa_snow=13)
         plan = ccdcpp.plan_of(keeps_snow(), h)
         self.assertEqual(plan.standard.chain[0].codes, [10, 11, 13])
         self.assertEqual(plan.snow.chain[4].codes, [13])
@@ -252,8 +249,7 @@ class CustomChains(unittest.TestCase):
         self.assertNotEqual(repr(plain), repr(every_entry(DATES, CUBE_DN, CODES, input=h)))
 
     def test_codes_follow_the_run_input(self):
-        h = ccdcpp.Input()
-        h.qa_clear, h.qa_water, h.qa_snow = 10, 11, 13
+        h = ccdcpp.Input(qa_clear=10, qa_water=11, qa_snow=13)
         renumbered = np.vectorize({255: 255, 0: 10, 1: 11, 2: 2, 3: 13, 4: 4}.get,
                                   otypes=[np.uint8])(CODES)
         assert_same(self,
@@ -271,8 +267,7 @@ class CustomChains(unittest.TestCase):
         cube[..., 6, ::7] = 1000.0
         converted = cube.copy()
         converted[..., 6, :] = converted[..., 6, :] * 10.0 - 27315.0
-        h = ccdcpp.Input()
-        h.thermal_scale, h.thermal_offset = 1.0, 0.0
+        h = ccdcpp.Input(thermal_scale=1.0, thermal_offset=0.0)
         got = without(ccdcpp.detect_cube(DATES, cube, CODES, threads=2, input=ccdcpp.Input(),
                                          config=everywhere), "threads")
         assert_same(self, got, without(ccdcpp.detect_cube(DATES, converted, CODES, input=h,

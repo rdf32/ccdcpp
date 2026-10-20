@@ -25,10 +25,14 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   data: the QA codes (`qa_fill`, ...), the QA table that decodes raw QA (`qa_table`, which
   replaces every `qa_table=` argument and `RunSpec::qa_table`; a `QaTable` is immutable and
   digests its codes once), a role per row (`roles`, replacing `NUM_BANDS` and the `*_IDX`
-  fields), `reflectance_unit` (Collection-1 DN 10000, reflectance 1), the
-  thermal transform (`thermal_scale`, `thermal_offset`) and `saturated` (the value a saturated
-  observation holds; 20000 by default, `None` for none). `CLEAR_OBSERVATION_THRESHOLD`, which
-  nothing read, is gone. Every algorithm field of 0.10.0 (`MEOW_SIZE`, `PEEK_SIZE`, ...,
+  fields), the reflectance encoding (`reflectance_unit` and `reflectance_offset`: reflectance r
+  is held as `r * reflectance_unit + reflectance_offset`; Collection-1 DN 10000 and 0,
+  reflectance 1 and 0), the thermal transform (`thermal_scale`, `thermal_offset`) with
+  `thermal_unit` (the value 100 °C has after it: 10000 for Celsius x 100, 1 for Celsius / 100)
+  and `saturated` (the value a saturated observation holds; 20000 by default, `None` for none).
+  The Python `Input` is immutable: `Input(**fields)` by keyword, `replace(**fields)` for a
+  changed copy, equal and hashed by value. `CLEAR_OBSERVATION_THRESHOLD`, which nothing read,
+  is gone. Every algorithm field of 0.10.0 (`MEOW_SIZE`, `PEEK_SIZE`, ...,
   `TMASK_BANDS`, `DETECTION_BANDS`, `STAT_ORD`) and `LassoOptions`' four are values of the
   configuration: `shared` values read by every stage that needs them (`detection_bands` by
   role, `change_probability`, `outlier_probability`, `alpha`, `coef_floor`, `max_iter`,
@@ -37,9 +41,9 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   detection-band count. `LassoOptions` remains the solver's own options type, inside the
   `lasso` strategies.
 - **The configuration is in physical units** and means the same on every input: reflectance
-  values (`alpha`, `coef_floor`, the preprocessing's reflectance bounds and offset) are
-  multiplied by the input's `reflectance_unit`, degrees Celsius resolve to the thermal row's
-  unit, bands are named by role and QA codes by name, all when the run resolves the
+  levels (the preprocessing's reflectance bounds) resolve as `r * reflectance_unit +
+  reflectance_offset`, reflectance differences (`alpha`, `coef_floor`, the green median's
+  offset) as `r * reflectance_unit`, degrees Celsius `c` as `c * 100 * thermal_unit / 10000`, bands are named by role and QA codes by name, all when the run resolves the
   configuration against its input, once per input (`ccd::Algorithm`, which caches the
   resolution).
 - **The preprocessing chain is part of the configuration**: a `preprocess` section holds, per

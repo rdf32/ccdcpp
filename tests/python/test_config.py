@@ -188,8 +188,7 @@ class Replace(unittest.TestCase):
     def test_check_refuses_what_a_run_would(self):
         with self.assertRaisesRegex(ValueError, "parameter 'factor' is 0; it must be greater than 0"):
             ccdcpp.config().replace(refit__factor=0.0).check()
-        three = ccdcpp.Input()
-        three.roles = ["blue", "green", "red"]
+        three = ccdcpp.Input(roles=["blue", "green", "red"])
         with self.assertRaisesRegex(ValueError, "holds 'nir', which the input does not have; "
                                                 "its rows are blue, green, red"):
             ccdcpp.config().check(three)

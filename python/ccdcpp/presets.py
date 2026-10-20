@@ -309,8 +309,8 @@ def sentinel2_l2a():
     water bodies it sends 1,355 of 3,983 water pixels, and 3,426 pixels in
     all, to the InsufficientClear procedure; decoding 7 as fill would send
     2,545, as clear 587. It stays cloud. A caller who wants the water pixels
-    runs a copy of ``input()`` whose ``qa_table`` is ``ccdcpp.QaTable(codes)``,
-    with ``codes`` the table's codes and entry 7 changed.
+    runs ``input().replace(qa_table=ccdcpp.QaTable(codes))``, with ``codes``
+    the table's codes and entry 7 changed.
 
     Detection: B03, B04, B8A, B11, B12, the default thresholds. The red
     edges and B08 are fitted, reported and saturation-screened. No

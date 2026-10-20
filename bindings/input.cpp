@@ -1,7 +1,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <algorithm>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ccd/core/constants.hpp"
@@ -10,6 +13,84 @@
 #include "ccd/input/qa_table.hpp"
 
 namespace py = pybind11;
+
+
+namespace
+{
+
+// Every field of ccd::Input, by its Python keyword, and how a value sets it.
+using Setter = void (*)(ccd::Input&, const py::handle&);
+
+template<class T, T ccd::Input::*Member>
+void set_member(ccd::Input& input, const py::handle& value)
+{
+    input.*Member = value.cast<T>();
+}
+
+void set_qa_table(ccd::Input& input, const py::handle& value)
+{
+    input.qa_table = value.is_none() ? nullptr : value.cast<std::shared_ptr<ccd::QaTable>>();
+}
+
+const std::vector<std::pair<const char*, Setter>>& input_fields()
+{
+    using ccd::Input;
+    using ccd::scalar_t;
+    static const std::vector<std::pair<const char*, Setter>> fields = {
+        {"qa_fill", set_member<std::uint8_t, &Input::qa_fill>},
+        {"qa_clear", set_member<std::uint8_t, &Input::qa_clear>},
+        {"qa_water", set_member<std::uint8_t, &Input::qa_water>},
+        {"qa_shadow", set_member<std::uint8_t, &Input::qa_shadow>},
+        {"qa_snow", set_member<std::uint8_t, &Input::qa_snow>},
+        {"qa_cloud", set_member<std::uint8_t, &Input::qa_cloud>},
+        {"qa_cirrus1", set_member<std::uint8_t, &Input::qa_cirrus1>},
+        {"qa_cirrus2", set_member<std::uint8_t, &Input::qa_cirrus2>},
+        {"qa_occlusion", set_member<std::uint8_t, &Input::qa_occlusion>},
+        {"qa_table", set_qa_table},
+        {"roles", set_member<std::vector<std::string>, &Input::roles>},
+        {"reflectance_unit", set_member<scalar_t, &Input::reflectance_unit>},
+        {"reflectance_offset", set_member<scalar_t, &Input::reflectance_offset>},
+        {"thermal_scale", set_member<scalar_t, &Input::thermal_scale>},
+        {"thermal_offset", set_member<scalar_t, &Input::thermal_offset>},
+        {"thermal_unit", set_member<scalar_t, &Input::thermal_unit>},
+        {"saturated", set_member<std::optional<scalar_t>, &Input::saturated>},
+    };
+    return fields;
+}
+
+// `input` with the keyword `fields` set; TypeError, naming `where` and the
+// fields, for another keyword or a value of the wrong type.
+ccd::Input with_fields(ccd::Input input, const py::kwargs& fields, const char* where)
+{
+    for (const auto& [key, value] : fields)
+    {
+        const std::string name = py::str(key);
+        const auto& known = input_fields();
+        const auto it = std::find_if(known.begin(), known.end(),
+                                     [&](const auto& f) { return name == f.first; });
+        if (it == known.end())
+        {
+            std::string names;
+            for (const auto& f : known)
+                names += std::string(names.empty() ? "" : ", ") + f.first;
+            throw py::type_error(std::string(where) + " has no field '" + name +
+                                 "'; the fields are " + names);
+        }
+        try
+        {
+            it->second(input, value);
+        }
+        catch (const py::cast_error&)
+        {
+            throw py::type_error(std::string(where) + ": " + name + " is " +
+                                 py::repr(value).cast<std::string>() +
+                                 ", which it cannot hold");
+        }
+    }
+    return input;
+}
+
+} // namespace
 
 
 void bind_input(py::module_& m)
@@ -51,17 +132,24 @@ void bind_input(py::module_& m)
         "The input says only how to read the data. The configuration says "
         "what to do with it, in physical units. The run translates once: 0–1 "
         "reflectance × 10000 = the 0–10000 DN check, exactly as today.\n\n"
-        "Example: h = ccdcpp.Input(); h.reflectance_unit = 1.0  # reflectance 0..1"
+        "Immutable: Input(**fields) takes every field by keyword, each "
+        "defaulting as below, and replace(**fields) returns a copy with those "
+        "fields changed. Equal and hashed by value.\n\n"
+        "Example: ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0, "
+        "thermal_offset=0.0, thermal_unit=1.0)  # reflectance, Celsius / 100"
     )
-    .def(py::init<>())
+    .def(py::init([](const py::kwargs& fields) { return with_fields(ccd::Input{}, fields, "Input()"); }))
+    .def("replace",
+         [](const ccd::Input& self, const py::kwargs& fields)
+         { return with_fields(self, fields, "Input.replace()"); },
+         "A copy of this input with the fields given by keyword changed.")
 
     //--------------------------------------------------------------------------
     // Band layout
     //--------------------------------------------------------------------------
-    .def_property(
+    .def_property_readonly(
         "roles",
         [](const ccd::Input& self) { return self.roles; },
-        [](ccd::Input& self, const std::vector<std::string>& roles) { self.roles = roles; },
         "A role (ccdcpp.ROLES) per row of the spectral array, in row order "
         "(default blue, green, red, nir, swir1, swir2, thermal). Its length is "
         "the band count every call must pass. \"green\" is required; without "
@@ -80,14 +168,13 @@ void bind_input(py::module_& m)
     //     spectral[:6] = dn[:6] / 1e4             # reflectance 0..1
     //     spectral[6]  = (k10 * 10 - 27315) / 1e4 # degrees Celsius / 100
     //
-    //     i = ccdcpp.Input()
-    //     i.reflectance_unit = 1.0
-    //     i.thermal_scale, i.thermal_offset, i.thermal_unit = 1.0, 0.0, 1.0
+    //     i = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0,
+    //                      thermal_offset=0.0, thermal_unit=1.0)
     //
     // See input.hpp for the measured equivalence and why plain Celsius is not
     // the physical unit.
     //--------------------------------------------------------------------------
-    .def_readwrite(
+    .def_readonly(
         "reflectance_unit", &ccd::Input::reflectance_unit,
         "The value one unit of reflectance has in the data (default 10000, "
         "Collection-1 DN; 1 for reflectance): reflectance r is held as r * "
@@ -96,25 +183,25 @@ void bind_input(py::module_& m)
         "differences (alpha, coef_floor, green_median's offset) times "
         "reflectance_unit only."
     )
-    .def_readwrite(
+    .def_readonly(
         "reflectance_offset", &ccd::Input::reflectance_offset,
         "The data's value of reflectance 0 (default 0). Collection-2 DN, r = "
         "DN * 2.75e-5 - 0.2, is reflectance_unit 1 / 2.75e-5 and "
         "reflectance_offset 0.2 / 2.75e-5."
     )
-    .def_readwrite("thermal_scale", &ccd::Input::thermal_scale,
+    .def_readonly("thermal_scale", &ccd::Input::thermal_scale,
         "A procedure that transforms thermal reads thermal * thermal_scale + "
         "thermal_offset (default 10, Kelvin x 10 to Celsius x 100), in the "
         "unit thermal_unit names.")
-    .def_readwrite("thermal_offset", &ccd::Input::thermal_offset,
+    .def_readonly("thermal_offset", &ccd::Input::thermal_offset,
         "See thermal_scale (default -27315).")
-    .def_readwrite("thermal_unit", &ccd::Input::thermal_unit,
+    .def_readonly("thermal_unit", &ccd::Input::thermal_unit,
         "The value 100 degrees Celsius has in the thermal row after the "
         "transform (default 10000, Celsius x 100; 1 for Celsius / 100). The "
         "configuration's degrees Celsius c resolve to c * 100 * thermal_unit "
         "/ 10000. It goes with the transform: Kelvin x 10 through (10, "
         "-27315) is 10000, Celsius / 100 through the identity is 1.")
-    .def_readwrite(
+    .def_readonly(
         "saturated", &ccd::Input::saturated,
         "The value a saturated observation holds, as the sensor writes it "
         "(default 20000, Collection-1 DN), or None when the input does not "
@@ -129,31 +216,29 @@ void bind_input(py::module_& m)
     // codes, or a QaTable's output, which ccdcpp.qa_tables builds from these
     // fields. See input.hpp for what reads each one.
     //--------------------------------------------------------------------------
-    .def_readwrite("qa_fill", &ccd::Input::qa_fill,
+    .def_readonly("qa_fill", &ccd::Input::qa_fill,
         "Fill: not a valid observation (default 255).")
-    .def_readwrite("qa_clear", &ccd::Input::qa_clear,
+    .def_readonly("qa_clear", &ccd::Input::qa_clear,
         "Clear: kept for the fit (default 0).")
-    .def_readwrite("qa_water", &ccd::Input::qa_water,
+    .def_readonly("qa_water", &ccd::Input::qa_water,
         "Water: kept for the fit (default 1).")
-    .def_readwrite("qa_shadow", &ccd::Input::qa_shadow,
+    .def_readonly("qa_shadow", &ccd::Input::qa_shadow,
         "Cloud shadow (default 2). Not read by the procedures, so excluded "
         "from the fit; the QA tables write it.")
-    .def_readwrite("qa_snow", &ccd::Input::qa_snow,
+    .def_readonly("qa_snow", &ccd::Input::qa_snow,
         "Snow: the snow percentage and PermanentSnow (default 3).")
-    .def_readwrite("qa_cloud", &ccd::Input::qa_cloud,
+    .def_readonly("qa_cloud", &ccd::Input::qa_cloud,
         "Cloud: excluded from the fit (default 4).")
-    .def_readwrite("qa_cirrus1", &ccd::Input::qa_cirrus1,
+    .def_readonly("qa_cirrus1", &ccd::Input::qa_cirrus1,
         "Informational; not read by ccdcpp (default 8).")
-    .def_readwrite("qa_cirrus2", &ccd::Input::qa_cirrus2,
+    .def_readonly("qa_cirrus2", &ccd::Input::qa_cirrus2,
         "Informational; not read by ccdcpp (default 9).")
-    .def_readwrite("qa_occlusion", &ccd::Input::qa_occlusion,
+    .def_readonly("qa_occlusion", &ccd::Input::qa_occlusion,
         "Informational; not read by ccdcpp (default 10).")
-    .def_property(
+    .def_property_readonly(
         "qa_table",
         [](const ccd::Input& self)
         { return std::const_pointer_cast<ccd::QaTable>(self.qa_table); },
-        [](ccd::Input& self, std::shared_ptr<ccd::QaTable> table)
-        { self.qa_table = std::move(table); },
         "The ccdcpp.QaTable that decodes raw uint8 or uint16 qas into the "
         "qa_* codes (ccdcpp.qa_tables builds one with this input's codes), "
         "or None (the default): qas are the codes, uint8."

@@ -487,10 +487,8 @@ Any code other than `qa_clear` and `qa_water` keeps the observation out of the f
 **Raw QA plus a table (uint8 or uint16).** Pass the archive's own QA band, with a `ccdcpp.QaTable` as the input's `qa_table` (a sensor profile's `input()` carries its own). Each pixel's values are decoded through the table, per thread, before the procedures run, so the run is exactly the run of the decoded codes passed as uint8, without a decoded copy of the cube. A uint16 `qas` without a table raises `TypeError`.
 
 ```python
-import copy
-
-h = copy.copy(c2.input())          # the profile's input is shared: copy it to change it
-h.qa_table = ccdcpp.qa_tables.landsat_c2_qa_pixel(h)
+h = c2.input()                     # immutable: replace() returns a changed copy
+h = h.replace(qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel(h))
 explicit = ccdcpp.detect(dates, spectral, qas, input=h)
 print(explicit["models"] == out["models"])
 ```

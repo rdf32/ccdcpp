@@ -282,7 +282,7 @@ class SensorProfile:
 
     def input(self):
         """The ``ccdcpp.Input`` of this profile's data, built once per profile
-        and shared: copy it (``copy.copy``) before changing it.
+        and shared (it is immutable; ``replace()`` gives a changed copy).
 
         Roles are the profile's; ``qa_table`` is the ``ccdcpp.QaTable`` of
         ``qa_table_builder`` with ``qa_table_options``, built with the
@@ -356,25 +356,25 @@ class SensorProfile:
 
 @lru_cache(maxsize=None)
 def _build_table(builder, codes, builder_options=()):
-    h = Input()
-    for name, code in zip(_TABLE_CODE_FIELDS, codes):
-        setattr(h, name, code)
+    h = Input(**dict(zip(_TABLE_CODE_FIELDS, codes)))
     return getattr(qa_tables, builder)(h, **dict(builder_options))
 
 
 @lru_cache(maxsize=None)
 def _input_of(profile):
-    h = Input()
-    h.roles = list(profile.roles)
-    h.reflectance_unit = profile.units.reflectance_unit
-    h.reflectance_offset = profile.units.offset
-    h.saturated = profile.saturated
+    h = Input(
+        roles=list(profile.roles),
+        reflectance_unit=profile.units.reflectance_unit,
+        reflectance_offset=profile.units.offset,
+        saturated=profile.saturated,
+    )
     if profile.thermal is not None:
-        h.thermal_scale = profile.thermal.scale
-        h.thermal_offset = profile.thermal.offset
-        h.thermal_unit = profile.thermal.unit
+        h = h.replace(thermal_scale=profile.thermal.scale,
+                      thermal_offset=profile.thermal.offset,
+                      thermal_unit=profile.thermal.unit)
     if profile.qa_table_builder is not None:
         codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
-        h.qa_table = _build_table(profile.qa_table_builder, codes, profile.qa_table_options)
+        h = h.replace(qa_table=_build_table(profile.qa_table_builder, codes,
+                                            profile.qa_table_options))
     return h
 

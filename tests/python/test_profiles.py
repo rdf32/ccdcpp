@@ -150,12 +150,8 @@ PYCCD = ccdcpp.config("ccdc").replace(shared__stat_ord=736694)
 def explicit_physical():
     """The physical-unit input written out, as the golden tests write it, and the
     configuration it runs: (Input, Config)."""
-    h = ccdcpp.Input()
-    h.reflectance_unit = 1.0
-    h.thermal_scale = 1.0
-    h.thermal_offset = 0.0
-    h.thermal_unit = 1.0
-    h.saturated = None
+    h = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0, thermal_offset=0.0,
+                     thermal_unit=1.0, saturated=None)
     return h, PYCCD
 
 
@@ -226,10 +222,8 @@ def band_range_rows(input, config="ccdc"):
 
 
 def with_table(input, table):
-    """A copy of ``input`` (a ccdcpp.Input) decoding its QA through ``table``."""
-    h = copy.copy(input)
-    h.qa_table = table
-    return h
+    """``input`` (a ccdcpp.Input) decoding its QA through ``table``."""
+    return input.replace(qa_table=table)
 
 
 class Corpus(unittest.TestCase):
@@ -842,14 +836,16 @@ class Profiles(unittest.TestCase):
                 with self.assertRaises(dataclasses.FrozenInstanceError):
                     p.saturated = 2.0
 
-    def test_input_is_built_once_and_copies(self):
+    def test_input_is_built_once_and_immutable(self):
         p = presets.landsat_c1_dn()
         self.assertIs(p.input(), p.input())
         self.assertIs(p.input(), presets.landsat_c1_dn().input())
-        h = copy.copy(p.input())
-        self.assertEqual(h, p.input())
-        h.reflectance_unit = 99.0
+        with self.assertRaises(AttributeError):
+            p.input().reflectance_unit = 99.0
+        h = p.input().replace(reflectance_unit=99.0)
+        self.assertEqual(h.reflectance_unit, 99.0)
         self.assertEqual(p.input().reflectance_unit, 10000.0)
+        self.assertEqual(copy.copy(p.input()), p.input())
 
     def test_thermal_unit_is_the_transform_of_100_celsius(self):
         # Each preset's raw thermal value of 100 degrees Celsius, as its
@@ -889,8 +885,7 @@ class Profiles(unittest.TestCase):
         h = ccdcpp.Input()
         for value in (None, 65535.0):
             with self.subTest(saturated=value):
-                other = ccdcpp.Input()
-                other.saturated = value
+                other = ccdcpp.Input(saturated=value)
                 self.assertEqual(other.saturated, value)
                 self.assertNotEqual(other, h)
                 self.assertNotEqual(other.digest(), h.digest())
@@ -1001,11 +996,9 @@ class TenBand(unittest.TestCase):
     def test_is_the_hand_built_run(self):
         profile = ten_band_profile()
         dates, cube, scl = ten_band_inputs()
-        h = ccdcpp.Input()
-        h.roles = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
-                   "nir_broad", "nir", "swir1", "swir2"]
-        h.reflectance_unit = 1.0
-        h.saturated = None
+        h = ccdcpp.Input(roles=["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
+                                "nir_broad", "nir", "swir1", "swir2"],
+                         reflectance_unit=1.0, saturated=None)
         cfg = ccdcpp.config("ccdc").replace(
             change_test__peek_reference_days=10.0,
             shared__detection_bands=["green", "red", "red_edge_2", "nir", "swir1", "swir2"],
@@ -1153,9 +1146,7 @@ NEW_PRESETS = (presets.hls_l30, presets.hls_s30, presets.hls, presets.sentinel2_
 
 def hand_built(name):
     """(Input, QaTable) of preset ``name``, by hand."""
-    h = ccdcpp.Input()
-    for key, value in EXPECTED[name].items():
-        setattr(h, key, value)
+    h = ccdcpp.Input(**EXPECTED[name])
     return h, getattr(ccdcpp.qa_tables, BUILDERS[name])(h)
 
 

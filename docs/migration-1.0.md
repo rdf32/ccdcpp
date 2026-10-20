@@ -6,11 +6,11 @@ as today.
 
 - **`ccdcpp.Input` replaces `HarmonicOptions`** and holds the data's encoding only: the QA
   codes and the table that decodes raw QA (`qa_table`), a role per row (`roles`),
-  `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0,
-  reflectance 1 and 0), the thermal
-  transform (`thermal_scale`, `thermal_offset`, with `thermal_unit`, the value of 100 °C after
-  it) and `saturated`. Every algorithm value of
-  0.10.0, `LassoOptions`' four, the bounds, the green filter and the statistics cutoff are the
+  `reflectance_unit` and `reflectance_offset` (Collection-1 DN 10000 and 0, reflectance 1 and
+  0), the thermal transform (`thermal_scale`, `thermal_offset`, with `thermal_unit`, the value
+  of 100 °C after it) and `saturated`. It is immutable: `ccdcpp.Input(**fields)` by keyword,
+  `h.replace(**fields)` for a changed copy, where `HarmonicOptions` set attributes. Every
+  algorithm value of 0.10.0, `LassoOptions`' four, the bounds, the green filter and the statistics cutoff are the
   configuration's ([config.md](config.md)): `shared` values, `stage__parameter` parameters and
   the `preprocess` steps, in physical units.
 - **Two calls.** `ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", ...)` and
@@ -37,7 +37,7 @@ as today.
 | `resume_record=True` | `record=True` |
 | `resume(d, s, q, h, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, input=h, resume=out)`, `out` the earlier `detect(..., record=True)` |
 | `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)` |
-| `qa_table=t` | `h.qa_table = t` on the input (a profile's `input()` carries its table) |
+| `qa_table=t` | the input's `qa_table`: `h.replace(qa_table=t)` (a profile's `input()` carries its table) |
 | `preprocess=plan` | the configuration's `preprocess` section (`Config.replace(preprocess__...=)`) |
 | `default_plan(h)` | `ccdcpp.plan_of(config, input)` |
 | `ccdcpp.LassoOptions`, the `loptions` argument | the shared `alpha`, `coef_floor`, `max_iter`, `tolerance` |
@@ -76,9 +76,7 @@ lo = ccdcpp.LassoOptions()
 lo.alpha, lo.coef_floor = 1e-4, 1e-4
 out = ccdcpp.detect_cube_columns(dates, cube, codes, h_physical, lo, threads=4)
 # 1.0: the configuration is the same for every input; the input says the unit
-h = ccdcpp.Input()
-h.reflectance_unit = 1.0
-h.thermal_scale, h.thermal_offset, h.thermal_unit = 1.0, 0.0, 1.0
+h = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0, thermal_offset=0.0, thermal_unit=1.0)
 out = ccdcpp.detect_cube(dates, cube, codes, input=h, threads=4)   # or input=presets.landsat_c1_physical()
 ```
 

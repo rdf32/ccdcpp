@@ -151,9 +151,7 @@ def ten_band_layout():
     """A 10-band layout without thermal, which passes validation: the
     configuration's detection bands are rows 1, 2, 6, 8, 9 of it, its Tmask
     bands 1 and 8."""
-    h = ccdcpp.Input()
-    h.roles = TEN_ROLES
-    return h
+    return ccdcpp.Input(roles=TEN_ROLES)
 
 
 def ten_band_config(**changes):
@@ -193,6 +191,37 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(ccdcpp.NO_BAND, 2**64 - 1)
         self.assertEqual(ccdcpp.CCD_MAX_BANDS, 32)
 
+    def test_immutable_by_keyword(self):
+        h = ccdcpp.Input(reflectance_unit=1.0, roles=["blue", "green", "red"], saturated=None)
+        self.assertEqual((h.reflectance_unit, h.roles, h.saturated), (1.0, ["blue", "green", "red"],
+                                                                      None))
+        for name in ("roles", "reflectance_unit", "qa_clear", "qa_table", "saturated"):
+            with self.subTest(name=name):
+                with self.assertRaises(AttributeError):
+                    setattr(h, name, getattr(h, name))
+        h.roles.append("nir")   # a copy
+        self.assertEqual(h.roles, ["blue", "green", "red"])
+        # replace() is a new input; the old one is unchanged.
+        r = h.replace(reflectance_unit=10000.0, qa_snow=7)
+        self.assertEqual((r.reflectance_unit, r.qa_snow, r.roles), (10000.0, 7, h.roles))
+        self.assertEqual((h.reflectance_unit, h.qa_snow), (1.0, 3))
+        # Equal and hashed by value.
+        self.assertEqual(r.replace(reflectance_unit=1.0, qa_snow=3), h)
+        self.assertEqual(hash(r.replace(reflectance_unit=1.0, qa_snow=3)), hash(h))
+        self.assertNotEqual(r, h)
+        self.assertEqual(ccdcpp.Input(), ccdcpp.Input().replace())
+        # Keywords only, each a field, each of its type.
+        with self.assertRaises(TypeError):
+            ccdcpp.Input(1.0)
+        with self.assertRaisesRegex(TypeError, "Input\\(\\) has no field 'alpha'; the fields are qa_fill"):
+            ccdcpp.Input(alpha=1.0)
+        with self.assertRaisesRegex(TypeError, "Input.replace\\(\\) has no field 'saturation_bands'"):
+            h.replace(saturation_bands=[0])
+        with self.assertRaisesRegex(TypeError, "qa_clear is 300, which it cannot hold"):
+            ccdcpp.Input(qa_clear=300)
+        with self.assertRaisesRegex(TypeError, "roles is 'green'"):
+            ccdcpp.Input(roles="green")
+
     def test_informational_codes_say_so(self):
         for name in ("qa_cirrus1", "qa_cirrus2", "qa_occlusion"):
             with self.subTest(name=name):
@@ -214,8 +243,7 @@ class BandLayout(unittest.TestCase):
                     resolved(preset(preprocess__band_range__bands=bands))
 
     def test_explicit_landsat_layout_equals_default(self):
-        h = ccdcpp.Input()
-        h.roles = ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"]
+        h = ccdcpp.Input(roles=["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
         args = noisy(7, 120)
         by_rows = preset(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5],
                          preprocess__band_range__bands=[0, 1, 2, 3, 4, 5])
@@ -253,10 +281,7 @@ class LayoutValidation(unittest.TestCase):
     ValueError, before any pixel runs."""
 
     def broken(self, **fields):
-        h = ten_band_layout()
-        for k, v in fields.items():
-            setattr(h, k, v)
-        return h
+        return ten_band_layout().replace(**fields)
 
     def assert_rejected(self, h, bands, expected, config=None):
         d, s, q = inputs(bands, 40)
@@ -377,7 +402,7 @@ class CadenceParameters(unittest.TestCase):
 
     # The Input's fields: the data's band layout, QA codes and units.
     INPUT_FIELDS = {
-        "roles", "bands", "index", "digest", "reflectance_unit",
+        "roles", "bands", "index", "digest", "replace", "reflectance_unit",
         "reflectance_offset", "saturated",
         "qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud",
         "qa_cirrus1", "qa_cirrus2", "qa_occlusion", "qa_table",
@@ -620,8 +645,7 @@ class DateOrder(unittest.TestCase):
     def test_raw_qa(self):
         d, s, _ = inputs(7, 40)
         raw = np.zeros(40, dtype=np.uint16)
-        h = ccdcpp.Input()
-        h.qa_table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
+        h = ccdcpp.Input(qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel())
         with self.assertRaises(ValueError):
             ccdcpp.detect(self.swapped(d, 5), s, raw, input=h)
 
