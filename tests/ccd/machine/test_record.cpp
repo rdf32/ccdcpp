@@ -208,7 +208,8 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         ccd::fit_bands(
             series.dates().slice(ccd::range(fit.start, fit.stop)),
             series.spectral().slice(ccd::all(), ccd::range(fit.start, fit.stop)),
-            ccd::standard::coefficient_count(fit.size(), p.h),
+            ccd::CoefficientRule{p.h.COEFFICIENT_MIN, p.h.COEFFICIENT_MID, p.h.COEFFICIENT_MAX,
+                                 p.h.NUM_OBS_FACTOR}.count(fit.size()),
             ccd::KeepResiduals::No, lasso, solver, fits);
         for (std::size_t b = 0; b < fits.size(); ++b)
         {

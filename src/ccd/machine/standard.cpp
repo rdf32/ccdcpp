@@ -17,12 +17,13 @@ namespace ccd
 namespace standard
 {
 
-InitializeCriteria initialize_criteria(const HarmonicOptions& options)
+InitializeCriteria initialize_criteria(const HarmonicOptions& options,
+                                       const CoefficientRule& stability)
 {
     return InitializeCriteria{
         options.DETECTION_BANDS,
-        options.COEFFICIENT_MIN,
-        options.COEFFICIENT_MAX
+        stability.min,
+        stability.max
     };
 }
 
@@ -100,28 +101,6 @@ Peek peek_of(const Context& context, const State& state)
 }
 
 } // namespace
-
-index_t coefficient_count(
-    index_t observations,
-    const HarmonicOptions& options
-)
-{
-    const index_t span =
-        observations / options.NUM_OBS_FACTOR;
-
-    if (span < options.COEFFICIENT_MID)
-    {
-        return options.COEFFICIENT_MIN;
-    }
-    else if (span < options.COEFFICIENT_MAX)
-    {
-        return options.COEFFICIENT_MID;
-    }
-    else
-    {
-        return options.COEFFICIENT_MAX;
-    }
-}
 
 //==============================================================================
 // The Standard machine
@@ -394,10 +373,12 @@ Phase prepare(const Context& context, State& state)
     if (!plan.full)
         state.resumable = false;
     context.strategies.stability_rule->prepare(
-        state.cadence.peek, detection_bands, stability_scratch(context, state));
+        plan, detection_bands, stability_scratch(context, state));
     context.strategies.lookback->prepare(
-        state.cadence.peek, detection_bands, lookback_scratch(context, state));
-    state.initialize_criteria = initialize_criteria(options);
+        plan, detection_bands, lookback_scratch(context, state));
+    state.initialize_criteria =
+        initialize_criteria(options, context.strategies.stability_fit->coefficients());
+    state.coefficients = context.strategies.model->coefficients();
 
     LOG_DEBUG("Peek size: " << state.cadence.peek);
 
@@ -586,8 +567,8 @@ void complete_models(const Context& context, State& state)
     extension.model->fit(
         masked_dates.slice(range(fit.start, fit.stop)),
         masked_spectral.slice(all(), range(fit.start, fit.stop)),
-        coefficient_count(fit.size(), context.options),
-        context.options.COEFFICIENT_MAX,
+        state.coefficients.count(fit.size()),
+        state.coefficients.max,
         others,
         KeepResiduals::No
     );
@@ -667,7 +648,7 @@ void write_forced_segment(const Context& context, State& state)
     result.change_probability = 0.0;
     const index_t num_coef = context.strategies.segment_fit->unfitted(
         refit_model(context, state.extension), masked_dates, series.spectral(), window,
-        coefficient_count(window.size(), context.options), context.max_coefficients,
+        state.coefficients.count(window.size()), context.max_coefficients,
         segment_scratch(context, state), result.bands);
     result.curve_qa = static_cast<CurveQA>(num_coef);
 
@@ -725,7 +706,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // Indexed by band.
     extension.residuals.resize(masked_spectral.extent(0));
 
-    extension.num_coef = coefficient_count(window.size(), options);
+    extension.num_coef = state.coefficients.count(window.size());
 
     // The next `peek` observations, fewer at the series end.
     const Window& peek_window = extension.peek =
@@ -759,9 +740,9 @@ ExtendOutcome extend_step(const Context& context, State& state)
         const auto fit_spectral =
             masked_spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop));
         const bool fitted = extends
-            ? model.extend(fit_dates, fit_spectral, extension.num_coef, options.COEFFICIENT_MAX,
+            ? model.extend(fit_dates, fit_spectral, extension.num_coef, state.coefficients.max,
                            detection_bands, KeepResiduals::Yes)
-            : model.fit(fit_dates, fit_spectral, extension.num_coef, options.COEFFICIENT_MAX,
+            : model.fit(fit_dates, fit_spectral, extension.num_coef, state.coefficients.max,
                         detection_bands, KeepResiduals::Yes);
         if (!fitted)
         {
@@ -1038,8 +1019,8 @@ void check_fits(const Context& context, const State& state, const Suspended& fro
                 refuse("SeriesEnd with a window shorter than MEOW_SIZE or reaching the series end");
             if (!(w.start < from.fit_stop && from.fit_stop <= w.stop))
                 refuse("SeriesEnd with a fit window outside the window");
-            if (from.num_coef < 1 || from.num_coef > context.options.COEFFICIENT_MAX)
-                refuse("SeriesEnd with a coefficient count outside 1..COEFFICIENT_MAX");
+            if (from.num_coef < 1 || from.num_coef > state.coefficients.max)
+                refuse("SeriesEnd with a coefficient count outside 1..the model's widest");
             if (from.magnitude.size() != state.series.spectral().extent(0))
                 refuse("SeriesEnd with " + std::to_string(from.magnitude.size()) +
                        " magnitudes for " + std::to_string(state.series.spectral().extent(0)) +
@@ -1069,8 +1050,8 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     refit_model(context, extension).fit(
         dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
         spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
-        coefficient_count(extension.fit_window.size(), context.options),
-        context.options.COEFFICIENT_MAX,
+        state.coefficients.count(extension.fit_window.size()),
+        state.coefficients.max,
         bands,
         KeepResiduals::Yes
     );

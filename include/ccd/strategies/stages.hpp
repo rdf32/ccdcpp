@@ -15,6 +15,7 @@
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/strategies/capabilities.hpp"
+#include "ccd/strategies/coefficients.hpp"
 #include "ccd/strategies/per_thread.hpp"
 
 namespace ccd
@@ -161,6 +162,16 @@ struct StartSearch
     virtual index_t min_window() const = 0;
 };
 
+// The change test's plan for a pixel (ChangeTest::prepare(), below), which the
+// stability rule and Lookback are prepared with too.
+struct PeekPlan
+{
+    index_t peek;
+    bool full = true;
+    index_t min_window = 0;
+    index_t reference = 0;   // the peek the test's threshold is for (0: peek)
+};
+
 //------------------------------------------------------------------------------
 // window_screen: the observations of a candidate start window that are
 // outliers, set in the returned mask (one entry per window observation).
@@ -193,12 +204,15 @@ struct StabilityFit
     virtual ~StabilityFit() = default;
     virtual Capabilities provides() const = 0;
     virtual std::unique_ptr<Model> make_model() const = 0;
+    // Its fits' coefficients: a candidate is fitted with min, in a basis max
+    // wide (strategies/coefficients.hpp).
+    virtual CoefficientRule coefficients() const = 0;
 };
 
 //------------------------------------------------------------------------------
 // stability_rule: whether a candidate start window, fitted by the stability
 // fit, is stable. prepare() is called once per pixel with the change test's
-// peek size and the detection band count, and keeps what it derives (pyccd's
+// PeekPlan and the detection band count, and keeps what it derives (pyccd's
 // threshold) in the thread's scratch; stable() judges one candidate:
 //
 //   fit       the stability fit of the window's detection bands
@@ -211,7 +225,8 @@ struct StabilityRule
     virtual ~StabilityRule() = default;
     virtual Capabilities needs() const = 0;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
-    virtual void prepare(index_t peek, index_t detection_bands, Scratch& scratch) const = 0;
+    virtual void prepare(const PeekPlan& peek, index_t detection_bands,
+                         Scratch& scratch) const = 0;
     virtual bool stable(const Model& fit, ArrayView<const std::int64_t, 1> dates,
                         const Variogram& variogram, const BandList& bands,
                         const Scratch& scratch) const = 0;
@@ -220,7 +235,7 @@ struct StabilityRule
 //------------------------------------------------------------------------------
 // lookback: one Lookback step, after a stable start: tests the observations
 // before the window against the stability fit and judges the one just before
-// it. prepare() is called once per pixel with the change test's peek size
+// it. prepare() is called once per pixel with the change test's PeekPlan
 // and the detection band count, and keeps what it derives in the thread's
 // scratch. judge() reads:
 //
@@ -253,7 +268,8 @@ struct Lookback
     virtual ~Lookback() = default;
     virtual Capabilities needs() const = 0;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
-    virtual void prepare(index_t peek, index_t detection_bands, Scratch& scratch) const = 0;
+    virtual void prepare(const PeekPlan& peek, index_t detection_bands,
+                         Scratch& scratch) const = 0;
     virtual LookbackJudgement judge(Model& fit, ArrayView<const std::int64_t, 1> dates,
                                     ArrayView<const scalar_t, 2> spectral, const Window& window,
                                     index_t prev_break, const Variogram& variogram,
@@ -290,6 +306,9 @@ struct MonitoringModel
     virtual ~MonitoringModel() = default;
     virtual Capabilities provides() const = 0;
     virtual std::unique_ptr<Model> make_model() const = 0;
+    // The coefficients it fits a window with, by the window's size, and the
+    // widest (strategies/coefficients.hpp); read once per pixel.
+    virtual CoefficientRule coefficients() const = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -299,8 +318,9 @@ struct MonitoringModel
 // prepare() is called once per pixel, with its statistics-window dates and
 // its detection band count: it returns the pixel's PeekPlan, and keeps what
 // it derives for the pixel (chi2's threshold) in the thread's scratch. The
-// plan's peek is the peek size, which the machine's guards and Lookback also
-// read; `full` whether a test reads only full peeks: the segment loop ends
+// plan's peek is the peek size, which the machine's guards, the stability
+// rule and Lookback also read (with `reference`, the peek its threshold is
+// set for, from which a longer peek's is adjusted); `full` whether a test reads only full peeks: the segment loop ends
 // where no full peek follows the window (chi2's). Otherwise the peek is
 // shortened to the observations left, and a peek with none ends the series.
 // A model window of fewer than min_window observations grows untested.
@@ -314,13 +334,6 @@ struct MonitoringModel
 // segment's last test; at a series end with no observation left after the
 // window the peek it reads is empty, and no test was made on that window.
 //------------------------------------------------------------------------------
-
-struct PeekPlan
-{
-    index_t peek;
-    bool full = true;
-    index_t min_window = 0;
-};
 
 enum class TestOutcome : std::uint8_t
 {

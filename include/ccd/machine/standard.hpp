@@ -44,26 +44,10 @@ struct Cadence
 };
 
 // What Initialize fits a candidate window with: the options' DETECTION_BANDS,
-// and stability fits of
-// COEFFICIENT_MIN coefficients in a basis COEFFICIENT_MAX wide. Built once
-// per pixel, in Prepare.
-InitializeCriteria initialize_criteria(const HarmonicOptions& options);
-
-//------------------------------------------------------------------------------
-// The Standard procedure's kernels
-//
-// Plain functions of the procedure's steps, over the pixel's MaskedSeries.
-// Their arithmetic, and the order of it, is pyccd's.
-//------------------------------------------------------------------------------
-
-// Extend's coefficient count for a window of `observations` observations:
-// COEFFICIENT_MIN below COEFFICIENT_MID * NUM_OBS_FACTOR observations,
-// COEFFICIENT_MID below COEFFICIENT_MAX * NUM_OBS_FACTOR, else
-// COEFFICIENT_MAX.
-index_t coefficient_count(
-    index_t observations,
-    const HarmonicOptions& options
-);
+// and stability fits of the stability fit's rule's min coefficients in a
+// basis its max wide. Built once per pixel, in Prepare.
+InitializeCriteria initialize_criteria(const HarmonicOptions& options,
+                                       const CoefficientRule& stability);
 
 //==============================================================================
 //
@@ -262,8 +246,10 @@ struct State
     // `start`, is segments.empty() && carried == 0.
     index_t carried = 0;
 
-    // Standard's own: set in Prepare, read by every later phase.
+    // Standard's own: set in Prepare, read by every later phase. Extend's
+    // coefficients are the monitoring model's rule's.
     Cadence cadence{};
+    CoefficientRule coefficients{};
     Variogram variogram;
     InitializeCriteria initialize_criteria{};
 
@@ -390,7 +376,7 @@ void move_past_segment(const Context& context, State& state);
 void write_end_segment(const Context& context, State& state);
 
 // One ccd::initialize_step() on the window against the pixel's
-// initialize_criteria (COEFFICIENT_MIN-coefficient fits), with the run's
+// initialize_criteria (the stability fit's min-coefficient fits), with the run's
 // stability fit (into init_model) and stability rule. Next: Initialize after
 // a grow or a shift; after_stable_start() when stable. When no candidate is
 // left, as the search's plan says: EndCatch (InitializeExhausted), the series as it
@@ -415,7 +401,7 @@ LookbackOutcome lookback_step(const Context& context, State& state);
 Phase lookback(const Context& context, State& state);
 
 // Writes the Start segment over (prev_break, window.start) with
-// COEFFICIENT_MIN coefficients. Next: Extend, or EndCatch (PeekBeyondEnd).
+// the edge fit's. Next: Extend, or EndCatch (PeekBeyondEnd).
 Phase start_catch(const Context& context, State& state);
 
 // One Extend step, one peek test after the window. Pre: peek_fits(). A

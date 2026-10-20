@@ -327,6 +327,7 @@ struct Opaque final : ccd::MonitoringModel
     explicit Opaque(const Params&) {}
     ccd::Capabilities provides() const override { return {}; }
     std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
+    ccd::CoefficientRule coefficients() const override { return {}; }
 };
 
 struct OpaqueFit final : ccd::StabilityFit
@@ -342,6 +343,7 @@ struct OpaqueFit final : ccd::StabilityFit
     explicit OpaqueFit(const Params&) {}
     ccd::Capabilities provides() const override { return {}; }
     std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
+    ccd::CoefficientRule coefficients() const override { return {}; }
 };
 
 // A stability fit with residuals and RMSE but no peek residuals: enough for
@@ -362,6 +364,7 @@ struct NoPeekFit final : ccd::StabilityFit
         return ccd::Capability::ModelRmse | ccd::Capability::InWindowResiduals;
     }
     std::unique_ptr<ccd::Model> make_model() const override { return nullptr; }
+    ccd::CoefficientRule coefficients() const override { return {}; }
 };
 
 struct Silent final : ccd::ChangeTest
@@ -500,7 +503,8 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
     const ccd::BandList detection = h.DETECTION_BANDS;
 
     const auto scratch = s.stability_rule->make_scratch();
-    s.stability_rule->prepare(h.PEEK_SIZE, detection.size(), *scratch);
+    s.stability_rule->prepare(ccd::PeekPlan{h.PEEK_SIZE, true, 0, h.PEEK_SIZE}, detection.size(),
+                              *scratch);
     const auto fit = s.stability_fit->make_model();
 
     // The check by hand, as pyccd computes it.
@@ -650,7 +654,7 @@ TEST(Lookback, PyccdTakesItsParametersFromTheOptions)
     const auto tree = ccd::config::from_options(h, ccd::LassoOptions{});
     const auto& lookback = tree.at("lookback");
     EXPECT_EQ(lookback.strategy, "pyccd");
-    EXPECT_EQ(std::get<std::int64_t>(lookback.params.at("peek_size")), 6);
+    EXPECT_EQ(std::get<std::int64_t>(lookback.params.at("peek")), 0);   // the test's
     EXPECT_EQ(std::get<double>(lookback.params.at("change_threshold")), h.CHANGE_THRESHOLD);
     EXPECT_EQ(std::get<double>(lookback.params.at("change_probability")), h.CHANGE_PROBABILITY);
     EXPECT_EQ(std::get<double>(lookback.params.at("outlier_threshold")), 20.0);
@@ -670,8 +674,8 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
     const ccd::strategies::PyccdLookback lookback(p);
     const auto scratch = lookback.make_scratch();
     ccd::ChangeThresholdMemo memo;
-    const double at6 = memo(6, p.peek_size, p.change_threshold, 5, p.change_probability);
-    const double at10 = memo(10, p.peek_size, p.change_threshold, 5, p.change_probability);
+    const double at6 = memo(6, 6, p.change_threshold, 5, p.change_probability);
+    const double at10 = memo(10, 6, p.change_threshold, 5, p.change_probability);
     EXPECT_EQ(at6, p.change_threshold);
     EXPECT_LT(at10, at6);
 
@@ -716,11 +720,11 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
     Flat fit(std::sqrt(61.25 / statistic));
     const ccd::Window window(15, 27);
 
-    lookback.prepare(6, bands, *scratch);
+    lookback.prepare(ccd::PeekPlan{6, true, 0, 6}, bands, *scratch);
     // Below 15.09 and below the outlier threshold: the observation joins.
     EXPECT_EQ(lookback.judge(fit, d, x, window, 0, variogram, detection, *scratch).verdict,
               ccd::LookbackVerdict::Include);
-    lookback.prepare(10, bands, *scratch);
+    lookback.prepare(ccd::PeekPlan{10, true, 0, 6}, bands, *scratch);
     const auto judged = lookback.judge(fit, d, x, window, 0, variogram, detection, *scratch);
     EXPECT_EQ(judged.verdict, ccd::LookbackVerdict::Change);
     EXPECT_EQ(judged.observation, 14u);

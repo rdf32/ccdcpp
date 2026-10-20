@@ -30,8 +30,16 @@
     forced start's own segment when the series ends before Extend fits it. `make_scratch()`.
   - `edge_fit`: `start_due()` and `end_due()`, whether the Start and End segments are written
     (`lasso`: more than a peek of observations, as before).
-  - `stability_rule` and `lookback` `pyccd`: `follow_peek` (true), false for a threshold and
-    peek of `peek_size` whatever the change test's peek.
+  - `stability_rule` and `lookback`: `prepare()` takes the change test's `PeekPlan` (its peek
+    and `reference`, the peek its threshold is for). The `pyccd` strategies lose `peek_size`
+    (the change test's is the one) and gain `peek`: 0 for the test's peek, N for a peek of N
+    at an unadjusted threshold.
+  - `model` and `stability_fit`: `coefficients()`, the fits' `CoefficientRule`
+    (`include/ccd/strategies/coefficients.hpp`); `lasso` gains `coefficient_min`,
+    `coefficient_mid`, `coefficient_max` and `num_obs_factor` (`COEFFICIENT_MIN`, `_MID`, `_MAX`,
+    `NUM_OBS_FACTOR`), and the machine reads no coefficient option
+    (`standard::coefficient_count()` is gone; `standard::initialize_criteria()` takes the
+    stability fit's rule).
   - A record stores no suspension for a run that takes a route a resume cannot continue
     (shortened peeks, `Undecided`, `EndSeries`, a forced or restored search, drops before a
     change, no fit, a mode's mask steps or cap, a search plan that reads the input's end): a

@@ -80,8 +80,27 @@ const std::vector<config::Field<Lasso::Params>>& Lasso::schema()
          "coef_floor) checks the duality gap"},
         {"coef_floor", &Params::coef_floor, Unit::Reflectance, config::at_least(0),
          "the least coefficient size the tolerance scales"},
+        {"coefficient_min", &Params::coefficient_min, Unit::None, config::at_least(1),
+         "coefficients of a short window's fit, and of a start window's"},
+        {"coefficient_mid", &Params::coefficient_mid, Unit::None, config::at_least(1),
+         "coefficients from coefficient_mid * num_obs_factor observations"},
+        {"coefficient_max", &Params::coefficient_max, Unit::None, config::at_least(1),
+         "coefficients from coefficient_max * num_obs_factor observations; the basis width"},
+        {"num_obs_factor", &Params::num_obs_factor, Unit::None, config::at_least(1),
+         "observations per coefficient"},
     };
     return s;
+}
+
+Lasso::Lasso(const Params& p) : p_(p)
+{
+    coefficients().check("lasso");
+}
+
+CoefficientRule Lasso::coefficients() const
+{
+    return CoefficientRule{p_.coefficient_min, p_.coefficient_mid, p_.coefficient_max,
+                           p_.num_obs_factor};
 }
 
 LassoOptions Lasso::solver_options() const

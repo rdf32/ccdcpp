@@ -37,6 +37,12 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
                           {"alpha", real(loptions.alpha)},
                           {"tolerance", real(loptions.tolerance)},
                           {"coef_floor", real(loptions.coef_floor)}};
+    // The model fits: the solver's parameters and the coefficient rule.
+    Values fits = lasso;
+    fits["coefficient_min"] = count(hoptions.COEFFICIENT_MIN);
+    fits["coefficient_mid"] = count(hoptions.COEFFICIENT_MID);
+    fits["coefficient_max"] = count(hoptions.COEFFICIENT_MAX);
+    fits["num_obs_factor"] = count(hoptions.NUM_OBS_FACTOR);
     tree[ModeRule::stage] = {
         "pyccd",
         {{"clear_pct_threshold", real(hoptions.CLEAR_PCT_THRESHOLD)},
@@ -48,21 +54,19 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
         {{"meow_size", count(hoptions.MEOW_SIZE)}, {"day_delta", integer(hoptions.DAY_DELTA)}}};
     tree[WindowScreen::stage] = {
         "tmask", {{"bands", bands(hoptions.TMASK_BANDS)}, {"t_const", real(hoptions.T_CONST)}}};
-    tree[StabilityFit::stage] = {"lasso", lasso};
+    tree[StabilityFit::stage] = {"lasso", fits};
     tree[StabilityRule::stage] = {
         "pyccd",
-        {{"peek_size", count(hoptions.PEEK_SIZE)},
-         {"change_threshold", real(hoptions.CHANGE_THRESHOLD)},
+        {{"change_threshold", real(hoptions.CHANGE_THRESHOLD)},
          {"change_probability", real(hoptions.CHANGE_PROBABILITY)},
-         {"follow_peek", flag(true)}}};
+         {"peek", integer(0)}}};
     tree[Lookback::stage] = {
         "pyccd",
-        {{"peek_size", count(hoptions.PEEK_SIZE)},
-         {"change_threshold", real(hoptions.CHANGE_THRESHOLD)},
+        {{"change_threshold", real(hoptions.CHANGE_THRESHOLD)},
          {"change_probability", real(hoptions.CHANGE_PROBABILITY)},
          {"outlier_threshold", real(hoptions.OUTLIER_THRESHOLD)},
-         {"follow_peek", flag(true)}}};
-    tree[MonitoringModel::stage] = {"lasso", lasso};
+         {"peek", integer(0)}}};
+    tree[MonitoringModel::stage] = {"lasso", fits};
     tree[RefitSchedule::stage] = {
         "span-factor",
         {{"min_obs", count(hoptions.RETRAIN_MIN_OBS)},

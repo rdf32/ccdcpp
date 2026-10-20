@@ -27,14 +27,12 @@ const std::vector<config::Field<PyccdStability::Params>>& PyccdStability::schema
 {
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
-        {"peek_size", &Params::peek_size, Unit::Observations, config::at_least(2),
-         "the peek change_threshold is for"},
         {"change_threshold", &Params::change_threshold, Unit::None, config::any(),
-         "the threshold for a peek of peek_size observations"},
+         "the threshold for the change test's reference peek (or `peek`)"},
         {"change_probability", &Params::change_probability, Unit::None,
          config::open_interval(0, 1), "the probability a longer peek's threshold keeps"},
-        {"follow_peek", &Params::follow_peek, Unit::None, config::any(),
-         "whether the peek is the change test's; otherwise peek_size"},
+        {"peek", &Params::peek, Unit::Observations, config::any(),
+         "0: the change test's peek; N: a peek of N, change_threshold for it"},
     };
     return s;
 }
@@ -49,11 +47,13 @@ std::unique_ptr<Scratch> PyccdStability::make_scratch() const
     return std::make_unique<StabilityScratch>();
 }
 
-void PyccdStability::prepare(index_t peek, index_t detection_bands, Scratch& scratch) const
+void PyccdStability::prepare(const PeekPlan& peek, index_t detection_bands,
+                             Scratch& scratch) const
 {
     StabilityScratch& s = static_cast<StabilityScratch&>(scratch);
-    const index_t at = p_.follow_peek ? peek : p_.peek_size;
-    s.change_threshold = s.thresholds(at, p_.peek_size, p_.change_threshold, detection_bands,
+    const index_t at = p_.peek ? p_.peek : peek.peek;
+    const index_t reference = p_.peek ? p_.peek : (peek.reference ? peek.reference : peek.peek);
+    s.change_threshold = s.thresholds(at, reference, p_.change_threshold, detection_bands,
                                       p_.change_probability);
 }
 

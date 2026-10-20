@@ -107,7 +107,9 @@ struct Record
     {
         state.cursor = ccd::Cursor{ccd::Window(start, stop), prev_break};
         state.cadence = ccd::standard::Cadence{peek, peek, 0};   // chi2: full peeks only
-        state.initialize_criteria = ccd::standard::initialize_criteria(options);
+        state.initialize_criteria = ccd::standard::initialize_criteria(
+            options, strategies.stability_fit->coefficients());
+        state.coefficients = strategies.model->coefficients();
 
         // The change test as Prepare leaves it on a series at the reference
         // cadence (16 days): its threshold CHANGE_THRESHOLD.
@@ -119,15 +121,16 @@ struct Record
                                      [](const ccd::ChangeTest& c) { return c.make_scratch(); }));
         // The stability rule's threshold, CHANGE_THRESHOLD (a peek of
         // PEEK_SIZE), whatever peek the record has.
+        const ccd::PeekPlan plan{options.PEEK_SIZE, true, 0, options.PEEK_SIZE};
         strategies.stability_rule->prepare(
-            options.PEEK_SIZE, options.DETECTION_BANDS.size(), stability_scratch());
+            plan, options.DETECTION_BANDS.size(), stability_scratch());
         // Lookback over `peek` observations against CHANGE_THRESHOLD: pyccd's
-        // with its peek_size the record's, so its threshold is unadjusted.
+        // at a peek of its own, so its threshold is unadjusted.
         strategies.lookback = std::make_shared<const ccd::strategies::PyccdLookback>(
-            ccd::strategies::PyccdLookback::Params{peek, options.CHANGE_THRESHOLD,
+            ccd::strategies::PyccdLookback::Params{options.CHANGE_THRESHOLD,
                                                    options.CHANGE_PROBABILITY,
-                                                   options.OUTLIER_THRESHOLD});
-        strategies.lookback->prepare(peek, options.DETECTION_BANDS.size(),
+                                                   options.OUTLIER_THRESHOLD, peek});
+        strategies.lookback->prepare(plan, options.DETECTION_BANDS.size(),
                                      ccd::standard::lookback_scratch(context, state));
     }
 
@@ -748,7 +751,7 @@ TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
     ASSERT_TRUE(e.model);
     EXPECT_EQ(e.peek.start, 24u);
     EXPECT_EQ(e.peek.stop, 30u);
-    EXPECT_EQ(e.num_coef, ccd::standard::coefficient_count(24, r.options));
+    EXPECT_EQ(e.num_coef, r.strategies.model->coefficients().count(24));
     EXPECT_EQ(r.state.cursor.window.stop, 25u);
     EXPECT_EQ(r.state.series.size(), 80u);
     EXPECT_TRUE(r.state.segments.empty());
@@ -857,7 +860,7 @@ TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
     EXPECT_EQ(s.end_day, r.dates[23]);
     EXPECT_EQ(s.break_day, r.dates[24]);
     EXPECT_EQ(s.observation_count, 24u);
-    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(ccd::standard::coefficient_count(24, r.options)));
+    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(r.strategies.model->coefficients().count(24)));
     EXPECT_EQ(s.bands.size(), 7u);
     EXPECT_FALSE(r.state.extension.trained);   // the next segment starts untrained
     EXPECT_EQ(r.state.cursor.window.stop, 24u);
@@ -906,7 +909,7 @@ TEST(StandardExtend, TheLastFullPeekEndsTheCurve)
     EXPECT_EQ(s.end_day, r.dates[73]);
     EXPECT_EQ(s.break_day, r.dates[74]);   // the first observation after it
     EXPECT_EQ(s.observation_count, 74u);
-    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(ccd::standard::coefficient_count(74, r.options)));
+    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(r.strategies.model->coefficients().count(74)));
     EXPECT_EQ(r.state.cursor.window.stop, 74u);
     EXPECT_EQ(r.state.cursor.prev_break, 74u);
 
@@ -1112,6 +1115,7 @@ struct Unfittable final : ccd::MonitoringModel
 
     ccd::Capabilities provides() const override { return {}; }
     std::unique_ptr<ccd::Model> make_model() const override { return std::make_unique<Fits>(); }
+    ccd::CoefficientRule coefficients() const override { return {}; }
 };
 
 TEST(StandardHooks, AModelThatCannotFitEndsTheSeriesWithoutTheCurve)

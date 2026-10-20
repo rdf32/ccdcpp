@@ -28,9 +28,8 @@ strategy = "pyccd"
 [lookback.params]
 change_probability = 0.99
 change_threshold = 15.086272469388987
-follow_peek = true
 outlier_threshold = 35.88818687961042
-peek_size = 6
+peek = 0
 
 [mode]
 strategy = "pyccd"
@@ -43,7 +42,11 @@ strategy = "lasso"
 [model.params]
 alpha = 1.0
 coef_floor = 1.0
+coefficient_max = 8
+coefficient_mid = 6
+coefficient_min = 4
 max_iter = 1000
+num_obs_factor = 3
 tolerance = 0.0001
 
 [noise_floor]
@@ -70,7 +73,11 @@ strategy = "lasso"
 [stability_fit.params]
 alpha = 1.0
 coef_floor = 1.0
+coefficient_max = 8
+coefficient_mid = 6
+coefficient_min = 4
 max_iter = 1000
+num_obs_factor = 3
 tolerance = 0.0001
 
 [stability_rule]
@@ -78,8 +85,7 @@ strategy = "pyccd"
 [stability_rule.params]
 change_probability = 0.99
 change_threshold = 15.086272469388987
-follow_peek = true
-peek_size = 6
+peek = 0
 
 [start_search]
 strategy = "pyccd"

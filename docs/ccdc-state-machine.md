@@ -133,8 +133,9 @@ The guards inside one call, in the order they are tested:
   written (`complete_models`; before the drop when a drop ends the curve), which gives the
   models and peek residuals an every-band refit would have.
 
-Initialize fits `COEFFICIENT_MIN` coefficients, Extend's fits follow `coefficient_count`
-(`COEFFICIENT_MIN`, `_MID` or `_MAX` by window length), and both peek bases are `COEFFICIENT_MAX`
+Initialize fits the stability fit's `coefficient_min` coefficients, Extend's fits follow the
+monitoring model's rule (`CoefficientRule`, `include/ccd/strategies/coefficients.hpp`:
+`coefficient_min`, `_mid` or `_max` by window length), and both peek bases are `coefficient_max`
 wide: a model predicts with zeros above its own count. Extend's fits are the monitoring model's
 (the `model` stage, below), which the extension holds.
 
@@ -202,9 +203,9 @@ rows, `config::bands({1, 4})`).
 | `noise_floor` | each band's noise floor from the statistics window, which every test scales by (a NaN ends the pixel) | `variogram`: the first-order variogram at the first lag whose most common separation exceeds `min_lag_days` (`VARIOGRAM_MIN_LAG_DAYS`) |
 | `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, a search's plan (`begin()`: the last day it sees, what it does exhausted, end the segment loop, end it with the window screen's drops given back, or force a start, `forced()`, and whether a resume may continue it), when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `meow_size` observations needing `meow_size` more after them, spanning `day_delta` days; a search sees the whole series, and an exhausted one ends the loop |
 | `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
-| `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`) | `lasso`: the monitoring model's Lasso, `COEFFICIENT_MIN` coefficients |
-| `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's peek size) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is (with `follow_peek` false, for `peek_size`) |
-| `lookback` | after a stable start, whether the observation before the window joins it, is dropped or is a change, testing the observations before the window against the stability fit (`prepare()` for the pixel's peek; `judge()` per step) | `pyccd`: `lookback_peek()`'s observations, the statistic against the stability fit's RMSE, a change above the threshold (adjusted for the peek), an outlier above `outlier_threshold`; with `follow_peek` false, a peek of `peek_size` |
+| `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`), and its coefficients (`coefficients()`) | `lasso`: the monitoring model's Lasso, `coefficient_min` coefficients |
+| `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's `PeekPlan`) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is (with `peek` N, for a peek of N, unadjusted) |
+| `lookback` | after a stable start, whether the observation before the window joins it, is dropped or is a change, testing the observations before the window against the stability fit (`prepare()` for the pixel's peek; `judge()` per step) | `pyccd`: `lookback_peek()`'s observations, the statistic against the stability fit's RMSE, a change above the threshold (adjusted for the peek), an outlier above `outlier_threshold`; with `peek` N, a peek of N |
 | `model` | the fits Extend tests each peek against: each band's fit on the model window (`fit()`, which may fail, and `extend()` on a window that grew at its end, which a model may fit from the new observations alone), its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
 | `refit` | whether Extend refits the model before a peek test (after the first), from the window's size and span now and at the last refit | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
 | `change_test` | the pixel's peek plan and anything else it derives per pixel (`prepare()`: the peek size, whether it tests only full peeks, the fewest observations it tests a window of), whether an Extend peek is a change (`test()`: `Change`, `NoChange`, or `Undecided` on a shortened peek; writing the peek's comparison RMSE and each observation's statistic into the `PeekResult`, which the outlier rule reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, of full peeks only, every window, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
@@ -220,7 +221,8 @@ A run's configuration is the one its options describe
 | `pyccd` (start search) | `meow_size`, `day_delta` | `MEOW_SIZE`, `DAY_DELTA` |
 | `tmask` | `bands`, `t_const` | `TMASK_BANDS`, `T_CONST` |
 | `lasso` (both stages) | `max_iter`, `alpha`, `tolerance`, `coef_floor` | `LassoOptions`' fields of those names |
-| `pyccd` (stability rule) | `peek_size`, `change_threshold`, `change_probability`, `follow_peek` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, true |
+| `lasso` (both stages) | `coefficient_min`, `coefficient_mid`, `coefficient_max`, `num_obs_factor` | `COEFFICIENT_MIN`, `COEFFICIENT_MID`, `COEFFICIENT_MAX`, `NUM_OBS_FACTOR` |
+| `pyccd` (stability rule) | `change_threshold`, `change_probability`, `peek` | `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, 0 (the change test's) |
 | `span-factor` | `min_obs`, `factor` | `RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR` |
 | `chi2` | `peek_size`, `peek_reference_days`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `PEEK_REFERENCE_DAYS`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
 | `chi2` | `model_rmse_up_to`, `seasonal_count`, `seasonal_divisor` | `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT`, `SEASONAL_RMSE_DIVISOR` |
@@ -228,7 +230,7 @@ A run's configuration is the one its options describe
 | `pyccd` (mode) | `clear_pct_threshold`, `snow_pct_threshold` | `CLEAR_PCT_THRESHOLD`, `SNOW_PCT_THRESHOLD` |
 | `variogram` | `min_lag_days` | `VARIOGRAM_MIN_LAG_DAYS` |
 | `lasso` (edge fit) | `coefficients`, `min_observations`, and the Lasso's four | `COEFFICIENT_MIN`, `MEOW_SIZE`, `LassoOptions` |
-| `pyccd` (lookback) | `peek_size`, `change_threshold`, `change_probability`, `outlier_threshold`, `follow_peek` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, `OUTLIER_THRESHOLD`, true |
+| `pyccd` (lookback) | `change_threshold`, `change_probability`, `outlier_threshold`, `peek` | `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, `OUTLIER_THRESHOLD`, 0 (the change test's) |
 
 `RETRAIN_MIN_OBS` sets two parameters, the refit's and the test's, as pyccd's one constant does;
 a configuration may set them apart. The mapping lives in one file (`include/ccd/config/from_options.hpp`).
@@ -309,13 +311,15 @@ using namespace ccd;
 // The configuration a run under the defaults uses, and its strategies.
 config::ConfigTree tree = config::from_options(HarmonicOptions{}, LassoOptions{});
 // tree["start_search"] is {"pyccd", {{"meow_size", 12}, {"day_delta", 365}}}
-// tree["lookback"] is {"pyccd", {{"peek_size", 6}, {"change_threshold", 15.0863},
-//                                {"change_probability", 0.99}, {"outlier_threshold", 35.8882}}}
+// tree["lookback"] is {"pyccd", {{"change_threshold", 15.0863}, {"change_probability", 0.99},
+//                                {"outlier_threshold", 35.8882}, {"peek", 0}}}
 // tree["window_screen"] is {"tmask", {{"bands", {1, 4}}, {"t_const", 4.89}}}
 // tree["stability_fit"] and tree["model"] are {"lasso", {{"max_iter", 1000}, {"alpha", 1.0},
-//                                           {"tolerance", 1e-4}, {"coef_floor", 1.0}}}
-// tree["stability_rule"] is {"pyccd", {{"peek_size", 6}, {"change_threshold", 15.0863},
-//                                      {"change_probability", 0.99}}}
+//                                           {"tolerance", 1e-4}, {"coef_floor", 1.0},
+//                                           {"coefficient_min", 4}, {"coefficient_mid", 6},
+//                                           {"coefficient_max", 8}, {"num_obs_factor", 3}}}
+// tree["stability_rule"] is {"pyccd", {{"change_threshold", 15.0863},
+//                                      {"change_probability", 0.99}, {"peek", 0}}}
 // tree["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
 // tree["change_test"] is {"chi2", {{"peek_size", 6}, {"peek_reference_days", 16.0},
 //                                  {"change_threshold", 15.0863}, {"change_probability", 0.99},
@@ -395,7 +399,7 @@ record:
 | `Variogram`, `adjusted_variogram`, `tmask`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/machine/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
-(`include/ccd/machine/standard.hpp`): `initialize_criteria`, `coefficient_count`, the phases,
+(`include/ccd/machine/standard.hpp`): `initialize_criteria`, the phases,
 the
 transitions and the routing. A function moves to the shared list once a second machine or a
 strategy uses it.
