@@ -237,14 +237,22 @@ def _resolve(source, seen=frozenset()):
     if isinstance(source, dict):
         return Config(source)
     name = str(source)
-    path = name if (name.endswith(".toml") or os.sep in name) else os.path.join(_PRESETS, name + ".toml")
-    if not os.path.exists(path):
-        presets = sorted(f[:-5] for f in os.listdir(_PRESETS) if f.endswith(".toml"))
-        raise ValueError(f"no configuration '{name}'; the presets are {', '.join(presets)}")
-    return _load(path, seen)
+    if name.endswith(".toml") or os.sep in name:
+        if not os.path.exists(name):
+            raise ValueError(f"no configuration file '{name}'")
+        return _load(name, seen)
+    # A preset: the package's file, else the library's registry's (an extension's).
+    files = {f[:-5] for f in os.listdir(_PRESETS) if f.endswith(".toml")}
+    if name in files:
+        return _load(os.path.join(_PRESETS, name + ".toml"), seen)
+    built_in = set(_extension._presets())
+    if name in built_in:
+        return Config(_extension._config_preset(name))
+    raise ValueError(f"no configuration '{name}'; the presets are "
+                     f"{', '.join(sorted(files | built_in))}")
 
 
 def config(source="ccdc"):
-    """A configuration: a preset's name (``ccdcpp/configs/<name>.toml``), a TOML file's
-    path, a dict of stages or a Config."""
+    """A configuration: a preset's name (``ccdcpp/configs/<name>.toml``, or one of the
+    library's registry, an extension's), a TOML file's path, a dict of stages or a Config."""
     return _resolve(source)

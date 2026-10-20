@@ -83,6 +83,16 @@ class Presets(unittest.TestCase):
     def test_an_unknown_preset_names_the_presets(self):
         with self.assertRaisesRegex(ValueError, "the presets are ccdc"):
             ccdcpp.config("nope")
+        # Names are exact, whatever the file system's case rules.
+        with self.assertRaises(ValueError):
+            ccdcpp.config("CCDC")
+
+    def test_the_registrys_presets_are_presets(self):
+        # A preset an extension registers has no file; its name finds it.
+        self.assertIn("ccdc", ccdcpp.ccdcpp._presets())
+        for name in ccdcpp.ccdcpp._presets():
+            self.assertEqual(ccdcpp.config(name),
+                             ccdcpp.Config(ccdcpp.ccdcpp._config_preset(name)), name)
 
 
 class Replace(unittest.TestCase):

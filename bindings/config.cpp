@@ -185,6 +185,10 @@ void bind_config(py::module_& m)
         py::arg("name"),
         "A preset of the library's registry, as a dict of stages (input units: C1 DN for \"ccdc\").");
     m.def(
+        "_presets",
+        []() { return ccd::strategies::library_registry().presets(); },
+        "The names of the library registry's presets.");
+    m.def(
         "_config_digest",
         [](const py::object& config) { return ccd::config::digest(*required(config)); },
         py::arg("config"),
