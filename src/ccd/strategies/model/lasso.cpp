@@ -20,7 +20,7 @@ public:
 
     explicit LassoFits(const LassoOptions& options) : solver_(options) {}
 
-    void fit(
+    bool fit(
         ArrayView<const std::int64_t, 1> dates,
         ArrayView<const scalar_t, 2> spectral,
         index_t num_coef,
@@ -32,6 +32,7 @@ public:
         fits_.resize(spectral.extent(0));
         max_coef_ = max_coef;
         fit_bands(dates, spectral, num_coef, bands, keep, workspace_, solver_, fits_);
+        return true;
     }
 
     // max_coef wide: the fits predict with zeros above their own count.

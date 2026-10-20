@@ -198,19 +198,19 @@ rows, `config::bands({1, 4})`).
 
 | Stage | Decides | Strategies |
 |---|---|---|
-| `mode` | the pixel's procedure from its QA statistics: change detection (Standard), or one curve over the whole series (PermanentSnow, InsufficientClear) | `pyccd`: Standard at `clear_pct_threshold` clear, else PermanentSnow at `snow_pct_threshold` snow, else InsufficientClear |
+| `mode` | the pixel's procedure from its QA statistics: change detection (Standard), or one curve over the whole series (PermanentSnow, InsufficientClear); with what it asks of a Standard pixel's detection (`PixelMode`: the green median filter before it, a cap on its segments' coefficients) | `pyccd`: Standard at `clear_pct_threshold` clear, else PermanentSnow at `snow_pct_threshold` snow, else InsufficientClear |
 | `noise_floor` | each band's noise floor from the statistics window, which every test scales by (a NaN ends the pixel) | `variogram`: the first-order variogram at the first lag whose most common separation exceeds `min_lag_days` (`VARIOGRAM_MIN_LAG_DAYS`) |
-| `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `meow_size` observations needing `meow_size` more after them, spanning `day_delta` days |
+| `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, a search's plan (`begin()`: the last day it sees, what it does exhausted, end the segment loop, end it with the window screen's drops given back, or force a start, `forced()`, and whether a resume may continue it), when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `meow_size` observations needing `meow_size` more after them, spanning `day_delta` days; a search sees the whole series, and an exhausted one ends the loop |
 | `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
 | `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`) | `lasso`: the monitoring model's Lasso, `COEFFICIENT_MIN` coefficients |
-| `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's peek size) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is |
-| `lookback` | after a stable start, whether the observation before the window joins it, is dropped or is a change, testing the observations before the window against the stability fit (`prepare()` for the pixel's peek; `judge()` per step) | `pyccd`: `lookback_peek()`'s observations, the statistic against the stability fit's RMSE, a change above the threshold (adjusted for the peek), an outlier above `outlier_threshold` |
-| `model` | the fits Extend tests each peek against: each band's fit on the model window, its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
-| `refit` | whether Extend refits the model before a peek test (after the first) | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
-| `change_test` | the pixel's peek size and anything else it derives per pixel (`prepare()`), whether an Extend peek is a change (`test()`, writing the peek's comparison RMSE and each observation's statistic into the `PeekResult`, which the outlier rule reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
-| `outlier` | after a peek that is not a change, whether its first observation is an outlier, which Extend drops | `floored`: pyccd's rule, the change test's statistic for that observation (noise floored at the variogram) above `threshold` |
-| `segment_fit` | the coefficients each band of a segment Extend grew reports | `model-fit`: the monitoring model's, as its last refit left them |
-| `edge_fit` | the Start and End segments' fits (`catch_window()`) and the whole-series curve (`whole_series()`) | `lasso`: every band a Lasso fit of `coefficients` coefficients (pyccd: `COEFFICIENT_MIN`); no whole-series segment under `min_observations` kept observations (`MEOW_SIZE`) |
+| `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's peek size) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is (with `follow_peek` false, for `peek_size`) |
+| `lookback` | after a stable start, whether the observation before the window joins it, is dropped or is a change, testing the observations before the window against the stability fit (`prepare()` for the pixel's peek; `judge()` per step) | `pyccd`: `lookback_peek()`'s observations, the statistic against the stability fit's RMSE, a change above the threshold (adjusted for the peek), an outlier above `outlier_threshold`; with `follow_peek` false, a peek of `peek_size` |
+| `model` | the fits Extend tests each peek against: each band's fit on the model window (`fit()`, which may fail, and `extend()` on a window that grew at its end, which a model may fit from the new observations alone), its peek residuals, RMSE and in-window residuals, and the segment's coefficients | `lasso`: pyccd's Lasso on the harmonic basis; `max_iter`, `alpha`, `tolerance`, `coef_floor` are the solver's |
+| `refit` | whether Extend refits the model before a peek test (after the first), from the window's size and span now and at the last refit | `span-factor`: refit while the window holds at most `min_obs` observations, then whenever it spans `factor` times the last fit's span (pyccd's 24 and 1.33) |
+| `change_test` | the pixel's peek plan and anything else it derives per pixel (`prepare()`: the peek size, whether it tests only full peeks, the fewest observations it tests a window of), whether an Extend peek is a change (`test()`: `Change`, `NoChange`, or `Undecided` on a shortened peek; writing the peek's comparison RMSE and each observation's statistic into the `PeekResult`, which the outlier rule reads), and the segment's break observation and per-band magnitudes (`break_at()`, `magnitude()`) | `chi2`: pyccd's test, of full peeks only, every window, every statistic above the threshold (adjusted for the pixel's peek); the segment breaks at the last test's first peek observation, each band's magnitude the median of its peek residuals; the comparison RMSE is the model's up to `model_rmse_up_to` observations, then the seasonal RMSE of `seasonal_count` observations over `seasonal_divisor` |
+| `outlier` | after a peek that is not a change, whether its first observation is an outlier, which Extend drops, or the peek too short to tell (`EndSeries`) | `floored`: pyccd's rule, the change test's statistic for that observation (noise floored at the variogram) above `threshold` |
+| `segment_fit` | the coefficients each band of a segment Extend grew reports, and its coefficient count (`segment()`, under the mode's cap); and a forced start's own segment when the series ends before Extend fits it (`unfitted()`) | `model-fit`: the monitoring model's, as its last refit left them; refitted on the segment's window with the capped count below a cap |
+| `edge_fit` | whether the Start and End segments are written (`start_due()`, `end_due()`), their fits (`catch_window()`) and the whole-series curve (`whole_series()`) | `lasso`: every band a Lasso fit of `coefficients` coefficients (pyccd: `COEFFICIENT_MIN`); no whole-series segment under `min_observations` kept observations (`MEOW_SIZE`); the Start and End segments when more than a peek of observations is before the first stable start, or after the last segment |
 
 A run's configuration is the one its options describe
 (`ccd::config::from_options()`):
@@ -220,7 +220,7 @@ A run's configuration is the one its options describe
 | `pyccd` (start search) | `meow_size`, `day_delta` | `MEOW_SIZE`, `DAY_DELTA` |
 | `tmask` | `bands`, `t_const` | `TMASK_BANDS`, `T_CONST` |
 | `lasso` (both stages) | `max_iter`, `alpha`, `tolerance`, `coef_floor` | `LassoOptions`' fields of those names |
-| `pyccd` (stability rule) | `peek_size`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
+| `pyccd` (stability rule) | `peek_size`, `change_threshold`, `change_probability`, `follow_peek` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, true |
 | `span-factor` | `min_obs`, `factor` | `RETRAIN_MIN_OBS`, `RETRAIN_SPAN_FACTOR` |
 | `chi2` | `peek_size`, `peek_reference_days`, `change_threshold`, `change_probability` | `PEEK_SIZE`, `PEEK_REFERENCE_DAYS`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY` |
 | `chi2` | `model_rmse_up_to`, `seasonal_count`, `seasonal_divisor` | `RETRAIN_MIN_OBS`, `SEASONAL_RMSE_COUNT`, `SEASONAL_RMSE_DIVISOR` |
@@ -228,7 +228,7 @@ A run's configuration is the one its options describe
 | `pyccd` (mode) | `clear_pct_threshold`, `snow_pct_threshold` | `CLEAR_PCT_THRESHOLD`, `SNOW_PCT_THRESHOLD` |
 | `variogram` | `min_lag_days` | `VARIOGRAM_MIN_LAG_DAYS` |
 | `lasso` (edge fit) | `coefficients`, `min_observations`, and the Lasso's four | `COEFFICIENT_MIN`, `MEOW_SIZE`, `LassoOptions` |
-| `pyccd` (lookback) | `peek_size`, `change_threshold`, `change_probability`, `outlier_threshold` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, `OUTLIER_THRESHOLD` |
+| `pyccd` (lookback) | `peek_size`, `change_threshold`, `change_probability`, `outlier_threshold`, `follow_peek` | `PEEK_SIZE`, `CHANGE_THRESHOLD`, `CHANGE_PROBABILITY`, `OUTLIER_THRESHOLD`, true |
 
 `RETRAIN_MIN_OBS` sets two parameters, the refit's and the test's, as pyccd's one constant does;
 a configuration may set them apart. The mapping lives in one file (`include/ccd/config/from_options.hpp`).
@@ -237,6 +237,37 @@ is also what the machine's guards and the stability rule's and lookback's `prepa
 Each of the change test, the stability rule and the lookback has its own `change_threshold` and
 `change_probability`, and each of the outlier rule and the lookback its own outlier threshold, so
 a configuration may set Extend's tests, Initialize's and Lookback's apart.
+
+**The routes other strategies take.** The core strategies take the routes of section 2; the
+hooks above give other strategies routes of their own, all on the same machine:
+
+- A change test that reads shortened peeks (`PeekPlan::full` false) has no peek guard: Extend runs
+  while observations follow the window, its peek the next `peek` of them or fewer, and the curve
+  ends where none is left (its break day the window's last observation) or where the test is
+  `Undecided`. A window smaller than its `PeekPlan::min_window` grows untested.
+- A change's `break_at()` may be past the peek's first observation: the segment breaks there, and
+  the peek's observations before it leave the series after the segment is written.
+- The outlier rule's `EndSeries` ends the curve at the window, as a test's `Undecided` does.
+- A model whose fit fails (`fit()` false) ends the series without the curve: Done, after a forced
+  start's own segment if one is pending.
+- A start search's exhausted search may give back what its window screen dropped (`Restore`), or
+  force a start (`Force`): the window `forced()` names, with no Lookback and no Start segment,
+  straight to Extend. A series that ends before Extend fits it reports the segment fit's
+  `unfitted()` segment of that window, through the last observation.
+- The mode's `PixelMode` may add mask steps after the procedure's chain (the run applies them
+  before the machine runs), and cap its segments' coefficients (the segment fit refits under the
+  cap; the detection itself is not capped).
+- A run that takes any of these routes is not resumable (`State::resumable`): its record stores
+  no suspension, and a resume fits the pixel again.
+
+```cpp
+// A change test of shortened peeks, starting at windows of 12 observations or more.
+struct Shortened final : ccd::ChangeTest
+{
+    ccd::PeekPlan prepare(...) const override { return ccd::PeekPlan{18, false, 12}; }
+    // ... test() (Undecided when a shortened peek decides nothing), break_at(), ...
+};
+```
 
 At an Extend peek every stage reads one `Peek` (the model, the windows, the peek's residuals,
 the variogram and the detection bands), and the change test writes what it found into a
@@ -323,8 +354,8 @@ tree["outlier"].params["threshold"] = config::real(30.856);
 tree["lookback"].params["outlier_threshold"] = config::real(30.856);
 
 Strategies s = strategies::build_strategies(strategies::core_registry(), tree);
-s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_span=*/100.0);  // false
-s.refit->due(30, 200.0, 100.0);                                              // true
+s.refit->due(/*window_size=*/30, /*window_span=*/150.0, /*fit_size=*/24, /*fit_span=*/100.0);  // false
+s.refit->due(30, 200.0, 24, 100.0);                                                           // true
 
 // A run under a configuration of its own (RunSpec::config): checked when the run is built,
 // band lists against the input's bands, and part of its resume records' digest.
@@ -497,19 +528,11 @@ Initialize's and Extend's guards and nothing else.
 ### Another procedure
 
 Another change-detection procedure, one that replaces Standard's change test, say, and keeps its
-initialization, is a machine of its own beside the Standard one:
-
-- Its own namespace, with its own `Phase`, `Exit`, `State`, transitions and `Procedure` (the
-  machine with its record, as `standard::Procedure` is Standard's). Nothing is inherited.
-- It composes the shared parts: `MaskedSeries`, `Cursor`, the segments, `initialize_step` with
-  its own `InitializeCriteria`, `HarmonicBasis`, and `drive` with its trace.
-- It can hold a `standard::State` and call the Standard machine's work for the phases they share
-  (`prepare`, `initialize_outcome`, `lookback_step`, `write_start_segment`, `move_past_segment`,
-  `write_end_segment`), with routes of its own.
-- Its detector is a sibling of `standard::Detector` with the same `fit` call, and it reuses
-  the `mode` stage and the edge fit's `whole_series()` for the pixels that take no machine.
-- It is a `ChangeMethod` (`HarmonicOptions::METHOD`), named in `method_name()`, its parameters
-  set by `with_method()`; `Run::pixel` picks its detector by the method.
+initialization, is a configuration of the same machine: its strategies for the stages it
+changes (an extension's, `CCD_EXTENSIONS`), registered by name, and the routes of section 3's
+"The routes other strategies take". It needs no machine, detector or method of its own; a run
+names it in `RunSpec::config`, and its suspension is kept only while it takes routes a resume
+continues (`State::resumable`).
 
 A segment reports each band's fit as a `BandFit` (`ChangeModel::bands`): intercept,
 coefficients, RMSE, magnitude and the solver's iteration count (0 for a fit in closed form), so

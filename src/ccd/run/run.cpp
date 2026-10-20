@@ -175,8 +175,9 @@ ArrayView<const std::uint8_t, 1> decode_qa(
     return ArrayView<const std::uint8_t, 1>::contiguous(buffer.data(), {T});
 }
 
-// Step 2. The pixel's procedure, from its QA statistics up to STAT_ORD.
-PixelProcedure choose_procedure(
+// Step 2. The pixel's procedure and mode, from its QA statistics up to
+// STAT_ORD.
+PixelMode choose_procedure(
     ArrayView<const std::uint8_t, 1> qas,
     ArrayView<const std::int64_t, 1> dates,
     const HarmonicOptions& options,
@@ -296,6 +297,7 @@ bool drops_unambiguous(
 void fill_record(
     PixelRecord& record,
     PixelProcedure procedure,
+    bool plain_mask,
     const standard::Detector& detector,
     const ProcessingMask& filtered,
     const FitResult& result,
@@ -304,7 +306,10 @@ void fill_record(
 {
     record.standard = standard::Suspended{};
     record.excluded_days.clear();
-    if (procedure == PixelProcedure::Standard)
+    // A run the record cannot continue (a mode's extra mask, or a route the
+    // suspension does not keep) stores none: a resume reruns it.
+    if (procedure == PixelProcedure::Standard && plain_mask &&
+        detector.suspended().exit != standard::Exit::None)
     {
         record.standard = detector.suspended();
         for (index_t t = 0; t < filtered.size(); ++t)
@@ -319,6 +324,7 @@ struct PassRequest
     PixelRecord* record = nullptr;          // fill this record
     std::int64_t through = 0;               // its fingerprint up to this date
     const PixelRecord* continue_from = nullptr;   // continue this stored run
+    bool carried_change = false;   // its last final segment ended in a change
 };
 
 // The steps on one pixel, under `options` and `plan`. Sets `continued` to
@@ -339,7 +345,8 @@ FitResult run_steps(
 )
 {
     const auto qas = decode_qa<Qa>(raw_qas, qa_table, worker.qas);
-    const PixelProcedure procedure = choose_procedure(qas, dates, options, *strategies.mode);
+    const PixelMode mode = choose_procedure(qas, dates, options, *strategies.mode);
+    const PixelProcedure procedure = mode.procedure;
 
     if (request.record)
     {
@@ -354,30 +361,37 @@ FitResult run_steps(
     LOG_DEBUG("initial spectral: " << pixel.spectral());
 
     ProcessingMask mask = build_mask(steps.chain, pixel);
+    if (!mode.extra_mask.empty())
+        preprocess::apply_steps(mode.extra_mask, pixel.dates(), pixel.spectral(), pixel.qas(),
+                                mask);
 
     // Step 5. The fit: the run's change detector, or the stored run continued.
     LassoSolver solver(loptions);
     standard::Detector& detector = worker.standard;
 
     if (!request.record && !request.continue_from)
-        return detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies,
+        return detector.fit(mode, pixel, std::move(mask), worker.lasso, solver, strategies,
                             worker.observe);
 
+    // A pixel its mode filters or caps is fitted again, as a whole-series
+    // one is.
     const ProcessingMask filtered = mask;
     const bool continues =
         request.continue_from && procedure == PixelProcedure::Standard &&
+        mode.extra_mask.empty() && mode.max_coefficients == 0 &&
         drops_unambiguous(request.continue_from->excluded_days, dates, mask);
 
     FitResult result = continues
         ? detector.resume(pixel, std::move(mask), worker.lasso, solver, strategies,
                           request.continue_from->standard, request.continue_from->excluded_days,
-                          worker.observe)
-        : detector.fit(procedure, pixel, std::move(mask), worker.lasso, solver, strategies,
+                          worker.observe, request.carried_change)
+        : detector.fit(mode, pixel, std::move(mask), worker.lasso, solver, strategies,
                        worker.observe);
     continued = continues;
 
     if (request.record)
-        fill_record(*request.record, procedure, detector, filtered, result, dates);
+        fill_record(*request.record, procedure, mode.extra_mask.empty(), detector, filtered,
+                    result, dates);
     return result;
 }
 
@@ -529,6 +543,8 @@ PixelOutcome Run::pixel_typed(
     request.record = &out.record;
     request.through = dates_(dates_.size() - 1);
     request.continue_from = continues ? &from : nullptr;
+    const index_t carried = from.standard.final_segments;
+    request.carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
     out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, options_,
                                       spec_.loptions, strategies_, worker, request, continued);
 

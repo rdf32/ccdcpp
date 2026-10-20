@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <limits>
 #include <utility>
 
 #include "ccd/core/logger.hpp"
@@ -182,6 +183,20 @@ const char* to_string(InitializeOutcome outcome)
     return "?";
 }
 
+index_t count_through(ArrayView<const std::int64_t, 1> dates, std::int64_t day)
+{
+    index_t lo = 0, hi = dates.size();
+    while (lo < hi)
+    {
+        const index_t mid = lo + (hi - lo) / 2;
+        if (dates(mid) <= day)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
 InitializeOutcome initialize_step(
     MaskedSeries& series,
     Window& window,
@@ -196,7 +211,10 @@ InitializeOutcome initialize_step(
     //--------------------------------------------------------------------------
     // No candidate left before the end of the series
     //--------------------------------------------------------------------------
-    if (search.exhausted(window, series.size()))
+    const index_t seen = criteria.last_day == std::numeric_limits<std::int64_t>::max()
+        ? series.size()
+        : count_through(series.dates(), criteria.last_day);
+    if (search.exhausted(window, seen))
     {
         LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
         return InitializeOutcome::Exhausted;

@@ -19,8 +19,9 @@ namespace strategies
 // the chi-squared quantile of change_probability with a degree of freedom per
 // detection band).
 //
-// A segment breaks at its last test's first peek observation, each band's
-// magnitude the median of that test's peek residuals.
+// It tests full peeks only, every window. A segment breaks at its last
+// test's first peek observation, each band's magnitude the median of that
+// test's peek residuals.
 //
 // It provides the peek's comparison RMSE and each observation's statistic.
 // Each peek observation's statistic is the sum over the detection bands of
@@ -51,11 +52,11 @@ struct Chi2 final : ChangeTest
     Capabilities needs() const override;
     Capabilities provides() const override;
     std::unique_ptr<Scratch> make_scratch() const override;
-    index_t prepare(ArrayView<const std::int64_t, 1> statistics_dates, index_t detection_bands,
-                    Scratch& scratch) const override;
+    PeekPlan prepare(ArrayView<const std::int64_t, 1> statistics_dates, index_t detection_bands,
+                     Scratch& scratch) const override;
     TestOutcome test(const Peek& peek, Scratch& scratch, PeekResult& result) const override;
-    index_t break_at(const Peek& peek) const override;
-    scalar_t magnitude(const Peek& peek, index_t band) const override;
+    index_t break_at(const Peek& peek, const Scratch& scratch) const override;
+    scalar_t magnitude(const Peek& peek, const Scratch& scratch, index_t band) const override;
 
 private:
     Params p_;

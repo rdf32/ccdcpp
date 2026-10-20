@@ -4,6 +4,7 @@
 #include "ccd/input/pmask.hpp"
 
 #include "ccd/input/harmonic.hpp"
+#include "ccd/input/mask/preprocess.hpp"
 #include "ccd/input/quality.hpp"
 
 #include "ccd/machine/fit.hpp"
@@ -33,6 +34,19 @@ enum class PixelProcedure
     Standard,
     InsufficientClear,
     PermanentSnow
+};
+
+// A pixel's procedure with what the mode asks of its change detection: mask
+// steps after the procedure's chain (preprocess::apply_steps(), the run's
+// build_mask step), and a cap on the coefficients its segments report (0:
+// none; the detection itself is not capped).
+struct PixelMode
+{
+    PixelMode(PixelProcedure procedure = PixelProcedure::Standard) : procedure(procedure) {}
+
+    PixelProcedure procedure;
+    preprocess::Chain extra_mask;
+    index_t max_coefficients = 0;
 };
 
 // The whole-series fit of a PermanentSnow or InsufficientClear pixel: one

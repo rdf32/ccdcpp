@@ -68,8 +68,8 @@ std::unique_ptr<Scratch> Chi2::make_scratch() const
     return std::make_unique<Chi2Scratch>();
 }
 
-index_t Chi2::prepare(ArrayView<const std::int64_t, 1> statistics_dates,
-                      index_t detection_bands, Scratch& scratch) const
+PeekPlan Chi2::prepare(ArrayView<const std::int64_t, 1> statistics_dates,
+                       index_t detection_bands, Scratch& scratch) const
 {
     Chi2Scratch& s = static_cast<Chi2Scratch&>(scratch);
 
@@ -92,7 +92,7 @@ index_t Chi2::prepare(ArrayView<const std::int64_t, 1> statistics_dates,
             p_.change_probability
         );
 
-    return peek;
+    return PeekPlan{peek, true, 0};
 }
 
 TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) const
@@ -149,12 +149,12 @@ TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) c
                                                         : TestOutcome::NoChange;
 }
 
-index_t Chi2::break_at(const Peek& peek) const
+index_t Chi2::break_at(const Peek& peek, const Scratch&) const
 {
     return peek.peek.start;
 }
 
-scalar_t Chi2::magnitude(const Peek& peek, index_t band) const
+scalar_t Chi2::magnitude(const Peek& peek, const Scratch&, index_t band) const
 {
     // median() orders its argument in place; the peek's residuals stay as
     // they are.

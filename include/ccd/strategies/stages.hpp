@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -72,14 +73,16 @@ class Model;   // strategies/model.hpp
 //------------------------------------------------------------------------------
 // mode: the pixel's procedure, from the QA statistics of its statistics
 // window: Standard (the change-detection machine), or PermanentSnow or
-// InsufficientClear (one curve over the whole series, the edge fit's).
+// InsufficientClear (one curve over the whole series, the edge fit's); with
+// what it asks of a Standard pixel's detection (PixelMode,
+// machine/pixel_procedure.hpp).
 //------------------------------------------------------------------------------
 struct ModeRule
 {
     static constexpr const char* stage = "mode";
 
     virtual ~ModeRule() = default;
-    virtual PixelProcedure choose(const Quality::Statistics& statistics) const = 0;
+    virtual PixelMode choose(const Quality::Statistics& statistics) const = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -106,7 +109,19 @@ struct NoiseFloor
 //                     series start, or a segment's end)
 //   room(w, n)        whether candidate w fits in n observations: Initialize
 //                     may begin; otherwise the series ends
+//   begin(d, at, e)   a search from observation `at` of the masked series
+//                     (dates d; `at` is 0 at the pixel's first search), e
+//                     the input's last day: its SearchPlan, the last day it
+//                     sees (the largest: all of them), what it does when
+//                     exhausted: End (the segment loop ends), Restore (it
+//                     ends with the observations the search's window screen
+//                     dropped back in the series) or Force (forced()), and
+//                     whether a resume on a longer input may continue it
+//                     (false when the plan reads the input's end)
 //   exhausted(w, n)   at an Initialize step, whether no candidate is left
+//                     among the n observations dated through the last day
+//   forced(d, at, l)  the forced start of an exhausted search from `at`, l
+//                     its last day
 //   short_span(d)     whether a candidate with dates d spans too few days:
 //                     it grows
 //   usable(d)         whether a candidate shortened by the window screen's
@@ -114,6 +129,20 @@ struct NoiseFloor
 //                     with nothing dropped
 //   min_window()      the fewest observations a candidate holds
 //------------------------------------------------------------------------------
+enum class Exhaustion : std::uint8_t
+{
+    End,
+    Restore,
+    Force
+};
+
+struct SearchPlan
+{
+    std::int64_t last_day = std::numeric_limits<std::int64_t>::max();
+    Exhaustion exhausted = Exhaustion::End;
+    bool resumable = true;
+};
+
 struct StartSearch
 {
     static constexpr const char* stage = "start_search";
@@ -122,7 +151,11 @@ struct StartSearch
     virtual bool too_few(index_t observations) const = 0;
     virtual Window first(index_t at) const = 0;
     virtual bool room(const Window& window, index_t observations) const = 0;
+    virtual SearchPlan begin(ArrayView<const std::int64_t, 1> dates, index_t at,
+                             std::int64_t input_end) const = 0;
     virtual bool exhausted(const Window& window, index_t observations) const = 0;
+    virtual Window forced(ArrayView<const std::int64_t, 1> dates, index_t at,
+                          std::int64_t last_day) const = 0;
     virtual bool short_span(ArrayView<const std::int64_t, 1> dates) const = 0;
     virtual bool usable(ArrayView<const std::int64_t, 1> dates) const = 0;
     virtual index_t min_window() const = 0;
@@ -233,14 +266,16 @@ struct Lookback
 //
 //   window_size   observations in the model window now
 //   window_span   days the model window spans now
-//   fit_span      days it spanned when the model was last fitted
+//   fit_size      observations it held when the model was last fitted
+//   fit_span      days it spanned then
 //------------------------------------------------------------------------------
 struct RefitSchedule
 {
     static constexpr const char* stage = "refit";
 
     virtual ~RefitSchedule() = default;
-    virtual bool due(index_t window_size, scalar_t window_span, scalar_t fit_span) const = 0;
+    virtual bool due(index_t window_size, scalar_t window_span, index_t fit_size,
+                     scalar_t fit_span) const = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -262,19 +297,36 @@ struct MonitoringModel
 // segment a change ends reports.
 //
 // prepare() is called once per pixel, with its statistics-window dates and
-// its detection band count: it returns the peek size, which the machine's
-// guards and Lookback also read, and keeps what it derives for the pixel
-// (chi2's threshold) in the thread's scratch. test() decides one Extend
-// peek, writing everything it provides into the PeekResult on every call,
-// which the outlier rule reads after it. break_at() and magnitude() are the segment's break
-// observation and each band's change magnitude, from the segment's last
-// test.
+// its detection band count: it returns the pixel's PeekPlan, and keeps what
+// it derives for the pixel (chi2's threshold) in the thread's scratch. The
+// plan's peek is the peek size, which the machine's guards and Lookback also
+// read; `full` whether a test reads only full peeks: the segment loop ends
+// where no full peek follows the window (chi2's). Otherwise the peek is
+// shortened to the observations left, and a peek with none ends the series.
+// A model window of fewer than min_window observations grows untested.
+//
+// test() decides one Extend peek, writing everything it provides into the
+// PeekResult on every call, which the outlier rule reads after it:
+// Undecided is a shortened peek that decides nothing, which ends the
+// series. break_at() is a change's first observation, from the last test
+// (the peek's observations before it leave the series once its segment is
+// written), and magnitude() each band's change magnitude, from the
+// segment's last test; at a series end with no observation left after the
+// window the peek it reads is empty, and no test was made on that window.
 //------------------------------------------------------------------------------
+
+struct PeekPlan
+{
+    index_t peek;
+    bool full = true;
+    index_t min_window = 0;
+};
 
 enum class TestOutcome : std::uint8_t
 {
     Change,
-    NoChange
+    NoChange,
+    Undecided
 };
 
 // One Extend peek, as every stage that tests it reads it. Windows are
@@ -283,6 +335,7 @@ struct Peek
 {
     const Model& model;                                    // fitted on fit_window
     ArrayView<const std::int64_t, 1> dates;
+    ArrayView<const scalar_t, 2> spectral;                 // (B, n)
     Window window;                                         // the model window
     Window fit_window;                                     // the last refit's
     index_t fit;                                           // that refit's number: a new one per refit
@@ -308,23 +361,26 @@ struct ChangeTest
     virtual Capabilities needs() const = 0;
     virtual Capabilities provides() const = 0;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
-    virtual index_t prepare(ArrayView<const std::int64_t, 1> statistics_dates,
-                            index_t detection_bands, Scratch& scratch) const = 0;
+    virtual PeekPlan prepare(ArrayView<const std::int64_t, 1> statistics_dates,
+                             index_t detection_bands, Scratch& scratch) const = 0;
     virtual TestOutcome test(const Peek& peek, Scratch& scratch,
                              PeekResult& result) const = 0;
-    virtual index_t break_at(const Peek& peek) const = 0;
-    virtual scalar_t magnitude(const Peek& peek, index_t band) const = 0;
+    virtual index_t break_at(const Peek& peek, const Scratch& scratch) const = 0;
+    virtual scalar_t magnitude(const Peek& peek, const Scratch& scratch,
+                               index_t band) const = 0;
 };
 
 //------------------------------------------------------------------------------
 // outlier: after a peek that is not a change, whether its first observation
-// (at the model window's stop) is an outlier, which Extend drops.
+// (at the model window's stop) is an outlier, which Extend drops; or
+// EndSeries, a peek too short to tell, which ends the series.
 //------------------------------------------------------------------------------
 
 enum class OutlierOutcome : std::uint8_t
 {
     Keep,
-    Drop
+    Drop,
+    EndSeries
 };
 
 struct OutlierRule
@@ -337,15 +393,30 @@ struct OutlierRule
 };
 
 //------------------------------------------------------------------------------
-// segment_fit: the coefficients of each band of a segment Extend grew, from
-// the monitoring model fitted on it (magnitude set by the change test).
+// segment_fit: the coefficients of every band of a segment Extend grew, into
+// `bands` (one per band; the change test sets the magnitudes after), and the
+// coefficient count the segment reports (its curve_qa). segment() reads the
+// monitoring model as its last refit left it, fitted with num_coef on the
+// segment's window `window` of the masked series (`dates`, `spectral`
+// (B, n)); unfitted() is the segment of a forced start the series ended
+// before Extend fitted, `model` not fitted on it and num_coef the count of
+// its size. The pixel's mode caps the coefficients at max_coefficients (0:
+// no cap). Either may refit `model`: the segment is its last use.
 //------------------------------------------------------------------------------
 struct SegmentFit
 {
     static constexpr const char* stage = "segment_fit";
 
     virtual ~SegmentFit() = default;
-    virtual BandFit band(const Model& model, index_t band) const = 0;
+    virtual std::unique_ptr<Scratch> make_scratch() const = 0;
+    virtual index_t segment(Model& model, ArrayView<const std::int64_t, 1> dates,
+                            ArrayView<const scalar_t, 2> spectral, const Window& window,
+                            index_t num_coef, index_t max_coefficients, Scratch& scratch,
+                            std::vector<BandFit>& bands) const = 0;
+    virtual index_t unfitted(Model& model, ArrayView<const std::int64_t, 1> dates,
+                             ArrayView<const scalar_t, 2> spectral, const Window& window,
+                             index_t num_coef, index_t max_coefficients, Scratch& scratch,
+                             std::vector<BandFit>& bands) const = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -355,6 +426,12 @@ struct SegmentFit
 // last break; whole_series() is a PermanentSnow or InsufficientClear pixel's
 // one curve over the observations `mask` keeps (no segment when too few).
 // Both have change probability 0 and magnitude 0.
+//
+// start_due() is whether the Start segment is written, `before` the
+// observations before the first stable start; end_due() whether the End
+// segment is, `after` the observations after the last segment, and
+// after_change whether that segment ended in a change. `peek` is the
+// pixel's peek size.
 //------------------------------------------------------------------------------
 struct EdgeFit
 {
@@ -362,6 +439,8 @@ struct EdgeFit
 
     virtual ~EdgeFit() = default;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
+    virtual bool start_due(index_t before, index_t peek) const = 0;
+    virtual bool end_due(index_t after, index_t peek, bool after_change) const = 0;
     virtual ChangeModel catch_window(ArrayView<const std::int64_t, 1> dates,
                                      ArrayView<const scalar_t, 2> spectral, const Window& window,
                                      CurveQA curve_qa, Scratch& scratch) const = 0;

@@ -117,11 +117,11 @@ TEST(Registry, BuildsByNameAndChecksTheParameters)
 
     // Defaults, and set values.
     const auto pyccd = refit({});
-    EXPECT_TRUE(pyccd->due(24, 100.0, 100.0));
-    EXPECT_FALSE(pyccd->due(25, 132.0, 100.0));
-    EXPECT_TRUE(pyccd->due(25, 133.0, 100.0));
+    EXPECT_TRUE(pyccd->due(24, 100.0, 12, 100.0));
+    EXPECT_FALSE(pyccd->due(25, 132.0, 12, 100.0));
+    EXPECT_TRUE(pyccd->due(25, 133.0, 12, 100.0));
     const auto every = refit({{"min_obs", integer(1000)}, {"factor", real(1.0)}});
-    EXPECT_TRUE(every->due(999, 1.0, 100.0));
+    EXPECT_TRUE(every->due(999, 1.0, 12, 100.0));
 
     expect_refused([&] { r.make<RefitSchedule>({"every-n", {}}); },
                    "refit has no strategy 'every-n'; it has span-factor");
@@ -177,9 +177,9 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
     const StageConfig& refit = tree.at("refit");
     EXPECT_EQ(refit.strategy, "span-factor");
     const auto s = ccd::config::strategies_for(h, ccd::LassoOptions{});
-    EXPECT_TRUE(s.refit->due(30, 1.0, 1.0));
-    EXPECT_FALSE(s.refit->due(31, 149.0, 100.0));
-    EXPECT_TRUE(s.refit->due(31, 150.0, 100.0));
+    EXPECT_TRUE(s.refit->due(30, 1.0, 12, 1.0));
+    EXPECT_FALSE(s.refit->due(31, 149.0, 12, 100.0));
+    EXPECT_TRUE(s.refit->due(31, 150.0, 12, 100.0));
 
     // The schema gives the parameters back as set.
     const auto values = ccd::config::to_values(ccd::strategies::SpanFactor::schema(),
@@ -189,7 +189,7 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
     // RETRAIN_MIN_OBS past what a configuration holds: refit at every step.
     h.RETRAIN_MIN_OBS = std::numeric_limits<ccd::index_t>::max();
-    EXPECT_TRUE(ccd::config::strategies_for(h, ccd::LassoOptions{}).refit->due(1u << 20, 1.0, 100.0));
+    EXPECT_TRUE(ccd::config::strategies_for(h, ccd::LassoOptions{}).refit->due(1u << 20, 1.0, 12, 100.0));
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
@@ -282,8 +282,11 @@ TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
         const auto view = ccd::ArrayView<const std::int64_t, 1>::contiguous(
             dates.data(), {dates.size()});
 
-        const ccd::index_t peek =
+        const ccd::PeekPlan plan =
             s.change_test->prepare(view, h.DETECTION_BANDS.size(), *scratch);
+        EXPECT_TRUE(plan.full);
+        EXPECT_EQ(plan.min_window, 0u);
+        const ccd::index_t peek = plan.peek;
         EXPECT_EQ(peek, ccd::adjust_peek(view, h.PEEK_SIZE, h.PEEK_REFERENCE_DAYS)) << gap;
         if (gap == 16)
             EXPECT_EQ(peek, h.PEEK_SIZE);
@@ -294,7 +297,7 @@ TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
     // Fewer than two dates: the default peek.
     const std::int64_t one = 730000;
     EXPECT_EQ(s.change_test->prepare(ccd::ArrayView<const std::int64_t, 1>::contiguous(&one, {1}),
-                                     h.DETECTION_BANDS.size(), *scratch),
+                                     h.DETECTION_BANDS.size(), *scratch).peek,
               h.PEEK_SIZE);
 
     ccd::ChangeThresholdMemo memo;
@@ -375,17 +378,23 @@ struct Silent final : ccd::ChangeTest
     ccd::Capabilities needs() const override { return {}; }
     ccd::Capabilities provides() const override { return {}; }
     std::unique_ptr<ccd::Scratch> make_scratch() const override { return nullptr; }
-    ccd::index_t prepare(ccd::ArrayView<const std::int64_t, 1>, ccd::index_t,
-                         ccd::Scratch&) const override
+    ccd::PeekPlan prepare(ccd::ArrayView<const std::int64_t, 1>, ccd::index_t,
+                          ccd::Scratch&) const override
     {
-        return 6;
+        return ccd::PeekPlan{6};
     }
     ccd::TestOutcome test(const ccd::Peek&, ccd::Scratch&, ccd::PeekResult&) const override
     {
         return ccd::TestOutcome::NoChange;
     }
-    ccd::index_t break_at(const ccd::Peek& peek) const override { return peek.peek.start; }
-    double magnitude(const ccd::Peek&, ccd::index_t) const override { return 0; }
+    ccd::index_t break_at(const ccd::Peek& peek, const ccd::Scratch&) const override
+    {
+        return peek.peek.start;
+    }
+    double magnitude(const ccd::Peek&, const ccd::Scratch&, ccd::index_t) const override
+    {
+        return 0;
+    }
 };
 
 } // namespace
@@ -446,7 +455,9 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
     const auto model = ccd::strategies::core_registry()
                            .make<ccd::MonitoringModel>({"lasso", {}})
                            ->make_model();
+    const double value = 0;
     const ccd::Peek peek{*model, ccd::ArrayView<const std::int64_t, 1>::contiguous(&day, {1}),
+                         ccd::ArrayView<const double, 2>::contiguous(&value, {1, 1}),
                          {}, {}, 0, {}, residuals, variogram, bands};
     ccd::PeekResult result;
     result.statistic = {10.0, 99.0};
@@ -671,8 +682,11 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
     {
     public:
         explicit Flat(double rmse) : rmse_(rmse) {}
-        void fit(ccd::ArrayView<const std::int64_t, 1>, ccd::ArrayView<const double, 2>,
-                 ccd::index_t, ccd::index_t, const ccd::BandList&, ccd::KeepResiduals) override {}
+        bool fit(ccd::ArrayView<const std::int64_t, 1>, ccd::ArrayView<const double, 2>,
+                 ccd::index_t, ccd::index_t, const ccd::BandList&, ccd::KeepResiduals) override
+        {
+            return true;
+        }
         void peek_residuals(ccd::ArrayView<const std::int64_t, 1> dates,
                             ccd::ArrayView<const double, 2>, const ccd::BandList& bands,
                             std::vector<std::vector<double>>& residuals) override

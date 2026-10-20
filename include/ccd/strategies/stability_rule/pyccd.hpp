@@ -20,7 +20,8 @@ namespace strategies
 //
 // is below the threshold: change_threshold for a peek of peek_size
 // observations, lowered for a longer peek as the change test's is
-// (adjust_change_threshold(), change_probability).
+// (adjust_change_threshold(), change_probability). The peek is the change
+// test's, or with follow_peek false peek_size's (the threshold unchanged).
 //------------------------------------------------------------------------------
 struct PyccdStability final : StabilityRule
 {
@@ -29,6 +30,7 @@ struct PyccdStability final : StabilityRule
         index_t peek_size = 6;
         scalar_t change_threshold = 15.086272469388987l;
         scalar_t change_probability = 0.99;
+        bool follow_peek = true;
     };
 
     static const std::vector<config::Field<Params>>& schema();

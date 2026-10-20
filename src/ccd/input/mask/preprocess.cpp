@@ -222,10 +222,22 @@ void apply(
     ProcessingMask& mask
 )
 {
+    mask.data().assign(dates.size(), static_cast<std::uint8_t>(1));
+    apply_steps(chain, dates, spectral, qas, mask);
+}
+
+void apply_steps(
+    const Chain& chain,
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    ProcessingMask& mask
+)
+{
     assert(chain.count <= CHAIN_CAPACITY);
+    assert(mask.size() == dates.size());
 
     const index_t T = dates.size();
-    mask.data().assign(T, static_cast<std::uint8_t>(1));
 
     for (const Step& step : chain)
     {

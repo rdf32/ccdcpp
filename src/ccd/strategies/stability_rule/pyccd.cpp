@@ -33,6 +33,8 @@ const std::vector<config::Field<PyccdStability::Params>>& PyccdStability::schema
          "the threshold for a peek of peek_size observations"},
         {"change_probability", &Params::change_probability, Unit::None,
          config::open_interval(0, 1), "the probability a longer peek's threshold keeps"},
+        {"follow_peek", &Params::follow_peek, Unit::None, config::any(),
+         "whether the peek is the change test's; otherwise peek_size"},
     };
     return s;
 }
@@ -50,7 +52,8 @@ std::unique_ptr<Scratch> PyccdStability::make_scratch() const
 void PyccdStability::prepare(index_t peek, index_t detection_bands, Scratch& scratch) const
 {
     StabilityScratch& s = static_cast<StabilityScratch&>(scratch);
-    s.change_threshold = s.thresholds(peek, p_.peek_size, p_.change_threshold, detection_bands,
+    const index_t at = p_.follow_peek ? peek : p_.peek_size;
+    s.change_threshold = s.thresholds(at, p_.peek_size, p_.change_threshold, detection_bands,
                                       p_.change_probability);
 }
 

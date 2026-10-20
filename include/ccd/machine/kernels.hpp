@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "ccd/core/types.hpp"
@@ -152,7 +153,14 @@ struct InitializeCriteria
     BandList detection_bands;   // the bands fitted and tested for stability
     index_t num_coefficients;   // of the stability fits
     index_t max_coefficients;   // the widest model's: their peek basis width
+
+    // The last day the search sees (StartSearch::last_day()): its
+    // exhausted() reads the observations dated through it.
+    std::int64_t last_day = std::numeric_limits<std::int64_t>::max();
 };
+
+// The observations of `dates` dated up to `day`: dates is sorted.
+index_t count_through(ArrayView<const std::int64_t, 1> dates, std::int64_t day);
 
 // The strategies one Initialize step runs, of the run's stages: the start
 // search, the window screen, the stability fit (its Model, which holds the

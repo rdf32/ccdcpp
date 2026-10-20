@@ -4,6 +4,47 @@
 
 ### Changed
 
+- **Strategies take routes of their own on the one machine.** The stage interfaces gain the
+  decisions the Standard machine made itself, each the pyccd one for the core strategies (every
+  result unchanged):
+  - `mode`: `choose()` returns a `PixelMode` (`include/ccd/machine/pixel_procedure.hpp`): the
+    procedure, mask steps after the procedure's chain (`preprocess::apply_steps()`, applied by
+    the run), and a cap on its segments' coefficients. `standard::Detector::fit()` takes it (a
+    `PixelProcedure` converts).
+  - `start_search`: `begin()` returns a search's `SearchPlan` (the last day it sees, which
+    `exhausted()` reads the observations through; what it does exhausted, `Exhaustion::End`,
+    `Restore` the window screen's drops of the search, or `Force` the start `forced()` names;
+    whether a resume may continue it).
+  - `change_test`: `prepare()` returns a `PeekPlan` (the peek; `full`, otherwise the peek is
+    shortened at the series end and there is no peek guard; `min_window`, a smaller window grows
+    untested), `TestOutcome::Undecided` (ends the series), and `break_at()` and `magnitude()`
+    read the test's scratch; a `break_at()` past the peek's first observation drops the ones
+    before it after the segment is written. `Peek` carries the masked spectral rows.
+  - `outlier`: `OutlierOutcome::EndSeries`.
+  - `model`: `Model::fit()` returns whether the window could be fitted (a model that cannot ends
+    the series without the curve, `Exit::NoFit`); `Model::extend()` refits a window that grew at
+    its end. `Capability::PredictionCovariance`, a least-squares model's factor.
+  - `refit`: `due()` also reads the observations the window held at the last refit.
+  - `segment_fit`: `segment()` writes every band of a segment and returns its coefficient count,
+    under the mode's cap (`model-fit` refits on the segment's window below it); `unfitted()` is a
+    forced start's own segment when the series ends before Extend fits it. `make_scratch()`.
+  - `edge_fit`: `start_due()` and `end_due()`, whether the Start and End segments are written
+    (`lasso`: more than a peek of observations, as before).
+  - `stability_rule` and `lookback` `pyccd`: `follow_peek` (true), false for a threshold and
+    peek of `peek_size` whatever the change test's peek.
+  - A record stores no suspension for a run that takes a route a resume cannot continue
+    (shortened peeks, `Undecided`, `EndSeries`, a forced or restored search, drops before a
+    change, no fit, a mode's mask steps or cap, a search plan that reads the input's end): a
+    resume reruns that pixel. A resumed run's End segment rule knows whether the last stored
+    segment ended in a change.
+
+  ```cpp
+  ccd::PeekPlan prepare(...) const override   // a test of shortened peeks, from 12 observations
+  {
+      return ccd::PeekPlan{18, /*full=*/false, /*min_window=*/12};
+  }
+  ```
+
 - **The source layout** (headers under `include/ccd/`, sources under `src/ccd/`, tests under
   `tests/ccd/` mirror each other): `core/` (types, array views, band lists, constants, maths,
   the logger), `input/` (the QA table, the processing mask, `harmonic.hpp` with the options and

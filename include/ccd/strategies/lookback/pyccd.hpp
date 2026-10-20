@@ -30,8 +30,9 @@ ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek
 
 //------------------------------------------------------------------------------
 // lookback "pyccd": pyccd's Lookback. The peek is lookback_peek()'s, of the
-// pixel's peek size; each observation's statistic is change_magnitude() of
-// the stability fit's peek residuals against its RMSE (nothing is refitted
+// pixel's peek size (with follow_peek false, of peek_size); each
+// observation's statistic is change_magnitude() of the stability fit's peek
+// residuals against its RMSE (nothing is refitted
 // while the window grows backward). Change when every statistic is above the
 // threshold (change_threshold for a peek of peek_size, lowered for a longer
 // peek as chi2's is); else Drop when the first is above outlier_threshold;
@@ -45,6 +46,7 @@ struct PyccdLookback final : Lookback
         scalar_t change_threshold = 15.086272469388987l;
         scalar_t change_probability = 0.99;
         scalar_t outlier_threshold = 35.888186879610423L;
+        bool follow_peek = true;
     };
 
     static const std::vector<config::Field<Params>>& schema();

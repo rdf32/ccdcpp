@@ -28,6 +28,7 @@ strategy = "pyccd"
 [lookback.params]
 change_probability = 0.99
 change_threshold = 15.086272469388987
+follow_peek = true
 outlier_threshold = 35.88818687961042
 peek_size = 6
 
@@ -77,6 +78,7 @@ strategy = "pyccd"
 [stability_rule.params]
 change_probability = 0.99
 change_threshold = 15.086272469388987
+follow_peek = true
 peek_size = 6
 
 [start_search]

@@ -60,6 +60,8 @@ const std::vector<config::Field<PyccdLookback::Params>>& PyccdLookback::schema()
          config::open_interval(0, 1), "the probability a longer peek's threshold keeps"},
         {"outlier_threshold", &Params::outlier_threshold, Unit::None, config::any(),
          "the observation before the window is dropped above this"},
+        {"follow_peek", &Params::follow_peek, Unit::None, config::any(),
+         "whether the peek is the change test's; otherwise peek_size"},
     };
     return s;
 }
@@ -77,8 +79,8 @@ std::unique_ptr<Scratch> PyccdLookback::make_scratch() const
 void PyccdLookback::prepare(index_t peek, index_t detection_bands, Scratch& scratch) const
 {
     LookbackScratch& s = static_cast<LookbackScratch&>(scratch);
-    s.peek = peek;
-    s.change_threshold = s.thresholds(peek, p_.peek_size, p_.change_threshold, detection_bands,
+    s.peek = p_.follow_peek ? peek : p_.peek_size;
+    s.change_threshold = s.thresholds(s.peek, p_.peek_size, p_.change_threshold, detection_bands,
                                       p_.change_probability);
 }
 

@@ -146,6 +146,7 @@ your own registered and named.
 | other Tmask bands | `cfg.replace(window_screen__bands=[1, 2, 4])` |
 | a stricter start | `cfg.replace(stability_rule__change_threshold=11.0705)` |
 | fewer outliers dropped | `cfg.replace(outlier__threshold=30.856, lookback__outlier_threshold=30.856)` |
+| Initialize and Lookback at `peek_size`, whatever the change test's peek | `cfg.replace(stability_rule__follow_peek=False, lookback__follow_peek=False)` |
 | a sweep | `[ccdcpp.detect_cube_columns(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |
 | a new decision rule | a C++ strategy class for its stage, registered by name (below) |
 
@@ -164,7 +165,10 @@ struct EveryN final : RefitSchedule
         return s;
     }
     explicit EveryN(const Params& p) : p_(p) {}
-    bool due(index_t window_size, scalar_t, scalar_t) const override { return window_size % p_.n == 0; }
+    bool due(index_t window_size, scalar_t, index_t, scalar_t) const override
+    {
+        return window_size % p_.n == 0;
+    }
 private:
     Params p_;
 };

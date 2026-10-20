@@ -53,13 +53,15 @@ ConfigTree from_options(const HarmonicOptions& hoptions, const LassoOptions& lop
         "pyccd",
         {{"peek_size", count(hoptions.PEEK_SIZE)},
          {"change_threshold", real(hoptions.CHANGE_THRESHOLD)},
-         {"change_probability", real(hoptions.CHANGE_PROBABILITY)}}};
+         {"change_probability", real(hoptions.CHANGE_PROBABILITY)},
+         {"follow_peek", flag(true)}}};
     tree[Lookback::stage] = {
         "pyccd",
         {{"peek_size", count(hoptions.PEEK_SIZE)},
          {"change_threshold", real(hoptions.CHANGE_THRESHOLD)},
          {"change_probability", real(hoptions.CHANGE_PROBABILITY)},
-         {"outlier_threshold", real(hoptions.OUTLIER_THRESHOLD)}}};
+         {"outlier_threshold", real(hoptions.OUTLIER_THRESHOLD)},
+         {"follow_peek", flag(true)}}};
     tree[MonitoringModel::stage] = {"lasso", lasso};
     tree[RefitSchedule::stage] = {
         "span-factor",

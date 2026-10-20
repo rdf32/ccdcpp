@@ -27,7 +27,7 @@ struct SpanFactor final : RefitSchedule
 
     explicit SpanFactor(const Params& p) : p_(p) {}
 
-    bool due(index_t window_size, scalar_t window_span, scalar_t fit_span) const override
+    bool due(index_t window_size, scalar_t window_span, index_t, scalar_t fit_span) const override
     {
         return window_size <= p_.min_obs || window_span >= p_.factor * fit_span;
     }

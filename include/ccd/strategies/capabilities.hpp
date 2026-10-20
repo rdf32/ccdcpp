@@ -25,7 +25,10 @@ enum class Capability : std::uint8_t
     ModelRmse = 1 << 1,           // Model::rmse()
     InWindowResiduals = 1 << 2,   // Model::residuals()
     ComparisonRmse = 1 << 3,      // PeekResult::comparison_rmse
-    PeekStatistic = 1 << 4        // PeekResult::statistic
+    PeekStatistic = 1 << 4,       // PeekResult::statistic
+    PredictionCovariance = 1 << 5 // the model is a least-squares fit whose
+                                  // factor gives its predictions' covariance
+                                  // (a test reading it downcasts to it)
 };
 
 // A set of capabilities.

@@ -52,10 +52,9 @@ enum class GreenFilterScope : std::uint8_t
 //   Ccdc       "ccdc": the Standard machine (standard.hpp), pyccd's
 //              procedure as pyccd intends it (the default).
 //
-// Another method is another machine (docs/ccdc-state-machine.md, "Another
-// procedure"): a value here, its name in method_name(), its parameters in
-// with_method(), its detector in Run::pixel(). with_method() gives a run's
-// options for a method.
+// with_method() gives a run's options for a method. Another procedure is a
+// configuration of the same machine (docs/ccdc-state-machine.md, "Another
+// procedure"), not a method.
 //
 //==============================================================================
 

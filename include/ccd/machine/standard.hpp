@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -30,13 +31,16 @@ namespace standard
 // The Standard procedure's per-pixel cadence, set in Prepare: the peek size
 // the run's change test chose for the pixel (ChangeTest::prepare()), which
 // Extend and the machine's guards read, and the stability rule and Lookback
-// are prepared with.
+// are prepared with; the fewest observations a peek it tests holds, and a
+// window it tests (its PeekPlan's full and min_window).
 //
 //==============================================================================
 
 struct Cadence
 {
-    index_t peek;   // observations a peek holds
+    index_t peek;         // observations a peek holds
+    index_t shortest;     // peek for a test of full peeks only, else 0
+    index_t min_window;   // a smaller model window grows untested
 };
 
 // What Initialize fits a candidate window with: the options' DETECTION_BANDS,
@@ -126,7 +130,9 @@ enum class Exit : std::uint8_t
     PeekBeyondEnd,        // no full peek after the stable window
     NoRoomToInitialize,   // no room for the start search's first candidate
                           // after the cursor
-    SeriesEnd             // Extend: a curve reached the series end
+    SeriesEnd,            // Extend: a curve reached the series end
+    NoFit                 // Extend: the series ended before the model could
+                          // be fitted on the window, or it could not be
 };
 
 const char* to_string(Exit exit);
@@ -225,8 +231,11 @@ enum class ExtendOutcome : std::uint8_t
     Change,    // the change test's Change: the segment ends at the window
     Dropped,   // the first peek observation, at window.stop, is an outlier:
                // dropped, the window keeping its coordinates
-    SeriesEnd, // no change, and the peek reached the last observation: the
-               // curve ends at the window
+    SeriesEnd, // no change, and the series ends: the peek reached the last
+               // observation, or none is left, or the test or the outlier
+               // rule could not tell; the curve ends at the window
+    NoFit,     // the series ended before the model could be fitted on the
+               // window, or it could not be: the curve is not written
     Grown      // window.stop + 1
 };
 
@@ -265,6 +274,28 @@ struct State
     PerThread<StabilityRule, Scratch> stability;
     PerThread<Lookback, Scratch> lookback;   // the lookback's per-pixel state
     PerThread<EdgeFit, Scratch> edges;       // the edge fit's buffers
+    PerThread<SegmentFit, Scratch> segment_fit;
+
+    // The processing mask when the current start's search began, kept for a
+    // start search that restores it when exhausted (Exhaustion::Restore).
+    ProcessingMask search_mask;
+
+    // A forced start (Exhaustion::Force) until Extend fits it: the segment
+    // the series reports if it ends first.
+    std::optional<Window> forced;
+
+    // The current start search's plan (StartSearch::begin()).
+    SearchPlan search;
+
+    // Whether the last of the `carried` segments ended in a change (a
+    // resume's; the End segment's rule reads it while this run wrote none).
+    bool carried_change = false;
+
+    // Whether a resume can continue this run from its suspension: false once
+    // it takes a route the record does not keep (shortened peeks, a forced
+    // start, a restored search, drops before a change, no fit; or a mode's
+    // filter or cap), and then Procedure::suspended() is no suspension.
+    bool resumable = true;
 
     // Extend's carried state.
     Extension extension;
@@ -303,6 +334,9 @@ struct Context
     const Strategies& strategies;
     // Where the pixel reports what it does (results/diagnostics.hpp).
     Observe observe{};
+    // The pixel's mode's cap on its segments' coefficients (PixelMode; 0:
+    // none).
+    index_t max_coefficients = 0;
 };
 
 // The state's cursor and series length, as an observer's transition reports
@@ -333,12 +367,18 @@ Scratch& edge_scratch(const Context& context, State& state);
 // (too_few()). Otherwise sets the cadence, Initialize's criteria and the
 // variogram from the statistics window (the observations dated <= STAT_ORD); Done
 // (VariogramNaN) on a NaN in it. Puts the window at the search's first(0)
-// and prev_break at 0. Next: Initialize, or EndCatch (NoRoomToInitialize).
+// and prev_break at 0. Next: Initialize (begin_search()), or EndCatch
+// (NoRoomToInitialize).
 Phase prepare(const Context& context, State& state);
 
-// The work of the phases, apart from their routes: what another machine
-// composing this one's phases calls (docs/ccdc-state-machine.md, "Another
-// procedure").
+// Into Initialize, a search from prev_break: its plan from the start
+// search's begin() (state.search; the pixel's first search is the one from
+// 0), and the processing mask it starts from for a search that restores it.
+// Next: Initialize.
+Phase begin_search(const Context& context, State& state);
+
+// The work of the phases, apart from their routes, which tests and a trace
+// call one at a time.
 //
 //   initialize_outcome()  initialize()'s step, without the route;
 //   write_start_segment() the Start segment over (prev_break, window.start);
@@ -351,8 +391,12 @@ void write_end_segment(const Context& context, State& state);
 
 // One ccd::initialize_step() on the window against the pixel's
 // initialize_criteria (COEFFICIENT_MIN-coefficient fits), with the run's
-// stability fit (into init_model) and stability rule. Next: Initialize after a grow or a shift; after_stable_start()
-// when stable; EndCatch (InitializeExhausted) when no candidate is left.
+// stability fit (into init_model) and stability rule. Next: Initialize after
+// a grow or a shift; after_stable_start() when stable. When no candidate is
+// left, as the search's plan says: EndCatch (InitializeExhausted), the series as it
+// was or (Restore) as the search began; or (Force) the search's forced
+// start, its window the forced one, then the peek guard (no Lookback and no
+// Start segment).
 Phase initialize(const Context& context, State& state);
 
 // One Lookback step: the run's lookback judges the observation before the
@@ -374,35 +418,45 @@ Phase lookback(const Context& context, State& state);
 // COEFFICIENT_MIN coefficients. Next: Extend, or EndCatch (PeekBeyondEnd).
 Phase start_catch(const Context& context, State& state);
 
-// One Extend step, one peek test after the window. Pre: peek_fits().
-// Refits the model over the window when the extension is not trained or the
-// refit schedule is due; then, in order:
+// One Extend step, one peek test after the window. Pre: peek_fits(). A
+// window smaller than the change test's min_window() grows untested (NoFit
+// when no observation is left). Otherwise refits the model over the window
+// when the extension is not trained or the refit schedule is due (NoFit
+// when it cannot be fitted); the peek is the next `peek` observations,
+// fewer at the series end (SeriesEnd when none is left); then, in order:
 //
 //   * the change test's Change: Change, the window stays;
+//   * its Undecided: SeriesEnd;
 //   * the outlier rule's Drop: Dropped, the first peek observation (at
 //     window.stop) dropped, the window keeping its coordinates;
-//   * no change, and the peek reached the last observation (window.stop +
-//     peek == size): SeriesEnd, the window as it is;
+//   * its EndSeries: SeriesEnd;
+//   * no change, and no peek the test reads is left after the next
+//     observation (window.stop + shortest >= size): SeriesEnd, the window
+//     as it is;
 //   * otherwise Grown, the window one longer.
 //
 // It writes no segment: extend() does.
 ExtendOutcome extend_step(const Context& context, State& state);
 
 // extend_step(), then the route. After a change, writes the segment with
-// change probability 1; next Restart. After a drop or a grow, next Extend
-// while a peek fits. At the series end (SeriesEnd, or a drop that left no
-// full peek) writes the segment with change probability 0, moves prev_break
-// to the window's stop and goes to EndCatch (SeriesEnd): the curve that
-// reaches the end is the last one. The segment's curve_qa and break day are
-// the last test's: its break day is the first observation after its end.
+// change probability 1, and the peek's observations before the change
+// test's break_at() leave the series; next Restart. After a drop or a grow,
+// next Extend while a peek fits. At the series end (SeriesEnd, or a drop
+// that left no full peek) writes the segment with change probability 0,
+// moves prev_break to the window's stop and goes to EndCatch (SeriesEnd):
+// the curve that reaches the end is the last one. The segment's curve_qa is
+// the segment fit's; its break day is the change's first observation, or at
+// the series end the first observation after the window (its last when
+// none is left). After NoFit, Done (SeriesEnd) with a forced start's own
+// segment (SegmentFit::unfitted(), through the last observation) or none.
 Phase extend(const Context& context, State& state);
 
 // prev_break moves to window.stop and the window to the start search's
 // first(stop). Next: Initialize, or EndCatch (NoRoomToInitialize).
 Phase restart(const Context& context, State& state);
 
-// Writes the End segment over (prev_break, size) with COEFFICIENT_MIN
-// coefficients when prev_break + peek < size. Next: Done.
+// Writes the End segment over (prev_break, size) when the edge fit's
+// end_due() says. Next: Done.
 Phase end_catch(const Context& context, State& state);
 
 //------------------------------------------------------------------------------
@@ -412,12 +466,13 @@ Phase end_catch(const Context& context, State& state);
 // Room for a start window after the cursor: the start search's room().
 bool room_to_initialize(const Context& context, const State& state);
 
-// A full peek after the window: window.stop + peek <= size.
+// A peek the change test reads after the window: window.stop + shortest <=
+// size (a full peek for a test of full peeks only).
 bool peek_fits(const State& state);
 
 // The first segment's leading observations need a Start segment: no
-// segment yet and window.start - prev_break > peek.
-bool start_catch_due(const State& state);
+// segment yet, and the edge fit's start_due() of window.start - prev_break.
+bool start_catch_due(const Context& context, const State& state);
 
 // After a stable start: Lookback when window.start > prev_break, else
 // after_lookback().
@@ -458,14 +513,16 @@ FitResult run(const Context& context, State& state, ProcessingMask mask);
 // peek guard for PeekBeyondEnd, and for SeriesEnd the open segment's models
 // refitted on its fit window, then its pending grow and Extend when a full
 // peek now fits, or the same provisional segment again. Drives to Done; the
-// result's segments are this run's, after the carried final ones.
+// result's segments are this run's, after the carried final ones, the last
+// of which ended in a change when `carried_change`.
 // `from.exit` is one of those four.
 FitResult resume(
     const Context& context,
     State& state,
     ProcessingMask mask,
     const Suspended& from,
-    const std::vector<std::int64_t>& excluded_days
+    const std::vector<std::int64_t>& excluded_days,
+    bool carried_change = false
 );
 
 //==============================================================================
@@ -497,7 +554,8 @@ public:
         LassoWorkspace& lworkspace,
         LassoSolver& solver,
         const Strategies& strategies,
-        Observe observe = {}
+        Observe observe = {},
+        index_t max_coefficients = 0
     );
 
     // run() from where a stored run stopped (standard::resume()).
@@ -509,14 +567,13 @@ public:
         const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days,
-        Observe observe = {}
+        Observe observe = {},
+        bool carried_change = false
     );
 
-    // Where the last run() stopped.
-    const Suspended& suspended() const
-    {
-        return state_.suspended;
-    }
+    // Where the last run() stopped; no suspension (Exit::None, a resume
+    // reruns the pixel) when the run is not resumable.
+    const Suspended& suspended() const;
 
 private:
 
@@ -543,10 +600,11 @@ class Detector
 {
 public:
 
-    // Fits the observations of `hworkspace` that `mask` keeps with
-    // `procedure`: Procedure::run() or the edge fit's whole_series().
+    // Fits the observations of `hworkspace` that `mask` keeps (with the
+    // mode's extra mask steps applied) with the mode's procedure:
+    // Procedure::run() with its cap, or the edge fit's whole_series().
     FitResult fit(
-        PixelProcedure procedure,
+        const PixelMode& mode,
         const HarmonicWorkspace& hworkspace,
         ProcessingMask mask,
         LassoWorkspace& lworkspace,
@@ -565,7 +623,8 @@ public:
         const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days,
-        Observe observe = {}
+        Observe observe = {},
+        bool carried_change = false
     );
 
     // Where the last Standard fit() stopped; stale after a whole-series fit,

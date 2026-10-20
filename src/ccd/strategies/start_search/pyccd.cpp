@@ -1,5 +1,7 @@
 #include "ccd/strategies/start_search/pyccd.hpp"
 
+#include <stdexcept>
+
 namespace ccd
 {
 namespace strategies
@@ -38,6 +40,11 @@ bool PyccdSearch::room(const Window& window, index_t observations) const
 bool PyccdSearch::exhausted(const Window& window, index_t observations) const
 {
     return !(window.stop + p_.meow_size < observations);
+}
+
+Window PyccdSearch::forced(ArrayView<const std::int64_t, 1>, index_t, std::int64_t) const
+{
+    throw std::logic_error("start_search \"pyccd\" forces no start");
 }
 
 bool PyccdSearch::short_span(ArrayView<const std::int64_t, 1> dates) const

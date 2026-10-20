@@ -17,7 +17,7 @@ const std::vector<config::Field<PyccdMode::Params>>& PyccdMode::schema()
     return s;
 }
 
-PixelProcedure PyccdMode::choose(const Quality::Statistics& statistics) const
+PixelMode PyccdMode::choose(const Quality::Statistics& statistics) const
 {
     if (!statistics.enough_clear(p_.clear_pct_threshold)) {
         if (statistics.enough_snow(p_.snow_pct_threshold)) {

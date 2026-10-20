@@ -358,6 +358,15 @@ void apply(
     ProcessingMask& mask
 );
 
+// apply()'s steps on `mask` as it is (T entries): a chain after another.
+void apply_steps(
+    const Chain& chain,
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qas,
+    ProcessingMask& mask
+);
+
 } // namespace preprocess
 
 using PreprocessPlanPtr = preprocess::PreprocessPlanPtr;

@@ -41,8 +41,11 @@ public:
     // observations, for every b in `bands`, in that order, with num_coef
     // coefficients; the pixel's models have at most max_coef. Keeps each
     // band's in-window residuals (residuals()) when `keep` is Yes. The other
-    // bands' fits are not touched.
-    virtual void fit(
+    // bands' fits are not touched (a model may fit them too). False when
+    // the window cannot be fitted with num_coef coefficients: the machine
+    // then reads no fit of it (a segment fit refitting may still report
+    // what the model holds).
+    virtual bool fit(
         ArrayView<const std::int64_t, 1> dates,
         ArrayView<const scalar_t, 2> spectral,
         index_t num_coef,
@@ -50,6 +53,21 @@ public:
         const BandList& bands,
         KeepResiduals keep
     ) = 0;
+
+    // fit() on a window that grew at its end since the last fit (the same
+    // first observation): a model may add only the new observations. A
+    // fit() unless overridden.
+    virtual bool extend(
+        ArrayView<const std::int64_t, 1> dates,
+        ArrayView<const scalar_t, 2> spectral,
+        index_t num_coef,
+        index_t max_coef,
+        const BandList& bands,
+        KeepResiduals keep
+    )
+    {
+        return fit(dates, spectral, num_coef, max_coef, bands, keep);
+    }
 
     // |y - prediction| of band b's fit at each peek observation, for every b
     // in `bands`, into residuals[b] (resized to the peek's length; the other
