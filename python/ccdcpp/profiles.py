@@ -33,20 +33,6 @@ values are not validated, and ccdcpp.presets does not contain it::
 
 The configuration names its detection and Tmask bands by role ("green",
 "swir1", ...); a profile whose roles lack one is refused when it runs.
-
-A profile's ``preprocess=`` is a :class:`Preprocess`: per procedure, the
-filter steps that build the processing mask and the transform before them,
-written with roles and QA code names. None, the default, is the default plan
-of the profile's input and configuration (``ccdcpp.default_plan``). The Standard procedure
-keeping snow observations::
-
-    from ccdcpp import BandRange, Dedupe, KeepQa, Preprocess, ProcedureChain
-    from ccdcpp import ThermalRange
-
-    keeps_snow = Preprocess(standard=ProcedureChain(steps=(
-        KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe(),
-    )))  # and the default transform, the profile's thermal one
-    profile = dataclasses.replace(presets.landsat_c1_dn(), preprocess=keeps_snow)
 """
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -55,438 +41,50 @@ from typing import Mapping, Optional, Tuple, Union
 
 import numpy as np
 
-from .ccdcpp import (
-    CCD_MAX_BANDS,
-    NO_STAT_CUTOFF,
-    ROLES,
-    Affine,
-    Chain,
-    GreenFilterScope,
-    Input,
-    PreprocessPlan,
-    ProcedurePlan,
-    Step,
-    default_plan,
-    qa_tables,
-    validate_plan,
-)
-
-#: ``green_filter_scope`` names -> ``ccdcpp.GreenFilterScope`` values.
-GREEN_FILTER_SCOPES = {
-    "all": GreenFilterScope.All,
-    "stat_window": GreenFilterScope.StatWindow,
-    "off": GreenFilterScope.Off,
-}
-
-def _flag_pair(value, name):
-    """``value`` as a ``(bool, bool)``, for the inclusive-bound fields."""
-    pair = tuple(value)
-    if len(pair) != 2 or not all(isinstance(v, (bool, np.bool_)) for v in pair):
-        raise ValueError(f"{name} is {value!r}; it must be two bools (lo, hi)")
-    return (bool(pair[0]), bool(pair[1]))
+from .ccdcpp import CCD_MAX_BANDS, ROLES, Input, qa_tables
 
 
 @dataclass(frozen=True)
 class Units:
     """The units of the reflective bands.
 
-    refl_min, refl_max
-        ``Input.refl_min``, ``Input.refl_max``: the saturation bounds, tested
-        on the saturation bands.
     reflectance_unit
         ``Input.reflectance_unit``: the value one unit of reflectance has in
         the data (Collection-1 DN 10000, reflectance 1).
-    refl_inclusive
-        ``(refl_min_inclusive, refl_max_inclusive)``: whether a value equal
-        to each bound is kept (default ``(False, False)``, pyccd's exclusive
-        range, which rejects NaN). NaN passes only with both True.
     """
 
-    refl_min: float
-    refl_max: float
     reflectance_unit: float
-    refl_inclusive: Tuple[bool, bool] = (False, False)
-
-    def __post_init__(self):
-        object.__setattr__(self, "refl_inclusive", _flag_pair(self.refl_inclusive, "refl_inclusive"))
 
 
 @dataclass(frozen=True)
 class Thermal:
-    """The thermal band's transform and bounds.
+    """The thermal band's transform.
 
     scale, offset
-        ``Input.thermal_scale``, ``Input.thermal_offset``: the Standard
-        procedure reads ``thermal * scale + offset``. ``(1.0, 0.0)`` for input
-        already in the bounds' unit.
-    min, max
-        ``Input.therm_min``, ``Input.therm_max``: the valid range, after the
-        transform.
-    inclusive
-        ``(therm_min_inclusive, therm_max_inclusive)``: whether a value equal
-        to each bound is kept (default ``(False, False)``, pyccd's exclusive
-        range, which rejects NaN).
+        ``Input.thermal_scale``, ``Input.thermal_offset``: a procedure that
+        transforms thermal reads ``thermal * scale + offset``, hundredths of a
+        degree Celsius times ``reflectance_unit / 10000``. ``(1.0, 0.0)`` for
+        input already in that unit.
     """
 
     scale: float
     offset: float
-    min: float
-    max: float
-    inclusive: Tuple[bool, bool] = (False, False)
-
-    def __post_init__(self):
-        object.__setattr__(self, "inclusive", _flag_pair(self.inclusive, "inclusive"))
 
 
 #: Collection 1 DN: reflectance x 10000 (``Input()`` defaults).
-DN = Units(refl_min=0.0, refl_max=10000.0, reflectance_unit=10000.0)
+DN = Units(reflectance_unit=10000.0)
 
 #: Surface reflectance, 0..1: :data:`DN` divided by 10000.
-REFLECTANCE = Units(refl_min=0.0, refl_max=1.0, reflectance_unit=1.0)
+REFLECTANCE = Units(reflectance_unit=1.0)
 
 #: Thermal as Kelvin x 10, transformed to degrees Celsius x 100
 #: (``Input()`` defaults).
-KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0, min=-9320.0, max=7070.0)
+KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0)
 
 #: Thermal already in degrees Celsius / 100, the unit that shares the
 #: reflectance scale factor of 10000 with the optical bands (one Lasso alpha
 #: serves every band only if every band has the same scale).
-CELSIUS_HUNDREDTHS = Thermal(scale=1.0, offset=0.0, min=-0.9320, max=0.7070)
-
-
-#------------------------------------------------------------------------------
-# Preprocessing steps, by role and QA code name.
-#
-# Each step resolves to a ccdcpp.Step against a profile, the Input of the run
-# and the shared values its configuration resolves to for it
-# (SensorProfile.preprocess_plan). A field left None takes the value
-# default_plan() would use from those, so a step with every field None is the
-# default plan's step.
-#------------------------------------------------------------------------------
-
-#: QA code names -> the ``ccdcpp.Input`` fields that hold the codes.
-QA_CODE_FIELDS = {
-    "fill": "qa_fill",
-    "clear": "qa_clear",
-    "water": "qa_water",
-    "shadow": "qa_shadow",
-    "snow": "qa_snow",
-    "cloud": "qa_cloud",
-}
-
-
-def _codes(value, where):
-    """``value`` as a tuple of QA code names and ints 0..255."""
-    codes = (value,) if isinstance(value, (str, int)) else tuple(value)
-    for code in codes:
-        if isinstance(code, str):
-            if code not in QA_CODE_FIELDS:
-                raise ValueError(
-                    f"{where}: unknown QA code name {code!r}; names are "
-                    f"{tuple(QA_CODE_FIELDS)}, or pass an int code")
-        elif isinstance(code, (bool, np.bool_)) or not isinstance(code, (int, np.integer)) \
-                or not 0 <= code <= 255:
-            raise ValueError(f"{where}: QA code {code!r} is not a name or an int in 0..255")
-    return tuple(c if isinstance(c, str) else int(c) for c in codes)
-
-
-def _resolve_codes(codes, input):
-    return [int(getattr(input, QA_CODE_FIELDS[c])) if isinstance(c, str) else c
-            for c in codes]
-
-
-def _optional_pair(value, name):
-    return None if value is None else _flag_pair(value, name)
-
-
-def _role_index(profile, role, where):
-    if role == "other" or role not in profile.roles:
-        profile._fail(
-            f"{where} names {role!r}, which is not a role of this profile's bands "
-            f"{dict(zip(profile.band_names, profile.roles))}")
-    return profile.index(role)
-
-
-@dataclass(frozen=True)
-class KeepQa:
-    """Keep only the observations whose QA code is in ``codes``: names from
-    :data:`QA_CODE_FIELDS` (the run's ``qa_*`` codes) or ints."""
-
-    codes: Tuple[Union[str, int], ...] = ("clear", "water")
-
-    def __post_init__(self):
-        object.__setattr__(self, "codes", _codes(self.codes, "KeepQa"))
-
-    def _roles(self):
-        return ()
-
-    def _step(self, profile, input, shared):
-        return Step.keep_qa(_resolve_codes(self.codes, input))
-
-
-@dataclass(frozen=True)
-class AddQa:
-    """Also keep every observation whose QA code is in ``codes``, whatever an
-    earlier step decided. Must be followed by :class:`Dedupe`."""
-
-    codes: Tuple[Union[str, int], ...] = ("snow",)
-
-    def __post_init__(self):
-        object.__setattr__(self, "codes", _codes(self.codes, "AddQa"))
-
-    def _roles(self):
-        return ()
-
-    def _step(self, profile, input, shared):
-        return Step.add_qa(_resolve_codes(self.codes, input))
-
-
-@dataclass(frozen=True)
-class ThermalRange:
-    """Keep only the observations whose thermal band lies in
-    ``(min, max)``; an inclusive end also keeps a value equal to it.
-
-    None takes ``therm_min``, ``therm_max`` and their flags from the run's
-    input, which a profile sets from its :class:`Thermal`. The band is the
-    profile's ``"thermal"`` band; a profile without one raises ValueError.
-    The bounds are in the unit of the band after its procedure's transform,
-    if any.
-    """
-
-    min: Optional[float] = None
-    max: Optional[float] = None
-    inclusive: Optional[Tuple[bool, bool]] = None
-
-    def __post_init__(self):
-        object.__setattr__(self, "inclusive", _optional_pair(self.inclusive, "inclusive"))
-
-    def _roles(self):
-        return ("thermal",)
-
-    def _step(self, profile, input, shared):
-        lo = input.therm_min if self.min is None else self.min
-        hi = input.therm_max if self.max is None else self.max
-        flags = ((input.therm_min_inclusive, input.therm_max_inclusive)
-                 if self.inclusive is None else self.inclusive)
-        return Step.thermal_range(_role_index(profile, "thermal", "ThermalRange"),
-                                  lo, hi, flags)
-
-
-@dataclass(frozen=True)
-class BandRange:
-    """Keep only the observations on which every band of ``roles`` lies in
-    ``(min, max)``, the bands tested in order; an inclusive end also keeps a
-    value equal to it.
-
-    None takes the run's ``saturation_bands`` (a profile's ``saturation``),
-    ``refl_min``, ``refl_max`` and their flags (a profile's :class:`Units`).
-    """
-
-    roles: Optional[Tuple[str, ...]] = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    inclusive: Optional[Tuple[bool, bool]] = None
-
-    def __post_init__(self):
-        if self.roles is not None:
-            roles = (self.roles,) if isinstance(self.roles, str) else tuple(self.roles)
-            object.__setattr__(self, "roles", roles)
-        object.__setattr__(self, "inclusive", _optional_pair(self.inclusive, "inclusive"))
-
-    def _roles(self):
-        return () if self.roles is None else self.roles
-
-    def _step(self, profile, input, shared):
-        bands = (input.saturation_bands if self.roles is None else
-                 [_role_index(profile, r, "BandRange") for r in self.roles])
-        lo = input.refl_min if self.min is None else self.min
-        hi = input.refl_max if self.max is None else self.max
-        flags = ((input.refl_min_inclusive, input.refl_max_inclusive)
-                 if self.inclusive is None else self.inclusive)
-        return Step.band_range(bands, lo, hi, flags)
-
-
-@dataclass(frozen=True)
-class GreenMedian:
-    """InsufficientClear's cloud screen: drop the observations whose band is
-    at or above the median of that band over the kept observations dated
-    ``<= max_date``, plus ``offset``, at the dates ``scope`` names.
-
-    None takes the run's shared ``green_filter`` (in the input's units),
-    ``green_filter_scope`` and ``stat_ord``, as its configuration resolves
-    them for the input.
-    ``scope`` is a name from :data:`GREEN_FILTER_SCOPES` or a
-    ``ccdcpp.GreenFilterScope``. ``role`` is the band, ``"green"``.
-    """
-
-    offset: Optional[float] = None
-    scope: Optional[str] = None
-    max_date: Optional[int] = None
-    role: str = "green"
-
-    def __post_init__(self):
-        if isinstance(self.scope, GreenFilterScope):
-            names = {v: k for k, v in GREEN_FILTER_SCOPES.items()}
-            object.__setattr__(self, "scope", names[self.scope])
-        if self.scope is not None and self.scope not in GREEN_FILTER_SCOPES:
-            raise ValueError(
-                f"GreenMedian: scope is {self.scope!r}; it is one of "
-                f"{tuple(GREEN_FILTER_SCOPES)}")
-
-    def _roles(self):
-        return (self.role,)
-
-    def _step(self, profile, input, shared):
-        return Step.green_median(
-            _role_index(profile, self.role, "GreenMedian"),
-            shared["green_filter"] if self.offset is None else self.offset,
-            shared["stat_ord"] if self.max_date is None else self.max_date,
-            GREEN_FILTER_SCOPES[shared["green_filter_scope"] if self.scope is None
-                                else self.scope],
-        )
-
-
-@dataclass(frozen=True)
-class Dedupe:
-    """Keep the first kept observation of each date."""
-
-    def _roles(self):
-        return ()
-
-    def _step(self, profile, input, shared):
-        return Step.dedupe()
-
-
-_STEP_TYPES = (KeepQa, AddQa, ThermalRange, BandRange, GreenMedian, Dedupe)
-
-
-@dataclass(frozen=True)
-class Transform:
-    """``band <- band * scale + offset`` on the per-pixel copy of the band
-    with ``role``, before its procedure's steps run. The caller's array is
-    never written."""
-
-    role: str
-    scale: float = 1.0
-    offset: float = 0.0
-
-    def _affine(self, profile):
-        return Affine(_role_index(profile, self.role, "Transform"),
-                      float(self.scale), float(self.offset))
-
-
-#: ``ProcedureChain.transform``'s default: the procedure's transform in the
-#: default plan.
-DEFAULT_TRANSFORM = "default"
-
-
-@dataclass(frozen=True)
-class ProcedureChain:
-    """One procedure's preprocessing.
-
-    steps
-        The steps, in order (at most ``ccdcpp.CHAIN_CAPACITY``), or None
-        for the procedure's steps in the default plan.
-    transform
-        :data:`DEFAULT_TRANSFORM` (the default) for the procedure's
-        transform in the default plan, a :class:`Transform`, or None for
-        none. The default plan transforms the Standard procedure's thermal
-        band (a profile's ``thermal.scale``/``thermal.offset``, none when
-        that is the identity) and nothing else.
-    """
-
-    steps: Optional[Tuple[object, ...]] = None
-    transform: Union[Transform, None, str] = "default"
-
-    def __post_init__(self):
-        if self.steps is not None:
-            steps = tuple(self.steps)
-            for step in steps:
-                if not isinstance(step, _STEP_TYPES):
-                    raise TypeError(
-                        f"ProcedureChain: {step!r} is not a step; steps are "
-                        f"{', '.join(t.__name__ for t in _STEP_TYPES)}")
-            object.__setattr__(self, "steps", steps)
-        if not (self.transform is None or self.transform == DEFAULT_TRANSFORM
-                or isinstance(self.transform, Transform)):
-            raise TypeError(
-                f"ProcedureChain: transform is {self.transform!r}; it is a Transform, None "
-                f"or {DEFAULT_TRANSFORM!r}")
-
-    def _roles(self):
-        roles = (self.transform.role,) if isinstance(self.transform, Transform) else ()
-        for step in self.steps or ():
-            roles += step._roles()
-        return roles
-
-    def _plan(self, default, profile, input, shared):
-        chain = (default.chain if self.steps is None else
-                 Chain([s._step(profile, input, shared) for s in self.steps]))
-        if self.transform == DEFAULT_TRANSFORM:
-            transform = default.transform
-        else:
-            transform = None if self.transform is None else self.transform._affine(profile)
-        return ProcedurePlan(transform, chain)
-
-
-#: The procedures of a :class:`Preprocess`, as ``ccdcpp.PreprocessPlan``
-#: names them.
-PROCEDURES = ("standard", "snow", "insufficient_clear")
-
-
-@dataclass(frozen=True)
-class Preprocess:
-    """A preprocessing plan by role: a :class:`ProcedureChain` per procedure.
-
-    standard, snow, insufficient_clear
-        The Standard, PermanentSnow and InsufficientClear procedures. None
-        keeps that procedure's default plan, transform and steps.
-
-    :meth:`plan` resolves it against a profile, the run's input and its
-    configuration into a ``ccdcpp.PreprocessPlan``: roles become the
-    profile's row indices, QA code names the input's codes, and fields left
-    None the input's values and the configuration's shared ones.
-    ``Preprocess()`` is ``ccdcpp.default_plan(input, config)``.
-    """
-
-    standard: Optional[ProcedureChain] = None
-    snow: Optional[ProcedureChain] = None
-    insufficient_clear: Optional[ProcedureChain] = None
-
-    def __post_init__(self):
-        for name in PROCEDURES:
-            value = getattr(self, name)
-            if value is not None and not isinstance(value, ProcedureChain):
-                raise TypeError(
-                    f"Preprocess: {name} is {value!r}, not a ProcedureChain")
-
-    def _roles(self):
-        roles = ()
-        for name in PROCEDURES:
-            chain = getattr(self, name)
-            if chain is not None:
-                roles += chain._roles()
-        return roles
-
-    def plan(self, profile, input=None, config=None):
-        """The ``ccdcpp.PreprocessPlan`` of this plan for ``profile``, with
-        the ``input`` of the run (default: the profile's own) and its
-        configuration (a ``ccdcpp.Config``; default: "ccdc"). Raises
-        ValueError when the plan does not fit the profile
-        (``ccdcpp.validate_plan``)."""
-        from .config import config as _config
-
-        h = profile.input() if input is None else input
-        cfg = _config("ccdc") if config is None else config
-        default = default_plan(h, cfg)
-        shared = cfg.resolve(h)["shared"]
-        plan = PreprocessPlan(
-            *(getattr(default, name) if getattr(self, name) is None
-              else getattr(self, name)._plan(getattr(default, name), profile, h, shared)
-              for name in PROCEDURES)
-        )
-        validate_plan(plan, len(profile.band_names))
-        return plan
+CELSIUS_HUNDREDTHS = Thermal(scale=1.0, offset=0.0)
 
 
 QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]
@@ -518,14 +116,16 @@ class SensorProfile:
         One role from :data:`ROLES` per band, in the same order. ``"green"``
         is required; ``"thermal"`` requires ``thermal=``.
     saturation
-        Role names: the bands tested against the saturation bounds
-        (``Input.saturation_bands``; may be empty, must not hold thermal), in
-        the order the procedures test them.
+        Role names: the bands a saturated value can appear in
+        (``Input.saturation_bands``, the rows the configuration's band_range
+        tests by default; may be empty, must not hold thermal), in the order
+        they are tested.
     units
         The reflective bands' units, a :class:`Units`.
     thermal
         A :class:`Thermal`, or None for an input without a thermal band
-        (no ``"thermal"`` role, which skips the transform and filter).
+        (no ``"thermal"`` role, which skips the transform and the thermal
+        range).
     saturated
         ``Input.saturated``: the value a saturated observation holds, as the
         sensor writes it, or None (the default) when the profile does not
@@ -534,10 +134,6 @@ class SensorProfile:
     qa_table_builder
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
-    preprocess
-        A :class:`Preprocess`, or None (the default) for the default plan of
-        the configuration. The entry points run it in place of the default
-        plan; see :meth:`preprocess_plan`.
     qa_table_options
         Keyword arguments of ``qa_table_builder`` beyond the input, as a
         mapping or ``(name, value)`` pairs; empty (the default) for none.
@@ -566,7 +162,6 @@ class SensorProfile:
     thermal: Optional[Thermal] = None
     saturated: Optional[float] = None
     qa_table_builder: Optional[str] = None
-    preprocess: Optional[Preprocess] = None
     qa_table_options: QaTableOptions = field(default=())
 
     def __post_init__(self):
@@ -610,15 +205,6 @@ class SensorProfile:
             self._fail(f"saturation repeats a role: {self.saturation}")
         if "thermal" in self.saturation:
             self._fail("saturation holds 'thermal'; the thermal bounds test it")
-        if self.preprocess is not None:
-            if not isinstance(self.preprocess, Preprocess):
-                self._fail(f"preprocess is {self.preprocess!r}, not a ccdcpp.Preprocess")
-            for role in self.preprocess._roles():
-                if role == "other" or role not in self.roles:
-                    self._fail(
-                        f"preprocess names {role!r}, which is not a role of this "
-                        f"profile's bands {dict(zip(self.band_names, self.roles))}"
-                    )
         if self.qa_table_builder is not None and not callable(
             getattr(qa_tables, self.qa_table_builder, None)
         ):
@@ -707,22 +293,6 @@ class SensorProfile:
         """
         return _input_of(self)
 
-    def preprocess_plan(self, input=None, config=None):
-        """The ``ccdcpp.PreprocessPlan`` this profile runs, a new object.
-
-        ``preprocess`` resolved against this profile, ``input`` (default: the
-        profile's own; pass the input the run uses) and ``config`` (a
-        ``ccdcpp.Config``; default: "ccdc"), or
-        ``ccdcpp.default_plan(input, config)`` when ``preprocess`` is None.
-        """
-        from .config import config as _config
-
-        h = self.input() if input is None else input
-        cfg = _config("ccdc") if config is None else config
-        if self.preprocess is None:
-            return default_plan(h, cfg)
-        return self.preprocess.plan(self, h, cfg)
-
     def check(self, spectral, band_names=None):
         """Raise ValueError unless the band axis of ``spectral`` has one row
         per band of the profile, and, with ``band_names``, unless those names
@@ -801,15 +371,9 @@ def _input_of(profile):
     h.saturation_bands = [profile.index(r) for r in profile.saturation]
     h.reflectance_unit = profile.units.reflectance_unit
     h.saturated = profile.saturated
-    h.refl_min = profile.units.refl_min
-    h.refl_max = profile.units.refl_max
-    h.refl_min_inclusive, h.refl_max_inclusive = profile.units.refl_inclusive
     if profile.thermal is not None:
         h.thermal_scale = profile.thermal.scale
         h.thermal_offset = profile.thermal.offset
-        h.therm_min = profile.thermal.min
-        h.therm_max = profile.thermal.max
-        h.therm_min_inclusive, h.therm_max_inclusive = profile.thermal.inclusive
     if profile.qa_table_builder is not None:
         codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
         h.qa_table = _build_table(profile.qa_table_builder, codes, profile.qa_table_options)

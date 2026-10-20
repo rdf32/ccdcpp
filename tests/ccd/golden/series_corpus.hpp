@@ -99,7 +99,7 @@ inline ccd::PixelRun recorded_at(const Series& s, std::int64_t stat_ord)
 {
     return ccd::run_pixel(
         golden::spec_of(s.h, with_shared(s.config, "stat_ord", ccd::config::integer(stat_ord)),
-                        nullptr, true),
+                        true),
         s.date_view(),
         s.spectral_view(),
         s.qa_view());
@@ -157,6 +157,7 @@ inline std::vector<Series> csv_series(const std::string& dir)
     out.push_back(read_csv("atlanta_481_393", dir + "/test_atlanta_024013_00030008_481_393.csv", false));
     Series c2 = read_csv("c2", dir + "/test002_c2.csv", true);
     c2.h = c2_input();
+    c2.config = c2_config();
     out.push_back(std::move(c2));
     return out;
 }

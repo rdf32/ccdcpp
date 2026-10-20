@@ -192,26 +192,6 @@ static QaType qa_type(const py::array& qas)
 }
 
 //------------------------------------------------------------------------------
-// `_plan=`, as an entry point accepts it: None for the default plan, or a
-// ccdcpp.PreprocessPlan, copied here so that the call never reads an object
-// Python can change while the GIL is released, and checked against the band
-// count (ValueError) before it is.
-//------------------------------------------------------------------------------
-
-static ccd::PreprocessPlanPtr take_plan(
-    const ccd::preprocess::PreprocessPlan* plan,
-    ccd::index_t bands
-)
-{
-    if (plan == nullptr)
-        return nullptr;
-
-    auto copy = std::make_shared<const ccd::preprocess::PreprocessPlan>(*plan);
-    ccd::preprocess::validate(*copy, bands);
-    return copy;
-}
-
-//------------------------------------------------------------------------------
 // resume=, as the entry points accept it: the previous call's output, made
 // with record=True or by a resume. ValueError for anything else, naming what
 // it lacks.
@@ -291,8 +271,7 @@ static py::dict detect_wrapper(
     py::object config,
     bool record,
     py::object resume,
-    bool trace,
-    const ccd::preprocess::PreprocessPlan* plan
+    bool trace
 )
 {
     const bool with_table = input.qa_table != nullptr;
@@ -350,7 +329,6 @@ static py::dict detect_wrapper(
     ccd::RunSpec spec;
     spec.input = input;
     spec.algorithm = algorithm_from_python(config);
-    spec.plan = take_plan(plan, bands);
     spec.record = record;
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
     spec.observer = recording;
@@ -415,7 +393,7 @@ static py::dict detect_wrapper(
 // uint16 with the input's table; see accept_qas().
 //
 // Nothing is written to `spectral`: a plan's transform happens in the
-// per-pixel copy. A plan is copied and checked by take_plan().
+// per-pixel copy.
 //------------------------------------------------------------------------------
 
 // The element type of CubeInput::spectral, read while the GIL is held:
@@ -690,8 +668,7 @@ static py::dict detect_cube_wrapper(
     int threads,
     bool record,
     py::object resume,
-    py::object trace_pixels,
-    const ccd::preprocess::PreprocessPlan* plan
+    py::object trace_pixels
 )
 {
     const CubeInput views = check_cube(dates, spectral, qas, input);
@@ -699,7 +676,6 @@ static py::dict detect_cube_wrapper(
     ccd::RunSpec spec;
     spec.input = input;
     spec.algorithm = algorithm_from_python(config);
-    spec.plan = take_plan(plan, views.B);
     spec.keep_masks = false;   // no column holds the mask
     spec.record = record;
 
@@ -789,7 +765,6 @@ void bind_detect(py::module_& m)
         py::arg("record") = false,
         py::arg("resume") = py::none(),
         py::arg("trace") = false,
-        py::arg("_plan") = nullptr,
         "CCD on one pixel (see ccdcpp.detect)."
     );
     m.def(
@@ -805,7 +780,6 @@ void bind_detect(py::module_& m)
         py::arg("record") = false,
         py::arg("resume") = py::none(),
         py::arg("trace_pixels") = py::none(),
-        py::arg("_plan") = nullptr,
         "CCD on every pixel of a cube, as columns (see ccdcpp.detect_cube)."
     );
     m.def("resume_schema", &resume_schema);

@@ -1,8 +1,8 @@
 
 #pragma once
 
-// ccdcpp's C++ API: the checks every call makes, the resume record's digest
-// and fingerprint, and (run/run.hpp) the entry points run_pixel and run_cube.
+// ccdcpp's C++ API: the checks every call makes, the resume record's
+// fingerprint, and (run/run.hpp) the entry points run_pixel and run_cube.
 
 #include <cstdint>
 
@@ -63,17 +63,6 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates);
 // The resume record (record.hpp)
 //
 //------------------------------------------------------------------------------
-
-// A fingerprint of everything besides the pixels that decides a run's
-// outputs: the input, its QA table's codes included, and the resolved
-// configuration (Resolved::digest), and every field of the plan. Equal ones give equal digests on every platform; unequal ones,
-// different digests but for a 64-bit collision. The shared stat_ord is in
-// it: a resumed run is given the first run's configuration, and caps the
-// cutoffs itself (ResumeHeader::statistics_end).
-std::uint64_t options_digest(
-    const config::Resolved& resolved,
-    const preprocess::PreprocessPlan& plan
-);
 
 // A fingerprint of one pixel's input up to `through`: of each observation
 // dated on or before it whose QA code is not `qa_fill`, its date, its QA

@@ -6,7 +6,7 @@
 //     pmask.cpp           // ProcessingMask
 //     quality.cpp         // Quality::Statistics
 //     qa_tables.cpp       // QaTable, ccdcpp.qa_tables
-//     preprocess.cpp      // PreprocessPlan, default_plan, validate_plan
+//     preprocess.cpp      // PreprocessPlan and its parts, plan_of
 //     config.cpp          // Algorithm, the configuration helpers
 
 #include <pybind11/pybind11.h>

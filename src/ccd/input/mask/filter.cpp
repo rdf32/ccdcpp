@@ -7,65 +7,32 @@
 
 #include "ccd/core/constants.hpp"
 #include "ccd/core/logger.hpp"
-#include "ccd/input/mask/preprocess.hpp"
 
 namespace ccd
 {
 
+const char* name(GreenFilterScope scope)
+{
+    switch (scope)
+    {
+        case GreenFilterScope::All:        return "all";
+        case GreenFilterScope::StatWindow: return "stat_window";
+        case GreenFilterScope::Off:        return "off";
+    }
+    return "?";
+}
+
+std::optional<GreenFilterScope> green_filter_scope(const std::string& name)
+{
+    for (const GreenFilterScope scope :
+         {GreenFilterScope::All, GreenFilterScope::StatWindow, GreenFilterScope::Off})
+        if (name == ccd::name(scope))
+            return scope;
+    return std::nullopt;
+}
+
 namespace filter
 {
-
-namespace
-{
-
-ProcessingMask run_chain(
-    const preprocess::Chain& chain,
-    const HarmonicWorkspace& workspace
-)
-{
-    ProcessingMask mask;
-    preprocess::apply(
-        chain,
-        workspace.dates(),
-        workspace.spectral(),
-        workspace.qas(),
-        mask
-    );
-    return mask;
-}
-
-} // namespace
-
-ProcessingMask standard(
-    const HarmonicWorkspace& workspace
-)
-{
-    return run_chain(
-        preprocess::default_plan(workspace.input(), workspace.shared()).standard.chain,
-        workspace
-    );
-}
-
-ProcessingMask snow(
-    const HarmonicWorkspace& workspace
-)
-{
-    return run_chain(
-        preprocess::default_plan(workspace.input(), workspace.shared()).snow.chain,
-        workspace
-    );
-}
-
-ProcessingMask insufficientclear(
-    const HarmonicWorkspace& workspace
-)
-{
-    return run_chain(
-        preprocess::default_plan(workspace.input(), workspace.shared()).insufficient_clear.chain,
-        workspace
-    );
-}
-
 
 void apply_thermal_filter(
     ArrayView<const scalar_t, 2> spectral,

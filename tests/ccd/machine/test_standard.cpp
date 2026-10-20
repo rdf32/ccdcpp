@@ -362,7 +362,7 @@ TEST(CCD, DetectStandard)
     ccd::standard::Procedure fit_procedure;
     ccd::FitResult result = fit_procedure.run(
         hworkspace,
-        ccd::filter::standard(hworkspace),
+        golden::chain_mask(hworkspace, "standard", golden::ccdc()),
         golden::strategies_of()
     );
 

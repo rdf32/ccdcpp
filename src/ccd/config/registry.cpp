@@ -1,5 +1,6 @@
 #include "ccd/config/registry.hpp"
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -24,20 +25,75 @@ std::string listed(const std::vector<std::string>& names)
     return out;
 }
 
-// `value` of a field in `unit`, as the input holds it: a reflectance times
-// input->reflectance_unit, a band list by role as the input's rows. Without
-// an input (a check), the value as written, and none for a band list by
-// role once its roles are known ones. `at` names the field in messages.
+// The QA code names and the Input fields that hold their codes.
+const std::vector<std::pair<std::string, std::uint8_t Input::*>>& qa_code_names()
+{
+    static const std::vector<std::pair<std::string, std::uint8_t Input::*>> names = {
+        {"fill", &Input::qa_fill},       {"clear", &Input::qa_clear},
+        {"water", &Input::qa_water},     {"shadow", &Input::qa_shadow},
+        {"snow", &Input::qa_snow},       {"cloud", &Input::qa_cloud},
+        {"cirrus1", &Input::qa_cirrus1}, {"cirrus2", &Input::qa_cirrus2},
+        {"occlusion", &Input::qa_occlusion},
+    };
+    return names;
+}
+
+// A number of a Value, an integer read as a real; none for another type.
+std::optional<double> number_of(const Value& value)
+{
+    if (const auto* v = std::get_if<double>(&value))
+        return *v;
+    if (const auto* v = std::get_if<std::int64_t>(&value))
+        return static_cast<double>(*v);
+    return std::nullopt;
+}
+
+// `value` of a field in `unit`, as the input holds it (Unit): a reflectance
+// times input->reflectance_unit, degrees Celsius in the thermal row's unit, a
+// band list by role as the input's rows, QA code names as its codes. Without
+// an input (a check), the value as written, and none for a list by name once
+// its names are known ones. `at` names the field in messages.
 std::optional<Value> convert(Unit unit, const Value& value, const std::string& at,
                              const Input* input)
 {
     if (unit == Unit::Reflectance && input)
     {
-        if (const auto* v = std::get_if<double>(&value))
+        if (const auto v = number_of(value))
             return real(*v * input->reflectance_unit);
-        if (const auto* v = std::get_if<std::int64_t>(&value))
-            return real(static_cast<double>(*v) * input->reflectance_unit);
         return value;
+    }
+    if (unit == Unit::Celsius && input)
+    {
+        if (const auto v = number_of(value))
+            return real(*v * 100.0 * input->reflectance_unit / 10000.0);
+        return value;
+    }
+    if (unit == Unit::QaCodes)
+    {
+        const auto* names = std::get_if<std::vector<std::string>>(&value);
+        if (!names)
+            return value;
+        std::vector<std::int64_t> codes;
+        for (const std::string& name : *names)
+        {
+            const auto& known = qa_code_names();
+            const auto it = std::find_if(known.begin(), known.end(),
+                                         [&](const auto& n) { return n.first == name; });
+            if (it == known.end())
+            {
+                std::vector<std::string> all;
+                for (const auto& n : known)
+                    all.push_back(n.first);
+                throw std::invalid_argument(at + " holds '" + name +
+                                            "', which is not a QA code name; the names are " +
+                                            listed(all));
+            }
+            if (input)
+                codes.push_back(static_cast<std::int64_t>(input->*(it->second)));
+        }
+        if (!input)
+            return std::nullopt;
+        return Value(std::move(codes));
     }
     if (unit == Unit::Bands)
     {
@@ -112,10 +168,6 @@ index_t resolve_shared(const Values& given, const Input* input, Shared& shared)
         throw std::invalid_argument("shared value 'detection_bands' is empty");
     if (input)
         check_band_list(shared.detection_bands, input->bands(), "shared value 'detection_bands'");
-    if (!green_filter_scope(shared.green_filter_scope))
-        throw std::invalid_argument("shared value 'green_filter_scope' is '" +
-                                    shared.green_filter_scope +
-                                    "'; it is all, stat_window or off");
     return detection;
 }
 
@@ -164,6 +216,32 @@ void hash(detail::Fnv& h, const ConfigTree& stages)
         h.text(chosen.strategy);
         hash(h, chosen.params);
     }
+}
+
+void hash(detail::Fnv& h, const PreprocessConfig& preprocess)
+{
+    h.integer(static_cast<std::int64_t>(preprocess.size()));
+    for (const auto& [procedure, chain] : preprocess)
+    {
+        h.text(procedure);
+        h.flag(chain.thermal_transform);
+        h.integer(static_cast<std::int64_t>(chain.steps.size()));
+        for (const StepConfig& step : chain.steps)
+        {
+            h.text(step.step);
+            hash(h, step.params);
+        }
+    }
+}
+
+// The plan of procedure `name`.
+preprocess::ProcedurePlan& procedure_plan(preprocess::PreprocessPlan& plan, const std::string& name)
+{
+    if (name == "standard")
+        return plan.standard;
+    if (name == "snow")
+        return plan.snow;
+    return plan.insufficient_clear;
 }
 
 const StageConfig& stage_of(const ConfigTree& config, const char* stage)
@@ -231,12 +309,84 @@ std::uint64_t digest(const ConfigTree& stages)
     return h.value();
 }
 
+std::uint64_t digest(const PreprocessConfig& preprocess)
+{
+    detail::Fnv h;
+    hash(h, preprocess);
+    return h.value();
+}
+
 std::uint64_t digest(const Config& config)
 {
     detail::Fnv h;
     hash(h, config.shared);
     hash(h, config.stages);
+    hash(h, config.preprocess);
     return h.value();
+}
+
+std::map<std::string, std::vector<ParameterInfo>> Registry::step_schemas() const
+{
+    std::map<std::string, std::vector<ParameterInfo>> out;
+    for (const auto& [name, type] : steps_)
+        out[name] = type.info;
+    return out;
+}
+
+const Registry::StepType& Registry::step_type(const std::string& name,
+                                              const std::string& where) const
+{
+    const auto it = steps_.find(name);
+    if (it != steps_.end())
+        return it->second;
+    std::vector<std::string> known;
+    for (const auto& [n, _] : steps_)
+        known.push_back(n);
+    throw std::invalid_argument(where + " is '" + name + "', which is not a preprocessing step; "
+                                "the steps are " + listed(known));
+}
+
+Values Registry::step_defaults(const std::string& step) const
+{
+    Values out;
+    for (const ParameterInfo& p : step_type(step, "the step").info)
+        if (p.source == Source::Own)
+            out[p.name] = *p.default_value;
+    return out;
+}
+
+PreprocessConfig Registry::resolve_preprocess(const PreprocessConfig& preprocess,
+                                              const Resolving& with) const
+{
+    for (const auto& [procedure, _] : preprocess)
+        if (std::find(procedures().begin(), procedures().end(), procedure) == procedures().end())
+            throw std::invalid_argument("preprocess has no procedure '" + procedure +
+                                        "'; the procedures are " + listed(procedures()));
+    PreprocessConfig out;
+    for (const std::string& procedure : procedures())
+    {
+        const auto it = preprocess.find(procedure);
+        if (it == preprocess.end())
+            throw std::invalid_argument("the configuration's preprocess has no '" + procedure +
+                                        "' procedure");
+        const ProcedureConfig& chain = it->second;
+        if (chain.steps.size() > static_cast<std::size_t>(preprocess::CHAIN_CAPACITY))
+            throw std::invalid_argument("preprocess " + procedure + " has " +
+                                        std::to_string(chain.steps.size()) +
+                                        " steps; a chain holds at most " +
+                                        std::to_string(preprocess::CHAIN_CAPACITY));
+        ProcedureConfig& resolved = out[procedure];
+        resolved.thermal_transform = chain.thermal_transform;
+        for (std::size_t i = 0; i < chain.steps.size(); ++i)
+        {
+            const StepConfig& step = chain.steps[i];
+            const std::string at = "preprocess " + procedure + " step " + std::to_string(i);
+            const StepType& type = step_type(step.step, at);
+            resolved.steps.push_back(
+                {step.step, type.resolve(step.params, with, at + " '" + step.step + "'")});
+        }
+    }
+    return out;
 }
 
 Values Registry::defaults(const std::string& stage, const std::string& strategy) const
@@ -320,6 +470,7 @@ void Registry::check(const Config& config) const
     with.detection_bands = resolve_shared(config.shared, nullptr, shared);
     with.shared = to_values(shared_schema(), shared);
     build(resolve_stages(config, with));
+    resolve_preprocess(config.preprocess, with);
 }
 
 Resolved Registry::resolve(const Config& config, const Input& input) const
@@ -331,11 +482,29 @@ Resolved Registry::resolve(const Config& config, const Input& input) const
     with.shared = to_values(shared_schema(), out.shared);
     out.stages = resolve_stages(config, with);
     out.strategies = build(out.stages);
+    out.preprocess = resolve_preprocess(config.preprocess, with);
+
+    for (const auto& [procedure, chain] : out.preprocess)
+    {
+        preprocess::ProcedurePlan& plan = procedure_plan(out.plan, procedure);
+        if (chain.thermal_transform)
+            plan.transform = preprocess::thermal_transform(input);
+        for (std::size_t i = 0; i < chain.steps.size(); ++i)
+        {
+            const StepConfig& step = chain.steps[i];
+            const std::string at =
+                "preprocess " + procedure + " step " + std::to_string(i) + " '" + step.step + "'";
+            if (auto built = steps_.at(step.step).make(step.params, input, at))
+                plan.chain.push_back(*built);
+        }
+    }
+    preprocess::validate(out.plan, input.bands());
 
     detail::Fnv h;
     h.integer(static_cast<std::int64_t>(digest(input)));
     hash(h, with.shared);
     hash(h, out.stages);
+    hash(h, out.preprocess);
     out.digest = h.value();
     return out;
 }

@@ -1,8 +1,10 @@
 # The ccdc preset: pyccd's algorithm, as ccdcpp corrects it (README), in physical terms: the
-# shared alpha, coef_floor and green_filter in reflectance (a run multiplies them by its input's
-# reflectance_unit), probabilities for the chi-squared thresholds, bands by role. The library
-# registry's "ccdc" preset (ccd::strategies::library_registry().preset("ccdc")), written out by
-# its Config's to_toml().
+# shared alpha and coef_floor and the preprocessing's reflectance bounds and offset in
+# reflectance (a run multiplies them by its input's reflectance_unit), the thermal bounds in
+# degrees Celsius, probabilities for the chi-squared thresholds, bands by role, QA codes by
+# name, no statistics cutoff (stat_ord 9223372036854775807). The library registry's "ccdc"
+# preset (ccd::strategies::library_registry().preset("ccdc")), written out by its Config's
+# to_toml().
 
 [shared]
 alpha = 0.0001
@@ -12,8 +14,6 @@ coefficient_max = 8
 coefficient_mid = 6
 coefficient_min = 4
 detection_bands = ["green", "red", "nir", "swir1", "swir2"]
-green_filter = 0.04
-green_filter_scope = "stat_window"
 max_iter = 1000
 num_obs_factor = 3
 outlier_probability = 0.999999
@@ -84,3 +84,34 @@ strategy = "tmask"
 [window_screen.params]
 bands = ["green", "swir1"]
 t_const = 4.89
+
+[preprocess.standard]
+thermal_transform = true
+steps = [
+    { step = "keep_qa", codes = ["clear", "water"] },
+    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
+    { step = "band_range", bands = [], max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
+    { step = "dedupe" },
+]
+
+[preprocess.snow]
+thermal_transform = false
+steps = [
+    { step = "keep_qa", codes = ["clear", "water"] },
+    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
+    { step = "band_range", bands = [], max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
+    { step = "dedupe" },
+    { step = "add_qa", codes = ["snow"] },
+    { step = "dedupe" },
+]
+
+[preprocess.insufficient_clear]
+thermal_transform = false
+steps = [
+    { step = "keep_qa", codes = ["clear", "water"] },
+    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
+    { step = "band_range", bands = [], max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
+    { step = "dedupe" },
+    { step = "green_median", offset = 0.04, scope = "stat_window" },
+    { step = "dedupe" },
+]

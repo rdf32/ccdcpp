@@ -104,7 +104,8 @@ inline void dump_pixel(
 
 // The physical-unit input of input.hpp: data pre-divided by 10000, and
 // reflectance its unit, so the configuration's reflectance values (the
-// Lasso's alpha and coefficient floor, the green filter) are its own.
+// Lasso's alpha and coefficient floor, the bounds, the green filter) are its
+// own, and its thermal bounds are degrees Celsius / 100.
 constexpr double SCALE = 10000.0;
 
 inline ccd::Input physical_input()
@@ -113,10 +114,6 @@ inline ccd::Input physical_input()
     h.reflectance_unit = 1.0;
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
-    h.refl_min = 0.0 / SCALE;
-    h.refl_max = 10000.0 / SCALE;
-    h.therm_min = ccd::MIN_CELSIUS / SCALE;
-    h.therm_max = ccd::MAX_CELSIUS / SCALE;
     h.saturated.reset();
     return h;
 }
@@ -159,18 +156,34 @@ inline void put_bound_values(double* block, const std::uint8_t* qas, std::size_t
     }
 }
 
-// Collection-2 style bounds, for the two C2 reference files.
+// The two C2 reference files' run: Collection-2 DN with pyccd's Collection-1
+// DN algorithm values and Collection-2 bounds. The input's reflectance_unit
+// is 1, so c2_config()'s values are the data's own numbers: the Lasso's
+// alpha and coefficient floor 1 and the green median's offset 400 (pyccd's
+// DN values), the band range (7273, 43636) and the thermal range +-1e6 (no
+// thermal screen). Those cannot be written in reflectance times 10000:
+// 0.7273 x 10000 is 7272.999999999999.
 inline ccd::Input c2_input()
 {
     ccd::Input h;
+    h.reflectance_unit = 1.0;
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
-    h.refl_min = 7273.0;
-    h.refl_max = 43636.0;
-    h.therm_min = -1.0e6;
-    h.therm_max = 1.0e6;
     h.saturated.reset();
     return h;
+}
+
+inline ccd::config::Config c2_config()
+{
+    using ccd::config::real;
+    ccd::config::Config c = with_shared(pyccd(), "alpha", real(1.0));
+    c = with_shared(c, "coef_floor", real(1.0));
+    c = with_steps(c, "band_range", "min", real(7273.0));
+    c = with_steps(c, "band_range", "max", real(43636.0));
+    // Degrees Celsius: 1e8 x 100 x 1 / 10000 is 1e6.
+    c = with_steps(c, "thermal_range", "min", real(-1.0e8));
+    c = with_steps(c, "thermal_range", "max", real(1.0e8));
+    return with_steps(c, "green_median", "offset", real(400.0));
 }
 
 //------------------------------------------------------------------------------

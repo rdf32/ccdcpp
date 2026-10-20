@@ -582,14 +582,17 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
         return h;
     };
 
+    // The thermal row read as it is and never screened: the identity
+    // transform and an unbounded thermal range.
     const auto open_thermal = [&](ccd::Input h)
     {
         h.thermal_scale = 1.0;
         h.thermal_offset = 0.0;
-        h.therm_min = -INF;
-        h.therm_max = INF;
         return h;
     };
+    const ccd::config::Config open = golden::with_steps(
+        golden::with_steps(golden::pyccd(), "thermal_range", "min", ccd::config::real(-INF)),
+        "thermal_range", "max", ccd::config::real(INF));
 
     const auto optical_only = [&](const ccd::FitResult& r) { return select_bands(r, optical); };
 
@@ -608,7 +611,7 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
         EXPECT_EQ(
             absent,
-            dump_series(s, open_thermal(ccd::Input{}), golden::pyccd(), optical_only));
+            dump_series(s, open_thermal(ccd::Input{}), open, optical_only));
 
         default_bounds_differ = default_bounds_differ ||
             absent != dump_series(s, ccd::Input{}, golden::pyccd(), optical_only);
@@ -617,8 +620,7 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
         EXPECT_EQ(
             dump_series(take_rows(phys, optical), no_thermal(golden::physical_input()),
                 golden::pyccd()),
-            dump_series(phys, open_thermal(golden::physical_input()),
-                golden::pyccd(), optical_only));
+            dump_series(phys, open_thermal(golden::physical_input()), open, optical_only));
 
         for (std::size_t p = 0; p < s.N; ++p)
         {

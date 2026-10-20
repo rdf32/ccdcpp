@@ -7,7 +7,7 @@
 //              The saturation bound is tested in DN (0, 10000) and in
 //              reflectance (0.0, 1.0): the flags mean the same in both units.
 //   GreenScope.*
-//              filter::insufficientclear's green median filter under each
+//              the InsufficientClear chain's green median step under each
 //              GreenFilterScope, on a series with green spikes before and
 //              after stat_ord, and on one dated entirely after it.
 //
@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -25,6 +26,8 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/harmonic.hpp"
 #include "ccd/input/pmask.hpp"
+
+#include "../golden/config.hpp"
 
 namespace
 {
@@ -129,26 +132,25 @@ TEST(Bounds, InclusiveAndExclusiveAreTheLiteralForms)
     }
 }
 
-TEST(Bounds, InputDefaults)
+// The "ccdc" bounds on the default input: pyccd's exclusive (0, 10000) and
+// (-9320, 7070), from reflectance (0, 1) and (-93.2, 70.7) degrees Celsius.
+TEST(Bounds, ConfigurationDefaults)
 {
-    const ccd::Input h;
+    const ccd::preprocess::PreprocessPlan plan = golden::plan_of(golden::ccdc());
+    const auto& thermal = plan.standard.chain[1];
+    const auto& band = plan.standard.chain[2];
+    ASSERT_EQ(thermal.kind, ccd::preprocess::StepKind::ThermalRange);
+    ASSERT_EQ(band.kind, ccd::preprocess::StepKind::BandRange);
 
-    EXPECT_FALSE(h.refl_min_inclusive);
-    EXPECT_FALSE(h.refl_max_inclusive);
-    EXPECT_FALSE(h.therm_min_inclusive);
-    EXPECT_FALSE(h.therm_max_inclusive);
+    EXPECT_EQ(band.range.lo.value, 0.0);
+    EXPECT_EQ(band.range.hi.value, 10000.0);
+    EXPECT_FALSE(band.range.lo.inclusive);
+    EXPECT_FALSE(band.range.hi.inclusive);
 
-    const auto refl = ccd::filter::reflectance_range(h);
-    EXPECT_EQ(refl.lo.value, h.refl_min);
-    EXPECT_EQ(refl.hi.value, h.refl_max);
-    EXPECT_FALSE(refl.lo.inclusive);
-    EXPECT_FALSE(refl.hi.inclusive);
-
-    const auto therm = ccd::filter::thermal_range(h);
-    EXPECT_EQ(therm.lo.value, ccd::MIN_CELSIUS);
-    EXPECT_EQ(therm.hi.value, ccd::MAX_CELSIUS);
-    EXPECT_FALSE(therm.lo.inclusive);
-    EXPECT_FALSE(therm.hi.inclusive);
+    EXPECT_EQ(thermal.range.lo.value, ccd::MIN_CELSIUS);
+    EXPECT_EQ(thermal.range.hi.value, ccd::MAX_CELSIUS);
+    EXPECT_FALSE(thermal.range.lo.inclusive);
+    EXPECT_FALSE(thermal.range.hi.inclusive);
 }
 
 // The saturation filter, in DN and in reflectance, every mode. One band out
@@ -234,8 +236,8 @@ TEST(Bounds, ThermalFilterAtTheBounds)
     }
 }
 
-// filter::standard reads the flags from the input.
-TEST(Bounds, StandardFilterReadsTheFlags)
+// The Standard chain reads the flags from the configuration's steps.
+TEST(Bounds, TheStandardChainReadsTheFlags)
 {
     const auto series = probe(0.0, 10000.0);
     const auto T = static_cast<ccd::index_t>(series.size());
@@ -257,11 +259,13 @@ TEST(Bounds, StandardFilterReadsTheFlags)
 
     for (const auto& mode : MODES)
     {
-        ccd::Input h;
-        h.refl_min_inclusive = mode.lo_inclusive;
-        h.refl_max_inclusive = mode.hi_inclusive;
+        const ccd::Input h;
+        const ccd::config::Config config = golden::with_steps(
+            golden::with_steps(golden::pyccd(), "band_range", "min_inclusive",
+                               ccd::config::flag(mode.lo_inclusive)),
+            "band_range", "max_inclusive", ccd::config::flag(mode.hi_inclusive));
 
-        const ccd::config::Shared shared;
+        const ccd::config::Shared shared = golden::shared_of(config);
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
@@ -269,7 +273,7 @@ TEST(Bounds, StandardFilterReadsTheFlags)
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
             h, shared);
 
-        EXPECT_EQ(kept(ccd::filter::standard(workspace)), mode.expected);
+        EXPECT_EQ(kept(golden::chain_mask(workspace, "standard", config)), mode.expected);
     }
 
     // The thermal flags, with the optical bands mid-range.
@@ -282,11 +286,13 @@ TEST(Bounds, StandardFilterReadsTheFlags)
 
     for (const auto& mode : MODES)
     {
-        ccd::Input h;
-        h.therm_min_inclusive = mode.lo_inclusive;
-        h.therm_max_inclusive = mode.hi_inclusive;
+        const ccd::Input h;
+        const ccd::config::Config config = golden::with_steps(
+            golden::with_steps(golden::pyccd(), "thermal_range", "min_inclusive",
+                               ccd::config::flag(mode.lo_inclusive)),
+            "thermal_range", "max_inclusive", ccd::config::flag(mode.hi_inclusive));
 
-        const ccd::config::Shared shared;
+        const ccd::config::Shared shared = golden::shared_of(config);
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
@@ -294,7 +300,7 @@ TEST(Bounds, StandardFilterReadsTheFlags)
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
             h, shared);
 
-        EXPECT_EQ(kept(ccd::filter::standard(workspace)), mode.expected);
+        EXPECT_EQ(kept(golden::chain_mask(workspace, "standard", config)), mode.expected);
     }
 }
 
@@ -304,13 +310,13 @@ namespace
 
 constexpr std::int64_t STAT_ORD = 731000;
 
-// The shared values with the cutoff at STAT_ORD and the scope `scope`.
-ccd::config::Shared shared_with(ccd::GreenFilterScope scope)
+// The configuration with the cutoff at STAT_ORD and the green median's scope
+// `scope`.
+ccd::config::Config config_with(ccd::GreenFilterScope scope)
 {
-    ccd::config::Shared shared;
-    shared.stat_ord = STAT_ORD;
-    shared.green_filter_scope = ccd::name(scope);
-    return shared;
+    return golden::with_steps(
+        golden::with_shared(golden::pyccd(), "stat_ord", ccd::config::integer(STAT_ORD)),
+        "green_median", "scope", ccd::config::Value(std::string(ccd::name(scope))));
 }
 
 // A 7-band DN series of `T` observations 16 days apart from `first`, all
@@ -340,7 +346,8 @@ struct Series
     std::vector<int> insufficient_clear(ccd::GreenFilterScope scope) const
     {
         const ccd::Input h;
-        const ccd::config::Shared shared = shared_with(scope);
+        const ccd::config::Config config = config_with(scope);
+        const ccd::config::Shared shared = golden::shared_of(config);
 
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
@@ -349,7 +356,7 @@ struct Series
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
             h, shared);
 
-        return kept(ccd::filter::insufficientclear(workspace));
+        return kept(golden::chain_mask(workspace, "insufficient_clear", config));
     }
 };
 
@@ -357,7 +364,7 @@ struct Series
 
 TEST(GreenScope, DefaultIsStatWindow)
 {
-    EXPECT_EQ(ccd::green_filter_scope(ccd::config::Shared{}.green_filter_scope),
+    EXPECT_EQ(golden::plan_of(golden::ccdc()).insufficient_clear.chain[4].scope,
               ccd::GreenFilterScope::StatWindow);
 }
 
@@ -425,14 +432,15 @@ TEST(GreenScope, StandardFilterIgnoresIt)
                              ccd::GreenFilterScope::Off})
     {
         const ccd::Input h;
-        const ccd::config::Shared shared = shared_with(scope);
+        const ccd::config::Config config = config_with(scope);
+        const ccd::config::Shared shared = golden::shared_of(config);
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(s.dates.data(), {s.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 s.spectral.data(), {7, s.T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(s.qas.data(), {s.T}),
             h, shared);
-        masks.push_back(kept(ccd::filter::standard(workspace)));
+        masks.push_back(kept(golden::chain_mask(workspace, "standard", config)));
     }
 
     EXPECT_EQ(masks[0], std::vector<int>(20, 1));

@@ -22,6 +22,7 @@ const char* name(StepKind kind)
         case StepKind::BandRange:    return "BandRange";
         case StepKind::GreenMedian:  return "GreenMedian";
         case StepKind::Dedupe:       return "Dedupe";
+        case StepKind::Custom:       return "Custom";
     }
     return "unknown";
 }
@@ -53,52 +54,6 @@ std::optional<Affine> thermal_transform(const Input& input)
         input.thermal_scale,
         input.thermal_offset
     };
-}
-
-PreprocessPlan default_plan(const Input& input, const config::Shared& shared)
-{
-    Chain common;
-
-    common.push_back(Step::keep_qa(
-        qa_set({input.qa_clear, input.qa_water})
-    ));
-
-    const index_t thermal = input.index("thermal");
-    if (thermal != NO_BAND)
-    {
-        common.push_back(Step::thermal_range(
-            thermal,
-            filter::thermal_range(input)
-        ));
-    }
-
-    common.push_back(Step::band_range(
-        input.saturation_bands,
-        filter::reflectance_range(input)
-    ));
-
-    common.push_back(Step::dedupe());
-
-    PreprocessPlan plan;
-
-    plan.standard.transform = thermal_transform(input);
-    plan.standard.chain = common;
-
-    plan.snow.chain = common;
-    plan.snow.chain.push_back(Step::add_qa(qa_set({input.qa_snow})));
-    plan.snow.chain.push_back(Step::dedupe());
-
-    plan.insufficient_clear.chain = common;
-    // A resolved configuration's scope is one of the three (Registry::resolve()).
-    plan.insufficient_clear.chain.push_back(Step::green_median(
-        input.index("green"),
-        shared.green_filter,
-        shared.stat_ord,
-        *green_filter_scope(shared.green_filter_scope)
-    ));
-    plan.insufficient_clear.chain.push_back(Step::dedupe());
-
-    return plan;
 }
 
 namespace
@@ -180,6 +135,19 @@ void validate_procedure(
                     reject(procedure, where, "needs a band; it is NO_BAND");
                 if (step.band >= bands)
                     reject(procedure, where, band_text(step.band, bands));
+                break;
+
+            case StepKind::Custom:
+                if (!step.custom)
+                    reject(procedure, where, "has no rule");
+                try
+                {
+                    step.custom->validate(bands);
+                }
+                catch (const std::invalid_argument& e)
+                {
+                    reject(procedure, where, e.what());
+                }
                 break;
 
             default:
@@ -292,6 +260,10 @@ void apply_steps(
 
             case StepKind::Dedupe:
                 filter::remove_duplicate_dates(dates, mask);
+                break;
+
+            case StepKind::Custom:
+                step.custom->apply(dates, spectral, qas, mask);
                 break;
         }
 

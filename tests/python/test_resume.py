@@ -124,11 +124,11 @@ class OnePixel(unittest.TestCase):
 
         other = ccdcpp.Input()
         other.qa_occlusion += 1
-        with self.assertRaisesRegex(ValueError, "another input, configuration or plan"):
+        with self.assertRaisesRegex(ValueError, "another input or configuration"):
             call(h=other)
         decoding = ccdcpp.Input()
         decoding.qa_table = ccdcpp.qa_tables.landsat_c1_pixel_qa()
-        with self.assertRaisesRegex(ValueError, "another input, configuration or plan"):
+        with self.assertRaisesRegex(ValueError, "another input or configuration"):
             call(h=decoding)
         stricter = ccdcpp._config_preset("ccdc")
         stricter["shared"]["change_probability"] = 0.995

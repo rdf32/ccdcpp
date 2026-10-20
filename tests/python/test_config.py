@@ -60,7 +60,7 @@ class Presets(unittest.TestCase):
     def test_the_preset_is_physical(self):
         shared = ccdcpp.config("ccdc").shared()
         self.assertEqual(shared["alpha"], 1e-4)
-        self.assertEqual(shared["green_filter"], 0.04)
+        self.assertNotIn("green_filter", shared)
         self.assertEqual(shared["change_probability"], 0.99)
         self.assertEqual(shared["outlier_probability"], 1.0 - 1e-6)
         self.assertEqual(shared["stat_ord"], ccdcpp.NO_STAT_CUTOFF)
@@ -68,6 +68,18 @@ class Presets(unittest.TestCase):
         self.assertEqual(ccdcpp.config("ccdc").params("window_screen")["bands"],
                          ["green", "swir1"])
         self.assertNotIn("alpha", ccdcpp.config("ccdc").params("model"))
+        # pyccd's chain, in physical terms.
+        clear = ccdcpp.config("ccdc").preprocess("insufficient_clear")
+        self.assertFalse(clear["thermal_transform"])
+        self.assertEqual([s["step"] for s in clear["steps"]],
+                         ["keep_qa", "thermal_range", "band_range", "dedupe", "green_median",
+                          "dedupe"])
+        self.assertEqual(clear["steps"][0]["codes"], ["clear", "water"])
+        self.assertEqual((clear["steps"][1]["min"], clear["steps"][1]["max"]), (-93.2, 70.7))
+        self.assertEqual((clear["steps"][2]["min"], clear["steps"][2]["max"]), (0.0, 1.0))
+        self.assertEqual(clear["steps"][4], {"step": "green_median", "offset": 0.04,
+                                             "scope": "stat_window"})
+        self.assertTrue(ccdcpp.config("ccdc").preprocess("standard")["thermal_transform"])
 
     def test_a_preset_by_name_is_built_once(self):
         self.assertIs(ccdcpp.config("ccdc"), ccdcpp.config("ccdc"))
@@ -85,8 +97,13 @@ class Presets(unittest.TestCase):
                          15.086272469388987)
         self.assertEqual(r["stages"]["outlier"]["params"]["threshold"], 35.888186879610423)
         self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], [1, 4])
-        self.assertEqual(r["shared"]["green_filter"], 400.0)
         self.assertEqual(r["shared"]["detection_bands"], [1, 2, 3, 4, 5])
+        clear = r["preprocess"]["insufficient_clear"]["steps"]
+        self.assertEqual(clear[0]["codes"], [0, 1])
+        self.assertEqual((clear[1]["min"], clear[1]["max"]), (-9320.0, 7070.0))
+        self.assertEqual((clear[2]["min"], clear[2]["max"]), (0.0, 10000.0))
+        self.assertEqual(clear[4], {"step": "green_median", "offset": 400.0,
+                                    "scope": "stat_window", "max_date": ccdcpp.NO_STAT_CUTOFF})
 
     def test_a_file_extends_a_preset(self):
         path = os.path.join(_ROOT, "variant.toml")

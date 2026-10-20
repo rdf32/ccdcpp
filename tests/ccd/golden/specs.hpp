@@ -15,24 +15,20 @@ namespace golden
 
 inline ccd::RunSpec spec_of(const ccd::Input& input,
                             ccd::AlgorithmPtr algorithm = pyccd_algorithm(),
-                            ccd::PreprocessPlanPtr plan = nullptr,
                             bool record = false)
 {
     ccd::RunSpec spec;
     spec.input = input;
     spec.algorithm = std::move(algorithm);
-    spec.plan = std::move(plan);
     spec.record = record;
     return spec;
 }
 
 // The same, of a configuration (compiled here, once per call).
-inline ccd::RunSpec spec_of(const ccd::Input& input,
-                            ccd::config::Config config,
-                            ccd::PreprocessPlanPtr plan = nullptr,
+inline ccd::RunSpec spec_of(const ccd::Input& input, ccd::config::Config config,
                             bool record = false)
 {
-    return spec_of(input, algorithm(std::move(config)), std::move(plan), record);
+    return spec_of(input, algorithm(std::move(config)), record);
 }
 
 // `input` decoding its raw QA through `table`.

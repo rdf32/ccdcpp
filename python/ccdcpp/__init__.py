@@ -13,21 +13,12 @@ del sys
 
 from . import ccdcpp as _extension
 from . import presets
-from .config import Config, config, shared_values, strategies
+from .config import Config, config, shared_values, steps, strategies
 from .config import config as _config
 from .ccdcpp import Input
-from .profiles import (
-    CELSIUS_HUNDREDTHS,
-    DEFAULT_TRANSFORM,
-    DN,
-    GREEN_FILTER_SCOPES,
-    KELVIN_TENTHS,
-    NO_STAT_CUTOFF,
+from .preprocess import (
     PROCEDURES,
-    QA_CODE_FIELDS,
-    QA_TABLE_OPTIONS,
-    REFLECTANCE,
-    ROLES,
+    QA_CODE_NAMES,
     AddQa,
     BandRange,
     Dedupe,
@@ -35,10 +26,16 @@ from .profiles import (
     KeepQa,
     Preprocess,
     ProcedureChain,
+    ThermalRange,
+)
+from .profiles import (
+    CELSIUS_HUNDREDTHS,
+    DN,
+    KELVIN_TENTHS,
+    QA_TABLE_OPTIONS,
+    REFLECTANCE,
     SensorProfile,
     Thermal,
-    ThermalRange,
-    Transform,
     Units,
 )
 
@@ -79,13 +76,6 @@ def _configuration(entry, config):
     raise TypeError(
         f"{entry}(): config is a ccdcpp.Config or a preset's name, not "
         f"{type(config).__name__}; ccdcpp.config() reads a file or a dict")
-
-
-def _plan(profile, input, cfg):
-    """The plan a profile's preprocess= gives, or None for the configuration's."""
-    if profile is None or profile.preprocess is None:
-        return None
-    return profile.preprocess.plan(profile, input, cfg)
 
 
 def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=None,
@@ -145,7 +135,7 @@ def detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=N
     h, profile = _input("detect", input, spectral, band_names)
     cfg = _configuration("detect", config)
     out = _extension.detect(dates, spectral, qas, input=h, config=cfg, record=record,
-                            resume=resume, trace=trace, _plan=_plan(profile, h, cfg))
+                            resume=resume, trace=trace)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -200,11 +190,19 @@ def detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record
     h, profile = _input("detect_cube", input, spectral, band_names)
     cfg = _configuration("detect_cube", config)
     out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg, threads=threads,
-                                 record=record, resume=resume, trace_pixels=trace_pixels,
-                                 _plan=_plan(profile, h, cfg))
+                                 record=record, resume=resume, trace_pixels=trace_pixels)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
+
+
+def plan_of(config, input):
+    """The ccdcpp.PreprocessPlan ``config`` (a ccdcpp.Config or a preset's name) runs on
+    ``input`` (a ccdcpp.Input or a SensorProfile): its preprocess section resolved against the
+    input, the QA code names as its codes, the bands by role as its rows, the bounds in its
+    units. For inspection: ``print(ccdcpp.plan_of("ccdc", ccdcpp.Input()))``."""
+    h = input.input() if isinstance(input, SensorProfile) else input
+    return _extension.plan_of(_configuration("plan_of", config), h)
 
 
 def to_pixels(out):

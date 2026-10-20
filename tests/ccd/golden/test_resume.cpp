@@ -245,14 +245,13 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
     std::size_t ordinal = 0;
     for (const auto& s : pixels)
     {
-        auto plan = std::make_shared<ccd::preprocess::PreprocessPlan>(
-            ccd::preprocess::default_plan(s.h, golden::shared_of(s.config, s.h)));
-        ccd::preprocess::Chain chain;
-        for (ccd::index_t i = 0; i < plan->standard.chain.size(); ++i)
-            if (plan->standard.chain.steps[i].kind != ccd::preprocess::StepKind::Dedupe)
-                chain.push_back(plan->standard.chain.steps[i]);
-        plan->standard.chain = chain;
-        const ccd::PreprocessPlanPtr given = plan;
+        // The Standard chain without its dedupe: the same date kept twice.
+        ccd::config::Config given = s.config;
+        auto& steps = given.preprocess.at("standard").steps;
+        steps.erase(std::remove_if(steps.begin(), steps.end(),
+                                   [](const ccd::config::StepConfig& step)
+                                   { return step.step == "dedupe"; }),
+                    steps.end());
 
         const bool more_cuts = s.name.rfind("dup:", 0) != 0;
         for (const std::size_t last :
@@ -263,30 +262,23 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
             const std::string at = s.name + " cut after " + std::to_string(T);
 
             const ccd::PixelRun stored = ccd::run_pixel(
-                golden::spec_of(s.h, s.config, given, true),
+                golden::spec_of(s.h, given, true),
                 cut.date_view(),
                 cut.spectral_view(),
                 cut.qa_view());
             const ccd::PixelRun resumed = ccd::run_pixel(
-                golden::spec_of(s.h, s.config, given),
+                golden::spec_of(s.h, given),
                 s.date_view(),
                 s.spectral_view(),
                 s.qa_view(),
                 ccd::PixelResume{stored.header, stored.record, stored.result.models});
 
-            // Every statistics cutoff capped at T: the shared stat_ord and the
-            // plan's own GreenMedian dates.
+            // Every statistics cutoff capped at T: the shared stat_ord, which
+            // the green median step reads too.
             const ccd::config::Config capped = golden::with_shared(
-                s.config, "stat_ord", ccd::config::integer(std::min(s.stat_ord(), T)));
-            auto capped_plan = std::make_shared<ccd::preprocess::PreprocessPlan>(*plan);
-            for (auto* procedure : {&capped_plan->standard, &capped_plan->snow,
-                                    &capped_plan->insufficient_clear})
-                for (ccd::index_t i = 0; i < procedure->chain.size(); ++i)
-                    if (procedure->chain.steps[i].kind == ccd::preprocess::StepKind::GreenMedian)
-                        procedure->chain.steps[i].max_date =
-                            std::min(procedure->chain.steps[i].max_date, T);
+                given, "stat_ord", ccd::config::integer(std::min(s.stat_ord(), T)));
             const ccd::FitResult full = ccd::run_pixel(
-                golden::spec_of(s.h, capped, capped_plan),
+                golden::spec_of(s.h, capped),
                 s.date_view(),
                 s.spectral_view(),
                 s.qa_view()).result;
@@ -520,7 +512,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
         for (const int threads : {1, 4})
         {
             const ccd::CubeResult stored = ccd::run_cube(
-                golden::spec_of(h, golden::pyccd(), nullptr, true),
+                golden::spec_of(h, golden::pyccd(), true),
                 cut.dates(),
                 cut.block(),
                 cut.qa(),
@@ -579,7 +571,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     const CutCube cut(c, c.T / 2);
     const CutCube whole(c, c.T);
     const ccd::CubeResult stored = ccd::run_cube(
-        golden::spec_of(ccd::Input{}, golden::pyccd(), nullptr, true),
+        golden::spec_of(ccd::Input{}, golden::pyccd(), true),
         cut.dates(),
         cut.block(),
         cut.qa(),
@@ -649,8 +641,8 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
         for (auto it = left.shared.begin(); it != left.shared.end();)
             it = shared.at(it->first) == it->second ? left.shared.erase(it) : std::next(it);
         ASSERT_NE(left, spelled) << s.name;
-        const ccd::RunSpec spelled_out = golden::spec_of(s.h, spelled, nullptr, true);
-        const ccd::RunSpec left_out = golden::spec_of(s.h, left, nullptr, true);
+        const ccd::RunSpec spelled_out = golden::spec_of(s.h, spelled, true);
+        const ccd::RunSpec left_out = golden::spec_of(s.h, left, true);
         const ccd::PixelRun a =
             ccd::run_pixel(spelled_out, s.date_view(), s.spectral_view(), s.qa_view());
         const ccd::PixelRun b =

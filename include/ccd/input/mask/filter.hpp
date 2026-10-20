@@ -1,15 +1,51 @@
 #pragma once
 
-#include "ccd/core/types.hpp"
-#include "ccd/core/maths.hpp"
-#include "ccd/input/pmask.hpp"
+#include <cstdint>
+#include <optional>
+#include <string>
+
 #include "ccd/core/array_view.hpp"
-#include "ccd/config/shared.hpp"
-#include "ccd/input/harmonic.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/core/band_list.hpp"
+#include "ccd/core/maths.hpp"
+#include "ccd/core/types.hpp"
+#include "ccd/input/pmask.hpp"
 
 namespace ccd
 {
+
+//==============================================================================
+//
+// GreenFilterScope
+//
+// Which observations the green median filter drops. The threshold is the
+// same in each: the median green of the masked observations dated <=
+// max_date (the statistics cutoff), plus the filter's offset. A masked
+// observation whose green is >= the threshold is dropped
+//
+//   All          at any date;
+//   StatWindow   only when dated <= max_date, which is the scope pyccd's
+//                insufficient_clear_filter computes the mask for (the
+//                default);
+//   Off          never: the filter does not run.
+//
+// When no masked observation is dated <= max_date there is no median and
+// nothing is dropped. The configuration names them "all", "stat_window" and
+// "off".
+//
+//==============================================================================
+
+enum class GreenFilterScope : std::uint8_t
+{
+    All,
+    StatWindow,
+    Off
+};
+
+// "all", "stat_window", "off".
+const char* name(GreenFilterScope scope);
+
+// The scope of that name, or none.
+std::optional<GreenFilterScope> green_filter_scope(const std::string& name);
 
 namespace filter
 {
@@ -50,59 +86,6 @@ inline bool in_range(scalar_t value, const Range& range)
     return above && below;
 }
 
-// The saturation range of `input`: refl_min/refl_max and their flags.
-inline Range reflectance_range(const Input& input)
-{
-    return Range{
-        Bound{input.refl_min, input.refl_min_inclusive},
-        Bound{input.refl_max, input.refl_max_inclusive}
-    };
-}
-
-// The thermal range of `input`: therm_min/therm_max and their flags.
-inline Range thermal_range(const Input& input)
-{
-    return Range{
-        Bound{input.therm_min, input.therm_min_inclusive},
-        Bound{input.therm_max, input.therm_max_inclusive}
-    };
-}
-
-//------------------------------------------------------------------------------
-//
-// The processing mask of each procedure's chain in
-// preprocess::default_plan(workspace.input(), workspace.shared()), over the workspace's
-// spectral block as it is (no transform is applied here).
-//
-// standard keeps observations that are:
-//   - QA clear or QA water
-//   - valid thermal
-//   - unsaturated
-//   - the first of their acquisition date
-//
-// snow is standard with every QA snow observation added back (UNION, OR),
-// then deduplicated again.
-//
-// insufficientclear is standard followed by the green median filter, then
-// deduplicated again.
-//
-// Each builds the default plan per call; a Run builds it once per call
-// instead and runs preprocess::apply() per pixel.
-//
-//------------------------------------------------------------------------------
-
-ProcessingMask standard(
-    const HarmonicWorkspace& workspace
-);
-
-ProcessingMask snow(
-    const HarmonicWorkspace& workspace
-);
-
-ProcessingMask insufficientclear(
-    const HarmonicWorkspace& workspace
-);
-
 //------------------------------------------------------------------------------
 //
 // Remove duplicate acquisition dates.
@@ -122,17 +105,13 @@ void remove_duplicate_dates(
 // Remove observations with invalid thermal values.
 //
 // An observation is kept when its thermal value is in_range() of `range`
-// (Input::therm_min/therm_max and their flags, exclusive on both ends by
-// default). The bounds are in the unit of `spectral`'s thermal band AT THE
-// POINT THIS RUNS -- which for the Standard procedure is after Run::pixel
-// applied Input::thermal_scale/thermal_offset, and for the PermanentSnow and
-// InsufficientClear procedures is the caller's own unit, because nothing
-// converted it. See the "Units" block in input.hpp for why that asymmetry is
-// deliberate.
-//
-// The bounds are parameters rather than the MIN_CELSIUS/MAX_CELSIUS globals so
-// that a caller working in degrees Celsius can pass [-93.20, 70.70] instead of
-// Celsius x 100. The Input defaults are the globals.
+// (the thermal_range step's bounds, exclusive on both ends by default). The
+// bounds are in the unit of the thermal row after the input's transform; the
+// row is tested as `spectral` holds it AT THE POINT THIS RUNS -- transformed
+// in a procedure that applies the transform (pyccd's Standard), the caller's
+// own unit in one that does not (pyccd's PermanentSnow and
+// InsufficientClear). See the "Units" block in input.hpp for why that
+// asymmetry is deliberate.
 //
 //------------------------------------------------------------------------------
 
@@ -149,8 +128,8 @@ void apply_thermal_filter(
 // Remove saturated observations.
 //
 // An observation is saturated when any of `bands` is not in_range() of
-// `range` (Input::refl_min/refl_max and their flags, exclusive on
-// both ends by default); the bands are tested in list order.
+// `range` (the band_range step's bounds, exclusive on both ends by default);
+// the bands are tested in list order.
 // pyccd's Collection-1 values are (0, 10000) and Collection-2's are
 // (7273, 43636); both express the single predicate `reflectance in (0, 1)`
 // (C2 surface reflectance is DN * 2.75e-5 - 0.2), so a caller working in
@@ -176,7 +155,7 @@ void apply_saturation_filter(
 //            + filter_range
 //
 // at any date (scope All), only at dates <= max_date (StatWindow), or none
-// (Off). See GreenFilterScope in config/shared.hpp.
+// (Off). See GreenFilterScope above.
 //
 //------------------------------------------------------------------------------
 

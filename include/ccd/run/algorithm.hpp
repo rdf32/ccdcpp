@@ -70,4 +70,12 @@ private:
 
 using AlgorithmPtr = std::shared_ptr<const Algorithm>;
 
+// The preprocessing plan `config` runs on `input`: its preprocess section
+// resolved against the input (Registry::resolve()), for inspection. Throws
+// what Registry::resolve() throws; `input` must pass validate() (ccd.hpp).
+preprocess::PreprocessPlan plan_of(
+    const config::Config& config,
+    const Input& input,
+    const config::Registry& registry = strategies::library_registry());
+
 } // namespace ccd

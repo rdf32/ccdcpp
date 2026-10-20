@@ -26,12 +26,18 @@
 //     refused, naming both; the floored outlier rule judges the change
 //     test's statistic against its threshold;
 //   * the chi2 change test's peek is the adjusted peek of its parameters, and
-//     the threshold memo is adjust_change_threshold() for any arguments.
+//     the threshold memo is adjust_change_threshold() for any arguments;
+//   * a configuration's preprocessing resolves in the input's units and
+//     codes, a bad one is refused when its Algorithm is built, and a
+//     registry adds a step type of its own.
 //
 //==============================================================================
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
+#include <optional>
+#include <stdexcept>
 #include <limits>
 #include <string>
 #include <utility>
@@ -48,6 +54,8 @@
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
 #include "../golden/specs.hpp"
+#include "../golden/golden.hpp"
+#include "../golden/synthetic.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 namespace
@@ -197,7 +205,8 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     // Physical: alpha in reflectance, probabilities, roles, the cutoff.
     EXPECT_EQ(preset.shared.at("alpha"), real(1e-4));
     EXPECT_EQ(preset.shared.at("coef_floor"), real(1e-4));
-    EXPECT_EQ(preset.shared.at("green_filter"), real(0.04));
+    EXPECT_EQ(preset.preprocess.at("insufficient_clear").steps.at(4).params.at("offset"),
+              real(0.04));
     EXPECT_EQ(preset.shared.at("change_probability"), real(0.99));
     EXPECT_EQ(preset.shared.at("outlier_probability"), real(1.0 - 1e-6));
     EXPECT_EQ(preset.shared.at("stat_ord"), integer(ccd::config::NO_STAT_CUTOFF));
@@ -268,13 +277,14 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
         EXPECT_EQ(got.stages.at(stage).params.size(), chosen.params.size()) << stage;
     }
 
-    // The shared values, as the options held them: the detection rows, the
-    // cutoff, the green filter in DN, the scope.
+    // The shared values, as the options held them: the detection rows and
+    // the cutoff; the green median's offset in DN and its scope.
     const ccd::config::Shared& shared = got.shared;
     EXPECT_EQ(shared.detection_bands, (ccd::BandList{1, 2, 3, 4, 5}));
     EXPECT_EQ(shared.stat_ord, ccd::config::NO_STAT_CUTOFF);
-    EXPECT_EQ(shared.green_filter, 400.0);
-    EXPECT_EQ(shared.green_filter_scope, "stat_window");
+    const ccd::config::Values& green = got.preprocess.at("insufficient_clear").steps.at(4).params;
+    EXPECT_EQ(green.at("offset"), real(400.0));
+    EXPECT_EQ(green.at("scope"), ccd::config::Value(std::string("stat_window")));
     EXPECT_EQ(shared.alpha, 1.0);
     EXPECT_EQ(shared.coef_floor, 1.0);
     EXPECT_EQ(shared, ccd::config::Shared{});
@@ -332,7 +342,8 @@ TEST(Registry, SharedValuesReachTheirStages)
                   0.5 * 10000.0)
             << stage;
     }
-    EXPECT_EQ(r.resolve(golden::ccdc(), reflectance).shared.green_filter, 0.04);
+    EXPECT_EQ(r.resolve(golden::ccdc(), reflectance).plan.insufficient_clear.chain[4].green_offset,
+              0.04);
     EXPECT_EQ(r.resolve(golden::ccdc(), reflectance).shared.alpha, 1e-4);
 
     // A probability, and the thresholds of its quantile for the count of
@@ -380,10 +391,11 @@ TEST(Registry, SharedValuesReachTheirStages)
     expect_refused(
         [&]
         {
-            r.check(golden::with_shared(golden::ccdc(), "green_filter_scope",
-                                        ccd::config::Value(std::string("some"))));
+            r.check(golden::with_steps(golden::ccdc(), "green_median", "scope",
+                                       ccd::config::Value(std::string("some"))));
         },
-        "shared value 'green_filter_scope' is 'some'; it is all, stat_window or off");
+        "preprocess insufficient_clear step 4 'green_median' parameter 'scope' is 'some'; "
+        "it is all, stat_window or off");
 
     // The listing names each parameter's source.
     for (const auto& p : r.schemas().at("model").at("lasso"))
@@ -1129,4 +1141,247 @@ TEST(Registry, BandListsAreCheckedAgainstTheInput)
                    "shared value 'detection_bands' holds band 9; the input has 7 bands");
     tree = golden::with_shared(golden::ccdc(), "detection_bands", ccd::config::bands({}));
     expect_refused([&] { r.check(tree); }, "shared value 'detection_bands' is empty");
+}
+
+//------------------------------------------------------------------------------
+// The preprocessing section: conversions, refusals, and the registration of
+// a step type beyond the library's.
+//------------------------------------------------------------------------------
+
+// Degrees Celsius resolve to the thermal row's unit (hundredths of a degree
+// times reflectance_unit / 10000), reflectance to reflectance_unit, QA code
+// names to the input's codes; codes given as numbers stay as given.
+TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
+{
+    using ccd::config::names;
+    using ccd::config::real;
+    const ccd::config::Registry& r = ccd::strategies::library_registry();
+
+    ccd::Input renumbered;
+    renumbered.qa_clear = 20;
+    renumbered.qa_water = 21;
+    renumbered.qa_snow = 23;
+    renumbered.qa_cloud = 24;
+
+    ccd::config::Config config = golden::with_step(golden::ccdc(), "standard", 0, "codes",
+                                                   names({"clear", "water", "cloud"}));
+    config = golden::with_step(config, "standard", 1, "min", real(-50.0));
+    config = golden::with_step(config, "standard", 2, "max", real(0.5));
+    const ccd::config::Resolved got = r.resolve(config, renumbered);
+    const auto& standard = got.preprocess.at("standard").steps;
+    EXPECT_EQ(standard.at(0).params.at("codes"),
+              ccd::config::Value(std::vector<std::int64_t>{20, 21, 24}));
+    EXPECT_EQ(standard.at(1).params.at("min"), real(-5000.0));
+    EXPECT_EQ(standard.at(2).params.at("max"), real(5000.0));
+    EXPECT_TRUE(got.plan.standard.chain[0].codes.test(24));
+    EXPECT_FALSE(got.plan.standard.chain[0].codes.test(0));
+    EXPECT_EQ(got.plan.snow.chain[4].codes, ccd::preprocess::qa_set({23}));
+
+    ccd::Input reflectance = golden::physical_input();
+    const ccd::config::Resolved phys = r.resolve(config, reflectance);
+    EXPECT_EQ(phys.plan.standard.chain[1].range.lo.value, -0.5);
+    EXPECT_EQ(phys.plan.standard.chain[2].range.hi.value, 0.5);
+
+    // Codes by number, as given.
+    const ccd::config::Config numbered = golden::with_step(
+        golden::ccdc(), "standard", 0, "codes",
+        ccd::config::Value(std::vector<std::int64_t>{0, 7}));
+    EXPECT_EQ(r.resolve(numbered, renumbered).plan.standard.chain[0].codes,
+              ccd::preprocess::qa_set({0, 7}));
+
+    expect_refused(
+        [&]
+        {
+            r.check(golden::with_step(golden::ccdc(), "standard", 0, "codes",
+                                      names({"clear", "haze"})));
+        },
+        "preprocess standard step 0 'keep_qa' parameter 'codes' holds 'haze', which is not a QA "
+        "code name; the names are fill, clear, water, shadow, snow, cloud, cirrus1, cirrus2, "
+        "occlusion");
+    expect_refused(
+        [&]
+        {
+            r.check(golden::with_step(golden::ccdc(), "standard", 0, "codes",
+                                      ccd::config::Value(std::vector<std::int64_t>{256})));
+        },
+        "parameter 'codes' holds 256; a code must be in [0, 255]");
+}
+
+// What an Algorithm refuses in the preprocessing when it is built, before
+// any input.
+TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
+{
+    const auto build = [](const ccd::config::Config& config)
+    { return ccd::Algorithm(config); };
+
+    ccd::config::Config unknown = golden::ccdc();
+    unknown.preprocess.at("snow").steps.at(4).step = "keep_haze";
+    expect_refused([&] { build(unknown); },
+                   "preprocess snow step 4 is 'keep_haze', which is not a preprocessing step; "
+                   "the steps are add_qa, band_range, dedupe, green_median, keep_qa, "
+                   "thermal_range");
+
+    ccd::config::Config missing = golden::ccdc();
+    missing.preprocess.erase("snow");
+    expect_refused([&] { build(missing); },
+                   "the configuration's preprocess has no 'snow' procedure");
+
+    ccd::config::Config extra = golden::ccdc();
+    extra.preprocess["water"] = extra.preprocess.at("snow");
+    expect_refused([&] { build(extra); },
+                   "preprocess has no procedure 'water'; the procedures are standard, snow, "
+                   "insufficient_clear");
+
+    ccd::config::Config long_chain = golden::ccdc();
+    auto& steps = long_chain.preprocess.at("standard").steps;
+    while (steps.size() <= static_cast<std::size_t>(ccd::preprocess::CHAIN_CAPACITY))
+        steps.push_back({"dedupe", {}});
+    expect_refused([&] { build(long_chain); },
+                   "preprocess standard has 9 steps; a chain holds at most 8");
+
+    expect_refused(
+        [&]
+        {
+            build(golden::with_steps(golden::ccdc(), "green_median", "scope",
+                                     ccd::config::Value(std::string("clouds"))));
+        },
+        "preprocess insufficient_clear step 4 'green_median' parameter 'scope' is 'clouds'; "
+        "it is all, stat_window or off");
+
+    ccd::config::Config dated = golden::ccdc();
+    dated.preprocess.at("insufficient_clear").steps.at(4).params["max_date"] =
+        ccd::config::integer(736694);
+    expect_refused([&] { build(dated); },
+                   "preprocess insufficient_clear step 4 'green_median' parameter 'max_date' is "
+                   "the shared value 'stat_ord'; set shared 'stat_ord' instead");
+
+    ccd::config::Config typo = golden::ccdc();
+    typo.preprocess.at("standard").steps.at(2).params["maximum"] = ccd::config::real(1.0);
+    expect_refused([&] { build(typo); },
+                   "preprocess standard step 2 'band_range' has no parameter 'maximum'");
+}
+
+namespace
+{
+
+// A rule of a step type a registry adds: drop the observations dated `day`,
+// reading the row `band` (so validate() has something to refuse).
+class DropDay final : public ccd::preprocess::CustomStep
+{
+public:
+    DropDay(std::int64_t day, ccd::index_t band) : day_(day), band_(band) {}
+
+    void apply(ccd::ArrayView<const std::int64_t, 1> dates, ccd::ArrayView<const double, 2>,
+               ccd::ArrayView<const std::uint8_t, 1>, ccd::ProcessingMask& mask) const override
+    {
+        for (ccd::index_t t = 0; t < dates.size(); ++t)
+            if (dates(t) == day_)
+                mask.set(t, false);
+    }
+
+    void validate(ccd::index_t bands) const override
+    {
+        if (band_ >= bands)
+            throw std::invalid_argument("band " + std::to_string(band_) + " is not below " +
+                                        std::to_string(bands));
+    }
+
+    std::string describe() const override { return "DropDay " + std::to_string(day_); }
+
+private:
+    std::int64_t day_;
+    ccd::index_t band_;
+};
+
+// The step type: its parameter, and its step on an input.
+struct DropDayStep
+{
+    struct Params
+    {
+        std::int64_t day = 0;
+    };
+
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        static const std::vector<ccd::config::Field<Params>> s = {
+            {"day", &Params::day, ccd::config::Unit::None, ccd::config::any(),
+             "the date dropped, an ordinal day"},
+        };
+        return s;
+    }
+
+    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::Input& input)
+    {
+        return ccd::preprocess::Step::of(std::make_shared<const DropDay>(params.day,
+                                                                       input.index("green")));
+    }
+};
+
+} // namespace
+
+// A registry adds a step type to the library's (Registry::add_step()): a
+// configuration's chain names it, it resolves into a Custom step of the plan,
+// and a run applies it.
+TEST(Preprocess, ARegistryAddsAStepType)
+{
+    ccd::config::Registry r;
+    ccd::strategies::register_core_strategies(r);
+    r.add_step<DropDayStep>("drop_day");
+    EXPECT_THROW(r.add_step<DropDayStep>("drop_day"), std::logic_error);
+    EXPECT_EQ(r.step_defaults("drop_day"), (Values{{"day", ccd::config::integer(0)}}));
+    EXPECT_EQ(r.step_schemas().at("drop_day").size(), 1u);
+
+    const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 1, 1);
+    const std::vector<std::int64_t>& dates = c.dates;
+    const std::vector<double>& spectral = c.spectral;
+    const std::vector<std::uint8_t>& qas = c.qas;
+    const ccd::index_t T = c.T;
+
+    const auto run = [&](const ccd::config::Config& config)
+    {
+        return ccd::run_pixel(
+                   golden::spec_of(ccd::Input{}, std::make_shared<const ccd::Algorithm>(config, r)),
+                   ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
+                   ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
+                   ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}))
+            .result;
+    };
+    const ccd::FitResult plain = run(golden::pyccd());
+
+    // A clear observation the Standard mask keeps, dropped by the step.
+    ccd::index_t kept = 0;
+    while (!plain.mask[kept])
+        ++kept;
+    ccd::config::Config config = golden::pyccd();
+    auto& steps = config.preprocess.at("standard").steps;
+    steps.insert(steps.begin() + 1, {"drop_day", {{"day", ccd::config::integer(dates[kept])}}});
+
+    const ccd::config::Resolved resolved = r.resolve(config, ccd::Input{});
+    const ccd::preprocess::Step& step = resolved.plan.standard.chain[1];
+    ASSERT_EQ(step.kind, ccd::preprocess::StepKind::Custom);
+    EXPECT_EQ(step.custom->describe(), "DropDay " + std::to_string(dates[kept]));
+    EXPECT_NE(resolved.digest, r.resolve(golden::pyccd(), ccd::Input{}).digest);
+
+    // validate() asks the step.
+    try
+    {
+        ccd::preprocess::validate(resolved.plan, 1);
+        ADD_FAILURE() << "a plan reading band 1 accepted for one band";
+    }
+    catch (const std::invalid_argument& e)
+    {
+        EXPECT_NE(std::string(e.what()).find("standard step 1 (Custom): band 1 is not below 1"),
+                  std::string::npos)
+            << e.what();
+    }
+
+    const ccd::FitResult dropped = run(config);
+    EXPECT_FALSE(dropped.mask[kept]);
+    for (ccd::index_t t = 0; t < T; ++t)
+        if (t != kept)
+            EXPECT_EQ(dropped.mask[t], plain.mask[t]) << t;
+
+    // The library's registry has no such step.
+    expect_refused([&] { ccd::Algorithm{config}; },
+                   "preprocess standard step 1 is 'drop_day', which is not a preprocessing step");
 }

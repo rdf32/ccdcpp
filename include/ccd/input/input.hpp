@@ -89,33 +89,39 @@ struct Input
     //--------------------------------------------------------------------------
     std::vector<std::string> roles = {"blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
 
-    // Rows the saturation filter tests against refl_min and refl_max, in
-    // order. May be empty; must not hold the thermal row.
+    // The rows a saturated value can appear in, in order: the rows
+    // band_range tests when the configuration names none. May be empty; must
+    // not hold the thermal row.
     BandList saturation_bands = {0, 1, 2, 3, 4, 5};
 
     //--------------------------------------------------------------------------
     // Units
     //
+    // How the data encodes physical quantities, and nothing else: the
+    // configuration says what to do with them, in physical units, and a run
+    // translates once (Registry::resolve()).
+    //
     // reflectance_unit is the value one unit of reflectance has in the data:
     // 10000 for Collection-1 DN (the default), 1 for reflectance. Every
     // configuration value in reflectance (the Lasso's alpha and coef_floor,
-    // the green filter) is multiplied by it when a run resolves its
-    // configuration; 1e-4 x 10000, 0.04 x 10000 and 0.002 x 10000 are 1.0,
-    // 400.0 and 20.0 exactly, so a DN input runs pyccd's DN values bit for
-    // bit.
+    // band_range's bounds, green_median's offset) is multiplied by it; 1e-4 x
+    // 10000, 0.04 x 10000, 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0 and
+    // 10000 exactly, so a DN input runs pyccd's DN values bit for bit.
     //
-    // The bounds below are absolute, in the data's own unit. The *_inclusive
-    // flags say whether a value equal to a bound is kept, which is the same
-    // question in every unit.
+    // The thermal transform (thermal_scale, thermal_offset) takes the thermal
+    // row to hundredths of a degree Celsius times reflectance_unit / 10000:
+    // Celsius x 100 on Collection-1 DN (Kelvin x 10 times 10 less 27315, the
+    // default), Celsius / 100 at reflectance_unit 1. A configuration's
+    // thermal bounds, in degrees Celsius, resolve to that unit: pyccd's
+    // -93.2 and 70.7 to -9320 and 7070 on DN and -0.932 and 0.707 on
+    // reflectance, exactly.
     //
     // THE PHYSICAL-UNIT INPUT
     //
-    // One divisor, 10000, applied to every band and every bound:
+    // One divisor, 10000, applied to every band:
     //
     //     reflectance_unit = 1.0
     //     thermal_scale = 1.0       thermal_offset = 0.0    (identity)
-    //     refl_min      = 0.0       refl_max       = 1.0
-    //     therm_min     = -0.9320   therm_max      = 0.7070
     //
     // with the caller's array pre-divided by 10000:
     //
@@ -154,11 +160,12 @@ struct Input
     //    reflectance is DN * 2.75e-5 - 0.2, which maps 7273 -> 0.0000 and
     //    43636 -> 1.0000. In physical units there is no collection branch.
     //
-    // 2. therm_min/therm_max are tested AFTER the transform, and the default
-    //    plan transforms for the Standard procedure ONLY. That asymmetry is
-    //    pyccd's: kelvin_to_celsius() is called inside standard_procedure()
-    //    while snow_procedure_filter() applies filter_thermal_celsius() to
-    //    values nothing converted. On a DN input the PermanentSnow and
+    // 2. thermal_range's bounds are in the transformed unit, and "ccdc"
+    //    transforms for the Standard procedure ONLY (its preprocess
+    //    section's thermal_transform). That asymmetry is pyccd's:
+    //    kelvin_to_celsius() is called inside standard_procedure() while
+    //    snow_procedure_filter() applies filter_thermal_celsius() to values
+    //    nothing converted. On a DN input the PermanentSnow and
     //    InsufficientClear procedures therefore test Kelvin x 10 against
     //    Celsius x 100 bounds, and since Kelvin x 10 is ~2200..3300,
     //    comfortably inside [-9320, 7070], the filter rejects nothing a
@@ -183,7 +190,7 @@ struct Input
     //                        scales alpha (which moves the segment count)
     //                        and coef_floor (which leaves sparsity identical,
     //                        so only the value comparison catches it).
-    //   refl_*, therm_*      NOT caught by it. The physical bounds are
+    //   the bounds           NOT caught by it. The physical bounds are
     //                        narrower, so leaving them at the DN value merely
     //                        loosens a screen, and a screen that rejects
     //                        nothing is indistinguishable from a correct one.
@@ -192,35 +199,18 @@ struct Input
     //                        pixel returns 0 segments instead of 5.
     //   the green filter     unreachable through run_pixel() on the
     //                        reference pixel, which takes the Standard
-    //                        procedure; the default plan runs the green
-    //                        median filter in the InsufficientClear chain
-    //                        only. Its guard fits the InsufficientClear
-    //                        procedure directly (ccd::fit_whole_series).
+    //                        procedure; "ccdc" runs the green median filter
+    //                        in the InsufficientClear chain only. Its guard
+    //                        fits the InsufficientClear procedure directly
+    //                        (ccd::fit_whole_series).
     //
     // If you add a unit-bearing field, add its guard in that file and work
     // out which of the three shapes it is.
     //--------------------------------------------------------------------------
     scalar_t reflectance_unit = 10000.0;
 
-    // The value a saturated observation holds, as the sensor writes it:
-    // 20000 in Collection-1 DN (the default), or none when the input does not
-    // declare one. A step or strategy that reads it refuses an input without
-    // one.
-    std::optional<scalar_t> saturated = 20000.0;
-
-    // Bound of the saturation_bands. An observation is kept when every one
-    // of them lies within (refl_min, refl_max), each end inclusive or
-    // exclusive by its flag (default exclusive on both ends, pyccd's
-    // 0 < value < 10000). With either end exclusive NaN is rejected; with
-    // both ends inclusive the test is !(value < refl_min || value >
-    // refl_max), under which NaN passes.
-    scalar_t refl_min = 0.0;
-    scalar_t refl_max = 10000.0;
-    bool refl_min_inclusive = false;
-    bool refl_max_inclusive = false;
-
-    // Applied to the thermal row of Run::pixel's per-pixel copy before the
-    // Standard procedure runs (the default plan's transform):
+    // Applied to the thermal row of Run::pixel's per-pixel copy before a
+    // procedure whose configuration sets thermal_transform runs:
     //
     //     thermal <- thermal * thermal_scale + thermal_offset
     //
@@ -231,15 +221,11 @@ struct Input
     scalar_t thermal_scale  = KELVIN_SCALE;
     scalar_t thermal_offset = -KELVIN_OFFSET;
 
-    // Valid range of the thermal row, tested after the transform, each end
-    // inclusive or exclusive by its flag (default exclusive on both ends,
-    // pyccd's -9320 < value < 7070, which rejects NaN). Defaults are
-    // Celsius x 100; the physical-unit input's are those divided by 10000.
-    // NaN passes only with both ends inclusive, as for the saturation bound.
-    scalar_t therm_min = MIN_CELSIUS;
-    scalar_t therm_max = MAX_CELSIUS;
-    bool therm_min_inclusive = false;
-    bool therm_max_inclusive = false;
+    // The value a saturated observation holds, as the sensor writes it:
+    // 20000 in Collection-1 DN (the default), or none when the input does not
+    // declare one. A step or strategy that reads it refuses an input without
+    // one.
+    std::optional<scalar_t> saturated = 20000.0;
 
     // The band count: one row per role.
     index_t bands() const { return roles.size(); }

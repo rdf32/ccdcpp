@@ -212,7 +212,7 @@ std::string run_corpus()
         const Pixel p = read_csv("test002_c2.csv");
         golden::dump_pixel(dump, "c2:c2",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                golden::c2_input(), golden::pyccd()));
+                golden::c2_input(), golden::c2_config()));
     }
 
     //--------------------------------------------------------------------------

@@ -40,4 +40,12 @@ std::shared_ptr<const config::Resolved> Algorithm::for_input(const Input& input)
     return resolved;
 }
 
+preprocess::PreprocessPlan plan_of(
+    const config::Config& config,
+    const Input& input,
+    const config::Registry& registry)
+{
+    return registry.resolve(config, input).plan;
+}
+
 } // namespace ccd

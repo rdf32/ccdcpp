@@ -154,10 +154,6 @@ def explicit_physical():
     h.reflectance_unit = 1.0
     h.thermal_scale = 1.0
     h.thermal_offset = 0.0
-    h.refl_min = 0.0 / SCALE
-    h.refl_max = 10000.0 / SCALE
-    h.therm_min = -9320.0 / SCALE
-    h.therm_max = 7070.0 / SCALE
     h.saturated = None
     return h, PYCCD
 
@@ -244,7 +240,7 @@ class LandsatC1DN(unittest.TestCase):
         self.assertEqual(fields(h), fields(ccdcpp.Input()))
         for threshold in (change_threshold, outlier_threshold):
             self.assertEqual(threshold(PYCCD, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
-        self.assertGreater(len(fields(h)), 20)
+        self.assertGreater(len(fields(h)), 14)
         self.assertIsNone(presets.landsat_c1_dn().input().qa_table)
 
     def test_output_is_the_unprofiled_output(self):
@@ -636,48 +632,42 @@ class QaTableOptionsField(unittest.TestCase):
                                   str(caught.exception))
 
 
-class BoundFlags(unittest.TestCase):
-    def test_defaults(self):
-        for units in (ccdcpp.DN, ccdcpp.REFLECTANCE):
-            self.assertEqual(units.refl_inclusive, (False, False))
-        for thermal in (ccdcpp.KELVIN_TENTHS, ccdcpp.CELSIUS_HUNDREDTHS):
-            self.assertEqual(thermal.inclusive, (False, False))
+class Bounds(unittest.TestCase):
+    """The bounds are the configuration's, in physical units; a profile gives only the
+    units they resolve with."""
 
-    def test_options_carry_the_flags(self):
+    def test_the_profiles_resolve_pyccds_bounds(self):
+        for preset, refl, therm in ((presets.landsat_c1_dn, 10000.0, (-9320.0, 7070.0)),
+                                    (presets.landsat_c1_physical, 1.0, (-0.932, 0.707)),
+                                    (presets.hls_l30, 1.0, (-0.932, 0.707))):
+            with self.subTest(preset=preset.__name__):
+                _, t, b, _ = ccdcpp.plan_of("ccdc", preset()).standard.chain
+                self.assertEqual((t.min, t.max, t.inclusive), therm + ((False, False),))
+                self.assertEqual((b.min, b.max, b.inclusive), (0.0, refl, (False, False)))
+
+    def test_the_flags_reach_the_plan(self):
         base = presets.landsat_c1_physical()
         for refl in ((True, True), (False, False), (True, False), (False, True)):
             for therm in ((False, False), (True, True), (False, True)):
                 with self.subTest(refl=refl, therm=therm):
-                    p = dataclasses.replace(
-                        base,
-                        units=dataclasses.replace(base.units, refl_inclusive=refl),
-                        thermal=dataclasses.replace(base.thermal, inclusive=therm),
-                    )
-                    h = p.input()
-                    self.assertEqual((h.refl_min_inclusive, h.refl_max_inclusive), refl)
-                    self.assertEqual((h.therm_min_inclusive, h.therm_max_inclusive), therm)
+                    cfg = ccdcpp.config("ccdc").replace(
+                        preprocess__band_range__min_inclusive=refl[0],
+                        preprocess__band_range__max_inclusive=refl[1],
+                        preprocess__thermal_range__min_inclusive=therm[0],
+                        preprocess__thermal_range__max_inclusive=therm[1])
+                    for chain in (ccdcpp.plan_of(cfg, base).snow.chain,
+                                  ccdcpp.plan_of(cfg, base).standard.chain):
+                        self.assertEqual(chain[1].inclusive, therm)
+                        self.assertEqual(chain[2].inclusive, refl)
 
-    def test_no_thermal_keeps_the_input_defaults(self):
-        h = ten_band_profile().input()
-        default = ccdcpp.Input()
-        self.assertEqual((h.therm_min_inclusive, h.therm_max_inclusive),
-                         (default.therm_min_inclusive, default.therm_max_inclusive))
-
-    def test_flags_are_two_bools(self):
-        for bad in ((True,), (True, True, True), (1, 0), ("yes", "no"), True):
-            with self.subTest(bad=bad):
-                with self.assertRaises((ValueError, TypeError)):
-                    ccdcpp.Units(0.0, 1.0, 1.0, refl_inclusive=bad)
-                with self.assertRaises((ValueError, TypeError)):
-                    ccdcpp.Thermal(1.0, 0.0, -0.932, 0.707, inclusive=bad)
-        self.assertEqual(ccdcpp.Units(0.0, 1.0, 1.0, refl_inclusive=[False, True]).refl_inclusive,
-                         (False, True))
-
-    def test_hashable_and_picklable(self):
-        u = ccdcpp.Units(0.0, 1.0, 1.0, refl_inclusive=(True, True))
-        self.assertEqual(pickle.loads(pickle.dumps(u)), u)
-        self.assertEqual(hash(u), hash(ccdcpp.Units(0.0, 1.0, 1.0, (True, True))))
-        self.assertNotEqual(u, ccdcpp.REFLECTANCE)
+    def test_units_hashable_and_picklable(self):
+        for u in (ccdcpp.DN, ccdcpp.REFLECTANCE, ccdcpp.KELVIN_TENTHS,
+                  ccdcpp.CELSIUS_HUNDREDTHS):
+            self.assertEqual(pickle.loads(pickle.dumps(u)), u)
+            self.assertEqual(hash(u), hash(dataclasses.replace(u)))
+        self.assertNotEqual(ccdcpp.DN, ccdcpp.REFLECTANCE)
+        self.assertEqual(ccdcpp.Units(1.0), ccdcpp.REFLECTANCE)
+        self.assertEqual(ccdcpp.Thermal(1.0, 0.0), ccdcpp.CELSIUS_HUNDREDTHS)
 
 
 class DateOrder(unittest.TestCase):
@@ -837,8 +827,8 @@ class Profiles(unittest.TestCase):
         self.assertIs(p.input(), presets.landsat_c1_dn().input())
         h = copy.copy(p.input())
         self.assertEqual(h, p.input())
-        h.refl_max = 99.0
-        self.assertEqual(p.input().refl_max, 10000.0)
+        h.reflectance_unit = 99.0
+        self.assertEqual(p.input().reflectance_unit, 10000.0)
 
     def test_saturated_reaches_the_input(self):
         for preset in presets.__all__:
@@ -974,7 +964,6 @@ class TenBand(unittest.TestCase):
                    "nir_broad", "nir", "swir1", "swir2"]
         h.saturation_bands = list(range(10))
         h.reflectance_unit = 1.0
-        h.refl_min, h.refl_max = 0.0, 1.0
         h.saturated = None
         cfg = ccdcpp.config("ccdc").replace(
             change_test__peek_reference_days=10.0,
@@ -1093,14 +1082,14 @@ def s2_inputs(H=2, W=2, seed=9, breaks=True, years=8):
 
 #: Each preset's input, written out: the ccdcpp.Input() fields that differ.
 #: Every unnamed field is the default.
-PHYSICAL = dict(refl_min=0.0, refl_max=1.0, reflectance_unit=1.0, saturated=None)
+PHYSICAL = dict(reflectance_unit=1.0, saturated=None)
 _MSI = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad", "nir",
         "swir1", "swir2"]
 _HLS = ["coastal", "blue", "green", "red", "nir", "swir1", "swir2"]
 EXPECTED = {
     "hls_l30": dict(
         PHYSICAL, roles=_HLS + ["thermal"], saturation_bands=[0, 1, 2, 3, 4, 5, 6],
-        thermal_scale=1.0, thermal_offset=0.0, therm_min=-0.932, therm_max=0.707),
+        thermal_scale=1.0, thermal_offset=0.0),
     "hls_s30": dict(PHYSICAL, roles=["coastal"] + _MSI, saturation_bands=list(range(11))),
     "hls": dict(PHYSICAL, roles=_HLS, saturation_bands=list(range(7))),
     "sentinel2_l2a": dict(PHYSICAL, roles=_MSI, saturation_bands=list(range(10))),
@@ -1430,9 +1419,9 @@ class HlsInput(unittest.TestCase):
         self.assertEqual(raw.dtype, np.int16)
         np.testing.assert_array_equal(cube, raw * 1e-4)
         # Thermal B10 is degrees Celsius x 100; times 0.0001 it is degrees
-        # Celsius / 100, inside CELSIUS_HUNDREDTHS' -0.932..0.707.
-        h = presets.hls_l30().input()
-        self.assertTrue(((cube[:, :, 7] > h.therm_min) & (cube[:, :, 7] < h.therm_max)).all())
+        # Celsius / 100, inside "ccdc"'s -93.2..70.7 degrees as the input resolves it.
+        therm = ccdcpp.plan_of("ccdc", presets.hls_l30()).standard.chain[1]
+        self.assertTrue(((cube[:, :, 7] > therm.min) & (cube[:, :, 7] < therm.max)).all())
 
     def test_fill_is_dropped(self):
         dates, cube, fmask, raw = hls_inputs(8, thermal=True, H=1, W=1)

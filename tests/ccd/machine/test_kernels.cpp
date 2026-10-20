@@ -111,7 +111,8 @@ struct MaskedPixel
     ccd::config::Shared shared;
     ccd::MaskedSeries series;
 
-    MaskedPixel(const std::string& path, ccd::Input options_)
+    MaskedPixel(const std::string& path, ccd::Input options_,
+                const ccd::config::Config& config)
         : pixel(read_csv(path)), options(options_)
     {
         const index_t T = pixel.dates.size();
@@ -121,7 +122,7 @@ struct MaskedPixel
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(pixel.qas.data(), {T}),
             options, shared
         );
-        series.reset(workspace, ccd::filter::standard(workspace));
+        series.reset(workspace, golden::chain_mask(workspace, "standard", config));
     }
 };
 
@@ -131,13 +132,14 @@ struct CsvPixel
 {
     std::string path;
     ccd::Input options;
+    ccd::config::Config config;
 };
 
 const std::vector<CsvPixel>& csv_pixels()
 {
     static const std::vector<CsvPixel> pixels{
-        {CCD_PYCCD_PIXEL_CSV, ccd::Input{}},
-        {CCD_C2_PIXEL_CSV, golden::c2_input()},
+        {CCD_PYCCD_PIXEL_CSV, ccd::Input{}, golden::pyccd()},
+        {CCD_C2_PIXEL_CSV, golden::c2_input(), golden::c2_config()},
     };
     return pixels;
 }
@@ -372,9 +374,9 @@ index_t edge_coefficients()
 
 TEST(HarmonicBasis, MatchesTheInlineBuilder)
 {
-    for (const auto& [path, options] : csv_pixels())
+    for (const auto& [path, options, config] : csv_pixels())
     {
-        const MaskedPixel p(path, options);
+        const MaskedPixel p(path, options, config);
         ASSERT_GE(p.series.size(), index_t{200}) << path;
         const auto dates = p.series.dates();
 
@@ -460,9 +462,9 @@ TEST(HarmonicBasis, ColumnOrder)
 
 TEST(FitBands, MatchesEverySiteLoop)
 {
-    for (const auto& [path, options] : csv_pixels())
+    for (const auto& [path, options, config] : csv_pixels())
     {
-        const MaskedPixel p(path, options);
+        const MaskedPixel p(path, options, config);
         ASSERT_GE(p.series.size(), index_t{200}) << path;
         const auto dates = p.series.dates();
         const auto spectral = p.series.spectral();
@@ -521,9 +523,9 @@ TEST(FitBands, MatchesEverySiteLoop)
 
 TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
 {
-    for (const auto& [path, options] : csv_pixels())
+    for (const auto& [path, options, config] : csv_pixels())
     {
-        const MaskedPixel p(path, options);
+        const MaskedPixel p(path, options, config);
         ASSERT_GE(p.series.size(), index_t{200}) << path;
         const auto dates = p.series.dates();
         const auto spectral = p.series.spectral();
@@ -630,9 +632,9 @@ TEST(ChangeMagnitude, NonPositiveNormAndNoBands)
 
 TEST(CatchSegment, MatchesTheCatchLoop)
 {
-    for (const auto& [path, options] : csv_pixels())
+    for (const auto& [path, options, config] : csv_pixels())
     {
-        const MaskedPixel p(path, options);
+        const MaskedPixel p(path, options, config);
         ASSERT_GE(p.series.size(), index_t{200}) << path;
         const auto dates = p.series.dates();
         const auto spectral = p.series.spectral();

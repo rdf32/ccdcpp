@@ -4,15 +4,16 @@
 //
 // The Input carries the statements about what unit the caller's `spectral`
 // array is in: reflectance_unit (what one unit of reflectance is in the
-// data), thermal_scale, thermal_offset, refl_min, refl_max, therm_min,
-// therm_max. The configuration's reflectance values -- the shared alpha,
-// coef_floor and green_filter -- are physical and multiplied by
-// reflectance_unit when a run resolves it. The Input defaults are
-// Collection-1 DN, and the regression tests in test_standard.cpp pin those.
+// data), thermal_scale and thermal_offset. The configuration's values are
+// physical -- the shared alpha and coef_floor, band_range's bounds and
+// green_median's offset in reflectance, multiplied by reflectance_unit;
+// thermal_range's bounds in degrees Celsius, converted to the thermal row's
+// unit -- when a run resolves it. The Input defaults are Collection-1 DN, and
+// the regression tests in test_standard.cpp pin those.
 //
 // This file pins the OTHER end: that dividing every band of the input by
-// 10,000 and every one of the Input's bounds by the same 10,000, with
-// reflectance_unit 1, gives the identical fit, scaled. That is what makes
+// 10,000, with reflectance_unit 1 and the identity thermal transform, gives
+// the identical fit, scaled. That is what makes
 // the algorithm unit-agnostic rather than merely parameterised, and it is
 // the property a future edit is most likely to break silently -- every
 // failure mode here returns numbers, none of them raise.
@@ -48,24 +49,25 @@
 //
 // PhysicalUnitsAreEquivalent passing does not mean every value was
 // converted. Putting each one back to its DN value one at a time, with the rest
-// of the physical input correct:
+// of the physical run correct:
 //
 //     alpha               = 1.0       -> 4 segments instead of 5     CAUGHT
 //     coef_floor          = 1.0       -> coefficients out by 163 %   CAUGHT
-//     refl_min / refl_max             -> no effect whatsoever
-//     therm_min / therm_max           -> no effect whatsoever
-//     green_filter        = 400.0     -> no effect whatsoever
+//     band_range bounds               -> no effect whatsoever
+//     thermal_range bounds            -> no effect whatsoever
+//     green_median offset = 400.0     -> no effect whatsoever
 //
-// The bounds are invisible because the physical input makes them NARROWER, so
+// The bounds are invisible because the physical run makes them NARROWER, so
 // leaving them at the DN value only ever loosens a screen, and a screen that
 // rejects nothing is indistinguishable from a correct screen on clean data.
-// The direction that bites is the reverse one -- DN input with the physical
-// bound -- and it is deafening: every observation falls outside the range, the
-// mask empties, and the pixel returns 0 segments instead of 5. That is
+// The direction that bites is the reverse one -- a DN run with the physical
+// bound, the reflectance number reaching the data unconverted -- and it is
+// deafening: every observation falls outside the range, the mask empties,
+// and the pixel returns 0 segments instead of 5. That is
 // BoundsAreUnitConstants.
 //
 // The green filter is invisible for a different and more interesting reason:
-// the default plan runs the green median filter only in the InsufficientClear
+// "ccdc" runs the green median filter only in the InsufficientClear
 // chain, and this pixel takes the Standard procedure, so the constant is never
 // read. Even
 // setting it to 0.0 -- which would drop every observation at or above the
@@ -191,7 +193,8 @@ std::vector<ccd::scalar_t> to_physical(
 }
 
 // The physical-unit input: reflectance its unit, the thermal transform the
-// identity (the caller already applied it), every bound divided by SCALE.
+// identity (the caller already applied it). The configuration's bounds
+// resolve against it to the DN ones divided by SCALE.
 ccd::Input physical_input()
 {
     ccd::Input h;
@@ -201,13 +204,18 @@ ccd::Input physical_input()
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
 
-    h.refl_min = 0.0 / SCALE;
-    h.refl_max = 10000.0 / SCALE;
-
-    h.therm_min = ccd::MIN_CELSIUS / SCALE;
-    h.therm_max = ccd::MAX_CELSIUS / SCALE;
-
     return h;
+}
+
+// "ccdc" with every step of type `step` given bounds `lo` and `hi` and the
+// inclusive flags `inclusive`.
+ccd::config::Config with_bounds(const std::string& step, double lo, double hi,
+                                bool inclusive = false)
+{
+    ccd::config::Config c = golden::with_steps(golden::pyccd(), step, "min", ccd::config::real(lo));
+    c = golden::with_steps(c, step, "max", ccd::config::real(hi));
+    c = golden::with_steps(c, step, "min_inclusive", ccd::config::flag(inclusive));
+    return golden::with_steps(c, step, "max_inclusive", ccd::config::flag(inclusive));
 }
 
 // "ccdc" with the shared alpha and coef_floor at `alpha` and `coef_floor`
@@ -254,9 +262,8 @@ ccd::FitResult run(
 // test_clear.cpp does.
 //
 // Needed because the green filter is unreachable through run_pixel() on this
-// pixel: the default plan runs the green median filter only in the
-// InsufficientClear chain, and run_pixel() sends this pixel to the Standard
-// procedure.
+// pixel: "ccdc" runs the green median filter only in the InsufficientClear
+// chain, and run_pixel() sends this pixel to the Standard procedure.
 //
 // This procedure applies NO thermal transform -- that is Standard-only, both
 // here and in pyccd -- so the exact scale relation for it is a plain divisor on
@@ -280,7 +287,7 @@ ccd::FitResult run_insufficient_clear(
     const Observations& obs,
     const std::vector<ccd::scalar_t>& spectral,   // const: nothing writes to it
     const ccd::Input& h,
-    const ccd::config::Shared& shared,
+    const ccd::config::Config& config,
     const ccd::LassoOptions& lo
 )
 {
@@ -293,6 +300,7 @@ ccd::FitResult run_insufficient_clear(
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
         obs.qas.data(), {obs.T});
 
+    const ccd::config::Shared shared = golden::shared_of(config, h);
     ccd::HarmonicWorkspace hworkspace(dates, spec, qas, h, shared);
     const ccd::config::ConfigTree tree = golden::resolved().stages;
 
@@ -302,7 +310,7 @@ ccd::FitResult run_insufficient_clear(
     return ccd::fit_whole_series(
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
-        ccd::filter::insufficientclear(hworkspace),
+        golden::chain_mask(hworkspace, "insufficient_clear", config),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(tree, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(
@@ -452,10 +460,9 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 
     const ccd::Input dn_h;
     const ccd::Input phys_h = physical_input();
-    ccd::Input inclusive_h;
-    inclusive_h.refl_min_inclusive = inclusive_h.refl_max_inclusive = true;
+    const ccd::config::Config inclusive = with_bounds("band_range", 0.0, 1.0, true);
 
-    const auto dn_inclusive = run(obs, obs.spectral, inclusive_h);
+    const auto dn_inclusive = run(obs, obs.spectral, dn_h, inclusive);
 
     const auto dn = run(obs, obs.spectral, dn_h);
     const auto phys = run(obs, to_physical(obs.spectral, obs.T), phys_h);
@@ -463,20 +470,20 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     // The filter mask, before any fitting: the inclusive bound keeps the
     // moved observations, the exclusive one drops them, in both units.
     const auto filter_mask = [&obs](const std::vector<ccd::scalar_t>& spectral,
-                                    const ccd::Input& h) {
-        const ccd::config::Shared shared = golden::shared_of(golden::pyccd(), h);
+                                    const ccd::Input& h, const ccd::config::Config& config) {
+        const ccd::config::Shared shared = golden::shared_of(config, h);
         const ccd::HarmonicWorkspace workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.T}),
             h, shared);
-        return ccd::filter::standard(workspace);
+        return golden::chain_mask(workspace, "standard", config);
     };
 
     const auto physical = to_physical(obs.spectral, obs.T);
-    const auto inclusive_mask = filter_mask(obs.spectral, inclusive_h);
-    const auto exclusive_mask = filter_mask(obs.spectral, dn_h);
-    const auto physical_exclusive_mask = filter_mask(physical, phys_h);
+    const auto inclusive_mask = filter_mask(obs.spectral, dn_h, inclusive);
+    const auto exclusive_mask = filter_mask(obs.spectral, dn_h, golden::pyccd());
+    const auto physical_exclusive_mask = filter_mask(physical, phys_h, golden::pyccd());
 
     for (const auto t : moved)
     {
@@ -616,10 +623,14 @@ TEST(Units, CoefFloorIsAUnitConstant)
 //------------------------------------------------------------------------------
 // Negative control 3 -- the two filter ranges, in the direction that bites.
 //
-// Backwards from the other two on purpose. Leaving a bound at its DN value
+// Backwards from the other two on purpose. A bound left at its DN value
 // while feeding reflectance only widens the screen, and a screen that rejects
 // nothing looks exactly like a correct one. So this asserts the opposite: the
-// physical bound applied to DN input must reject everything.
+// physical number reaching DN data unconverted must reject everything. The
+// configuration writes each bound so that it resolves, on the DN input, to
+// the physical number itself -- reflectance 0..1 / SCALE resolves to 0..1,
+// thermal (-93.2, 70.7) degrees / SCALE to -0.932..0.707 -- which is what a
+// resolution that skipped the conversion would hand the filter.
 //------------------------------------------------------------------------------
 
 TEST(Units, BoundsAreUnitConstants)
@@ -634,25 +645,21 @@ TEST(Units, BoundsAreUnitConstants)
     ASSERT_GT(dn.models.size(), 0u);
 
     {
-        ccd::Input h;                           // DN input...
-        h.refl_min = 0.0 / SCALE;               // ...physical saturation bound
-        h.refl_max = 10000.0 / SCALE;
-
-        const auto out = run(obs, obs.spectral, h);
+        // DN input, the physical saturation bound.
+        const auto out =
+            run(obs, obs.spectral, ccd::Input{}, with_bounds("band_range", 0.0, 1.0 / SCALE));
 
         EXPECT_EQ(out.models.size(), 0u)
             << "reflectance bounds against DN input left "
             << out.models.size() << " segments; every observation is supposed"
-               " to be screened out, which is what makes refl_min/refl_max"
+               " to be screened out, which is what makes band_range's bounds"
                " observable at all";
     }
 
     {
-        ccd::Input h;                           // DN input...
-        h.therm_min = ccd::MIN_CELSIUS / SCALE; // ...physical thermal bound
-        h.therm_max = ccd::MAX_CELSIUS / SCALE;
-
-        const auto out = run(obs, obs.spectral, h);
+        // DN input, the physical thermal bound.
+        const auto out = run(obs, obs.spectral, ccd::Input{},
+                             with_bounds("thermal_range", -93.2 / SCALE, 70.7 / SCALE));
 
         EXPECT_EQ(out.models.size(), 0u)
             << "thermal bounds against DN input left "
@@ -676,17 +683,17 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
 
     const auto dn = run_insufficient_clear(
         obs, obs.spectral,
-        ccd::Input{}, ccd::config::Shared{}, ccd::LassoOptions{}
+        ccd::Input{}, golden::pyccd(), ccd::LassoOptions{}
     );
 
-    ccd::Input h = physical_input();
-    h.therm_min = ccd::MIN_CELSIUS / SCALE;     // thermal is K x 10 / SCALE
-    h.therm_max = ccd::MAX_CELSIUS / SCALE;     // here, not Celsius -- see
-                                                // plain_divide's comment
-    const ccd::config::Shared shared = golden::shared_of(golden::pyccd(), h);
-    ASSERT_EQ(shared.green_filter, 0.04);
+    // Thermal is K x 10 / SCALE here, not Celsius -- see plain_divide's
+    // comment -- inside the thermal bounds, -0.932..0.707, as K x 10 is
+    // inside -9320..7070.
+    const ccd::Input h = physical_input();
+    ASSERT_EQ(golden::plan_of(golden::pyccd(), h).insufficient_clear.chain[4].green_offset, 0.04);
 
-    const auto phys = run_insufficient_clear(obs, scaled, h, shared, physical_solver());
+    const auto phys =
+        run_insufficient_clear(obs, scaled, h, golden::pyccd(), physical_solver());
 
     ASSERT_EQ(dn.models.size(), phys.models.size());
     ASSERT_GT(dn.models.size(), 0u);
@@ -695,8 +702,9 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     EXPECT_LT(worst_relative(dn, phys), 1e-9);
 
     // Now the constant on its own.
-    ccd::config::Shared bad = shared;
-    bad.green_filter = 400.0;                   // the DN value, left behind
+    // The DN value, left behind.
+    const ccd::config::Config bad =
+        golden::with_steps(golden::pyccd(), "green_median", "offset", ccd::config::real(400.0));
 
     const auto out = run_insufficient_clear(
         obs, scaled, h, bad, physical_solver()
@@ -711,7 +719,7 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
         count_nonzero(out) != count_nonzero(dn);
 
     EXPECT_TRUE(moved)
-        << "green_filter=400.0 at reflectance scale changed nothing"
+        << "green_median offset=400.0 at reflectance scale changed nothing"
            " even through the procedure that reads it. If that is now true,"
            " this value has no guard anywhere -- say so in input.hpp"
            " rather than deleting the test";

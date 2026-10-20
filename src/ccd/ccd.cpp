@@ -125,53 +125,6 @@ void validate_dates(ArrayView<const std::int64_t, 1> dates)
     }
 }
 
-namespace
-{
-
-void digest(detail::Fnv& h, const preprocess::ProcedurePlan& plan)
-{
-    h.flag(plan.transform.has_value());
-    if (plan.transform)
-    {
-        h.integer(static_cast<std::int64_t>(plan.transform->band));
-        h.real(plan.transform->scale);
-        h.real(plan.transform->offset);
-    }
-
-    h.integer(static_cast<std::int64_t>(plan.chain.size()));
-    for (index_t i = 0; i < plan.chain.size(); ++i)
-    {
-        const preprocess::Step& step = plan.chain.steps[i];
-        h.integer(static_cast<std::int64_t>(step.kind));
-        for (std::size_t c = 0; c < step.codes.size(); ++c)
-            h.flag(step.codes.test(c));
-        h.bands(step.bands);
-        h.integer(static_cast<std::int64_t>(step.band));
-        h.real(step.range.lo.value);
-        h.flag(step.range.lo.inclusive);
-        h.real(step.range.hi.value);
-        h.flag(step.range.hi.inclusive);
-        h.real(step.green_offset);
-        h.integer(step.max_date);
-        h.integer(static_cast<std::int64_t>(step.scope));
-    }
-}
-
-} // namespace
-
-std::uint64_t options_digest(
-    const config::Resolved& resolved,
-    const preprocess::PreprocessPlan& plan
-)
-{
-    detail::Fnv h;
-    h.integer(static_cast<std::int64_t>(resolved.digest));
-    for (const preprocess::ProcedurePlan* procedure :
-         {&plan.standard, &plan.snow, &plan.insufficient_clear})
-        digest(h, *procedure);
-    return h.value();
-}
-
 std::uint64_t input_fingerprint(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,

@@ -166,20 +166,21 @@ int main(int argc, char** argv)
         for (const char* fn : files)
         {
             auto csv = read_csv(csvdir + "/" + fn);
-            std::vector<std::pair<std::string, ccd::Input>> sets = {
-                {"dn", ccd::Input{}},
-                {"c2", golden::c2_input()},
-                {"phys", golden::physical_input()},
+            struct Set { std::string name; ccd::Input input; ccd::config::Config config; };
+            const std::vector<Set> sets = {
+                {"dn", ccd::Input{}, golden::pyccd()},
+                {"c2", golden::c2_input(), golden::c2_config()},
+                {"phys", golden::physical_input(), golden::pyccd()},
             };
             for (auto& set : sets)
             {
                 std::vector<double> spec = csv.spectral;
-                if (set.first == "phys") golden::to_physical(spec.data(), csv.T);
-                auto r = ccd::run_pixel(golden::spec_of(set.second),
+                if (set.name == "phys") golden::to_physical(spec.data(), csv.T);
+                auto r = ccd::run_pixel(golden::spec_of(set.input, set.config),
                     ccd::ArrayView<const std::int64_t, 1>::contiguous(csv.dates.data(), {csv.T}),
                     ccd::ArrayView<const double, 2>::contiguous(spec.data(), {7, csv.T}),
                     ccd::ArrayView<const std::uint8_t, 1>::contiguous(csv.qas.data(), {csv.T})).result;
-                golden::dump_pixel(s, std::string(fn) + ":" + set.first, r);
+                golden::dump_pixel(s, std::string(fn) + ":" + set.name, r);
             }
         }
         write_text(out + "/csv.txt", s);

@@ -1,7 +1,7 @@
 #pragma once
 
 // Internal to the library: the hash behind the digests (inputs,
-// configurations, options_digest()) and the input fingerprints of the resume
+// configurations, resolutions) and the input fingerprints of the resume
 // records.
 
 #include <cstdint>

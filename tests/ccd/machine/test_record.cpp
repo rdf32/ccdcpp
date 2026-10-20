@@ -60,7 +60,7 @@ ccd::ArrayView<const std::uint8_t, 1> qas_of(const golden::CharPixel& p)
 ccd::PixelRun recorded(const golden::CharPixel& p)
 {
     return ccd::run_pixel(
-        golden::spec_of(p.h, p.config, nullptr, true),
+        golden::spec_of(p.h, p.config, true),
         dates_of(p),
         spectral_of(p),
         qas_of(p));
@@ -132,9 +132,7 @@ TEST(Record, TheHeaderNamesTheRun)
     EXPECT_EQ(r.header.series_end, p.dates.back());
     EXPECT_EQ(r.header.statistics_end, p.dates.back());
     const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
-    EXPECT_EQ(r.header.options_digest,
-              ccd::options_digest(resolved,
-                                  ccd::preprocess::default_plan(p.h, resolved.shared)));
+    EXPECT_EQ(r.header.options_digest, resolved.digest);
 }
 
 TEST(Record, EachExitAndItsSuspension)
@@ -194,8 +192,9 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         // record (the fit window, its coefficient count), bit for bit.
         // The pixel as the Standard machine reads it: its plan's transform
         // applied.
-        const ccd::config::Shared shared = golden::shared_of(p.config, p.h);
-        const auto plan = ccd::preprocess::default_plan(p.h, shared);
+        const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
+        const ccd::config::Shared& shared = resolved.shared;
+        const auto& plan = resolved.plan;
         const index_t T = p.dates.size();
         std::vector<double> block = p.spectral;
         if (plan.standard.transform)
@@ -270,8 +269,9 @@ TEST(Record, TheExcludedDaysAreTheMachinesDrops)
             continue;
 
         // The Standard filter chain's mask, as Run::pixel builds it.
-        const ccd::config::Shared shared = golden::shared_of(p.config, p.h);
-        const auto plan = ccd::preprocess::default_plan(p.h, shared);
+        const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
+        const ccd::config::Shared& shared = resolved.shared;
+        const auto& plan = resolved.plan;
         const index_t T = p.dates.size();
         std::vector<double> block = p.spectral;
         if (plan.standard.transform)
@@ -312,8 +312,7 @@ std::uint64_t digest_of(
     const ccd::Input& h,
     const ccd::config::Config& config = golden::pyccd())
 {
-    const ccd::config::Resolved resolved = golden::resolved(config, h);
-    return ccd::options_digest(resolved, ccd::preprocess::default_plan(h, resolved.shared));
+    return golden::resolved(config, h).digest;
 }
 
 } // namespace
@@ -334,13 +333,12 @@ TEST(OptionsDigest, TheConfigurationMoves)
 {
     const ccd::Input h;
     ccd::config::Config tree = golden::pyccd();
-    const auto plan = ccd::preprocess::default_plan(h, golden::shared_of());
-    const std::uint64_t base = ccd::options_digest(golden::resolved(tree, h), plan);
+    const std::uint64_t base = golden::resolved(tree, h).digest;
     EXPECT_EQ(base, digest_of(h));
     tree.stages["lookback"].params["peek"] = ccd::config::integer(6);
-    const std::uint64_t other = ccd::options_digest(golden::resolved(tree, h), plan);
+    const std::uint64_t other = golden::resolved(tree, h).digest;
     EXPECT_NE(other, base);
-    EXPECT_EQ(other, ccd::options_digest(golden::resolved(tree, h), plan));
+    EXPECT_EQ(other, golden::resolved(tree, h).digest);
 }
 
 TEST(OptionsDigest, EveryGroupOfFieldsMoves)
@@ -357,10 +355,8 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         {"reflectance_unit", [](auto& h) { h.reflectance_unit = 1.0; }},
         {"saturated", [](auto& h) { h.saturated = 65535.0; }},
         {"no saturated", [](auto& h) { h.saturated.reset(); }},
+        {"thermal_scale", [](auto& h) { h.thermal_scale = 1.0; }},
         {"thermal_offset", [](auto& h) { h.thermal_offset = -2731.0; }},
-        {"refl_max_inclusive", [](auto& h) { h.refl_max_inclusive = true; }},
-        {"therm_min", [](auto& h) { h.therm_min = -9000.0; }},
-        {"therm_max_inclusive", [](auto& h) { h.therm_max_inclusive = true; }},
     };
     for (const auto& [name, set] : input)
     {
@@ -437,20 +433,58 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
     EXPECT_GT(parameters, 15u);
 }
 
-TEST(OptionsDigest, ThePlanAndTheQaTableMove)
+TEST(OptionsDigest, ThePreprocessingAndTheQaTableMove)
 {
     const ccd::Input h;
-    const ccd::config::Resolved config = golden::resolved();
-    const auto plan = ccd::preprocess::default_plan(h, config.shared);
-    const std::uint64_t base = ccd::options_digest(config, plan);
+    const std::uint64_t base = digest_of(h);
+    const ccd::config::Config preset = golden::pyccd();
 
-    auto other = plan;
-    other.insufficient_clear.chain.steps[0].codes.set(2);
-    EXPECT_NE(ccd::options_digest(config, other), base);
-
-    other = plan;
-    other.standard.transform.reset();
-    EXPECT_NE(ccd::options_digest(config, other), base);
+    // Every parameter of every step of every procedure, and each procedure's
+    // thermal transform.
+    std::size_t parameters = 0;
+    for (const auto& [procedure, chain] : preset.preprocess)
+    {
+        ccd::config::Config flipped = preset;
+        flipped.preprocess[procedure].thermal_transform = !chain.thermal_transform;
+        EXPECT_NE(digest_of(h, flipped), base) << procedure;
+        for (std::size_t i = 0; i < chain.steps.size(); ++i)
+            for (const auto& [name, value] : chain.steps[i].params)
+            {
+                if (name == "max_date")
+                    continue;   // the shared stat_ord's, moved above
+                const ccd::config::Value moved = std::visit(
+                    [](auto v) -> ccd::config::Value
+                    {
+                        using T = decltype(v);
+                        if constexpr (std::is_same_v<T, bool>)
+                            return ccd::config::flag(!v);
+                        else if constexpr (std::is_same_v<T, double>)
+                            return ccd::config::real(v + 0.5);
+                        else if constexpr (std::is_same_v<T, std::string>)
+                            return std::string(v == "all" ? "off" : "all");
+                        else if constexpr (std::is_same_v<T, std::vector<std::string>>)
+                        {
+                            v.push_back("cloud");
+                            return ccd::config::names(v);
+                        }
+                        else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>)
+                        {
+                            v.push_back(0);
+                            return v;
+                        }
+                        else
+                            return ccd::config::integer(v + 1);
+                    },
+                    value);
+                EXPECT_NE(digest_of(h, golden::with_step(preset, procedure, i, name, moved)), base)
+                    << procedure << " " << i << " " << name;
+                ++parameters;
+            }
+        ccd::config::Config shorter = preset;
+        shorter.preprocess[procedure].steps.erase(shorter.preprocess[procedure].steps.begin());
+        EXPECT_NE(digest_of(h, shorter), base) << procedure;
+    }
+    EXPECT_GT(parameters, 20u);
 
     // The input's QA table, by its codes.
     const auto table = ccd::qa_tables::landsat_c2_qa_pixel(h);
@@ -465,16 +499,15 @@ TEST(OptionsDigest, ThePlanAndTheQaTableMove)
               with_table);
 }
 
-// The digests name every field of these structs one by one (digest(Input),
-// options_digest()'s plan), so a
-// field added to one must be added to the digest too. A struct's size is the
-// tripwire: on any LP64 platform these are the sizes the digest was written
-// for, and a test that fails here is a reminder, not a platform difference.
-TEST(OptionsDigest, TheStructsAreTheOnesItWasWrittenFor)
+// digest(Input) names every field of the input one by one, so a field added
+// to it must be added to the digest too. Its size is the tripwire: on any
+// LP64 platform this is the size the digest was written for, and a test that
+// fails here is a reminder, not a platform difference. The configuration's
+// part of the digest is of its values by name, preprocessing included, so no
+// struct of the plan needs one.
+TEST(OptionsDigest, TheInputIsTheOneItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::Input), 184u);
-    EXPECT_EQ(sizeof(ccd::preprocess::Step), 144u);
-    EXPECT_EQ(sizeof(ccd::preprocess::Affine), 24u);
+    EXPECT_EQ(sizeof(ccd::Input), 136u);
 }
 
 //------------------------------------------------------------------------------

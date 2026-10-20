@@ -43,7 +43,8 @@ struct ResumeHeader
     std::uint16_t format = RESUME_FORMAT;
     std::uint32_t results_version = RESULTS_VERSION;
 
-    // options_digest() of the options, the plan and the QA table of the run.
+    // The run's input and resolved configuration (config::Resolved::digest:
+    // the QA table and the preprocessing included).
     std::uint64_t options_digest = 0;
 
     // The last date of the series the run saw (the end of its input, fill

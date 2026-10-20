@@ -52,22 +52,37 @@ namespace config
 //
 //==============================================================================
 
-// What a parameter's value is measured in: dimensionless, a count of
-// observations, days, reflectance (multiplied by Input::reflectance_unit when
-// a configuration is resolved), or bands (roles, or rows of the spectral
-// array).
+// What a parameter's value is measured in, and how a configuration resolved
+// against an input converts it:
+//
+//   None, Observations, Days   unchanged;
+//   Reflectance                times Input::reflectance_unit;
+//   Celsius                    degrees Celsius, to the thermal row's unit
+//                              after the input's transform: c x 100 (hundredths
+//                              of a degree, pyccd's unit) times
+//                              reflectance_unit / 10000, so -93.2 and 70.7 are
+//                              -9320 and 7070 on Collection-1 DN and -0.932
+//                              and 0.707 on reflectance, exactly;
+//   Bands                      band roles to the input's rows (rows as given);
+//   QaCodes                    QA code names ("fill", "clear", "water",
+//                              "shadow", "snow", "cloud", "cirrus1",
+//                              "cirrus2", "occlusion") to the input's codes
+//                              (codes 0-255 as given).
 enum class Unit : std::uint8_t
 {
     None,
     Observations,
     Days,
     Reflectance,
-    Bands
+    Celsius,
+    Bands,
+    QaCodes
 };
 
 // One parameter's value, as a configuration holds it: a flag, a whole
-// number, a real, a name, a list of band indices, or a list of band roles. A
-// resolved configuration holds no roles: they are rows of its input.
+// number, a real, a name, a list of whole numbers (band rows, QA codes), or a
+// list of names (band roles, QA code names). A resolved configuration holds
+// no names in a list: they are its input's rows and codes.
 using Value = std::variant<bool, std::int64_t, double, std::string, std::vector<std::int64_t>,
                            std::vector<std::string>>;
 
@@ -84,6 +99,10 @@ inline Value bands(const BandList& v)
     return Value(std::in_place_type<std::vector<std::int64_t>>, v.begin(), v.end());
 }
 inline Value roles(std::vector<std::string> v)
+{
+    return Value(std::in_place_type<std::vector<std::string>>, std::move(v));
+}
+inline Value names(std::vector<std::string> v)
 {
     return Value(std::in_place_type<std::vector<std::string>>, std::move(v));
 }
@@ -135,7 +154,7 @@ template<class P>
 struct Field
 {
     using Member = std::variant<double P::*, index_t P::*, std::int64_t P::*, bool P::*,
-                                BandList P::*, std::string P::*>;
+                                BandList P::*, std::string P::*, std::vector<std::int64_t> P::*>;
 
     const char* name;
     Member member;
@@ -196,6 +215,17 @@ void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
                     if (!std::holds_alternative<std::string>(value))
                         throw std::invalid_argument(at + " is a name");
                     params.*member = std::get<std::string>(value);
+                }
+                else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>)
+                {
+                    if (!std::holds_alternative<std::vector<std::int64_t>>(value))
+                        throw std::invalid_argument(at + " is a list of QA code names or codes");
+                    for (const std::int64_t code : std::get<std::vector<std::int64_t>>(value))
+                        if (!field->bounds.contains(static_cast<double>(code)))
+                            throw std::invalid_argument(at + " holds " + std::to_string(code) +
+                                                        "; a code must be " +
+                                                        describe(field->bounds));
+                    params.*member = std::get<std::vector<std::int64_t>>(value);
                 }
                 else if constexpr (std::is_same_v<T, BandList>)
                 {
@@ -268,6 +298,8 @@ Values to_values(const std::vector<Field<P>>& schema, const P& params)
                 else if constexpr (std::is_same_v<T, BandList>)
                     out[f.name] = bands(params.*member);
                 else if constexpr (std::is_same_v<T, std::string>)
+                    out[f.name] = Value(params.*member);
+                else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>)
                     out[f.name] = Value(params.*member);
                 else if constexpr (std::is_same_v<T, double>)
                     out[f.name] = real(params.*member);

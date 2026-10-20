@@ -6,14 +6,13 @@
 #include <initializer_list>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/core/band_list.hpp"
 #include "ccd/input/pmask.hpp"
 #include "ccd/core/array_view.hpp"
-#include "ccd/config/shared.hpp"
-#include "ccd/input/harmonic.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/input/mask/filter.hpp"
 
@@ -39,14 +38,16 @@ namespace preprocess
 //                      order by apply().
 //   Step               one filter: a StepKind and the parameters it reads.
 //
-// default_plan(input, shared) is the plan of an input and its resolved
-// shared values, and the one a Run runs when it is given none. A plan is checked against the band
-// count once per call by validate(), never per pixel.
+// A plan is the configuration's preprocess section resolved against an
+// input (config::Registry::resolve(), plan_of() in run/algorithm.hpp): the
+// steps by name with their parameters in physical units, as data units,
+// rows and codes. It is checked against the band count by validate() when it
+// is resolved, never per pixel.
 //
 // apply() starts from a mask that keeps every observation; each step then
 // narrows it (KeepQa, ThermalRange, BandRange, GreenMedian, Dedupe) or
 // widens it (AddQa). Each step is one loop over the time series, chosen by a
-// switch on its kind.
+// switch on its kind; a Custom step runs its own rule (CustomStep).
 //
 //==============================================================================
 
@@ -92,10 +93,44 @@ enum class StepKind : std::uint8_t
 
     // Keep the first kept observation of each date
     // (filter::remove_duplicate_dates).
-    Dedupe
+    Dedupe,
+
+    // A step a registry adds beyond these (config::Registry::add_step()):
+    // `custom` decides.
+    Custom
 };
 
 const char* name(StepKind kind);
+
+//------------------------------------------------------------------------------
+//
+// A step beyond the built-in kinds: what a registered step type's make()
+// returns as its Step's `custom` (config::Registry::add_step()). Immutable;
+// shared by every pixel and thread of a run.
+//
+//------------------------------------------------------------------------------
+
+class CustomStep
+{
+public:
+    virtual ~CustomStep() = default;
+
+    // Narrows or widens `mask` (T entries) over one pixel, as apply() runs a
+    // built-in step.
+    virtual void apply(
+        ArrayView<const std::int64_t, 1> dates,
+        ArrayView<const scalar_t, 2> spectral,
+        ArrayView<const std::uint8_t, 1> qas,
+        ProcessingMask& mask
+    ) const = 0;
+
+    // Throws std::invalid_argument when the step reads a row not below
+    // `bands` (validate()).
+    virtual void validate(index_t bands) const = 0;
+
+    // Its name and fields, as a plan describes a step.
+    virtual std::string describe() const = 0;
+};
 
 //------------------------------------------------------------------------------
 //
@@ -106,6 +141,7 @@ const char* name(StepKind kind);
 //   BandRange       bands, range
 //   GreenMedian     band, green_offset, max_date, scope
 //   Dedupe          none
+//   Custom          custom
 //
 // The named constructors below fill exactly those.
 //
@@ -123,6 +159,8 @@ struct Step
     scalar_t green_offset = 0.0;
     std::int64_t max_date = 0;
     GreenFilterScope scope = GreenFilterScope::StatWindow;
+
+    std::shared_ptr<const CustomStep> custom;
 
     static Step keep_qa(const QaSet& codes)
     {
@@ -178,6 +216,14 @@ struct Step
     {
         Step s;
         s.kind = StepKind::Dedupe;
+        return s;
+    }
+
+    static Step of(std::shared_ptr<const CustomStep> custom)
+    {
+        Step s;
+        s.kind = StepKind::Custom;
+        s.custom = std::move(custom);
         return s;
     }
 };
@@ -273,37 +319,6 @@ struct PreprocessPlan
     ProcedurePlan insufficient_clear;
 };
 
-// run_pixel() and run_cube() take a plan as they take a QaTable: shared,
-// read-only, by every pixel and thread of the call.
-using PreprocessPlanPtr = std::shared_ptr<const PreprocessPlan>;
-
-//------------------------------------------------------------------------------
-//
-// The plan of `input` and the shared values a run resolved for it
-// (config/shared.hpp: the green filter in the input's units).
-//
-// Every procedure's chain begins with the same four steps:
-//
-//   KeepQa {qa_clear, qa_water}
-//   ThermalRange (the "thermal" row, therm_min/therm_max and their flags)
-//                                    -- omitted for an input without one
-//   BandRange (saturation_bands, refl_min/refl_max and their flags)
-//   Dedupe
-//
-// after which
-//
-//   standard             ends;
-//   snow                 adds AddQa {qa_snow}, Dedupe;
-//   insufficient_clear   adds GreenMedian (the "green" row, shared
-//                        green_filter, stat_ord, green_filter_scope), Dedupe.
-//
-// standard's transform is thermal_transform(input); the other two have
-// none, so their ThermalRange tests the caller's own unit (see the "Units"
-// block in input.hpp).
-//
-//------------------------------------------------------------------------------
-
-PreprocessPlan default_plan(const Input& input, const config::Shared& shared);
 
 //------------------------------------------------------------------------------
 //
@@ -317,7 +332,8 @@ PreprocessPlan default_plan(const Input& input, const config::Shared& shared);
 // Celsius x 100 (the collection-2 form `* 0.00341802 + 149.0 - 273.15`
 // yields plain Celsius).
 //
-// default_plan() gives it to Standard only, matching pyccd, where
+// A procedure whose configuration sets thermal_transform reads its thermal
+// row through it: "ccdc" sets it for Standard only, matching pyccd, where
 // kelvin_to_celsius() is called inside standard_procedure(). See input.hpp's
 // "Units" block for the consequences for the other two procedures.
 //
@@ -336,7 +352,8 @@ std::optional<Affine> thermal_transform(const Input& input);
 //     band is not below `bands`;
 //   * GreenMedian step has no band (NO_BAND);
 //   * transform band is in one of its chain's BandRange steps;
-//   * AddQa step is not immediately followed by a Dedupe step.
+//   * AddQa step is not immediately followed by a Dedupe step;
+//   * Custom step's validate() refuses `bands`.
 //
 //------------------------------------------------------------------------------
 
@@ -371,6 +388,5 @@ void apply_steps(
 
 } // namespace preprocess
 
-using PreprocessPlanPtr = preprocess::PreprocessPlanPtr;
 
 } // namespace ccd

@@ -31,11 +31,6 @@ A profile describes the data only; the configuration (``config=``, "ccdc" by
 default) is the same for every profile. Only :func:`landsat_c1_dn` declares
 the value a saturated observation holds (``saturated``, 20000).
 
-Every preset leaves ``preprocess`` None, so it runs the default plan of its
-input and configuration (``ccdcpp.default_plan``);
-``dataclasses.replace(preset(), preprocess=ccdcpp.Preprocess(...))`` runs
-another.
-
 A profile for another sensor is a :class:`ccdcpp.SensorProfile` call; the
 module docstring of ``ccdcpp.profiles`` has an example.
 """

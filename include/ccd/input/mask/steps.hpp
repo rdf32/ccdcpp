@@ -1,0 +1,131 @@
+#pragma once
+
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ccd/config/params.hpp"
+#include "ccd/core/band_list.hpp"
+#include "ccd/core/constants.hpp"
+#include "ccd/input/input.hpp"
+#include "ccd/input/mask/preprocess.hpp"
+
+namespace ccd
+{
+namespace preprocess
+{
+
+//==============================================================================
+//
+// The library's preprocessing step types
+//
+// What the configuration's preprocess section names (config/preprocess.hpp),
+// registered by name in register_core_strategies(). A step type S provides
+//
+//     struct S {
+//         struct Params { ... };                     // its parameters
+//         static const std::vector<config::Field<Params>>& schema();
+//         static std::optional<Step> make(const Params&, const Input&);
+//     };
+//
+// and optionally `static void validate(const Params&)`, which throws
+// std::invalid_argument for parameters the schema's bounds cannot say. A
+// Params member's default is its value on the default Input (Collection-1
+// DN, the Landsat rows), a schema's default_value the physical one, as for
+// the strategies (config/params.hpp). make() builds the step from parameters
+// resolved against `input` (its units, rows and codes), or none where the
+// step does not apply to the input. A registry's other step types are the
+// same, and return a Step::of() a preprocess::CustomStep.
+//
+//==============================================================================
+
+// keep_qa: keep only the observations whose QA code is one of `codes`.
+struct KeepQa
+{
+    struct Params
+    {
+        std::vector<std::int64_t> codes = {0, 1};
+    };
+    static const std::vector<config::Field<Params>>& schema();
+    static std::optional<Step> make(const Params& params, const Input& input);
+};
+
+// add_qa: also keep every observation whose QA code is one of `codes`,
+// whatever an earlier step decided; a dedupe must follow it.
+struct AddQa
+{
+    struct Params
+    {
+        std::vector<std::int64_t> codes = {3};
+    };
+    static const std::vector<config::Field<Params>>& schema();
+    static std::optional<Step> make(const Params& params, const Input& input);
+};
+
+// thermal_range: keep only the observations whose thermal row lies within
+// (min, max), in degrees Celsius resolved to the row's unit after the
+// input's transform; a procedure without the transform tests the row as the
+// input holds it (see input.hpp's "Units" block). An input without a
+// "thermal" row skips it.
+struct ThermalRange
+{
+    struct Params
+    {
+        double min = MIN_CELSIUS;
+        double max = MAX_CELSIUS;
+        bool min_inclusive = false;
+        bool max_inclusive = false;
+    };
+    static const std::vector<config::Field<Params>>& schema();
+    static std::optional<Step> make(const Params& params, const Input& input);
+};
+
+// band_range: keep only the observations on which every one of `bands`
+// lies within (min, max), in reflectance, the bands tested in order; no
+// bands (the default) are the input's saturation_bands.
+struct BandRange
+{
+    struct Params
+    {
+        BandList bands;
+        double min = 0.0;
+        double max = 10000.0;
+        bool min_inclusive = false;
+        bool max_inclusive = false;
+    };
+    static const std::vector<config::Field<Params>>& schema();
+    static std::optional<Step> make(const Params& params, const Input& input);
+};
+
+// green_median: InsufficientClear's cloud screen. Drop the kept
+// observations whose green row is at or above the median green of the kept
+// observations dated up to the shared stat_ord, plus `offset` (reflectance),
+// at the dates `scope` names (GreenFilterScope: "all", "stat_window",
+// "off").
+struct GreenMedian
+{
+    struct Params
+    {
+        double offset = 400.0;
+        std::string scope = "stat_window";
+        std::int64_t max_date = std::numeric_limits<std::int64_t>::max();
+    };
+    static const std::vector<config::Field<Params>>& schema();
+    static void validate(const Params& params);
+    static std::optional<Step> make(const Params& params, const Input& input);
+};
+
+// dedupe: keep the first kept observation of each date.
+struct Dedupe
+{
+    struct Params
+    {
+    };
+    static const std::vector<config::Field<Params>>& schema();
+    static std::optional<Step> make(const Params& params, const Input& input);
+};
+
+} // namespace preprocess
+} // namespace ccd

@@ -175,6 +175,7 @@ add_library(
     src/ccd/input/input.cpp
 
     src/ccd/input/mask/preprocess.cpp
+    src/ccd/input/mask/steps.cpp
 
     src/ccd/machine/fit.cpp
     src/ccd/machine/kernels.cpp
@@ -187,6 +188,7 @@ add_library(
     src/ccd/run/run.cpp
     src/ccd/config/params.cpp
     src/ccd/config/registry.cpp
+    src/ccd/config/preprocess.cpp
     src/ccd/config/shared.cpp
     src/ccd/strategies/change_test/chi2.cpp
     src/ccd/strategies/capabilities.cpp

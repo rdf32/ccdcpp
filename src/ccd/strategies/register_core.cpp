@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "ccd/input/mask/steps.hpp"
 #include "ccd/strategies/change_test/chi2.hpp"
 #include "ccd/strategies/edge_fit/lasso.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
@@ -36,9 +37,22 @@ void register_core_strategies(config::Registry& registry)
     registry.add<SegmentFit, ModelFit>("model-fit");
     registry.add<EdgeFit, LassoEdges>("lasso");
 
+    registry.add_step<preprocess::KeepQa>("keep_qa");
+    registry.add_step<preprocess::AddQa>("add_qa");
+    registry.add_step<preprocess::ThermalRange>("thermal_range");
+    registry.add_step<preprocess::BandRange>("band_range");
+    registry.add_step<preprocess::GreenMedian>("green_median");
+    registry.add_step<preprocess::Dedupe>("dedupe");
+
     // "ccdc": pyccd's algorithm, in physical terms: the shared values'
     // defaults (alpha 1e-4, probabilities, detection bands by role, no
-    // statistics cutoff) and each strategy's.
+    // statistics cutoff), each strategy's, and pyccd's preprocessing, each
+    // step at its defaults (clear and water kept, the thermal range -93.2 to
+    // 70.7 degrees Celsius, reflectance in (0, 1), the green median 0.04
+    // above). Every procedure's chain begins with the same four steps,
+    // keep_qa, thermal_range, band_range and dedupe; Standard then ends,
+    // reading thermal through the input's transform; PermanentSnow adds snow
+    // back and dedupes; InsufficientClear runs the green median and dedupes.
     config::Config ccdc;
     ccdc.shared = config::shared_defaults();
     for (const auto& [stage, strategy] : std::initializer_list<std::pair<const char*, const char*>>{
@@ -50,6 +64,19 @@ void register_core_strategies(config::Registry& registry)
              {OutlierRule::stage, "floored"}, {SegmentFit::stage, "model-fit"},
              {EdgeFit::stage, "lasso"}})
         ccdc.stages[stage] = {strategy, registry.defaults(stage, strategy)};
+    const auto chain = [&](bool thermal_transform, std::initializer_list<const char*> after)
+    {
+        config::ProcedureConfig procedure;
+        procedure.thermal_transform = thermal_transform;
+        for (const char* step : {"keep_qa", "thermal_range", "band_range", "dedupe"})
+            procedure.steps.push_back({step, registry.step_defaults(step)});
+        for (const char* step : after)
+            procedure.steps.push_back({step, registry.step_defaults(step)});
+        return procedure;
+    };
+    ccdc.preprocess["standard"] = chain(true, {});
+    ccdc.preprocess["snow"] = chain(false, {"add_qa", "dedupe"});
+    ccdc.preprocess["insufficient_clear"] = chain(false, {"green_median", "dedupe"});
     registry.add_preset("ccdc", std::move(ccdc));
 }
 

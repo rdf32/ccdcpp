@@ -52,10 +52,19 @@ def options():
 
 def preset(**changes):
     """The built-in ccdc preset as the extension takes it (a dict {"shared",
-    "stages"}), with shared__name=value and stage__param=value changes."""
+    "stages", "preprocess"}), with shared__name=value, stage__param=value and
+    preprocess__step__param=value (every step of that type) changes."""
     tree = ccdcpp._config_preset("ccdc")
     for key, value in changes.items():
-        stage, param = key.split("__")
+        stage, param = key.split("__", 1)
+        if stage == "preprocess":
+            step, name = param.split("__")
+            found = [s for chain in tree["preprocess"].values() for s in chain["steps"]
+                     if s["step"] == step]
+            assert found and all(name in s for s in found), key
+            for s in found:
+                s[name] = value
+            continue
         if stage == "shared":
             assert param in tree["shared"], key
             tree["shared"][param] = value
@@ -335,14 +344,12 @@ class CadenceParameters(unittest.TestCase):
         ("shared", "change_probability"): "none",
     }
 
-    # The Input's fields: the data's band layout, QA codes, units and bounds.
+    # The Input's fields: the data's band layout, QA codes and units.
     INPUT_FIELDS = {
         "roles", "saturation_bands", "bands", "index", "digest", "reflectance_unit", "saturated",
         "qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud",
         "qa_cirrus1", "qa_cirrus2", "qa_occlusion", "qa_table",
-        "thermal_scale", "thermal_offset", "refl_min", "refl_max", "refl_min_inclusive",
-        "refl_max_inclusive", "therm_min", "therm_max", "therm_min_inclusive",
-        "therm_max_inclusive",
+        "thermal_scale", "thermal_offset",
     }
 
     def value(self, tree, stage, name):
@@ -429,40 +436,44 @@ class CadenceParameters(unittest.TestCase):
 
 
 class BoundFlags(unittest.TestCase):
+    """The bounds' inclusive flags: band_range's and thermal_range's parameters."""
+
     FLAGS = {
-        "refl_min_inclusive": False,
-        "refl_max_inclusive": False,
-        "therm_min_inclusive": False,
-        "therm_max_inclusive": False,
+        ("band_range", "min_inclusive"): False,
+        ("band_range", "max_inclusive"): False,
+        ("thermal_range", "min_inclusive"): False,
+        ("thermal_range", "max_inclusive"): False,
     }
 
     def test_defaults_and_docstrings(self):
-        h = ccdcpp.Input()
-        for name, value in self.FLAGS.items():
-            with self.subTest(name=name):
-                self.assertIs(getattr(h, name), value)
-                doc = getattr(ccdcpp.Input, name).__doc__
-                self.assertIn(f"default {value}", doc)
-                setattr(h, name, not value)
-                self.assertIs(getattr(h, name), not value)
+        steps = ccdcpp._steps()
+        for (step, name), value in self.FLAGS.items():
+            with self.subTest(step=step, name=name):
+                (param,) = [p for p in steps[step] if p["name"] == name]
+                self.assertIs(param["default"], value)
+                self.assertTrue(param["doc"])
+                for chain in preset()["preprocess"].values():
+                    for s in chain["steps"]:
+                        if s["step"] == step:
+                            self.assertIs(s[name], value)
 
     def mask(self, values, band, **flags):
         """processing_mask of detect on a pixel whose `band` holds `values` at
-        its first observations."""
+        its first observations, with the steps' flags (step__name=value)."""
         d, s, q = inputs(7, 40)
         s[band, :len(values)] = values
-        h = ccdcpp.Input()
-        for name, value in flags.items():
-            setattr(h, name, value)
-        return ccdcpp.detect(d, s, q, input=h)["processing_mask"][:len(values)].tolist()
+        config = preset(**{"preprocess__" + k: v for k, v in flags.items()})
+        return ccdcpp.detect(d, s, q, input=ccdcpp.Input(),
+                             config=config)["processing_mask"][:len(values)].tolist()
 
     def test_reflectance_bounds(self):
         values = [0.0, 10000.0, -1.0, 10001.0]
         for flags, expected in (
             (dict(), [0, 0, 0, 0]),
-            (dict(refl_min_inclusive=True, refl_max_inclusive=True), [1, 1, 0, 0]),
-            (dict(refl_min_inclusive=True), [1, 0, 0, 0]),
-            (dict(refl_max_inclusive=True), [0, 1, 0, 0]),
+            (dict(band_range__min_inclusive=True, band_range__max_inclusive=True),
+             [1, 1, 0, 0]),
+            (dict(band_range__min_inclusive=True), [1, 0, 0, 0]),
+            (dict(band_range__max_inclusive=True), [0, 1, 0, 0]),
         ):
             with self.subTest(**flags):
                 self.assertEqual([int(v) for v in self.mask(values, 3, **flags)], expected)
@@ -473,8 +484,9 @@ class BoundFlags(unittest.TestCase):
         values = [at(-9320.0), at(7070.0), at(0.0)]
         for flags, expected in (
             (dict(), [0, 0, 1]),
-            (dict(therm_min_inclusive=True, therm_max_inclusive=True), [1, 1, 1]),
-            (dict(therm_min_inclusive=True), [1, 0, 1]),
+            (dict(thermal_range__min_inclusive=True, thermal_range__max_inclusive=True),
+             [1, 1, 1]),
+            (dict(thermal_range__min_inclusive=True), [1, 0, 1]),
         ):
             with self.subTest(**flags):
                 self.assertEqual([int(v) for v in self.mask(values, 6, **flags)], expected)
@@ -483,8 +495,8 @@ class BoundFlags(unittest.TestCase):
         # An exclusive end rejects NaN, so the pixel fits without it. (Both ends
         # inclusive let NaN through to the fit; see the README.)
         for band, flags in ((3, dict()),
-                            (3, dict(refl_min_inclusive=True)),
-                            (3, dict(refl_max_inclusive=True)),
+                            (3, dict(band_range__min_inclusive=True)),
+                            (3, dict(band_range__max_inclusive=True)),
                             (6, dict())):
             with self.subTest(band=band, **flags):
                 self.assertEqual(self.mask([np.nan, 1000.0 if band != 6 else 2900.0], band, **flags),
@@ -497,7 +509,8 @@ class GreenFilterScope(unittest.TestCase):
     NAMES = {"All": "all", "StatWindow": "stat_window", "Off": "off"}
 
     def test_default_and_docstring(self):
-        self.assertEqual(preset()["shared"]["green_filter_scope"], "stat_window")
+        green = preset()["preprocess"]["insufficient_clear"]["steps"][4]
+        self.assertEqual((green["step"], green["scope"]), ("green_median", "stat_window"))
         self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
         self.assertIn("stat_ord", ccdcpp.GreenFilterScope.__doc__)
         self.assertIn('"stat_window"', ccdcpp.GreenFilterScope.__doc__)
@@ -517,7 +530,7 @@ class GreenFilterScope(unittest.TestCase):
 
     def detect_mask(self, pixel, scope):
         config = preset(shared__stat_ord=self.STAT_ORD,
-                        shared__green_filter_scope=self.NAMES[scope.name])
+                        preprocess__green_median__scope=self.NAMES[scope.name])
         out = ccdcpp.detect(*pixel, input=ccdcpp.Input(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]

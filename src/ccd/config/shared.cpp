@@ -3,26 +3,6 @@
 namespace ccd
 {
 
-const char* name(GreenFilterScope scope)
-{
-    switch (scope)
-    {
-        case GreenFilterScope::All:        return "all";
-        case GreenFilterScope::StatWindow: return "stat_window";
-        case GreenFilterScope::Off:        return "off";
-    }
-    return "?";
-}
-
-std::optional<GreenFilterScope> green_filter_scope(const std::string& name)
-{
-    for (const GreenFilterScope scope :
-         {GreenFilterScope::All, GreenFilterScope::StatWindow, GreenFilterScope::Off})
-        if (name == ccd::name(scope))
-            return scope;
-    return std::nullopt;
-}
-
 namespace config
 {
 
@@ -56,11 +36,6 @@ const std::vector<Field<Shared>>& shared_schema()
          "observations per coefficient"},
         {"stat_ord", &Shared::stat_ord, Unit::None, any(),
          "the statistics cutoff, an ordinal day (9223372036854775807: none)"},
-        {"green_filter", &Shared::green_filter, Unit::Reflectance, any(),
-         "the offset of InsufficientClear's green median cloud screen", Source::Own, nullptr,
-         real(0.04)},
-        {"green_filter_scope", &Shared::green_filter_scope, Unit::None, any(),
-         "which observations the green median screen drops: all, stat_window or off"},
     };
     return s;
 }

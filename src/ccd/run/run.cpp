@@ -83,7 +83,7 @@ void check_qa(bool raw_qa, const QaTable* qa_table)
 }
 
 // A resume's refusals: another record format or results version, another
-// input (its QA table included), configuration or plan, a series that ends
+// input (its QA table included) or configuration, a series that ends
 // before the record's.
 void check_resume(
     const ResumeHeader& from,
@@ -102,7 +102,7 @@ void check_resume(
             std::to_string(RESULTS_VERSION) + ": rerun in full");
     if (from.options_digest != digest)
         throw std::invalid_argument(
-            "the resume record was made with another input, configuration or plan");
+            "the resume record was made with another input or configuration");
     if (dates.size() == 0 || dates(dates.size() - 1) < from.series_end)
         throw std::invalid_argument(
             "the series ends before the resume record's, on " +
@@ -418,16 +418,10 @@ Run::Run(
         throw std::invalid_argument("the run has no algorithm");
     resolved_ = spec_.algorithm->for_input(spec_.input);
 
-    if (spec_.plan)
-        plan_ = *spec_.plan;
-    else
-        plan_ = preprocess::default_plan(spec_.input, resolved_->shared);
-    preprocess::validate(plan_, bands);
 
     if (spec_.record || resume)
     {
-        header_.options_digest =
-            options_digest(*resolved_, plan_);
+        header_.options_digest = resolved_->digest;
         header_.series_end = dates.size() > 0
             ? dates(dates.size() - 1)
             : std::numeric_limits<std::int64_t>::min();
@@ -442,12 +436,12 @@ Run::Run(
         // A resumed run reruns what it does not continue under the stored
         // run's statistics cutoff.
         shared_ = capped(resolved_->shared, header_.statistics_end);
-        run_plan_ = capped(plan_, header_.statistics_end);
+        run_plan_ = capped(resolved_->plan, header_.statistics_end);
     }
     else
     {
         shared_ = resolved_->shared;
-        run_plan_ = plan_;
+        run_plan_ = resolved_->plan;
     }
 }
 

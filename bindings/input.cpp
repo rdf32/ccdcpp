@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "ccd/config/shared.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/input/input.hpp"
+#include "ccd/input/mask/filter.hpp"
 #include "ccd/input/qa_table.hpp"
 
 namespace py = pybind11;
@@ -26,14 +26,14 @@ void bind_input(py::module_& m)
     py::enum_<ccd::GreenFilterScope>(
         m,
         "GreenFilterScope",
-        "Which observations the InsufficientClear green median filter drops. "
-        "The threshold is the median green of the masked observations dated "
-        "<= stat_ord plus the green filter; a masked observation whose green "
-        "is >= it is dropped at any date (All), only when dated <= stat_ord "
-        "(StatWindow, the scope pyccd computes the mask for), or never (Off). "
-        "With no masked observation dated <= stat_ord nothing is dropped. The "
-        "configuration's shared green_filter_scope names them \"all\", "
-        "\"stat_window\" and \"off\"."
+        "Which observations the green median filter drops. The threshold is "
+        "the median green of the masked observations dated <= stat_ord plus "
+        "the step's offset; a masked observation whose green is >= it is "
+        "dropped at any date (All), only when dated <= stat_ord (StatWindow, "
+        "the scope pyccd computes the mask for), or never (Off). With no "
+        "masked observation dated <= stat_ord nothing is dropped. The "
+        "green_median step's scope names them \"all\", \"stat_window\" and "
+        "\"off\"."
     )
     .value("All", ccd::GreenFilterScope::All)
     .value("StatWindow", ccd::GreenFilterScope::StatWindow)
@@ -68,8 +68,9 @@ void bind_input(py::module_& m)
         [](const ccd::Input& self) { return self.saturation_bands.to_vector(); },
         [](ccd::Input& self, const std::vector<ccd::index_t>& bands)
         { self.saturation_bands = ccd::BandList(bands); },
-        "Rows tested against refl_min and refl_max, in order (default [0, 1, "
-        "2, 3, 4, 5]). May be empty; must not hold the thermal row."
+        "The rows a saturated value can appear in, in order (default [0, 1, "
+        "2, 3, 4, 5]): the rows band_range tests when the configuration names "
+        "none. May be empty; must not hold the thermal row."
     )
     .def("bands", &ccd::Input::bands, "The band count: one row per role.")
     .def("index", &ccd::Input::index, py::arg("role"),
@@ -78,8 +79,8 @@ void bind_input(py::module_& m)
     //--------------------------------------------------------------------------
     // Units
     //
-    // The physical-unit input is one divisor, 10000, on the data and on
-    // every bound, with reflectance its unit:
+    // The physical-unit input is one divisor, 10000, on the data, with
+    // reflectance its unit:
     //
     //     spectral[:6] = dn[:6] / 1e4             # reflectance 0..1
     //     spectral[6]  = (k10 * 10 - 27315) / 1e4 # degrees Celsius / 100
@@ -87,8 +88,6 @@ void bind_input(py::module_& m)
     //     i = ccdcpp.Input()
     //     i.reflectance_unit = 1.0
     //     i.thermal_scale, i.thermal_offset = 1.0, 0.0
-    //     i.refl_min, i.refl_max = 0.0, 1.0
-    //     i.therm_min, i.therm_max = -0.9320, 0.7070
     //
     // See input.hpp for the measured equivalence and why plain Celsius is not
     // the physical unit.
@@ -97,8 +96,16 @@ void bind_input(py::module_& m)
         "reflectance_unit", &ccd::Input::reflectance_unit,
         "The value one unit of reflectance has in the data (default 10000, "
         "Collection-1 DN; 1 for reflectance). The configuration's reflectance "
-        "values (alpha, coef_floor, the green filter) are multiplied by it."
+        "values (alpha, coef_floor, band_range's bounds, green_median's "
+        "offset) are multiplied by it, and its degrees Celsius are taken to "
+        "hundredths of a degree times reflectance_unit / 10000."
     )
+    .def_readwrite("thermal_scale", &ccd::Input::thermal_scale,
+        "A procedure that transforms thermal reads thermal * thermal_scale + "
+        "thermal_offset (default 10, Kelvin x 10 to Celsius x 100): hundredths "
+        "of a degree Celsius times reflectance_unit / 10000.")
+    .def_readwrite("thermal_offset", &ccd::Input::thermal_offset,
+        "See thermal_scale (default -27315).")
     .def_readwrite(
         "saturated", &ccd::Input::saturated,
         "The value a saturated observation holds, as the sensor writes it "
@@ -106,37 +113,6 @@ void bind_input(py::module_& m)
         "declare one. A step or strategy that reads it refuses an input "
         "without one."
     )
-    .def_readwrite("thermal_scale", &ccd::Input::thermal_scale,
-        "The Standard procedure reads thermal * thermal_scale + thermal_offset "
-        "(default 10, Kelvin x 10 to Celsius x 100).")
-    .def_readwrite("thermal_offset", &ccd::Input::thermal_offset,
-        "See thermal_scale (default -27315).")
-    .def_readwrite("refl_min", &ccd::Input::refl_min,
-        "Lower saturation bound of the saturation_bands (default 0).")
-    .def_readwrite("refl_max", &ccd::Input::refl_max,
-        "Upper saturation bound of the saturation_bands (default 10000).")
-    .def_readwrite("therm_min", &ccd::Input::therm_min,
-        "Lower bound of the thermal row, after the transform (default -9320).")
-    .def_readwrite("therm_max", &ccd::Input::therm_max,
-        "Upper bound of the thermal row, after the transform (default 7070).")
-    .def_readwrite(
-        "refl_min_inclusive", &ccd::Input::refl_min_inclusive,
-        "Keep a saturation-band value equal to refl_min (default False, "
-        "pyccd's exclusive 0 < x < 10000, which rejects NaN). NaN passes the "
-        "saturation filter only with both refl_* flags True."
-    )
-    .def_readwrite("refl_max_inclusive", &ccd::Input::refl_max_inclusive,
-        "Keep a saturation-band value equal to refl_max (default False). See "
-        "refl_min_inclusive.")
-    .def_readwrite(
-        "therm_min_inclusive", &ccd::Input::therm_min_inclusive,
-        "Keep a thermal value equal to therm_min (default False, pyccd's "
-        "exclusive bound, which rejects NaN). NaN passes the thermal filter "
-        "only with both therm_* flags True."
-    )
-    .def_readwrite("therm_max_inclusive", &ccd::Input::therm_max_inclusive,
-        "Keep a thermal value equal to therm_max (default False). See "
-        "therm_min_inclusive.")
 
     //--------------------------------------------------------------------------
     // QA codes

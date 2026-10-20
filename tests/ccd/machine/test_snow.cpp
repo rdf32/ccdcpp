@@ -367,7 +367,7 @@ TEST(CCD, DetectSnow)
     ccd::FitResult result = ccd::fit_whole_series(
         ccd::PixelProcedure::PermanentSnow,
         hworkspace,
-        ccd::filter::snow(hworkspace),
+        golden::chain_mask(hworkspace, "snow", golden::ccdc()),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(

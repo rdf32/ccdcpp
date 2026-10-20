@@ -367,7 +367,7 @@ TEST(CCD, DetectClear)
     ccd::FitResult result = ccd::fit_whole_series(
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
-        ccd::filter::insufficientclear(hworkspace),
+        golden::chain_mask(hworkspace, "insufficient_clear", golden::ccdc()),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(

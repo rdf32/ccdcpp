@@ -23,9 +23,11 @@ namespace py = pybind11;
 // The algorithm's configuration, in Python
 //
 // A configuration crosses into Python as a dict {"shared": {name: value},
-// "stages": {stage: {"strategy": name, "params": {name: value}}}}: a value
-// is a bool, an int, a float, a str, a list of ints (band rows) or a list of
-// strs (band roles). python/ccdcpp/config.py wraps it (ccdcpp.Config) and
+// "stages": {stage: {"strategy": name, "params": {name: value}}},
+// "preprocess": {procedure: {"thermal_transform": bool, "steps": [{"step":
+// name, name: value, ...}, ...]}}}: a value is a bool, an int, a float, a
+// str, a list of ints (band rows, QA codes) or a list of strs (band roles, QA
+// code names). python/ccdcpp/config.py wraps it (ccdcpp.Config) and
 // holds its compiled Algorithm; these functions are their C++ half.
 //
 //==============================================================================
@@ -147,6 +149,85 @@ ccd::config::ConfigTree stages_from_python(const py::handle& stages)
     return tree;
 }
 
+ccd::config::PreprocessConfig preprocess_from_python(const py::handle& preprocess)
+{
+    if (!py::isinstance<py::dict>(preprocess))
+        throw py::value_error("a configuration's preprocess is a dict of procedures");
+    ccd::config::PreprocessConfig out;
+    for (const auto& [name_obj, chain_obj] : preprocess.cast<py::dict>())
+    {
+        const std::string name = py::str(name_obj);
+        if (!py::isinstance<py::dict>(chain_obj))
+            throw py::value_error("preprocess " + name +
+                                  " is a dict {\"thermal_transform\": ..., \"steps\": [...]}");
+        const py::dict chain = chain_obj.cast<py::dict>();
+        ccd::config::ProcedureConfig procedure;
+        for (const auto& [key, value] : chain)
+        {
+            const std::string k = py::str(key);
+            if (k == "thermal_transform")
+            {
+                if (!py::isinstance<py::bool_>(value))
+                    throw py::value_error("preprocess " + name +
+                                          " thermal_transform is a flag (True or False)");
+                procedure.thermal_transform = value.cast<bool>();
+            }
+            else if (k == "steps")
+            {
+                if (!py::isinstance<py::list>(value) && !py::isinstance<py::tuple>(value))
+                    throw py::value_error("preprocess " + name + " steps is a list of steps");
+                std::size_t i = 0;
+                for (const py::handle& step_obj : value.cast<py::sequence>())
+                {
+                    const std::string at = "preprocess " + name + " step " + std::to_string(i++);
+                    if (!py::isinstance<py::dict>(step_obj) ||
+                        !step_obj.cast<py::dict>().contains("step"))
+                        throw py::value_error(at + " is a dict {\"step\": name, ...}");
+                    ccd::config::StepConfig step;
+                    for (const auto& [pk, pv] : step_obj.cast<py::dict>())
+                    {
+                        const std::string param = py::str(pk);
+                        if (param == "step")
+                            step.step = py::str(pv);
+                        else
+                            step.params[param] = value_from_python(
+                                pv, at + " parameter '" + param + "'");
+                    }
+                    procedure.steps.push_back(std::move(step));
+                }
+            }
+            else
+                throw py::value_error("preprocess " + name +
+                                      " holds \"thermal_transform\" and \"steps\", not '" + k +
+                                      "'");
+        }
+        out[name] = std::move(procedure);
+    }
+    return out;
+}
+
+py::dict preprocess_to_python(const ccd::config::PreprocessConfig& preprocess)
+{
+    py::dict out;
+    for (const auto& [name, procedure] : preprocess)
+    {
+        py::list steps;
+        for (const ccd::config::StepConfig& step : procedure.steps)
+        {
+            py::dict d;
+            d["step"] = step.step;
+            for (const auto& [param, value] : step.params)
+                d[py::str(param)] = value_to_python(value);
+            steps.append(d);
+        }
+        py::dict chain;
+        chain["thermal_transform"] = procedure.thermal_transform;
+        chain["steps"] = steps;
+        out[py::str(name)] = chain;
+    }
+    return out;
+}
+
 py::dict stages_to_python(const ccd::config::ConfigTree& tree)
 {
     py::dict out;
@@ -168,7 +249,9 @@ const char* unit_name(ccd::config::Unit unit)
         case ccd::config::Unit::Observations: return "observations";
         case ccd::config::Unit::Days:         return "days";
         case ccd::config::Unit::Reflectance:  return "reflectance";
+        case ccd::config::Unit::Celsius:      return "celsius";
         case ccd::config::Unit::Bands:        return "bands";
+        case ccd::config::Unit::QaCodes:      return "qa_codes";
     }
     return "?";
 }
@@ -196,6 +279,7 @@ py::dict resolved_to_python(const ccd::config::Resolved& r)
     py::dict out;
     out["stages"] = stages_to_python(r.stages);
     out["shared"] = values_to_python(ccd::config::to_values(ccd::config::shared_schema(), r.shared));
+    out["preprocess"] = preprocess_to_python(r.preprocess);
     out["digest"] = r.digest;
     return out;
 }
@@ -210,15 +294,17 @@ ccd::config::Config config_from_python(const py::handle& config)
     for (const auto& [key, _] : d)
     {
         const std::string k = py::str(key);
-        if (k != "shared" && k != "stages")
-            throw py::value_error("a configuration holds \"shared\" and \"stages\", not '" + k +
-                                  "'");
+        if (k != "shared" && k != "stages" && k != "preprocess")
+            throw py::value_error("a configuration holds \"shared\", \"stages\" and "
+                                  "\"preprocess\", not '" + k + "'");
     }
     ccd::config::Config out;
     if (d.contains("shared"))
         out.shared = values_from_python(d["shared"], "shared value");
     if (d.contains("stages"))
         out.stages = stages_from_python(d["stages"]);
+    if (d.contains("preprocess"))
+        out.preprocess = preprocess_from_python(d["preprocess"]);
     return out;
 }
 
@@ -227,6 +313,7 @@ py::dict config_to_python(const ccd::config::Config& config)
     py::dict out;
     out["shared"] = values_to_python(config.shared);
     out["stages"] = stages_to_python(config.stages);
+    out["preprocess"] = preprocess_to_python(config.preprocess);
     return out;
 }
 
@@ -242,7 +329,7 @@ ccd::AlgorithmPtr algorithm_from_python(const py::object& config)
         return config.attr("_algorithm").cast<std::shared_ptr<ccd::Algorithm>>();
     if (!py::isinstance<py::dict>(config))
         throw py::type_error("config is a ccdcpp.Config, a dict {\"shared\": ..., \"stages\": "
-                             "...} or None");
+                             "..., \"preprocess\": ...} or None");
     return std::make_shared<const ccd::Algorithm>(config_from_python(config));
 }
 
@@ -334,6 +421,37 @@ void bind_config(py::module_& m)
         "Every stage's strategies and their parameters, from the library's registry: a "
         "parameter whose source is \"shared\" or \"chi2\" reads the shared value `from` and "
         "has no default of its own.");
+    m.def(
+        "_steps",
+        []()
+        {
+            py::dict out;
+            for (const auto& [name, params] : registry().step_schemas())
+            {
+                py::list list;
+                for (const auto& p : params)
+                {
+                    py::dict d;
+                    d["name"] = p.name;
+                    d["unit"] = unit_name(p.unit);
+                    d["bounds"] = p.bounds;
+                    d["doc"] = p.doc;
+                    d["source"] = source_name(p.source);
+                    d["from"] = p.from;
+                    d["default"] = p.default_value ? value_to_python(*p.default_value)
+                                                   : py::none();
+                    list.append(d);
+                }
+                out[py::str(name)] = list;
+            }
+            return out;
+        },
+        "Every preprocessing step type and its parameters, from the library's registry, as "
+        "_strategies() lists a strategy's.");
+    m.def(
+        "_procedures",
+        []() { return ccd::config::procedures(); },
+        "The procedures of a configuration's preprocess section.");
     m.def(
         "_shared",
         []()
