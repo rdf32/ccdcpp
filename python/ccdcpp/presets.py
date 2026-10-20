@@ -37,12 +37,17 @@ none (docs/units.md lists which products store one).
 A profile for another sensor is a :class:`ccdcpp.SensorProfile` call; the
 module docstring of ``ccdcpp.profiles`` has an example.
 """
+from __future__ import annotations
+
+from typing import TypedDict
+
 from .profiles import (
     CELSIUS_OVER_100,
     DN,
     KELVIN_TENTHS,
     REFLECTANCE,
     SensorProfile,
+    Units,
 )
 
 __all__ = [
@@ -57,13 +62,22 @@ __all__ = [
 
 _BANDS = ("blue", "green", "red", "nir", "swir1", "swir2", "thermal")
 
-_LANDSAT = dict(
-    band_names=_BANDS,
-    roles=_BANDS,
-)
+class _Layout(TypedDict):
+    band_names: tuple[str, ...]
+    roles: tuple[str, ...]
 
 
-def landsat_c1_dn():
+class _Units(TypedDict):
+    units: Units
+
+
+_LANDSAT: _Layout = {
+    "band_names": _BANDS,
+    "roles": _BANDS,
+}
+
+
+def landsat_c1_dn() -> SensorProfile:
     """Landsat Collection 1 in DN, as pyccd consumes it.
 
     Input: optical surface reflectance x 10000 (0..10000), thermal brightness
@@ -87,7 +101,7 @@ def landsat_c1_dn():
     )
 
 
-def landsat_c1_physical():
+def landsat_c1_physical() -> SensorProfile:
     """Landsat Collection 1 in physical units: the DN preset divided by 10000.
 
     Input: optical surface reflectance 0..1 (DN / 10000), thermal in degrees
@@ -107,7 +121,7 @@ def landsat_c1_physical():
     )
 
 
-def landsat_c2():
+def landsat_c2() -> SensorProfile:
     """Landsat Collection 2 Level-2 in physical units, with raw QA_PIXEL.
 
     Input: optical surface reflectance 0..1 (``SR_B* * 2.75e-5 - 0.2``),
@@ -133,9 +147,9 @@ def landsat_c2():
 
 #: What the HLS and Sentinel-2 presets share: physical units, the bounds of
 #: landsat_c1_physical.
-_PHYSICAL = dict(
-    units=REFLECTANCE,
-)
+_PHYSICAL: _Units = {
+    "units": REFLECTANCE,
+}
 
 #: Sentinel-2 MSI bands 2-8, 8A, 11, 12 and their roles.
 _MSI_BANDS = ("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
@@ -143,7 +157,7 @@ _MSI_ROLES = ("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
               "nir_broad", "nir", "swir1", "swir2")
 
 
-def hls_l30():
+def hls_l30() -> SensorProfile:
     """HLS v2.0 L30 (Landsat 8/9 OLI/TIRS at 30 m).
 
     Input: every HLS ``int16`` layer times 0.0001. For B01-B07 that is the
@@ -189,7 +203,7 @@ def hls_l30():
     )
 
 
-def hls_s30():
+def hls_s30() -> SensorProfile:
     """HLS v2.0 S30 (Sentinel-2 MSI at 30 m). Validated, with a caveat: Fmask
     over bright surfaces.
 
@@ -238,7 +252,7 @@ def hls_s30():
 _HLS_ROLES = ("coastal", "blue", "green", "red", "nir", "swir1", "swir2")
 
 
-def hls():
+def hls() -> SensorProfile:
     """HLS v2.0 L30 and S30 in one series. Validated, with a caveat: Fmask over
     bright surfaces.
 
@@ -283,7 +297,7 @@ def hls():
     )
 
 
-def sentinel2_l2a():
+def sentinel2_l2a() -> SensorProfile:
     """Sentinel-2 L2A (ESA Sen2Cor), native bands. Validated at median level on
     Planetary Computer's Esri/MSFT/S2RP L2A, 2020–23; ESA's own processing
     not sampled.

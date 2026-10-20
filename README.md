@@ -138,6 +138,8 @@ print(sorted(k for k in cols if not k.startswith("pixels")))
 
 `threads=0` (the default) uses the OpenMP runtime's thread count. A pixel that raises does not stop the cube: it is listed in `failures` with its row, column and message. The columns hold no processing mask; `masks=True` adds `processing_mask`, every pixel's mask as `detect` returns it in one contiguous `(H, W, T)` uint8 array (`[r, c]` for pixel `(r, c)`, zeros for a failed one); `to_pixels` then gives each pixel its mask.
 
+**Types.** The package is typed (PEP 561, `py.typed`): every function carries parameter and return types, and `ccdcpp.pyi` and `qa_tables.pyi` type the compiled extension, so pyright, mypy and editors check calls against them. The results are `TypedDict`s in `ccdcpp.results`: `detect` returns a `PixelResult`, `detect_cube` a `CubeColumns` and `to_pixels` a list of `Pixel`; at run time they are plain dicts.
+
 ## From C++
 
 The C++ API is two calls in `include/ccd/run/run.hpp`, `ccd::run_pixel` and `ccd::run_cube`. What a call runs is a `ccd::RunSpec`: the input (`ccd::Input`, its QA table included), the compiled configuration (`ccd::Algorithm`, the `ccdc` preset unless you give one), and optionally an observer and whether to return resume records. The arrays are `ccd::ArrayView`s over your memory (any strides; float64, float32 or uint16 values; uint8 or uint16 QA). Link the CMake target `ccd_core`.

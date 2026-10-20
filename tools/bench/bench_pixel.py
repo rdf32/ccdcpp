@@ -18,9 +18,11 @@ import os
 import resource
 import sys
 import time
+from collections.abc import Callable
 
 sys.path.insert(0, sys.argv[1])
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 from ccdcpp import presets  # noqa: E402
@@ -43,7 +45,7 @@ del spec
 h = ccdcpp.Input()
 profile = presets.landsat_c1_dn()
 cfg = ccdcpp.config("ccdc")
-forms = {
+forms: dict[str, Callable[[NDArray[np.float64], NDArray[np.uint8]], object]] = {
     "input": lambda s, q: ccdcpp.detect(dates, s, q, encoding=h),
     "profile": lambda s, q: ccdcpp.detect(dates, s, q, encoding=profile),
     "config": lambda s, q: ccdcpp.detect(dates, s, q, encoding=h, config=cfg),

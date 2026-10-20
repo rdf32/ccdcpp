@@ -119,6 +119,11 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   out = ccdcpp.detect_cube(dates, cube, qa, encoding=ccdcpp.presets.landsat_c2(), config=cfg,
                            threads=8)
   ```
+- **The Python package is typed** (PEP 561, `py.typed`): every function and method carries
+  parameter and return types, and `ccdcpp.pyi` and `qa_tables.pyi` type the compiled extension
+  (`tests/python/test_stub.py` checks that they name what the extension has). The results of
+  `detect`, `detect_cube` and `to_pixels` are `TypedDict`s in `ccdcpp.results` (`PixelResult`,
+  `CubeColumns`, `Pixel`, ...); at run time they stay plain dicts.
 - **The pixel's data is `ccd::PixelSeries`** (`include/ccd/input/pixel_series.hpp`, replacing
   `HarmonicWorkspace`): the pixel's dates, values and QA codes as views, and the run's input and
   resolved shared values by reference. `harmonic_terms()` (`regression/harmonic_basis.hpp`) is

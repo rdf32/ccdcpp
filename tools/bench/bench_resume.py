@@ -43,8 +43,8 @@ print("ccdcpp", ccdcpp.__version__, ccdcpp.__file__, "numpy", np.__version__, "z
 g = zarr.open_group(CUBE, mode="r")
 sr, bt = g["landsat-c2ard-sr"], g["landsat-c2ard-bt"]
 dates = np.array([dt.date.fromisoformat(t).toordinal() for t in sr.attrs["time"]], np.int64)
-s = sr[R0:R0 + N, C0:C0 + N, :, :]
-th = bt[R0:R0 + N, C0:C0 + N, 0, :]
+s = np.asarray(sr[R0:R0 + N, C0:C0 + N, :, :])
+th = np.asarray(bt[R0:R0 + N, C0:C0 + N, 0, :])
 n = int(np.searchsorted(dates, CUT))
 print(f"T={dates.size}; stored run on {n} dates up to {dt.date.fromordinal(int(dates[n - 1]))}")
 
@@ -80,8 +80,11 @@ for r0 in range(0, N, STRIP):
     t_resume += t2 - t1
     t_full += t3 - t2
 
-    for k, v in update["counts"].items():
-        counts[k] += v
+    resumed = update.get("counts")
+    assert resumed is not None   # a resume's output holds its counts
+    counts["resumed"] += resumed["resumed"]
+    counts["rerun_input_changed"] += resumed["rerun_input_changed"]
+    counts["failed"] += resumed["failed"]
     same = (all(np.array_equal(update[k], full[k]) for k in SEGMENTS)
             and update["failures"] == full["failures"])
     if not same:

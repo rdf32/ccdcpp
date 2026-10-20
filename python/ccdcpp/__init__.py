@@ -1,10 +1,36 @@
+from __future__ import annotations
+
 import os as _os
 import sys
+from collections.abc import Mapping as _Mapping, Sequence as _Sequence
+from typing import Any as _Any
 
-from .ccdcpp import *
+from numpy.typing import ArrayLike as _ArrayLike
 
-# A star import skips underscore names.
-from .ccdcpp import __version__
+# The extension's names, but for the calls this module wraps (detect, detect_cube, plan_of).
+from .ccdcpp import (
+    CCD_MAX_BANDS,
+    CHAIN_CAPACITY,
+    NO_BAND,
+    NO_STATISTICS_END,
+    QA_TABLE_SIZE,
+    RESULTS_VERSION,
+    RESUME_FORMAT,
+    ROLES,
+    Affine,
+    Algorithm,
+    Chain,
+    GreenFilterScope,
+    Input,
+    PreprocessPlan,
+    ProcedurePlan,
+    QaTable,
+    Step,
+    StepKind,
+    __version__,
+    chi2_quantile,
+    resume_schema,
+)
 
 # `import ccdcpp.qa_tables`, as well as the attribute.
 from .ccdcpp import qa_tables
@@ -17,7 +43,6 @@ from . import presets
 from .config import Config, config, shared_values, steps, strategies
 from .config import _NAMED
 from .config import config as _config
-from .ccdcpp import Input
 from .preprocess import (
     PROCEDURES,
     QA_CODE_NAMES,
@@ -41,6 +66,7 @@ from .profiles import (
     Thermal,
     Units,
 )
+from . import results
 
 
 #------------------------------------------------------------------------------
@@ -54,7 +80,8 @@ from .profiles import (
 # Algorithm.
 #------------------------------------------------------------------------------
 
-def _encoding(entry, encoding, spectral, band_names):
+def _encoding(entry: str, encoding: object, spectral: _ArrayLike,
+              band_names: _Sequence[str] | None) -> tuple[Input, SensorProfile | None]:
     """encoding= as the extension takes it: (the ccdcpp.Input, the profile or None)."""
     if isinstance(encoding, SensorProfile):
         encoding.check(spectral, band_names)
@@ -70,7 +97,7 @@ def _encoding(entry, encoding, spectral, band_names):
         f"{type(encoding).__name__}")
 
 
-def _configuration(entry, config):
+def _configuration(entry: str, config: object) -> Config:
     """config= as a ccdcpp.Config: itself, or the preset of that name (built once)."""
     if isinstance(config, str):
         named = _NAMED.get(config)
@@ -88,8 +115,10 @@ def _configuration(entry, config):
         f"{type(config).__name__}; ccdcpp.config() reads a file or a dict")
 
 
-def detect(dates, spectral, qas, *, encoding, config="ccdc", record=False, resume=None,
-           band_names=None, trace=False):
+def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
+           encoding: Input | SensorProfile, config: Config | str = "ccdc", record: bool = False,
+           resume: _Mapping[str, _Any] | None = None, band_names: _Sequence[str] | None = None,
+           trace: bool = False) -> results.PixelResult:
     """CCD on one pixel.
 
     dates
@@ -151,8 +180,12 @@ def detect(dates, spectral, qas, *, encoding, config="ccdc", record=False, resum
     return out
 
 
-def detect_cube(dates, spectral, qas, *, encoding, config="ccdc", threads=0, record=False,
-                resume=None, band_names=None, trace_pixels=None, masks=False):
+def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
+                encoding: Input | SensorProfile, config: Config | str = "ccdc", threads: int = 0,
+                record: bool = False, resume: _Mapping[str, _Any] | None = None,
+                band_names: _Sequence[str] | None = None,
+                trace_pixels: _Sequence[tuple[int, int]] | None = None,
+                masks: bool = False) -> results.CubeColumns:
     """CCD on every pixel of a cube, in parallel, as columns.
 
     dates
@@ -212,7 +245,7 @@ def detect_cube(dates, spectral, qas, *, encoding, config="ccdc", threads=0, rec
     return out
 
 
-def plan_of(config, input):
+def plan_of(config: Config | str, input: Input | SensorProfile) -> PreprocessPlan:
     """The ccdcpp.PreprocessPlan ``config`` (a ccdcpp.Config or a preset's name) runs on
     ``input`` (a ccdcpp.Input or a SensorProfile): its preprocess section resolved against the
     input, the QA code names as its codes, the bands by role as its rows, the bounds in its
@@ -221,20 +254,20 @@ def plan_of(config, input):
     return _extension.plan_of(_configuration("plan_of", config)._algorithm, h)
 
 
-def to_pixels(out):
+def to_pixels(out: results.CubeColumns) -> list[results.Pixel]:
     """detect_cube()'s columns as one dict per pixel with a segment, in raster
     order: {"row", "col", "models"}, the models as detect() returns them (each
     with a bands list in row order, every value the column's), and with
     masks=True its "processing_mask" (its row of the cube's array). A pixel
     with no segment has no entry, as it has no row in the columns."""
-    pixels = []
+    pixels: list[results.Pixel] = []
     n = len(out["row"])
     B = int(out["num_bands"])
     masks = out.get("processing_mask")
     i = 0
     while i < n:
         row, col = int(out["row"][i]), int(out["col"][i])
-        models = []
+        models: list[results.Model] = []
         while i < n and int(out["row"][i]) == row and int(out["col"][i]) == col:
             models.append({
                 "start_day": int(out["start_day"][i]),
@@ -251,7 +284,7 @@ def to_pixels(out):
                 } for b in range(B)],
             })
             i += 1
-        pixel = {"row": row, "col": col, "models": models}
+        pixel: results.Pixel = {"row": row, "col": col, "models": models}
         if masks is not None:
             pixel["processing_mask"] = masks[row, col]
         pixels.append(pixel)

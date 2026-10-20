@@ -54,8 +54,8 @@ t0 = time.perf_counter()
 g = zarr.open_group(CUBE, mode="r")
 sr, bt = g["landsat-c2ard-sr"], g["landsat-c2ard-bt"]
 dates = np.array([dt.date.fromisoformat(t).toordinal() for t in sr.attrs["time"]], np.int64)
-s = sr[R0:R0 + N, C0:C0 + N, :, :]          # (500, 500, 7, T) uint16: SR_B1..B6 + QA_PIXEL
-th = bt[R0:R0 + N, C0:C0 + N, 0, :]         # (500, 500, T) uint16: ST
+s = np.asarray(sr[R0:R0 + N, C0:C0 + N, :, :])  # (500, 500, 7, T) uint16: SR_B1..B6 + QA_PIXEL
+th = np.asarray(bt[R0:R0 + N, C0:C0 + N, 0, :])  # (500, 500, T) uint16: ST
 print(f"read {s.nbytes / 1e9 + th.nbytes / 1e9:.2f} GB in {time.perf_counter() - t0:.1f} s; T={dates.size}; "
       f"maxrss after reading {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9:.1f} GB")
 
@@ -80,8 +80,7 @@ for r0 in range(0, N, STRIP):
     toc = time.perf_counter()
     t_det += toc - tic
     print(f"  rows {r0}-{r1 - 1}: convert {tic - t_conv:.1f} s, detect {toc - tic:.1f} s", flush=True)
-    fl = out["failures"]
-    failures += len(fl) if hasattr(fl, "__len__") else int(fl)
+    failures += len(out["failures"])
     segments += len(out["row"])
     for k in sorted(out):
         v = out[k]

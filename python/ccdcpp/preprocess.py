@@ -15,8 +15,11 @@ result. The classes here write a chain; a field left None is the step's default
         thermal_transform=True,
     ))
 """
+from __future__ import annotations
+
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Any
 
 __all__ = ["AddQa", "BandRange", "Dedupe", "GreenMedian", "KeepQa", "PROCEDURES", "Preprocess",
            "ProcedureChain", "QA_CODE_NAMES", "REFLECTIVE", "ThermalRange"]
@@ -32,7 +35,7 @@ QA_CODE_NAMES = ("fill", "clear", "water", "shadow", "snow", "cloud", "cirrus1",
                  "occlusion")
 
 
-def _codes(value, where):
+def _codes(value: str | int | Iterable[str | int], where: str) -> tuple[str | int, ...]:
     """``value`` as a tuple of QA code names, or of ints 0..255."""
     codes = (value,) if isinstance(value, (str, int)) else tuple(value)
     names = [c for c in codes if isinstance(c, str)]
@@ -48,7 +51,7 @@ def _codes(value, where):
     return tuple(c if isinstance(c, str) else int(c) for c in codes)
 
 
-def _pair(value, name):
+def _pair(value: Iterable[bool] | None, name: str) -> tuple[bool, bool] | None:
     if value is None:
         return None
     pair = tuple(value)
@@ -58,7 +61,7 @@ def _pair(value, name):
     return (bool(pair[0]), bool(pair[1]))
 
 
-def _given(step, **params):
+def _given(step: str, **params: Any) -> dict[str, Any]:
     """The step as a configuration holds it: {"step": name, param: value} for every
     parameter given (not None)."""
     out = {"step": step}
@@ -66,7 +69,8 @@ def _given(step, **params):
     return out
 
 
-def _range(step, min, max, inclusive):
+def _range(step: str, min: float | None, max: float | None,
+           inclusive: tuple[bool, bool] | None) -> dict[str, Any]:
     flags = {} if inclusive is None else {"min_inclusive": inclusive[0],
                                          "max_inclusive": inclusive[1]}
     return dict(_given(step, min=min, max=max), **flags)
@@ -77,13 +81,13 @@ class KeepQa:
     """keep_qa: keep only the observations whose QA code is in ``codes``, names from
     :data:`QA_CODE_NAMES` (the input's ``qa_*`` codes) or ints. None: clear and water."""
 
-    codes: Optional[Tuple[Union[str, int], ...]] = None
+    codes: tuple[str | int, ...] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.codes is not None:
             object.__setattr__(self, "codes", _codes(self.codes, "KeepQa"))
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return _given("keep_qa", codes=None if self.codes is None else list(self.codes))
 
 
@@ -92,13 +96,13 @@ class AddQa:
     """add_qa: also keep every observation whose QA code is in ``codes``, whatever an earlier
     step decided; a :class:`Dedupe` must follow it. None: snow."""
 
-    codes: Optional[Tuple[Union[str, int], ...]] = None
+    codes: tuple[str | int, ...] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.codes is not None:
             object.__setattr__(self, "codes", _codes(self.codes, "AddQa"))
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return _given("add_qa", codes=None if self.codes is None else list(self.codes))
 
 
@@ -110,14 +114,14 @@ class ThermalRange:
     procedure without ``thermal_transform`` tests the row as the input holds it. An input
     without a ``"thermal"`` row skips the step."""
 
-    min: Optional[float] = None
-    max: Optional[float] = None
-    inclusive: Optional[Tuple[bool, bool]] = None
+    min: float | None = None
+    max: float | None = None
+    inclusive: tuple[bool, bool] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         object.__setattr__(self, "inclusive", _pair(self.inclusive, "inclusive"))
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return _range("thermal_range", self.min, self.max, self.inclusive)
 
 
@@ -129,12 +133,12 @@ class BandRange:
     or other, in row order. An empty list is refused. None: ``"reflective"``, 0 and 1,
     exclusive."""
 
-    bands: Optional[Union[str, Tuple[str, ...]]] = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    inclusive: Optional[Tuple[bool, bool]] = None
+    bands: str | tuple[str | int, ...] | None = None
+    min: float | None = None
+    max: float | None = None
+    inclusive: tuple[bool, bool] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.bands is not None and self.bands != REFLECTIVE:
             bands = (self.bands,) if isinstance(self.bands, str) else tuple(self.bands)
             if not bands:
@@ -143,7 +147,7 @@ class BandRange:
             object.__setattr__(self, "bands", bands)
         object.__setattr__(self, "inclusive", _pair(self.inclusive, "inclusive"))
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         out = _range("band_range", self.min, self.max, self.inclusive)
         if self.bands is not None:
             out["bands"] = self.bands if self.bands == REFLECTIVE else list(self.bands)
@@ -157,10 +161,10 @@ class GreenMedian:
     ``statistics_end``, plus ``offset`` (reflectance), at the dates ``scope`` names: ``"all"``,
     ``"stat_window"`` or ``"off"``. None: 0.04 and ``"stat_window"``."""
 
-    offset: Optional[float] = None
-    scope: Optional[str] = None
+    offset: float | None = None
+    scope: str | None = None
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return _given("green_median", offset=self.offset, scope=self.scope)
 
 
@@ -168,14 +172,14 @@ class GreenMedian:
 class Dedupe:
     """dedupe: keep the first kept observation of each date."""
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return {"step": "dedupe"}
 
 
 _STEP_TYPES = (KeepQa, AddQa, ThermalRange, BandRange, GreenMedian, Dedupe)
 
 
-def step_dict(step):
+def step_dict(step: object) -> dict[str, Any]:
     """A step as a configuration holds it: one of the classes here, or a dict
     {"step": name, ...}."""
     if isinstance(step, _STEP_TYPES):
@@ -192,10 +196,10 @@ class ProcedureChain:
     ``ccdcpp.CHAIN_CAPACITY``), and whether it reads the thermal row through the input's
     thermal transform (``thermal_transform``; "ccdc" sets it for standard only, as pyccd)."""
 
-    steps: Tuple[object, ...] = ()
+    steps: tuple[object, ...] = ()
     thermal_transform: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         steps = tuple(self.steps)
         for step in steps:
             step_dict(step)
@@ -204,7 +208,7 @@ class ProcedureChain:
             raise TypeError(f"ProcedureChain: thermal_transform is {self.thermal_transform!r}; "
                             f"it is True or False")
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return {"thermal_transform": self.thermal_transform,
                 "steps": [step_dict(s) for s in self.steps]}
 
@@ -214,16 +218,16 @@ class Preprocess:
     """A preprocess section: a :class:`ProcedureChain` per procedure; None keeps the base
     configuration's (``Config.replace(preprocess=...)``)."""
 
-    standard: Optional[ProcedureChain] = None
-    snow: Optional[ProcedureChain] = None
-    insufficient_clear: Optional[ProcedureChain] = None
+    standard: ProcedureChain | None = None
+    snow: ProcedureChain | None = None
+    insufficient_clear: ProcedureChain | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         for name in PROCEDURES:
             value = getattr(self, name)
             if value is not None and not isinstance(value, ProcedureChain):
                 raise TypeError(f"Preprocess: {name} is {value!r}, not a ProcedureChain")
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return {name: getattr(self, name).to_dict() for name in PROCEDURES
                 if getattr(self, name) is not None}

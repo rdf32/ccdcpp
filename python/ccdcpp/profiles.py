@@ -32,14 +32,18 @@ values are not validated, and ccdcpp.presets does not contain it::
 The configuration names its detection and Tmask bands by role ("green",
 "swir1", ...); a profile whose roles lack one is refused when it runs.
 """
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from types import MappingProxyType
-from typing import Mapping, Optional, Tuple, Union
+from typing import NoReturn, cast
 
 import numpy as np
+from numpy.typing import ArrayLike
 
-from .ccdcpp import CCD_MAX_BANDS, ROLES, Input, qa_tables
+from .ccdcpp import CCD_MAX_BANDS, ROLES, Input, QaTable, qa_tables
 
 
 @dataclass(frozen=True)
@@ -95,12 +99,12 @@ KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0, at_100c=10000.0)
 CELSIUS_OVER_100 = Thermal(scale=1.0, offset=0.0, at_100c=1.0)
 
 
-QaTableOptions = Union[Mapping[str, object], Tuple[Tuple[str, object], ...]]
+QaTableOptions = Mapping[str, object] | tuple[tuple[str, object], ...]
 
 #: The keyword arguments each ``ccdcpp.qa_tables`` builder takes beyond
 #: ``input``, as its binding declares them: builder -> {name: (type,
 #: default)}. ``SensorProfile.qa_table_options`` is checked against it.
-QA_TABLE_OPTIONS = MappingProxyType({
+QA_TABLE_OPTIONS: Mapping[str, Mapping[str, tuple[type, object]]] = MappingProxyType({
     "landsat_c2_qa_pixel": MappingProxyType({}),
     "landsat_c1_pixel_qa": MappingProxyType({}),
     "hls_fmask": MappingProxyType({"exclude_high_aerosol": (bool, False)}),
@@ -166,16 +170,16 @@ class SensorProfile:
     """
 
     name: str
-    band_names: Tuple[str, ...]
-    roles: Tuple[str, ...]
+    band_names: tuple[str, ...]
+    roles: tuple[str, ...]
     units: Units
-    thermal: Optional[Thermal] = None
-    saturation_code: Optional[float] = None
-    thermal_saturation_code: Optional[float] = None
-    qa_table_builder: Optional[str] = None
+    thermal: Thermal | None = None
+    saturation_code: float | None = None
+    thermal_saturation_code: float | None = None
+    qa_table_builder: str | None = None
     qa_table_options: QaTableOptions = field(default=())
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         for name in ("band_names", "roles"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
         for name in ("saturation_code", "thermal_saturation_code"):
@@ -184,10 +188,10 @@ class SensorProfile:
         object.__setattr__(self, "qa_table_options", self._canonical_qa_table_options())
         self._validate()
 
-    def _fail(self, message):
+    def _fail(self, message: str) -> NoReturn:
         raise ValueError(f"SensorProfile {self.name!r}: {message}")
 
-    def _validate(self):
+    def _validate(self) -> None:
         n = len(self.band_names)
         if n == 0:
             self._fail("band_names is empty")
@@ -213,7 +217,7 @@ class SensorProfile:
             self._fail(f"ccdcpp.qa_tables has no builder {self.qa_table_builder!r}")
         self._validate_qa_table_options()
 
-    def _canonical_qa_table_options(self):
+    def _canonical_qa_table_options(self) -> tuple[tuple[str, object], ...]:
         """``qa_table_options`` checked as given, then stored canonically:
         every argument :data:`QA_TABLE_OPTIONS` declares for the builder,
         sorted by name, its default written out where none is given."""
@@ -266,8 +270,12 @@ class SensorProfile:
         return tuple(sorted((name, given.get(name, default))
                             for name, (_, default) in declared.items()))
 
-    def _validate_qa_table_options(self):
-        options = self.qa_table_options
+    def _canonical_options(self) -> tuple[tuple[str, object], ...]:
+        """``qa_table_options`` as ``__post_init__`` stores it."""
+        return cast("tuple[tuple[str, object], ...]", self.qa_table_options)
+
+    def _validate_qa_table_options(self) -> None:
+        options = self._canonical_options()
         if not options:
             return
         defaults = Input()
@@ -279,11 +287,11 @@ class SensorProfile:
                 f"ccdcpp.qa_tables.{self.qa_table_builder} rejects qa_table_options "
                 f"{dict(options)}, which QA_TABLE_OPTIONS allows: {error}")
 
-    def index(self, role):
+    def index(self, role: str) -> int:
         """The row of the band with ``role``."""
         return self.roles.index(role)
 
-    def input(self):
+    def input(self) -> Input:
         """The ``ccdcpp.Input`` of this profile's data, built once per profile
         and shared (it is immutable; ``replace()`` gives a changed copy).
 
@@ -294,7 +302,7 @@ class SensorProfile:
         """
         return _input_of(self)
 
-    def check(self, spectral, band_names=None):
+    def check(self, spectral: ArrayLike, band_names: Sequence[str] | None = None) -> None:
         """Raise ValueError unless the band axis of ``spectral`` has one row
         per band of the profile, and, with ``band_names``, unless those names
         are the profile's ``band_names`` in the profile's order.
@@ -320,7 +328,7 @@ class SensorProfile:
         if band_names is not None:
             self._check_band_names(band_names)
 
-    def _check_band_names(self, band_names):
+    def _check_band_names(self, band_names: Sequence[str]) -> None:
         if isinstance(band_names, (str, bytes)):
             raise TypeError(
                 f"SensorProfile {self.name!r}: band_names is a sequence of "
@@ -358,13 +366,14 @@ class SensorProfile:
 
 
 @lru_cache(maxsize=None)
-def _build_table(builder, codes, builder_options=()):
+def _build_table(builder: str, codes: tuple[int, ...],
+                 builder_options: tuple[tuple[str, object], ...] = ()) -> QaTable:
     h = Input(**dict(zip(_TABLE_CODE_FIELDS, codes)))
     return getattr(qa_tables, builder)(h, **dict(builder_options))
 
 
 @lru_cache(maxsize=None)
-def _input_of(profile):
+def _input_of(profile: SensorProfile) -> Input:
     h = Input(
         roles=list(profile.roles),
         reflectance_scale=profile.units.reflectance_scale,
@@ -379,6 +388,6 @@ def _input_of(profile):
     if profile.qa_table_builder is not None:
         codes = tuple(int(getattr(h, name)) for name in _TABLE_CODE_FIELDS)
         h = h.replace(qa_table=_build_table(profile.qa_table_builder, codes,
-                                            profile.qa_table_options))
+                                            profile._canonical_options()))
     return h
 

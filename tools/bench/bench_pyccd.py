@@ -23,6 +23,7 @@ import statistics
 import sys
 import time
 import warnings
+from typing import Any
 
 args, only, i = [], None, 1
 while i < len(sys.argv):
@@ -46,6 +47,7 @@ sys.argv = [sys.argv[0]] + args
 sys.path.insert(0, sys.argv[1])
 sys.path.insert(1, sys.argv[2])
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 
@@ -53,7 +55,8 @@ if not os.path.realpath(ccdcpp.__file__).startswith(os.path.realpath(sys.argv[1]
     sys.exit(f"{sys.argv[0]}: ccdcpp loaded from {ccdcpp.__file__}, not from {sys.argv[1]}")
 
 # PyCCD 2021 uses the numpy aliases that numpy 1.24 removed.
-np.bool, np.int, np.float = bool, int, float
+for alias, builtin in (("bool", bool), ("int", int), ("float", float)):
+    setattr(np, alias, builtin)
 warnings.filterwarnings("ignore")
 if only != "ccdcpp":
     import ccd  # noqa: E402
@@ -81,20 +84,21 @@ hopt = ccdcpp.Input()
 PYCCD = ccdcpp.config("ccdc").replace(shared__statistics_end=736694)
 
 
-def peak_mb():
+def peak_mb() -> float:
     # ru_maxrss is bytes on macOS, kilobytes on Linux; MB of 10^6 bytes.
     r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return r / 1e6 if sys.platform == "darwin" else r * 1024 / 1e6
 
 
-def run_pyccd(d, s64, q8):
+def run_pyccd(d: NDArray[np.int64], s64: NDArray[np.float64],
+              q8: NDArray[np.uint8]) -> dict[str, Any]:
     # PyCCD gets integer DN where the values are whole, as its own tests pass them.
     py_s = s64.astype(np.int64) if np.all(s64 == np.round(s64)) else s64
     return ccd.detect(d, *[np.array(py_s[b]) for b in range(7)], q8.astype(np.int64), params=PARAMS)
 
 
 py_t, cpp_t, same = [], [], 0
-before = None
+before = 0.0
 # The first pixel runs twice, untimed the first time: PyCCD's first call pays for lazy imports.
 for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
     d = np.ascontiguousarray(d, dtype=np.int64)
@@ -107,7 +111,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
             ccdcpp.detect(d, s64, q8, encoding=hopt, config=PYCCD)
         before = peak_mb()
         continue
-    py = cpp = None
+    py = cpp = best = None
     if only != "ccdcpp":
         t0 = time.perf_counter()
         py = run_pyccd(d, s64, q8)
@@ -121,6 +125,7 @@ for k, (name, d, s, q) in enumerate(pixels[:1] + pixels):
             best = el if best is None else min(best, el)
         cpp_t.append(best)
     if only is None:
+        assert py is not None and cpp is not None and best is not None
         a = [(m["start_day"], m["end_day"], m["break_day"]) for m in cpp["models"]]
         b = [(m["start_day"], m["end_day"], m["break_day"]) for m in py["change_models"]]
         same += a == b

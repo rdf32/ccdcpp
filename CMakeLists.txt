@@ -1215,6 +1215,15 @@ if(CCD_BUILD_PYTHON)
         )
 
         add_test(
+            NAME python_stub
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tests/python/test_stub.py
+                $<TARGET_FILE_DIR:ccd_python>
+                ${PROJECT_SOURCE_DIR}
+        )
+
+        add_test(
             NAME python_qa_tables
             COMMAND
                 ${Python_EXECUTABLE}
