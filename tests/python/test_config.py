@@ -81,7 +81,7 @@ class Presets(unittest.TestCase):
         self.assertEqual(ccdcpp.config(path), cfg)
 
     def test_an_unknown_preset_names_the_presets(self):
-        with self.assertRaisesRegex(ValueError, "the presets are ccdc"):
+        with self.assertRaisesRegex(ValueError, r"the presets are (.*, )?ccdc$"):
             ccdcpp.config("nope")
         # Names are exact, whatever the file system's case rules.
         with self.assertRaises(ValueError):
