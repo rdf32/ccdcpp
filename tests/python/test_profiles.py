@@ -151,7 +151,7 @@ def explicit_physical():
     """The physical-unit input written out, as the golden tests write it, and the
     configuration it runs: (Input, Config)."""
     h = ccdcpp.Input(reflectance_unit=1.0, thermal_scale=1.0, thermal_offset=0.0,
-                     thermal_unit=1.0, saturated=None)
+                     thermal_unit=1.0)
     return h, PYCCD
 
 
@@ -239,7 +239,7 @@ class Corpus(unittest.TestCase):
 class LandsatC1DN(unittest.TestCase):
     def test_options_are_the_defaults_field_by_field(self):
         h = presets.landsat_c1_dn().input()
-        self.assertEqual(fields(h), fields(ccdcpp.Input()))
+        self.assertEqual(fields(h), fields(ccdcpp.Input(saturated=20000.0)))
         for threshold in (change_threshold, outlier_threshold):
             self.assertEqual(threshold(PYCCD, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
         self.assertGreater(len(fields(h)), 14)
@@ -877,13 +877,13 @@ class Profiles(unittest.TestCase):
                 expected = 20000.0 if preset == "landsat_c1_dn" else None
                 self.assertEqual(p.saturated, expected)
                 self.assertEqual(p.input().saturated, expected)
-        self.assertEqual(ccdcpp.Input().saturated, 20000.0)
+        self.assertIsNone(ccdcpp.Input().saturated)
         p = dataclasses.replace(presets.landsat_c1_physical(), saturated=2)
         self.assertEqual(p.saturated, 2.0)
         self.assertEqual(p.input().saturated, 2.0)
         # In the input's equality and digest.
         h = ccdcpp.Input()
-        for value in (None, 65535.0):
+        for value in (20000.0, 65535.0):
             with self.subTest(saturated=value):
                 other = ccdcpp.Input(saturated=value)
                 self.assertEqual(other.saturated, value)
@@ -998,7 +998,7 @@ class TenBand(unittest.TestCase):
         dates, cube, scl = ten_band_inputs()
         h = ccdcpp.Input(roles=["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
                                 "nir_broad", "nir", "swir1", "swir2"],
-                         reflectance_unit=1.0, saturated=None)
+                         reflectance_unit=1.0)
         cfg = ccdcpp.config("ccdc").replace(
             change_test__peek_reference_days=10.0,
             shared__detection_bands=["green", "red", "red_edge_2", "nir", "swir1", "swir2"],
@@ -1116,7 +1116,7 @@ def s2_inputs(H=2, W=2, seed=9, breaks=True, years=8):
 
 #: Each preset's input, written out: the ccdcpp.Input() fields that differ.
 #: Every unnamed field is the default.
-PHYSICAL = dict(reflectance_unit=1.0, saturated=None)
+PHYSICAL = dict(reflectance_unit=1.0)
 _MSI = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad", "nir",
         "swir1", "swir2"]
 _HLS = ["coastal", "blue", "green", "red", "nir", "swir1", "swir2"]

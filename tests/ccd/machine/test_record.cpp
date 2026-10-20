@@ -354,7 +354,7 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         {"reflectance_unit", [](auto& h) { h.reflectance_unit = 1.0; }},
         {"reflectance_offset", [](auto& h) { h.reflectance_offset = 0.5; }},
         {"saturated", [](auto& h) { h.saturated = 65535.0; }},
-        {"no saturated", [](auto& h) { h.saturated.reset(); }},
+        {"saturated 20000", [](auto& h) { h.saturated = 20000.0; }},
         {"thermal_scale", [](auto& h) { h.thermal_scale = 1.0; }},
         {"thermal_offset", [](auto& h) { h.thermal_offset = -2731.0; }},
         {"thermal_unit", [](auto& h) { h.thermal_unit = 1.0; }},

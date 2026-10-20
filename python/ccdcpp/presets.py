@@ -70,7 +70,7 @@ def landsat_c1_dn():
 
     A saturated observation holds 20000 (``saturated``).
 
-    ``input()`` is ``ccdcpp.Input()``, field for field.
+    ``input()`` is ``ccdcpp.Input(saturated=20000.0)``, field for field.
     """
     return SensorProfile(
         name="landsat_c1_dn",

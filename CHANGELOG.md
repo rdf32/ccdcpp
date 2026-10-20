@@ -29,7 +29,8 @@ removed name to its replacement; `docs/config.md` describes the configuration.
   is held as `r * reflectance_unit + reflectance_offset`; Collection-1 DN 10000 and 0,
   reflectance 1 and 0), the thermal transform (`thermal_scale`, `thermal_offset`) with
   `thermal_unit` (the value 100 °C has after it: 10000 for Celsius x 100, 1 for Celsius / 100)
-  and `saturated` (the value a saturated observation holds; 20000 by default, `None` for none).
+  and `saturated` (the value a saturated observation holds, or `None`, the default;
+  `presets.landsat_c1_dn()` declares 20000).
   The Python `Input` is immutable: `Input(**fields)` by keyword, `replace(**fields)` for a
   changed copy, equal and hashed by value. `CLEAR_OBSERVATION_THRESHOLD`, which nothing read,
   is gone. Every algorithm field of 0.10.0 (`MEOW_SIZE`, `PEEK_SIZE`, ...,

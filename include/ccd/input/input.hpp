@@ -236,11 +236,11 @@ struct Input
     // tested).
     scalar_t thermal_unit = 10000.0;
 
-    // The value a saturated observation holds, as the sensor writes it:
-    // 20000 in Collection-1 DN (the default), or none when the input does not
-    // declare one. A step or strategy that reads it refuses an input without
-    // one.
-    std::optional<scalar_t> saturated = 20000.0;
+    // The value a saturated observation holds, as the sensor writes it
+    // (20000 in Collection-1 DN), or none (the default) when the input does
+    // not declare one. A step or strategy that reads it refuses an input
+    // without one.
+    std::optional<scalar_t> saturated;
 
     // The band count: one row per role.
     index_t bands() const { return roles.size(); }

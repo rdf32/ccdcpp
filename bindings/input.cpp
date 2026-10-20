@@ -204,9 +204,9 @@ void bind_input(py::module_& m)
     .def_readonly(
         "saturated", &ccd::Input::saturated,
         "The value a saturated observation holds, as the sensor writes it "
-        "(default 20000, Collection-1 DN), or None when the input does not "
-        "declare one. A step or strategy that reads it refuses an input "
-        "without one."
+        "(20000 in Collection-1 DN), or None (the default) when the input "
+        "does not declare one. A step or strategy that reads it refuses an "
+        "input without one."
     )
 
     //--------------------------------------------------------------------------
