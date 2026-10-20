@@ -20,6 +20,8 @@
 #include <cstdint>
 #include <functional>
 #include <stdexcept>
+#include <type_traits>
+#include <variant>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +31,7 @@
 #include "../golden/specs.hpp"
 
 #include "ccd/ccd.hpp"
+#include "ccd/strategies/model/lasso.hpp"
 
 #include "characterisation.hpp"
 #include "golden.hpp"
@@ -57,7 +60,7 @@ ccd::ArrayView<const std::uint8_t, 1> qas_of(const golden::CharPixel& p)
 ccd::PixelRun recorded(const golden::CharPixel& p)
 {
     return ccd::run_pixel(
-        golden::spec_of(p.h, p.a, nullptr, nullptr, true),
+        golden::spec_of(p.h, p.config, nullptr, nullptr, true),
         dates_of(p),
         spectral_of(p),
         qas_of(p));
@@ -65,7 +68,7 @@ ccd::PixelRun recorded(const golden::CharPixel& p)
 
 ccd::FitResult detected(const golden::CharPixel& p)
 {
-    return ccd::run_pixel(golden::spec_of(p.h, p.a), dates_of(p), spectral_of(p), qas_of(p)).result;
+    return ccd::run_pixel(golden::spec_of(p.h, p.config), dates_of(p), spectral_of(p), qas_of(p)).result;
 }
 
 std::string dump(const ccd::FitResult& r)
@@ -129,7 +132,7 @@ TEST(Record, TheHeaderNamesTheRun)
     EXPECT_EQ(r.header.series_end, p.dates.back());
     EXPECT_EQ(r.header.statistics_end, p.dates.back());
     EXPECT_EQ(r.header.options_digest,
-              ccd::options_digest(p.h, golden::config_of(p.a),
+              ccd::options_digest(p.h, p.config,
                                   ccd::preprocess::default_plan(p.h), nullptr));
 }
 
@@ -204,15 +207,21 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
             dates_of(p), ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
             qas_of(p), p.h);
         series.reset(ws, r.result.mask);
+        // The model's solver, and its coefficient rule as configured.
+        const ccd::Strategies strategies = golden::strategies_of(p.config);
         ccd::LassoWorkspace lasso(0);
-        ccd::LassoSolver solver(p.a.lasso);
+        ccd::LassoSolver solver(
+            static_cast<const ccd::strategies::Lasso&>(*strategies.model).solver_options());
+        const auto model_count = [&](const char* name)
+        { return static_cast<index_t>(golden::parameter<std::int64_t>(p.config, "model", name)); };
         std::vector<ccd::LassoResult> fits;
         const ccd::Window fit(s.window.start, s.fit_stop);
         ccd::fit_bands(
             series.dates().slice(ccd::range(fit.start, fit.stop)),
             series.spectral().slice(ccd::all(), ccd::range(fit.start, fit.stop)),
-            ccd::CoefficientRule{p.a.COEFFICIENT_MIN, p.a.COEFFICIENT_MID, p.a.COEFFICIENT_MAX,
-                                 p.a.NUM_OBS_FACTOR}.count(fit.size()),
+            ccd::CoefficientRule{model_count("coefficient_min"), model_count("coefficient_mid"),
+                                 model_count("coefficient_max"), model_count("num_obs_factor")}
+                .count(fit.size()),
             ccd::KeepResiduals::No, lasso, solver, fits);
         for (std::size_t b = 0; b < fits.size(); ++b)
         {
@@ -295,11 +304,10 @@ namespace
 
 std::uint64_t digest_of(
     const ccd::HarmonicOptions& h,
-    const golden::Algorithm& a = golden::Algorithm{},
+    const ccd::config::ConfigTree& config = golden::ccdc(),
     const ccd::QaTable* table = nullptr)
 {
-    return ccd::options_digest(h, golden::config_of(a), ccd::preprocess::default_plan(h),
-                               table);
+    return ccd::options_digest(h, config, ccd::preprocess::default_plan(h), table);
 }
 
 } // namespace
@@ -307,8 +315,8 @@ std::uint64_t digest_of(
 TEST(OptionsDigest, EqualOptionsEqualDigests)
 {
     EXPECT_EQ(digest_of(ccd::HarmonicOptions{}), digest_of(ccd::HarmonicOptions{}));
-    EXPECT_EQ(digest_of(golden::physical_harmonic(), golden::physical_algorithm()),
-              digest_of(golden::physical_harmonic(), golden::physical_algorithm()));
+    EXPECT_EQ(digest_of(golden::physical_harmonic(), golden::physical_config()),
+              digest_of(golden::physical_harmonic(), golden::physical_config()));
 }
 
 // The configuration is in the digest: the preset's, and another's.
@@ -349,57 +357,68 @@ TEST(OptionsDigest, EveryGroupOfFieldsMoves)
         EXPECT_NE(digest_of(h), base) << name;
     }
 
-    // The algorithm's options, each in the configuration they describe.
-    // The algorithm's values, each in the configuration.
-    using SetAlgorithm = std::function<void(golden::Algorithm&)>;
-    const std::pair<const char*, SetAlgorithm> algorithm[] = {
-        {"MEOW_SIZE", [](auto& a) { a.MEOW_SIZE = 13; }},
-        {"PEEK_SIZE", [](auto& a) { a.PEEK_SIZE = 7; }},
-        {"DAY_DELTA", [](auto& a) { a.DAY_DELTA = 366; }},
-        {"CLEAR_PCT_THRESHOLD", [](auto& a) { a.CLEAR_PCT_THRESHOLD = 0.26; }},
-        {"OUTLIER_THRESHOLD", [](auto& a) { a.OUTLIER_THRESHOLD = 36.0; }},
-        {"T_CONST", [](auto& a) { a.T_CONST = 4.9; }},
-        {"VARIOGRAM_MIN_LAG_DAYS", [](auto& a) { a.VARIOGRAM_MIN_LAG_DAYS = 31; }},
-        {"RETRAIN_MIN_OBS", [](auto& a) { a.RETRAIN_MIN_OBS = 25; }},
-        {"SEASONAL_RMSE_DIVISOR", [](auto& a) { a.SEASONAL_RMSE_DIVISOR = 4.5; }},
-        {"COEFFICIENT_MID", [](auto& a) { a.COEFFICIENT_MID = 7; }},
-        {"NUM_OBS_FACTOR", [](auto& a) { a.NUM_OBS_FACTOR = 4; }},
-        {"TMASK_BANDS", [](auto& a) { a.TMASK_BANDS = {1, 5}; }},
-        {"max_iter", [](auto& a) { a.lasso.max_iter = 999; }},
-        {"alpha", [](auto& a) { a.lasso.alpha = 2.0; }},
-        {"tolerance", [](auto& a) { a.lasso.tolerance = 1e-5; }},
-        {"coef_floor", [](auto& a) { a.lasso.coef_floor = 2.0; }},
-    };
-    for (const auto& [name, set] : algorithm)
+    // Every parameter of every stage of the configuration, and every stage's
+    // strategy name.
+    const ccd::config::ConfigTree preset = golden::ccdc();
+    std::size_t parameters = 0;
+    for (const auto& [stage, sc] : preset)
     {
-        golden::Algorithm a;
-        set(a);
-        EXPECT_NE(digest_of(ccd::HarmonicOptions{}, a), base) << name;
+        for (const auto& [name, value] : sc.params)
+        {
+            const ccd::config::Value moved = std::visit(
+                [](auto v) -> ccd::config::Value
+                {
+                    using T = decltype(v);
+                    if constexpr (std::is_same_v<T, bool>)
+                        return ccd::config::flag(!v);
+                    else if constexpr (std::is_same_v<T, std::int64_t>)
+                        return ccd::config::integer(v + 1);
+                    else if constexpr (std::is_same_v<T, double>)
+                        return ccd::config::real(v + 0.5);
+                    else if constexpr (std::is_same_v<T, std::string>)
+                        return v + "-other";
+                    else
+                    {
+                        v.push_back(5);
+                        return v;
+                    }
+                },
+                value);
+            EXPECT_NE(digest_of(ccd::HarmonicOptions{}, golden::with(preset, stage, name, moved)),
+                      base)
+                << stage << " " << name;
+            ++parameters;
+        }
+        ccd::config::ConfigTree renamed = preset;
+        renamed[stage].strategy += "-other";
+        EXPECT_NE(digest_of(ccd::HarmonicOptions{}, renamed), base) << stage;
     }
+    EXPECT_GT(parameters, 40u);
 }
 
 TEST(OptionsDigest, ThePlanAndTheQaTableMove)
 {
     const ccd::HarmonicOptions h;
-    const ccd::config::ConfigTree l = ccd::strategies::library_registry().preset("ccdc");
+    const ccd::config::ConfigTree config = golden::ccdc();
     const auto plan = ccd::preprocess::default_plan(h);
-    const std::uint64_t base = ccd::options_digest(h, l, plan, nullptr);
+    const std::uint64_t base = ccd::options_digest(h, config, plan, nullptr);
+
 
     auto other = plan;
     other.insufficient_clear.chain.steps[0].codes.set(2);
-    EXPECT_NE(ccd::options_digest(h, l, other, nullptr), base);
+    EXPECT_NE(ccd::options_digest(h, config, other, nullptr), base);
 
     other = plan;
     other.standard.transform.reset();
-    EXPECT_NE(ccd::options_digest(h, l, other, nullptr), base);
+    EXPECT_NE(ccd::options_digest(h, config, other, nullptr), base);
 
     const auto table = ccd::qa_tables::landsat_c2_qa_pixel(h);
-    const std::uint64_t with_table = ccd::options_digest(h, l, plan, table.get());
+    const std::uint64_t with_table = ccd::options_digest(h, config, plan, table.get());
     EXPECT_NE(with_table, base);
 
     ccd::QaTable changed = *table;
     changed.code[21824] = changed.code[21824] == 0 ? 1 : 0;
-    EXPECT_NE(ccd::options_digest(h, l, plan, &changed), with_table);
+    EXPECT_NE(ccd::options_digest(h, config, plan, &changed), with_table);
 }
 
 // options_digest() names every field of these structs one by one, so a

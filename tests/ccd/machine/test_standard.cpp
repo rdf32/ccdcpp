@@ -23,7 +23,6 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/standard.hpp"
-#include "../golden/algorithm.hpp"
 #include "../golden/specs.hpp"
 
 
@@ -319,7 +318,7 @@ std::vector<int> read_mask_reference(
 //------------------------------------------------------------------------------
 // The pyccd reference pixel against pyccd 2021.7.19's output (1e-6): every
 // segment's days, count, change probability and curve_qa, and the mask.
-// Segments 0 and 1 grow through a window of exactly RETRAIN_MIN_OBS (24)
+// Segments 0 and 1 grow through a window of exactly refit's min_obs (24)
 // observations, which ccdcpp refits and pyccd does not (it refits while
 // the window holds fewer), so their fits are ccdcpp's own and differ from
 // pyccd's; the other three are fitted as pyccd fits them.
@@ -357,10 +356,6 @@ TEST(CCD, DetectStandard)
         spectral(thermal_idx, t) = 
             spectral(thermal_idx, t) * 10.0 - 27315.0;
     }
-
-    ccd::LassoOptions loptions;
-    ccd::LassoSolver solver(loptions);
-    ccd::LassoWorkspace lworkspace(dates.size());
 
     ccd::standard::Procedure fit_procedure;
     ccd::FitResult result = fit_procedure.run(
@@ -498,10 +493,9 @@ TEST(CCD, DetectStandardHalfDayMedianGap)
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(data.qas.data(), {T});
 
     const ccd::HarmonicOptions hoptions;
-    const ccd::LassoOptions loptions;
 
     const auto result = ccd::run_pixel(
-        golden::spec_of(hoptions, loptions),
+        golden::spec_of(hoptions),
         dates,
         spectral,
         qas).result;

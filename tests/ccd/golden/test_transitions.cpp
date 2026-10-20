@@ -45,13 +45,13 @@
 //      into the previous segment;
 //   3  Lookback compares against the stable start window's RMSE, refitting
 //      nothing;
-//   4  Initialize fits COEFFICIENT_MIN coefficients and both peek bases are
-//      COEFFICIENT_MAX wide;
+//   4  Initialize fits coefficient_min coefficients and both peek bases are
+//      coefficient_max wide;
 //   5  the early exits return the processing mask, as every exit does;
 //   6  a curve ends at the series end once its peek reaches the last
 //      observation, before the observation the peek starts at, and it is the
 //      last curve: EndCatch follows, not Restart;
-//   7  Extend refits while the window holds at most RETRAIN_MIN_OBS
+//   7  Extend refits while the window holds at most refit's min_obs
 //      observations, the same windows that compare against the model RMSE.
 //
 // Which pixel takes which transition. The states are the machine's
@@ -64,7 +64,7 @@
 //
 //   Select (the run's mode, called by Run::pixel)
 //     Standard                  select_clear_at_threshold (clear 25/100 =
-//                               CLEAR_PCT_THRESHOLD, the >= side), every
+//                               clear_pct_threshold, the >= side), every
 //                               Standard pixel below; corpus pyccd:dn
 //     PermanentSnow             select_snow_at_threshold (61/81.01 = 0.753),
 //                               snow_too_few; corpus c16:dn:0,1
@@ -72,10 +72,10 @@
 //                               select_snow_below_threshold (60/80.01 =
 //                               0.7499); corpus c16:dn:1,0
 //   Whole-series fit (PermanentSnow, InsufficientClear)
-//     too few -> Done, the mask          snow_too_few (11 < MEOW_SIZE)
+//     too few -> Done, the mask          snow_too_few (11 < meow_size)
 //     fit                                the three whole-series select_* pixels
 //   Prepare
-//     too few -> Done, the mask          standard_too_few (12 <= MEOW_SIZE)
+//     too few -> Done, the mask          standard_too_few (12 <= meow_size)
 //     peek not adjusted                  start_catch, series_end_after_outlier
 //     peek adjusted 7-12                 corpus c8:dn:0,0
 //     peek adjusted 13-25                lookback_near_break (19),
@@ -83,11 +83,11 @@
 //     peek adjusted >= 26                dense_series_end (32)
 //     variogram lag raised               start_catch and most Standard pixels
 //                                        (not select_clear_at_threshold: its
-//                                        gaps exceed VARIOGRAM_MIN_LAG_DAYS)
+//                                        gaps exceed min_lag_days)
 //     variogram NaN -> Done, the mask    variogram_nan
 //     no room for Initialize -> EndCatch  standard_no_room
 //   Initialize
-//     grow: span < DAY_DELTA             start_catch, peek_guard_tail, ...
+//     grow: span < day_delta             start_catch, peek_guard_tail, ...
 //     grow: Tmask flags all              corpus c8:dn:2,3
 //     grow: candidate too short in time  lookback_near_break,
 //                                        lookback_far_peek_decides
@@ -128,19 +128,19 @@
 //     pass                               every pixel with an Extend segment
 //     fail -> EndCatch                   peek_guard_tail
 //   Extend
-//     refit: untrained / <= RETRAIN_MIN_OBS / span factor
+//     refit: untrained / <= min_obs / span factor
 //                                        lookback_near_break (all three)
-//     refit at exactly RETRAIN_MIN_OBS
+//     refit at exactly min_obs
 //       (rule 7)                         lookback_far_peek_decides;
 //                                        corpus pyccd:dn
 //     compare: model RMSE (<= 24 obs)    series_end_after_outlier
 //     compare: seasonal RMSE             series_end_after_outlier
 //     coefficients 4 / 6 / 8             select_clear_at_threshold (4, 6),
 //                                        lookback_near_break (4, 8)
-//     COEFFICIENT_MIN Initialize,
-//       COEFFICIENT_MAX peek basis
+//     coefficient_min Initialize,
+//       coefficient_max peek basis
 //       (rule 4)                         every Extend step above; with
-//                                        COEFFICIENT_MIN = 6,
+//                                        coefficient_min = 6,
 //                                        coefficient_min_6
 //     change                             lookback_near_break, peek_guard_tail
 //     outlier drop                       series_end_after_outlier
@@ -205,7 +205,7 @@ ccd::FitResult run_detect(const golden::CharPixel& p)
     std::vector<double> block = p.spectral;
 
     return ccd::run_pixel(
-        golden::spec_of(p.h, p.a),
+        golden::spec_of(p.h, p.config),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<double, 2>::contiguous(block.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
@@ -222,7 +222,7 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
 // The values rules 4 and 7 decide on pixels whose shapes they leave alone:
 // each band's RMSE of one segment. Each moves every one of these by at least
 // 8.8e-4 relative (rule 7 against pyccd's refit while fewer than
-// RETRAIN_MIN_OBS: 8.8e-4 to 4.8e-2; rule 4 against pyccd's literal 4 and 8:
+// min_obs: 8.8e-4 to 4.8e-2; rule 4 against pyccd's literal 4 and 8:
 // 4.2e-3 to 1.0e-1); building with
 // -ffp-contract=off, which stands in for another compiler's contraction,
 // moves them by under 1e-13, and -ffp-contract=fast not at all. A relative
@@ -465,7 +465,7 @@ TEST(Transitions, PathsAsDocumented)
     }
     {
         // Rule 4 decides the fits of the first two segments: Initialize
-        // fits COEFFICIENT_MIN = 6 coefficients.
+        // fits coefficient_min = 6 coefficients.
         const auto r = run_detect(pixel(all, "coefficient_min_6"));
         expect_shapes("coefficient_min_6", r,
             {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 307}});

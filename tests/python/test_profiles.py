@@ -842,24 +842,14 @@ class Unprofiled(unittest.TestCase):
                 self.assertIsNone(params["hoptions"].default)
                 self.assertIsNone(params["config"].default)
 
-    def test_method_and_lasso_options_are_gone(self):
-        # The algorithm is a ccdcpp.Config now: no method=, METHODS,
-        # with_method or LassoOptions, and no algorithm fields on
-        # HarmonicOptions. With or without a profile, config="ccdc" is the
-        # default run, and an unknown preset name is refused.
+    def test_config_is_keyword_only_and_defaults_to_ccdc(self):
+        # The algorithm is a ccdcpp.Config, given as config= and only by
+        # keyword. With or without a profile, config="ccdc" is the default
+        # run, and an unknown preset name is refused.
         h = ccdcpp.HarmonicOptions()
         d, s, q = DATES, CUBE_DN, CODES
-        for name in ("METHODS", "with_method", "LassoOptions"):
-            self.assertFalse(hasattr(ccdcpp, name), name)
-        self.assertFalse(hasattr(ccdcpp.Config, "from_options"))
-        for name in ("METHOD", "CHANGE_THRESHOLD", "OUTLIER_THRESHOLD", "PEEK_SIZE",
-                     "TMASK_BANDS", "CHANGE_PROBABILITY"):
-            self.assertFalse(hasattr(h, name), name)
-            with self.assertRaises(AttributeError):
-                setattr(h, name, 1)
         with self.assertRaises(TypeError):
-            ccdcpp.detect(d, s[0, 0], q[0, 0], h, method="ccdc")
-        with self.assertRaises(TypeError):
+
             ccdcpp.detect(d, s[0, 0], q[0, 0], h, ccdcpp.config("ccdc"))
         profile = ccdcpp.presets.landsat_c1_dn()
         assert_same(self, without(ccdcpp.detect_cube_columns(d, s, q, threads=1, profile=profile,

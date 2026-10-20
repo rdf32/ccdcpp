@@ -2,11 +2,12 @@
 //
 // The unit-convention guard.
 //
-// HarmonicOptions and LassoOptions carry seven absolute thresholds that are
-// really statements about what unit the caller's `spectral` array is in
-// (THERMAL_SCALE, THERMAL_OFFSET, REFL_MIN, REFL_MAX, THERM_MIN, THERM_MAX,
-// MEDIAN_GREEN_FILTER, plus LassoOptions::alpha and coef_floor). Their defaults
-// are Collection-1 DN, and the regression tests in test_standard.cpp pin those.
+// HarmonicOptions and the configuration's Lasso stages carry nine absolute
+// thresholds that are really statements about what unit the caller's
+// `spectral` array is in (THERMAL_SCALE, THERMAL_OFFSET, REFL_MIN, REFL_MAX,
+// THERM_MIN, THERM_MAX, MEDIAN_GREEN_FILTER, plus the Lasso's alpha and
+// coef_floor in stability_fit, model and edge_fit). Their defaults are
+// Collection-1 DN, and the regression tests in test_standard.cpp pin those.
 //
 // This file pins the OTHER end: that dividing every band of the input by
 // 10,000 and dividing every one of those thresholds by the same 10,000 gives
@@ -204,7 +205,28 @@ ccd::HarmonicOptions physical_harmonic()
     return h;
 }
 
-ccd::LassoOptions physical_algorithm()
+// The stages that fit a Lasso, whose alpha and coef_floor are unit constants.
+constexpr const char* LASSO_STAGES[] = {"stability_fit", "model", "edge_fit"};
+
+// `config` with alpha and coef_floor set in every Lasso stage.
+ccd::config::ConfigTree with_lasso(ccd::config::ConfigTree config, double alpha, double coef_floor)
+{
+    for (const char* stage : LASSO_STAGES)
+    {
+        config.at(stage).params.at("alpha") = ccd::config::real(alpha);
+        config.at(stage).params.at("coef_floor") = ccd::config::real(coef_floor);
+    }
+    return config;
+}
+
+// The preset with its Lasso constants in the preset's units.
+ccd::config::ConfigTree physical_config()
+{
+    return with_lasso(golden::ccdc(), 1.0 / SCALE, 1.0 / SCALE);
+}
+
+// The kernels' solver with the same constants, for fit_whole_series().
+ccd::LassoOptions physical_solver()
 {
     ccd::LassoOptions lo;
 
@@ -218,7 +240,7 @@ ccd::FitResult run(
     const Observations& obs,
     std::vector<ccd::scalar_t> spectral,
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& lo
+    const ccd::config::ConfigTree& config
 )
 {
     auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
@@ -230,7 +252,7 @@ ccd::FitResult run(
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
         obs.qas.data(), {obs.T});
 
-    return ccd::run_pixel(golden::spec_of(h, lo), dates, spec, qas).result;
+    return ccd::run_pixel(golden::spec_of(h, config), dates, spec, qas).result;
 }
 
 //------------------------------------------------------------------------------
@@ -286,8 +308,10 @@ ccd::FitResult run_insufficient_clear(
         ccd::PixelProcedure::InsufficientClear,
         hworkspace,
         ccd::filter::insufficientclear(hworkspace),
-        golden::Algorithm{}.MEOW_SIZE,
-        golden::Algorithm{}.COEFFICIENT_MIN,
+        static_cast<ccd::index_t>(
+            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "min_observations")),
+        static_cast<ccd::index_t>(
+            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "coefficients")),
         lworkspace,
         solver
     );
@@ -359,12 +383,12 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, ccd::LassoOptions{}
+        ccd::HarmonicOptions{}, golden::ccdc()
     );
 
     const auto phys = run(
         obs, to_physical(obs.spectral, obs.T),
-        physical_harmonic(), physical_algorithm()
+        physical_harmonic(), physical_config()
     );
 
     // Structure first: if the segmentation moved, comparing coefficients is
@@ -417,7 +441,7 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 {
     auto obs = read_observations(OBSERVATIONS);
-    const auto original = run(obs, obs.spectral, ccd::HarmonicOptions{}, ccd::LassoOptions{});
+    const auto original = run(obs, obs.spectral, ccd::HarmonicOptions{}, golden::ccdc());
 
     std::vector<ccd::index_t> moved;
     for (ccd::index_t t = 0; t < obs.T && moved.size() < 5; t += 37)
@@ -436,11 +460,11 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     ccd::HarmonicOptions inclusive_h;
     inclusive_h.REFL_MIN_INCLUSIVE = inclusive_h.REFL_MAX_INCLUSIVE = true;
 
-    const auto dn_inclusive = run(obs, obs.spectral, inclusive_h, ccd::LassoOptions{});
+    const auto dn_inclusive = run(obs, obs.spectral, inclusive_h, golden::ccdc());
 
-    const auto dn = run(obs, obs.spectral, dn_h, ccd::LassoOptions{});
+    const auto dn = run(obs, obs.spectral, dn_h, golden::ccdc());
     const auto phys = run(
-        obs, to_physical(obs.spectral, obs.T), phys_h, physical_algorithm());
+        obs, to_physical(obs.spectral, obs.T), phys_h, physical_config());
 
     // The filter mask, before any fitting: the inclusive bound keeps the
     // moved observations, the exclusive one drops them, in both units.
@@ -500,15 +524,15 @@ TEST(Units, AlphaIsAUnitConstant)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, ccd::LassoOptions{}
+        ccd::HarmonicOptions{}, golden::ccdc()
     );
 
-    ccd::LassoOptions lo = physical_algorithm();
-    lo.alpha = 1.0;                       // the DN value, left behind
+    // alpha at the DN value, left behind in every Lasso stage.
+    const ccd::config::ConfigTree config = with_lasso(golden::ccdc(), 1.0, 1.0 / SCALE);
 
     const auto bad = run(
         obs, to_physical(obs.spectral, obs.T),
-        physical_harmonic(), lo
+        physical_harmonic(), config
     );
 
     const std::size_t reference = count_nonzero(dn);
@@ -541,15 +565,15 @@ TEST(Units, CoefFloorIsAUnitConstant)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, ccd::LassoOptions{}
+        ccd::HarmonicOptions{}, golden::ccdc()
     );
 
-    ccd::LassoOptions lo = physical_algorithm();
-    lo.coef_floor = 1.0;                  // the DN value, left behind
+    // coef_floor at the DN value, left behind in every Lasso stage.
+    const ccd::config::ConfigTree config = with_lasso(golden::ccdc(), 1.0 / SCALE, 1.0);
 
     const auto quiet = run(
         obs, to_physical(obs.spectral, obs.T),
-        physical_harmonic(), lo
+        physical_harmonic(), config
     );
 
     ASSERT_EQ(dn.models.size(), quiet.models.size());
@@ -589,7 +613,7 @@ TEST(Units, BoundsAreUnitConstants)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::HarmonicOptions{}, ccd::LassoOptions{}
+        ccd::HarmonicOptions{}, golden::ccdc()
     );
 
     ASSERT_GT(dn.models.size(), 0u);
@@ -599,7 +623,7 @@ TEST(Units, BoundsAreUnitConstants)
         h.REFL_MIN = 0.0 / SCALE;               // ...physical saturation bound
         h.REFL_MAX = 10000.0 / SCALE;
 
-        const auto out = run(obs, obs.spectral, h, ccd::LassoOptions{});
+        const auto out = run(obs, obs.spectral, h, golden::ccdc());
 
         EXPECT_EQ(out.models.size(), 0u)
             << "reflectance bounds against DN input left "
@@ -613,7 +637,7 @@ TEST(Units, BoundsAreUnitConstants)
         h.THERM_MIN = ccd::MIN_CELSIUS / SCALE; // ...physical thermal bound
         h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;
 
-        const auto out = run(obs, obs.spectral, h, ccd::LassoOptions{});
+        const auto out = run(obs, obs.spectral, h, golden::ccdc());
 
         EXPECT_EQ(out.models.size(), 0u)
             << "thermal bounds against DN input left "
@@ -644,7 +668,7 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     h.THERM_MAX = ccd::MAX_CELSIUS / SCALE;     // here, not Celsius -- see
                                                 // plain_divide's comment
 
-    const auto phys = run_insufficient_clear(obs, scaled, h, physical_algorithm());
+    const auto phys = run_insufficient_clear(obs, scaled, h, physical_solver());
 
     ASSERT_EQ(dn.models.size(), phys.models.size());
     ASSERT_GT(dn.models.size(), 0u);
@@ -657,7 +681,8 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     bad.MEDIAN_GREEN_FILTER = 400.0;            // the DN value, left behind
 
     const auto out = run_insufficient_clear(
-        obs, scaled, bad, physical_algorithm()
+        obs, scaled, bad, physical_solver()
+
     );
 
     // Compared against the DN fit, not against `phys` -- worst_relative()

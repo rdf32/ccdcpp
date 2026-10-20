@@ -1,24 +1,27 @@
 //==============================================================================
 //
-// The cadence and change-probability options of HarmonicOptions.
+// The cadence and change-probability parameters of the "ccdc" configuration.
 //
-// PEEK_REFERENCE_DAYS, VARIOGRAM_MIN_LAG_DAYS, RETRAIN_MIN_OBS,
-// RETRAIN_SPAN_FACTOR, SEASONAL_RMSE_COUNT, SEASONAL_RMSE_DIVISOR and
-// CHANGE_PROBABILITY. These tests hold two claims:
+// change_test's peek_reference_days, seasonal_count, seasonal_divisor and
+// model_rmse_up_to; noise_floor's min_lag_days; refit's min_obs and factor;
+// and the change probability of change_test, stability_rule and lookback.
+// These tests hold two claims:
 //
-//   * Cadence.DefaultsSpelledOutEqualDefault: each option set explicitly to
-//     its default gives output bit for bit equal to HarmonicOptions{}, on the
+//   * Cadence.DefaultsSpelledOutEqualDefault: each parameter set explicitly
+//     to its default gives output bit for bit equal to the preset's, on the
 //     Landsat corpus of test_golden.cpp in DN and in physical units.
 //
-//   * One test per option: moving it moves the result in the direction the
-//     option's meaning predicts, on a synthetic pixel built so that the
-//     option decides the outcome. The step sizes and drift rates were chosen
-//     by scanning; each case sits on the side of a boundary the option moves.
+//   * One test per parameter: moving it moves the result in the direction
+//     the parameter's meaning predicts, on a synthetic pixel built so that
+//     the parameter decides the outcome. The step sizes and drift rates were
+//     chosen by scanning; each case sits on the side of a boundary the
+//     parameter moves.
 //
 // The PeekThreshold tests hold the threshold that goes with an adjusted peek
-// window: a series denser than PEEK_REFERENCE_DAYS gets a longer peek window
-// and, with it, the lower change threshold adjust_change_threshold() takes
-// from the caller's PEEK_SIZE and CHANGE_THRESHOLD.
+// window: a series denser than change_test's peek_reference_days gets a
+// longer peek window and, with it, the lower change threshold
+// adjust_change_threshold() takes from the configured peek_size and
+// change_threshold.
 //
 //==============================================================================
 
@@ -103,10 +106,10 @@ Pixel make_pixel(
     return p;
 }
 
-ccd::FitResult run(const Pixel& p, const golden::Algorithm& a)
+ccd::FitResult run(const Pixel& p, const ccd::config::ConfigTree& config)
 {
     return ccd::run_pixel(
-        golden::spec_of(ccd::HarmonicOptions{}, a),
+        golden::spec_of(ccd::HarmonicOptions{}, config),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
@@ -127,23 +130,28 @@ std::int64_t first_break(const ccd::FitResult& r)
     return r.models.front().break_day;
 }
 
-// Every option of this file set to its default value by hand.
-golden::Algorithm spelled_out(golden::Algorithm h)
+// Every parameter of this file set to its default value by hand.
+ccd::config::ConfigTree spelled_out(ccd::config::ConfigTree c)
 {
-    h.PEEK_REFERENCE_DAYS = 16.0;
-    h.VARIOGRAM_MIN_LAG_DAYS = 30;
-    h.RETRAIN_MIN_OBS = 24;
-    h.RETRAIN_SPAN_FACTOR = 1.33;
-    h.SEASONAL_RMSE_COUNT = 24;
-    h.SEASONAL_RMSE_DIVISOR = 4.0;
-    h.CHANGE_PROBABILITY = 0.99;
-    return h;
+    using ccd::config::integer;
+    using ccd::config::real;
+    c["change_test"].params["peek_reference_days"] = real(16.0);
+    c["noise_floor"].params["min_lag_days"] = integer(30);
+    c["refit"].params["min_obs"] = integer(24);
+    c["change_test"].params["model_rmse_up_to"] = integer(24);
+    c["refit"].params["factor"] = real(1.33);
+    c["change_test"].params["seasonal_count"] = integer(24);
+    c["change_test"].params["seasonal_divisor"] = real(4.0);
+    c["change_test"].params["change_probability"] = real(0.99);
+    c["stability_rule"].params["change_probability"] = real(0.99);
+    c["lookback"].params["change_probability"] = real(0.99);
+    return c;
 }
 
 std::string dump_cube(
     golden::Cube c,
     const ccd::HarmonicOptions& h,
-    const golden::Algorithm& a,
+    const ccd::config::ConfigTree& config,
     bool physical
 )
 {
@@ -155,7 +163,7 @@ std::string dump_cube(
             golden::to_physical(block, c.T);
 
         golden::dump_pixel(out, std::to_string(p), ccd::run_pixel(
-            golden::spec_of(h, a),
+            golden::spec_of(h, config),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
             ccd::ArrayView<const double, 2>::contiguous(block, {7, c.T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * c.T, {c.T})).result);
@@ -171,18 +179,26 @@ std::string dump_cube(
 
 TEST(Cadence, Defaults)
 {
-    const golden::Algorithm h;
-    EXPECT_EQ(h.PEEK_REFERENCE_DAYS, 16.0);
-    EXPECT_EQ(h.VARIOGRAM_MIN_LAG_DAYS, 30);
-    EXPECT_EQ(h.RETRAIN_MIN_OBS, 24u);
-    EXPECT_EQ(h.RETRAIN_SPAN_FACTOR, 1.33);
-    EXPECT_EQ(h.SEASONAL_RMSE_COUNT, 24u);
-    EXPECT_EQ(h.SEASONAL_RMSE_DIVISOR, 4.0);
-    EXPECT_EQ(h.CHANGE_PROBABILITY, 0.99);
+    using golden::parameter;
+    const ccd::config::ConfigTree c = golden::ccdc();
+    EXPECT_EQ(parameter<double>(c, "change_test", "peek_reference_days"), 16.0);
+    EXPECT_EQ(parameter<std::int64_t>(c, "noise_floor", "min_lag_days"), 30);
+    EXPECT_EQ(parameter<std::int64_t>(c, "refit", "min_obs"), 24);
+    EXPECT_EQ(parameter<std::int64_t>(c, "change_test", "model_rmse_up_to"), 24);
+    EXPECT_EQ(parameter<double>(c, "refit", "factor"), 1.33);
+    EXPECT_EQ(parameter<std::int64_t>(c, "change_test", "seasonal_count"), 24);
+    EXPECT_EQ(parameter<double>(c, "change_test", "seasonal_divisor"), 4.0);
 
-    // CHANGE_THRESHOLD is the chi2(5) quantile at CHANGE_PROBABILITY, to the
-    // last bit.
-    EXPECT_EQ(ccd::chi2_quantile(h.CHANGE_PROBABILITY, 5), h.CHANGE_THRESHOLD);
+    // Each change threshold is the chi2(5) quantile at its stage's change
+    // probability, 0.99, to the last bit.
+    for (const char* stage : {"change_test", "stability_rule", "lookback"})
+    {
+        const double probability = parameter<double>(c, stage, "change_probability");
+        EXPECT_EQ(probability, 0.99) << stage;
+        EXPECT_EQ(ccd::chi2_quantile(probability, 5),
+                  parameter<double>(c, stage, "change_threshold"))
+            << stage;
+    }
 }
 
 TEST(Cadence, DefaultsSpelledOutEqualDefault)
@@ -200,18 +216,18 @@ TEST(Cadence, DefaultsSpelledOutEqualDefault)
         const auto cube = golden::make_cube(c.seed, c.regime, c.H, c.W);
 
         EXPECT_EQ(
-            dump_cube(cube, ccd::HarmonicOptions{}, spelled_out(golden::Algorithm{}), false),
-            dump_cube(cube, ccd::HarmonicOptions{}, golden::Algorithm{}, false));
+            dump_cube(cube, ccd::HarmonicOptions{}, spelled_out(golden::ccdc()), false),
+            dump_cube(cube, ccd::HarmonicOptions{}, golden::ccdc(), false));
 
         EXPECT_EQ(
-            dump_cube(cube, golden::physical_harmonic(), spelled_out(golden::physical_algorithm()), true),
-            dump_cube(cube, golden::physical_harmonic(), golden::physical_algorithm(), true));
+            dump_cube(cube, golden::physical_harmonic(), spelled_out(golden::physical_config()), true),
+            dump_cube(cube, golden::physical_harmonic(), golden::physical_config(), true));
     }
 }
 
 //==============================================================================
-// PEEK_REFERENCE_DAYS: a longer reference interval makes a longer peek
-// window, which a short-lived disturbance does not fill.
+// change_test's peek_reference_days: a longer reference interval makes a
+// longer peek window, which a short-lived disturbance does not fill.
 //==============================================================================
 
 TEST(Cadence, PeekReferenceDays)
@@ -227,7 +243,7 @@ TEST(Cadence, PeekReferenceDays)
 
     EXPECT_EQ(ccd::adjust_peek(d16, 6, 16.0), 6u);
     EXPECT_EQ(ccd::adjust_peek(d16, 6, 32.0), 12u);
-    EXPECT_EQ(ccd::adjust_peek(d16, 6, 8.0), 6u);    // never below PEEK_SIZE
+    EXPECT_EQ(ccd::adjust_peek(d16, 6, 8.0), 6u);    // never below peek_size
     EXPECT_EQ(ccd::adjust_peek(d8, 6, 16.0), 12u);
     EXPECT_EQ(ccd::adjust_peek(d8, 6, 4.0), 6u);
 
@@ -241,17 +257,17 @@ TEST(Cadence, PeekReferenceDays)
     const auto d85 = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates85.data(), {101});
     EXPECT_EQ(ccd::adjust_peek(d85, 6, 16.0), 11u);
 
-    golden::Algorithm longer;
-    longer.PEEK_REFERENCE_DAYS = 32.0;
+    const ccd::config::ConfigTree longer =
+        golden::with(golden::ccdc(), "change_test", "peek_reference_days", ccd::config::real(32.0));
 
     // Eight disturbed observations fill a peek window of 6, not one of 12.
     const auto transient = make_pixel(300.0, 0.0, {{250, 258, 600.0}});
-    EXPECT_EQ(breaks(run(transient, golden::Algorithm{})), 1);
+    EXPECT_EQ(breaks(run(transient, golden::ccdc())), 1);
     EXPECT_EQ(breaks(run(transient, longer)), 0);
 
     // A lasting step is found by both, on the same day.
     const auto step = make_pixel(300.0, 0.0, {{250, T, 600.0}});
-    const auto at6 = run(step, golden::Algorithm{});
+    const auto at6 = run(step, golden::ccdc());
     const auto at12 = run(step, longer);
     ASSERT_EQ(breaks(at6), 1);
     ASSERT_EQ(breaks(at12), 1);
@@ -260,9 +276,9 @@ TEST(Cadence, PeekReferenceDays)
 }
 
 //==============================================================================
-// VARIOGRAM_MIN_LAG_DAYS: a longer minimum lag measures the variogram over
-// pairs further apart, which on a seasonal signal is larger, so a step must
-// be larger to count as change.
+// noise_floor's min_lag_days: a longer minimum lag measures the variogram
+// over pairs further apart, which on a seasonal signal is larger, so a step
+// must be larger to count as change.
 //==============================================================================
 
 TEST(Cadence, VariogramMinLagDays)
@@ -285,40 +301,40 @@ TEST(Cadence, VariogramMinLagDays)
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 40)[0], 30.0);  // lag 3, 48 days
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 60)[0], 40.0);  // lag 4, 64 days
 
-    golden::Algorithm shorter, longer;
-    shorter.VARIOGRAM_MIN_LAG_DAYS = 10;
-    longer.VARIOGRAM_MIN_LAG_DAYS = 60;
+    const ccd::config::ConfigTree shorter =
+        golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(10));
+    const ccd::config::ConfigTree longer =
+        golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(60));
 
     const auto small = make_pixel(300.0, 0.0, {{250, T, 150.0}});
     EXPECT_EQ(breaks(run(small, shorter)), 1);
-    EXPECT_EQ(breaks(run(small, golden::Algorithm{})), 0);
+    EXPECT_EQ(breaks(run(small, golden::ccdc())), 0);
 
     const auto large = make_pixel(300.0, 0.0, {{250, T, 300.0}});
-    EXPECT_EQ(breaks(run(large, golden::Algorithm{})), 1);
+    EXPECT_EQ(breaks(run(large, golden::ccdc())), 1);
     EXPECT_EQ(breaks(run(large, longer)), 0);
 }
 
 //==============================================================================
-// RETRAIN_SPAN_FACTOR and RETRAIN_MIN_OBS: on a pixel with accelerating
-// drift, a model refitted less often departs from the data sooner, so the
-// first break comes earlier. A larger span factor refits less often; a
-// larger minimum count refits more often.
+// refit's factor and min_obs: on a pixel with accelerating drift, a model
+// refitted less often departs from the data sooner, so the first break comes
+// earlier. A larger span factor refits less often; a larger minimum count
+// refits more often.
 //==============================================================================
 
 TEST(Cadence, RetrainSpanFactor)
 {
     const auto drifting = make_pixel(0.0, 0.5, {});
 
-    golden::Algorithm often;
-    often.RETRAIN_SPAN_FACTOR = 1.2;
+    const ccd::config::ConfigTree often =
+        golden::with(golden::ccdc(), "refit", "factor", ccd::config::real(1.2));
     EXPECT_EQ(breaks(run(drifting, often)), 0);
 
     std::int64_t previous = 0;
     for (const double factor : {1.33, 1.6, 2.0, 4.0})
     {
-        golden::Algorithm h;
-        h.RETRAIN_SPAN_FACTOR = factor;
-        const auto r = run(drifting, h);
+        const auto r =
+            run(drifting, golden::with(golden::ccdc(), "refit", "factor", ccd::config::real(factor)));
         ASSERT_GE(breaks(r), 1) << "factor " << factor;
         if (previous != 0)
             EXPECT_LT(first_break(r), previous) << "factor " << factor;
@@ -326,20 +342,22 @@ TEST(Cadence, RetrainSpanFactor)
     }
 }
 
-// The span rule disabled, so that only RETRAIN_MIN_OBS refits: the models
-// are refitted while the window holds at most that many observations.
+// The span rule disabled, so that only refit's min_obs refits: the models
+// are refitted while the window holds at most that many observations (and
+// change_test's model RMSE is the model's own up to the same count).
 TEST(Cadence, RetrainMinObs)
 {
     const auto drifting = make_pixel(0.0, 0.5, {});
 
     std::int64_t previous = 0;
     std::size_t segments = 0;
-    for (const ccd::index_t count : {24, 48, 96, 200})
+    for (const std::int64_t count : {24, 48, 96, 200})
     {
-        golden::Algorithm h;
-        h.RETRAIN_SPAN_FACTOR = 1e6;
-        h.RETRAIN_MIN_OBS = count;
-        const auto r = run(drifting, h);
+        ccd::config::ConfigTree c = golden::ccdc();
+        c["refit"].params["factor"] = ccd::config::real(1e6);
+        c["refit"].params["min_obs"] = ccd::config::integer(count);
+        c["change_test"].params["model_rmse_up_to"] = ccd::config::integer(count);
+        const auto r = run(drifting, c);
         ASSERT_GE(breaks(r), 1) << "count " << count;
         if (previous != 0)
         {
@@ -352,47 +370,49 @@ TEST(Cadence, RetrainMinObs)
 }
 
 //==============================================================================
-// SEASONAL_RMSE_DIVISOR and SEASONAL_RMSE_COUNT: the seasonal RMSE is the
-// norm of SEASONAL_RMSE_COUNT residuals over SEASONAL_RMSE_DIVISOR, and it
-// normalises the change magnitude. On a pixel without seasonality, where it
-// outweighs the variogram, a larger divisor or a smaller count makes a
-// smaller step count as change.
+// change_test's seasonal_divisor and seasonal_count: the seasonal RMSE is the
+// norm of seasonal_count residuals over seasonal_divisor, and it normalises
+// the change magnitude. On a pixel without seasonality, where it outweighs
+// the variogram, a larger divisor or a smaller count makes a smaller step
+// count as change.
 //==============================================================================
 
 TEST(Cadence, SeasonalRmseDivisor)
 {
-    golden::Algorithm larger, smaller;
-    larger.SEASONAL_RMSE_DIVISOR = 8.0;
-    smaller.SEASONAL_RMSE_DIVISOR = 2.0;
+    const ccd::config::ConfigTree larger =
+        golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(8.0));
+    const ccd::config::ConfigTree smaller =
+        golden::with(golden::ccdc(), "change_test", "seasonal_divisor", ccd::config::real(2.0));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
-    EXPECT_EQ(breaks(run(small, golden::Algorithm{})), 0);
+    EXPECT_EQ(breaks(run(small, golden::ccdc())), 0);
     EXPECT_EQ(breaks(run(small, larger)), 1);
 
     const auto medium = make_pixel(0.0, 0.0, {{250, T, 60.0}});
-    EXPECT_EQ(breaks(run(medium, golden::Algorithm{})), 1);
+    EXPECT_EQ(breaks(run(medium, golden::ccdc())), 1);
     EXPECT_EQ(breaks(run(medium, smaller)), 0);
 }
 
 TEST(Cadence, SeasonalRmseCount)
 {
-    golden::Algorithm fewer, more;
-    fewer.SEASONAL_RMSE_COUNT = 6;
-    more.SEASONAL_RMSE_COUNT = 96;
+    const ccd::config::ConfigTree fewer =
+        golden::with(golden::ccdc(), "change_test", "seasonal_count", ccd::config::integer(6));
+    const ccd::config::ConfigTree more =
+        golden::with(golden::ccdc(), "change_test", "seasonal_count", ccd::config::integer(96));
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 50.0}});
-    EXPECT_EQ(breaks(run(small, golden::Algorithm{})), 0);
+    EXPECT_EQ(breaks(run(small, golden::ccdc())), 0);
     EXPECT_EQ(breaks(run(small, fewer)), 1);
 
     const auto medium = make_pixel(0.0, 0.0, {{250, T, 60.0}});
-    EXPECT_EQ(breaks(run(medium, golden::Algorithm{})), 1);
+    EXPECT_EQ(breaks(run(medium, golden::ccdc())), 1);
     EXPECT_EQ(breaks(run(medium, more)), 0);
 }
 
 //==============================================================================
-// CHANGE_PROBABILITY: a higher probability raises the threshold of a peek
-// window longer than the default. Read by adjust_change_threshold(), tested
-// there and through run_pixel() on a dense series.
+// The change probability: a higher probability raises the threshold of a
+// peek window longer than the default. Read by adjust_change_threshold(),
+// tested there and through run_pixel() on a dense series.
 //==============================================================================
 
 TEST(Cadence, ChangeProbability)
@@ -425,11 +445,13 @@ TEST(Cadence, ChangeProbability)
 // clears the first and not the second; a step of 65 clears both.
 TEST(Cadence, ChangeProbabilityThroughDetect)
 {
-    golden::Algorithm higher;
-    higher.CHANGE_PROBABILITY = 0.999;
+    ccd::config::ConfigTree higher = golden::ccdc();
+    higher["change_test"].params["change_probability"] = ccd::config::real(0.999);
+    higher["stability_rule"].params["change_probability"] = ccd::config::real(0.999);
+    higher["lookback"].params["change_probability"] = ccd::config::real(0.999);
 
     const auto small = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
-    const auto at99 = run(small, golden::Algorithm{});
+    const auto at99 = run(small, golden::ccdc());
     ASSERT_EQ(breaks(at99), 1);
     EXPECT_EQ(first_break(at99), small.dates[250]);
     EXPECT_EQ(breaks(run(small, higher)), 0);
@@ -464,49 +486,57 @@ TEST(PeekThreshold, AdjustChangeThreshold)
 }
 
 // An 8-day series runs with a peek window of 12 and the threshold of that
-// window, so it gives the same output as options that fix both: PEEK_SIZE 12
-// with a PEEK_REFERENCE_DAYS that leaves it at 12, and CHANGE_THRESHOLD at
-// the adjusted value. Holding the threshold at its default instead misses a
-// step the adjusted one finds.
+// window, so it gives the same output as a configuration that fixes both:
+// change_test's peek_size 12 with a peek_reference_days that leaves it at 12,
+// and the change threshold at the adjusted value. Holding the threshold at
+// its default instead misses a step the adjusted one finds.
 TEST(PeekThreshold, DenseSeriesUsesAdjustedThreshold)
 {
-    golden::Algorithm fixed;
-    fixed.PEEK_SIZE = 12;
-    fixed.PEEK_REFERENCE_DAYS = 8.0;
-    fixed.CHANGE_THRESHOLD = ccd::adjust_change_threshold(12, 6, golden::Algorithm{}.CHANGE_THRESHOLD, 5, 0.99);
+    const double threshold = golden::parameter<double>(golden::ccdc(), "change_test", "change_threshold");
+    const auto with_threshold = [](ccd::config::ConfigTree c, double value)
+    {
+        for (const char* stage : {"change_test", "stability_rule", "lookback"})
+            c[stage].params["change_threshold"] = ccd::config::real(value);
+        return c;
+    };
 
-    golden::Algorithm unadjusted = fixed;
-    unadjusted.CHANGE_THRESHOLD = golden::Algorithm{}.CHANGE_THRESHOLD;
+    ccd::config::ConfigTree fixed = golden::ccdc();
+    fixed["change_test"].params["peek_size"] = ccd::config::integer(12);
+    fixed["change_test"].params["peek_reference_days"] = ccd::config::real(8.0);
+    fixed = with_threshold(fixed, ccd::adjust_change_threshold(12, 6, threshold, 5, 0.99));
+
+    const ccd::config::ConfigTree unadjusted = with_threshold(fixed, threshold);
 
     const auto step = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
 
     std::string adjusted_dump, fixed_dump;
-    golden::dump_pixel(adjusted_dump, "step", run(step, golden::Algorithm{}));
+    golden::dump_pixel(adjusted_dump, "step", run(step, golden::ccdc()));
     golden::dump_pixel(fixed_dump, "step", run(step, fixed));
     EXPECT_EQ(adjusted_dump, fixed_dump);
 
-    const auto adjusted = run(step, golden::Algorithm{});
+    const auto adjusted = run(step, golden::ccdc());
     ASSERT_EQ(breaks(adjusted), 1);
     EXPECT_EQ(first_break(adjusted), step.dates[250]);
     EXPECT_EQ(breaks(run(step, unadjusted)), 0);
 }
 
-// The adjustment starts from the caller's options on every call: a sparse
-// pixel run after a dense one gives the output it gets alone, and the
-// options passed in keep their values.
-TEST(PeekThreshold, EachPixelStartsFromTheCallerOptions)
+// The adjustment starts from the caller's configuration on every call: a
+// sparse pixel run after a dense one gives the output it gets alone, and the
+// configuration passed in keeps its values.
+TEST(PeekThreshold, EachPixelStartsFromTheCallerConfiguration)
 {
     const auto dense = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 8);
     const auto sparse = make_pixel(0.0, 0.0, {{250, T, 58.0}}, 16);
 
     std::string alone;
-    golden::dump_pixel(alone, "sparse", run(sparse, golden::Algorithm{}));
+    golden::dump_pixel(alone, "sparse", run(sparse, golden::ccdc()));
 
-    const golden::Algorithm h;
-    run(dense, h);
+    const ccd::config::ConfigTree config = golden::ccdc();
+    run(dense, config);
     std::string after;
-    golden::dump_pixel(after, "sparse", run(sparse, h));
+    golden::dump_pixel(after, "sparse", run(sparse, config));
     EXPECT_EQ(alone, after);
-    EXPECT_EQ(h.PEEK_SIZE, 6u);
-    EXPECT_EQ(h.CHANGE_THRESHOLD, golden::Algorithm{}.CHANGE_THRESHOLD);
+    EXPECT_EQ(golden::parameter<std::int64_t>(config, "change_test", "peek_size"), 6);
+    EXPECT_EQ(config, golden::ccdc());
 }
+

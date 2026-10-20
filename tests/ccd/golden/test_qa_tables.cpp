@@ -36,7 +36,6 @@ namespace
 {
 
 using ccd::HarmonicOptions;
-using ccd::LassoOptions;
 using ccd::QaTablePtr;
 
 //------------------------------------------------------------------------------
@@ -170,7 +169,7 @@ std::string run_cube(
 )
 {
     return dump(ccd::run_cube(
-        golden::spec_of(h, LassoOptions{}, table),
+        golden::spec_of(h, golden::ccdc(), table),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, c.T}),
         ccd::ArrayView<const Qa, 3>::contiguous(qas.data(), {c.H, c.W, c.T}),
@@ -286,12 +285,12 @@ TEST(QaTables, DetectDecodes)
 
             std::string expected, actual;
             golden::dump_pixel(expected, "", ccd::run_pixel(
-                golden::spec_of(h, LassoOptions{}),
+                golden::spec_of(h),
                 dates,
                 spectral,
                 ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T})).result);
             golden::dump_pixel(actual, "", ccd::run_pixel(
-                golden::spec_of(h, LassoOptions{}, table),
+                golden::spec_of(h, golden::ccdc(), table),
                 dates,
                 spectral,
                 ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T})).result);
@@ -299,8 +298,8 @@ TEST(QaTables, DetectDecodes)
 
             // One Worker, reused across a run with a table and one without.
             ccd::Worker worker;
-            const ccd::Run with_table(golden::spec_of(h, LassoOptions{}, table), dates, 7, T, T, true);
-            const ccd::Run without(golden::spec_of(h, LassoOptions{}), dates, 7, T, T, false);
+            const ccd::Run with_table(golden::spec_of(h, golden::ccdc(), table), dates, 7, T, T, true);
+            const ccd::Run without(golden::spec_of(h), dates, 7, T, T, false);
             std::string with_worker;
             golden::dump_pixel(with_worker, "", with_table.pixel(spectral, ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}), {}, worker).result);
             EXPECT_EQ(expected, with_worker) << s.name << " pixel " << p;
@@ -374,7 +373,7 @@ TEST(QaTables, StridedRawQa)
             thw[t * H * W + p] = encode(s, c.qas[p * T + t], p * T + t);
 
     EXPECT_EQ(reference, dump(ccd::run_cube(
-        golden::spec_of(h, LassoOptions{}, table),
+        golden::spec_of(h, golden::ccdc(), table),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
         ccd::ArrayView<const std::uint16_t, 3>::strided(thw.data(), {H, W, T}, {W, 1, H * W}),
@@ -474,7 +473,6 @@ TEST(QaTables, Uint16NeedsATable)
     const std::size_t T = c.T;
     const std::vector<std::uint16_t> raw(c.qas.begin(), c.qas.end());
     const HarmonicOptions h;
-    const LassoOptions l;
 
     const auto dates =
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});
@@ -498,8 +496,8 @@ TEST(QaTables, Uint16NeedsATable)
         }
     };
 
-    expect_refused([&] { ccd::run_pixel(golden::spec_of(h, l), dates, pixel, qa1); });
-    expect_refused([&] { ccd::Run(golden::spec_of(h, l), dates, 7, T, T, true); });
+    expect_refused([&] { ccd::run_pixel(golden::spec_of(h), dates, pixel, qa1); });
+    expect_refused([&] { ccd::Run(golden::spec_of(h), dates, 7, T, T, true); });
 
     const std::vector<float> f32(c.spectral.begin(), c.spectral.end());
     std::vector<std::uint16_t> u16(c.spectral.size());
@@ -507,19 +505,19 @@ TEST(QaTables, Uint16NeedsATable)
         u16[i] = static_cast<std::uint16_t>(std::max(0.0, c.spectral[i]));
 
     expect_refused([&] { ccd::run_cube(
-        golden::spec_of(h, l),
+        golden::spec_of(h),
         dates,
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {1, 2, 7, T}),
         qa3,
         1); });
     expect_refused([&] { ccd::run_cube(
-        golden::spec_of(h, l),
+        golden::spec_of(h),
         dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 2, 7, T}),
         qa3,
         1); });
     expect_refused([&] { ccd::run_cube(
-        golden::spec_of(h, l),
+        golden::spec_of(h),
         dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 2, 7, T}),
         qa3,
@@ -528,13 +526,13 @@ TEST(QaTables, Uint16NeedsATable)
     // With a table it runs, for every spectral type.
     const QaTablePtr table = ccd::qa_tables::hls_fmask(h);
     EXPECT_EQ(ccd::run_cube(
-        golden::spec_of(h, l, table),
+        golden::spec_of(h, golden::ccdc(), table),
         dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {1, 2, 7, T}),
         qa3,
         1).pixels.size(), 2u);
     EXPECT_EQ(ccd::run_cube(
-        golden::spec_of(h, l, table),
+        golden::spec_of(h, golden::ccdc(), table),
         dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {1, 2, 7, T}),
         qa3,

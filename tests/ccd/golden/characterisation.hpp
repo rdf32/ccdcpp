@@ -25,7 +25,7 @@
 
 #include "ccd/ccd.hpp"
 
-#include "algorithm.hpp"
+#include "config.hpp"
 
 #include "specs.hpp"
 #include "synthetic.hpp"
@@ -40,7 +40,7 @@ struct CharPixel
     std::vector<double> spectral;      // (7, T), band-major
     std::vector<std::uint8_t> qas;     // (T)
     ccd::HarmonicOptions h;
-    golden::Algorithm a;               // the algorithm's options
+    ccd::config::ConfigTree config = golden::ccdc();
 };
 
 // What a pixel's spectral series is made of.
@@ -147,7 +147,7 @@ inline CharPixel make_char_pixel(
 // STAT_ORD: the median gap is `gap`, so the peek is adjusted to 13-25 for
 // gaps of 4-6 days. A break at observation 13 with a decaying transient after
 // it, so the second Initialize shifts and its Lookback starts at or below
-// PEEK_SIZE with prev_break = 13.
+// peek_size with prev_break = 13.
 inline CharPixel lookback_near_break(std::uint64_t seed, std::int64_t gap)
 {
     Rng r(seed * 7919 + 17);
@@ -190,7 +190,7 @@ inline CharPixel dense_series_end(std::uint64_t seed)
 }
 
 // 400 observations 5 days apart (peek 19), a break 80-99 observations before
-// the end: the Initialize after it ends within PEEK_SIZE of the series end.
+// the end: the Initialize after it ends within peek_size of the series end.
 inline CharPixel peek_guard_tail(std::uint64_t seed)
 {
     Rng r(seed * 15485863 + 3);
@@ -391,10 +391,13 @@ inline std::vector<CharPixel> characterisation_pixels()
     out.push_back(constant_detection_band());
     out.push_back(start_catch(2));
     {
-        // COEFFICIENT_MIN raised to 6: Initialize, Extend's coefficient
-        // schedule and the Start/End fits all read it.
+        // The fewest coefficients raised to 6: Initialize, Extend's
+        // coefficient schedule and the Start/End fits all read it.
         CharPixel p = sparse_random("coefficient_min_6", 3);
-        p.a.COEFFICIENT_MIN = 6;
+        p.config["stability_fit"].params["coefficient_min"] = ccd::config::integer(6);
+        p.config["model"].params["coefficient_min"] = ccd::config::integer(6);
+        p.config["edge_fit"].params["coefficients"] = ccd::config::integer(6);
+
         out.push_back(std::move(p));
     }
     out.push_back(lookback_near_break(2, 5));

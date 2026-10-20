@@ -258,7 +258,8 @@ class LayoutValidation(unittest.TestCase):
         for h, bands, expected in cases:
             self.assert_rejected(h, bands, expected)
 
-        # The Tmask bands (0.10's TMASK_BANDS) are the configuration's.
+        # The Tmask bands are window_screen's parameter, checked against the
+        # input's bands.
         tmask = "window_screen 'tmask' parameter 'bands' "
         for bands, expected in (([1, 12], "holds band 12; the input has 10 bands"),
                                 ([8, 8], "holds band 8 twice"),
@@ -267,8 +268,8 @@ class LayoutValidation(unittest.TestCase):
                                  config=ten_band_config(window_screen__bands=bands))
 
     def test_cadence_rules(self):
-        # 0.10's cadence options are the configuration's parameters now: the
-        # schemas refuse them by stage, strategy and parameter.
+        # The cadence parameters are the configuration's: the schemas refuse
+        # them by stage, strategy and parameter.
         nan = float("nan")
         chi2 = "change_test 'chi2' parameter "
         cases = [
@@ -299,19 +300,19 @@ class LayoutValidation(unittest.TestCase):
         ccdcpp.detect(*inputs(10, 40), h, config=ten_band_config())
 
 
-class CadenceOptions(unittest.TestCase):
-    """The cadence and change-probability parameters (0.10's HarmonicOptions
-    fields, the configuration's now) and ccdcpp.chi2_quantile."""
+class CadenceParameters(unittest.TestCase):
+    """The configuration's cadence and change-probability parameters, and
+    ccdcpp.chi2_quantile."""
 
-    # (stage, parameter): the ccdc preset's value, 0.10's default for the option.
+    # (stage, parameter): the ccdc preset's value.
     DEFAULTS = {
-        ("change_test", "peek_reference_days"): 16.0,      # PEEK_REFERENCE_DAYS
-        ("noise_floor", "min_lag_days"): 30,               # VARIOGRAM_MIN_LAG_DAYS
-        ("refit", "min_obs"): 24,                          # RETRAIN_MIN_OBS
-        ("refit", "factor"): 1.33,                         # RETRAIN_SPAN_FACTOR
-        ("change_test", "seasonal_count"): 24,             # SEASONAL_RMSE_COUNT
-        ("change_test", "seasonal_divisor"): 4.0,          # SEASONAL_RMSE_DIVISOR
-        ("change_test", "change_probability"): 0.99,       # CHANGE_PROBABILITY
+        ("change_test", "peek_reference_days"): 16.0,
+        ("noise_floor", "min_lag_days"): 30,
+        ("refit", "min_obs"): 24,
+        ("refit", "factor"): 1.33,
+        ("change_test", "seasonal_count"): 24,
+        ("change_test", "seasonal_divisor"): 4.0,
+        ("change_test", "change_probability"): 0.99,
     }
 
     UNITS = {
@@ -324,12 +325,16 @@ class CadenceOptions(unittest.TestCase):
         ("change_test", "change_probability"): "none",
     }
 
-    REMOVED = ("METHOD", "MEOW_SIZE", "PEEK_SIZE", "DAY_DELTA", "CLEAR_PCT_THRESHOLD",
-               "SNOW_PCT_THRESHOLD", "OUTLIER_THRESHOLD", "CHANGE_THRESHOLD", "T_CONST",
-               "PEEK_REFERENCE_DAYS", "VARIOGRAM_MIN_LAG_DAYS", "RETRAIN_MIN_OBS",
-               "RETRAIN_SPAN_FACTOR", "SEASONAL_RMSE_COUNT", "SEASONAL_RMSE_DIVISOR",
-               "CHANGE_PROBABILITY", "TMASK_BANDS", "COEFFICIENT_MIN", "COEFFICIENT_MID",
-               "COEFFICIENT_MAX", "NUM_OBS_FACTOR")
+    # HarmonicOptions' fields: the input's band layout, QA codes and screens.
+    INPUT_FIELDS = {
+        "NUM_BANDS", "BLUE_IDX", "GREEN_IDX", "RED_IDX", "NIR_IDX", "SWIR1_IDX",
+        "SWIR2_IDX", "THERMAL_IDX", "QA_IDX", "DETECTION_BANDS", "SATURATION_BANDS",
+        "QA_FILL", "QA_CLEAR", "QA_WATER", "QA_SHADOW", "QA_SNOW", "QA_CLOUD",
+        "QA_CIRRUS1", "QA_CIRRUS2", "QA_OCCLUSION", "CLEAR_OBSERVATION_THRESHOLD",
+        "THERMAL_SCALE", "THERMAL_OFFSET", "REFL_MIN", "REFL_MAX", "REFL_MIN_INCLUSIVE",
+        "REFL_MAX_INCLUSIVE", "THERM_MIN", "THERM_MAX", "THERM_MIN_INCLUSIVE",
+        "THERM_MAX_INCLUSIVE", "MEDIAN_GREEN_FILTER", "GREEN_FILTER_SCOPE", "STAT_ORD",
+    }
 
     def test_defaults(self):
         tree = preset()
@@ -349,15 +354,17 @@ class CadenceOptions(unittest.TestCase):
                 self.assertTrue(param["doc"])
                 self.assertEqual(param["default"], self.DEFAULTS[(stage, name)])
 
-    def test_the_options_are_gone_from_harmonic_options(self):
+    def test_harmonic_options_describe_the_input_only(self):
+        # The algorithm's parameters are the configuration's; HarmonicOptions
+        # holds the input's fields and takes no others.
         h = ccdcpp.HarmonicOptions()
-        for name in self.REMOVED:
-            with self.subTest(name=name):
-                self.assertFalse(hasattr(h, name))
-                with self.assertRaises(AttributeError):
-                    setattr(h, name, 1)
-        self.assertFalse(hasattr(ccdcpp, "LassoOptions"))
-        self.assertFalse(hasattr(ccdcpp, "_config_from_options"))
+        self.assertEqual({n for n in dir(h) if not n.startswith("_")}, self.INPUT_FIELDS)
+        for stage, entry in preset().items():
+            for name in entry["params"]:
+                with self.subTest(stage=stage, name=name):
+                    with self.assertRaises(AttributeError):
+                        setattr(h, name.upper(), 1)
+
 
     def test_chi2_quantile_is_the_change_threshold(self):
         h = ccdcpp.HarmonicOptions()

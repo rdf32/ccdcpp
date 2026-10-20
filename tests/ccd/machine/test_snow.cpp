@@ -18,7 +18,7 @@
 #include "ccd/machine/fit.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
-#include "../golden/algorithm.hpp"
+#include "../golden/config.hpp"
 
 
 using Clock = std::chrono::high_resolution_clock;
@@ -358,16 +358,18 @@ TEST(CCD, DetectSnow)
         hoptions
     );
 
-    ccd::LassoOptions loptions;
-    ccd::LassoSolver solver(loptions);
+    ccd::LassoOptions solver_options;
+    ccd::LassoSolver solver(solver_options);
     ccd::LassoWorkspace lworkspace(data.dates.size());
 
     ccd::FitResult result = ccd::fit_whole_series(
         ccd::PixelProcedure::PermanentSnow,
         hworkspace,
         ccd::filter::snow(hworkspace),
-        golden::Algorithm{}.MEOW_SIZE,
-        golden::Algorithm{}.COEFFICIENT_MIN,
+        static_cast<ccd::index_t>(
+            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "min_observations")),
+        static_cast<ccd::index_t>(
+            golden::parameter<std::int64_t>(golden::ccdc(), "edge_fit", "coefficients")),
         lworkspace,
         solver
     );

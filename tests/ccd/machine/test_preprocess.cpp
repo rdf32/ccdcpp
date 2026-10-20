@@ -531,11 +531,11 @@ std::string dump(const ccd::FitResult& r)
 ccd::FitResult run_detect(
     const PixelView& px,
     const ccd::HarmonicOptions& h,
-    const ccd::LassoOptions& l,
+    const ccd::config::ConfigTree& config,
     const ccd::PreprocessPlanPtr& plan
 )
 {
-    return ccd::run_pixel(golden::spec_of(h, l, nullptr, plan), px.dates, px.spectral, px.qas).result;
+    return ccd::run_pixel(golden::spec_of(h, config, nullptr, plan), px.dates, px.spectral, px.qas).result;
 }
 
 } // namespace
@@ -680,21 +680,21 @@ TEST(CustomPlan, NullIsTheDefaultPlan)
 {
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
     const ccd::HarmonicOptions h;
-    const ccd::LassoOptions l;
+    const ccd::config::ConfigTree config = golden::ccdc();
     const auto plan = std::make_shared<const pp::PreprocessPlan>(pp::default_plan(h));
     const std::size_t T = c.T;
 
     for (std::size_t p = 0; p < c.H * c.W; ++p)
     {
         const PixelView px = view(c.dates, c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T);
-        EXPECT_EQ(dump(run_detect(px, h, l, nullptr)), dump(run_detect(px, h, l, plan)))
+        EXPECT_EQ(dump(run_detect(px, h, config, nullptr)), dump(run_detect(px, h, config, plan)))
             << "pixel " << p;
     }
 
     auto cube = [&](const ccd::PreprocessPlanPtr& given)
     {
         const ccd::CubeResult r = ccd::run_cube(
-            golden::spec_of(h, l, nullptr, given),
+            golden::spec_of(h, config, nullptr, given),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -715,14 +715,14 @@ TEST(CustomPlan, StandardKeepsSnow)
     const Pixel p = read_csv("test_3657_3610_observations.csv");
     const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
     const ccd::HarmonicOptions h;
-    const ccd::LassoOptions l;
+    const ccd::config::ConfigTree config = golden::ccdc();
 
     pp::PreprocessPlan custom = pp::default_plan(h);
     custom.standard.chain[0].codes.set(h.QA_SNOW);
     const auto plan = std::make_shared<const pp::PreprocessPlan>(custom);
 
-    const ccd::FitResult base = run_detect(px, h, l, nullptr);
-    const ccd::FitResult snowy = run_detect(px, h, l, plan);
+    const ccd::FitResult base = run_detect(px, h, config, nullptr);
+    const ccd::FitResult snowy = run_detect(px, h, config, plan);
 
     // Both are Standard fits.
     ASSERT_FALSE(base.models.empty());
@@ -769,7 +769,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     }
 
     const ccd::HarmonicOptions h;
-    const ccd::LassoOptions l;
+    const ccd::config::ConfigTree config = golden::ccdc();
 
     pp::PreprocessPlan everywhere = pp::default_plan(h);
     everywhere.snow.transform = everywhere.standard.transform;
@@ -799,11 +799,11 @@ TEST(CustomPlan, TransformOnEveryProcedure)
         const PixelView raw = view(c.dates, c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T);
         const PixelView pre = view(c.dates, converted.data() + p * 7 * T, 7, c.qas.data() + p * T);
 
-        const ccd::FitResult with_plan = run_detect(raw, h, l, plan);
-        EXPECT_EQ(dump(with_plan), dump(run_detect(pre, identity, l, nullptr))) << "pixel " << p;
+        const ccd::FitResult with_plan = run_detect(raw, h, config, plan);
+        EXPECT_EQ(dump(with_plan), dump(run_detect(pre, identity, config, nullptr))) << "pixel " << p;
         per_pixel += dump(with_plan);
 
-        const ccd::FitResult base = run_detect(raw, h, l, nullptr);
+        const ccd::FitResult base = run_detect(raw, h, config, nullptr);
         if (base.mask.data() != with_plan.mask.data())
         {
             const bool standard =
@@ -817,7 +817,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     EXPECT_EQ(standard_changed, 0u);
 
     const ccd::CubeResult cube = ccd::run_cube(
-        golden::spec_of(h, l, nullptr, plan),
+        golden::spec_of(h, config, nullptr, plan),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
@@ -943,18 +943,18 @@ TEST(PlanValidation, EntryPointsReject)
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 2, 2);
     const std::size_t T = c.T;
     const ccd::HarmonicOptions h;
-    const ccd::LassoOptions l;
+    const ccd::config::ConfigTree config = golden::ccdc();
 
     pp::PreprocessPlan bad = pp::default_plan(h);
     bad.insufficient_clear.chain[4].band = ccd::NO_BAND;
     const auto plan = std::make_shared<const pp::PreprocessPlan>(bad);
 
     const PixelView px = view(c.dates, c.spectral.data(), 7, c.qas.data());
-    EXPECT_THROW(run_detect(px, h, l, plan), std::invalid_argument);
+    EXPECT_THROW(run_detect(px, h, config, plan), std::invalid_argument);
 
     EXPECT_THROW(
         ccd::run_cube(
-            golden::spec_of(h, l, nullptr, plan),
+            golden::spec_of(h, config, nullptr, plan),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, 7, T}),
             ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),

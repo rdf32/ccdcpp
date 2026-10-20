@@ -13,8 +13,7 @@
 
 #include "ccd/ccd.hpp"
 
-#include "algorithm.hpp"
-
+#include "config.hpp"
 #include "specs.hpp"
 #include "synthetic.hpp"
 #include "synthetic_bands.hpp"
@@ -56,7 +55,8 @@ struct Profile
     const char* name;
     std::vector<golden::BandSpec> specs;
     ccd::HarmonicOptions h;
-    golden::Algorithm a;   // the algorithm's options: Tmask bands, thresholds
+    ccd::config::ConfigTree config = golden::ccdc();   // Tmask bands, thresholds
+
 };
 
 inline const golden::BandSpec COASTAL = {400, 100, 25};
@@ -76,11 +76,11 @@ inline const golden::BandSpec THERMAL = {2950, 120, 15, true};
 inline const std::vector<golden::BandSpec> S2_SPECS =
     {BLUE, GREEN, RED, RE1, RE2, RE3, NIR, NIR8A, SWIR1, SWIR2};
 
-inline golden::Algorithm s2_algorithm()
+inline ccd::config::ConfigTree s2_config()
 {
-    golden::Algorithm a;
-    a.TMASK_BANDS = {1, 8};
-    return a;
+    ccd::config::ConfigTree c = golden::ccdc();
+    c["window_screen"].params["bands"] = ccd::config::bands({1, 8});
+    return c;
 }
 
 inline ccd::HarmonicOptions s2_layout()
@@ -99,7 +99,7 @@ inline std::vector<Profile> profiles()
     std::vector<Profile> out;
 
     // Sentinel-2-like: 10 bands, no thermal.
-    out.push_back({"s2_b10", S2_SPECS, s2_layout(), s2_algorithm()});
+    out.push_back({"s2_b10", S2_SPECS, s2_layout(), s2_config()});
 
     // HLS L30-like: coastal, blue, green, red, nir, swir1, swir2, thermal.
     {
@@ -109,10 +109,10 @@ inline std::vector<Profile> profiles()
         h.SATURATION_BANDS = band_list(iota(7));
         h.GREEN_IDX = 2;
         h.THERMAL_IDX = 7;
-        golden::Algorithm a;
-        a.TMASK_BANDS = {2, 5};
+        ccd::config::ConfigTree c = golden::ccdc();
+        c["window_screen"].params["bands"] = ccd::config::bands({2, 5});
         out.push_back({"hls_l30_b8",
-            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, a});
+            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, c});
     }
 
     // HLS-like, 7 bands without thermal.
@@ -122,10 +122,10 @@ inline std::vector<Profile> profiles()
         h.SATURATION_BANDS = band_list(iota(7));
         h.GREEN_IDX = 2;
         h.THERMAL_IDX = ccd::NO_BAND;
-        golden::Algorithm a;
-        a.TMASK_BANDS = {2, 5};
+        ccd::config::ConfigTree c = golden::ccdc();
+        c["window_screen"].params["bands"] = ccd::config::bands({2, 5});
         out.push_back({"hls_b7",
-            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, a});
+            {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, c});
     }
 
     // Sentinel-2-like with the red edge in detection: df = 8, thresholds
@@ -133,10 +133,16 @@ inline std::vector<Profile> profiles()
     {
         ccd::HarmonicOptions h = s2_layout();
         h.DETECTION_BANDS = {1, 2, 3, 4, 5, 6, 8, 9};
-        golden::Algorithm a = s2_algorithm();
-        a.CHANGE_THRESHOLD = chi2_quantile(8, 0.99);
-        a.OUTLIER_THRESHOLD = chi2_quantile(8, 1.0 - 1e-6);
-        out.push_back({"s2_b10_df8", S2_SPECS, h, a});
+        ccd::config::ConfigTree c = s2_config();
+        const double change = chi2_quantile(8, 0.99);
+        const double outlier = chi2_quantile(8, 1.0 - 1e-6);
+        c["change_test"].params["change_threshold"] = ccd::config::real(change);
+        c["stability_rule"].params["change_threshold"] = ccd::config::real(change);
+        c["lookback"].params["change_threshold"] = ccd::config::real(change);
+        c["lookback"].params["outlier_threshold"] = ccd::config::real(outlier);
+        c["outlier"].params["threshold"] = ccd::config::real(outlier);
+        out.push_back({"s2_b10_df8", S2_SPECS, h, c});
+
     }
 
     return out;

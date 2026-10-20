@@ -49,7 +49,7 @@
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/machine/standard.hpp"
 #include "ccd/regression/lasso_solver.hpp"
-#include "../golden/algorithm.hpp"
+#include "../golden/config.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/register_core.hpp"
 
@@ -76,8 +76,8 @@ struct Record
     std::vector<double> spectral;   // (7, n)
     std::vector<std::uint8_t> qas;
     ccd::HarmonicOptions options;
-    golden::Algorithm legacy;   // the algorithm's options
-    ccd::LassoOptions lasso_options;
+    ccd::config::ConfigTree config = golden::ccdc();   // the strategies' configuration
+    ccd::LassoOptions lasso_options;   // the kernels' solver, at the preset's values
 
     ccd::HarmonicWorkspace workspace;
     ccd::LassoWorkspace lasso{0};
@@ -96,13 +96,23 @@ struct Record
               ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {n}),
               options),
           solver(lasso_options),
-          strategies(golden::strategies_of()),
+          strategies(golden::strategies_of(config)),
           context{options, workspace, strategies}
     {
         ccd::ProcessingMask mask(n);
         for (index_t i = 0; i < n; ++i)
             mask.set(i, true);
         state.reset(workspace, std::move(mask));
+    }
+
+    // A whole-number and a real parameter of the record's configuration.
+    index_t count(const char* stage, const char* name) const
+    {
+        return static_cast<index_t>(golden::parameter<std::int64_t>(config, stage, name));
+    }
+    double real(const char* stage, const char* name) const
+    {
+        return golden::parameter<double>(config, stage, name);
     }
 
     // The record at a cursor, with a cadence, past Prepare.
@@ -115,24 +125,25 @@ struct Record
         state.coefficients = strategies.model->coefficients();
 
         // The change test as Prepare leaves it on a series at the reference
-        // cadence (16 days): its threshold CHANGE_THRESHOLD.
+        // cadence (16 days): its threshold, change_threshold.
         const std::int64_t reference[] = {730000, 730016};
         strategies.change_test->prepare(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(reference, {2}),
             options.DETECTION_BANDS.size(),
             state.extension.test.get(strategies.change_test,
                                      [](const ccd::ChangeTest& c) { return c.make_scratch(); }));
-        // The stability rule's threshold, CHANGE_THRESHOLD (a peek of
-        // PEEK_SIZE), whatever peek the record has.
-        const ccd::PeekPlan plan{legacy.PEEK_SIZE, true, 0, legacy.PEEK_SIZE};
+        // The stability rule's threshold, change_threshold (a peek of the
+        // change test's peek_size), whatever peek the record has.
+        const index_t peek_size = count("change_test", "peek_size");
+        const ccd::PeekPlan plan{peek_size, true, 0, peek_size};
         strategies.stability_rule->prepare(
             plan, options.DETECTION_BANDS.size(), stability_scratch());
-        // Lookback over `peek` observations against CHANGE_THRESHOLD: pyccd's
-        // at a peek of its own, so its threshold is unadjusted.
+        // Lookback over `peek` observations against its change_threshold:
+        // pyccd's at a peek of its own, so its threshold is unadjusted.
         strategies.lookback = std::make_shared<const ccd::strategies::PyccdLookback>(
-            ccd::strategies::PyccdLookback::Params{legacy.CHANGE_THRESHOLD,
-                                                   legacy.CHANGE_PROBABILITY,
-                                                   legacy.OUTLIER_THRESHOLD, peek});
+            ccd::strategies::PyccdLookback::Params{real("lookback", "change_threshold"),
+                                                   real("lookback", "change_probability"),
+                                                   real("lookback", "outlier_threshold"), peek});
         strategies.lookback->prepare(plan, options.DETECTION_BANDS.size(),
                                      ccd::standard::lookback_scratch(context, state));
     }
@@ -166,15 +177,15 @@ struct Record
     }
 
     // Initialize's stable fits over (start, stop), as a Stable step leaves
-    // them for Lookback: the detection bands, COEFFICIENT_MIN coefficients,
-    // residuals kept.
+    // them for Lookback: the detection bands, the stability fit's
+    // coefficient_min coefficients, residuals kept.
     void with_stability_fit(index_t start, index_t stop)
     {
         stability_fit().fit(
             state.series.dates().slice(ccd::range(start, stop)),
             state.series.spectral().slice(ccd::all(), ccd::range(start, stop)),
-            legacy.COEFFICIENT_MIN,
-            legacy.COEFFICIENT_MAX,
+            count("stability_fit", "coefficient_min"),
+            count("stability_fit", "coefficient_max"),
             options.DETECTION_BANDS,
             ccd::KeepResiduals::Yes
         );
@@ -219,7 +230,7 @@ struct Record
 
 TEST(StandardRouting, RoomToInitializeIsAMeowWindowAfterTheCursor)
 {
-    Record r(40);   // MEOW_SIZE 12
+    Record r(40);   // meow_size 12
     r.at(16, 28, 16);
     EXPECT_TRUE(ccd::standard::room_to_initialize(r.context, r.state));   // 28 + 12 == 40
     r.at(17, 29, 17);
@@ -234,7 +245,7 @@ TEST(StandardRouting, PeekFitsIsAFullPeekAfterTheWindow)
     r.at(0, 35, 0, 6);
     EXPECT_FALSE(ccd::standard::peek_fits(r.state));
     r.at(0, 30, 0, 11);
-    EXPECT_FALSE(ccd::standard::peek_fits(r.state));   // the cadence's peek, not PEEK_SIZE
+    EXPECT_FALSE(ccd::standard::peek_fits(r.state));   // the cadence's peek, not peek_size
 }
 
 TEST(StandardRouting, StartCatchIsDueOnlyBeforeTheFirstSegmentPastAPeek)
@@ -388,14 +399,15 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     EXPECT_EQ(r.state.cursor.prev_break, 0u);
 
     // 16-day cadence: the caller's peek.
-    EXPECT_EQ(r.state.cadence.peek, r.legacy.PEEK_SIZE);
+    EXPECT_EQ(r.state.cadence.peek, r.count("change_test", "peek_size"));
 
-    // Initialize's criteria, once for the pixel: the options' (COEFFICIENT_MIN
-    // coefficients in a COEFFICIENT_MAX-wide basis among them).
+    // Initialize's criteria, once for the pixel: the stability fit's
+    // (coefficient_min coefficients in a coefficient_max-wide basis among
+    // them).
     const ccd::InitializeCriteria& c = r.state.initialize_criteria;
     EXPECT_EQ(c.detection_bands.size(), r.options.DETECTION_BANDS.size());
-    EXPECT_EQ(c.num_coefficients, r.legacy.COEFFICIENT_MIN);
-    EXPECT_EQ(c.max_coefficients, r.legacy.COEFFICIENT_MAX);
+    EXPECT_EQ(c.num_coefficients, r.count("stability_fit", "coefficient_min"));
+    EXPECT_EQ(c.max_coefficients, r.count("stability_fit", "coefficient_max"));
     EXPECT_EQ(r.state.variogram.bands.size(), 7u);
 }
 
@@ -437,7 +449,7 @@ ccd::InitializeOutcome outcome_of(index_t n, Setup setup)
 
 TEST(StandardInitialize, NoCandidateLeftIsExhausted)
 {
-    // window.stop + MEOW_SIZE < size is strict: 28 + 12 == 40 fails.
+    // window.stop + meow_size < size is strict: 28 + 12 == 40 fails.
     const auto setup = [](Record& r)
     {
         in_initialize(r, 16, 28, 16);
@@ -455,7 +467,7 @@ TEST(StandardInitialize, NoCandidateLeftIsExhausted)
 
 TEST(StandardInitialize, AShortSpanGrows)
 {
-    // 12 observations 16 days apart span 176 days < DAY_DELTA.
+    // 12 observations 16 days apart span 176 days < day_delta.
     const auto setup = [](Record& r)
     {
         in_initialize(r, 0, 12);
@@ -492,7 +504,7 @@ TEST(StandardInitialize, TmaskFlaggingEverythingGrows)
 TEST(StandardInitialize, ARejectedTmaskDropGrowsWithNothingDropped)
 {
     // (0, 24) spans 368 days; without its last observation it spans 352 <
-    // DAY_DELTA, so dropping a Tmask outlier there is refused.
+    // day_delta, so dropping a Tmask outlier there is refused.
     const auto setup = [](Record& r)
     {
         r.edit([](index_t b, index_t i, double v) { return (i == 23 && (b == 1 || b == 4)) ? v + 5000 : v; });
@@ -762,7 +774,7 @@ TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
 
 TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
 {
-    // Up to RETRAIN_MIN_OBS every test refits on the window.
+    // Up to refit's min_obs every test refits on the window.
     Record r(80);
     in_extend(r, 0, 20);
     r.step();
@@ -782,7 +794,7 @@ TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
 
 TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
 {
-    // A window of at most RETRAIN_MIN_OBS compares against the model RMSE,
+    // A window of at most model_rmse_up_to compares against the model RMSE,
     // the one it was just refitted on; a longer one against the seasonal
     // RMSE of the fit window.
     Record r(80);
@@ -805,10 +817,10 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
 
     r.step();   // window (0, 25): seasonal
     const auto closest = ccd::find_closest_doy(
-        r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.legacy.SEASONAL_RMSE_COUNT);
+        r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.count("change_test", "seasonal_count"));
     for (index_t i = 0; i < bands.size(); ++i)
         rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
-                                     r.legacy.SEASONAL_RMSE_DIVISOR);
+                                     r.real("change_test", "seasonal_divisor"));
     EXPECT_EQ(e.result.comparison_rmse, rmse);
     EXPECT_EQ(e.result.statistic, magnitude_with(rmse));
 }
@@ -829,11 +841,11 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     EXPECT_EQ(e.fit_window.stop, 24u);
     const auto& bands = r.options.DETECTION_BANDS;
     const auto closest = ccd::find_closest_doy(
-        r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.legacy.SEASONAL_RMSE_COUNT);
+        r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.count("change_test", "seasonal_count"));
     std::vector<double> rmse(bands.size());
     for (index_t i = 0; i < bands.size(); ++i)
         rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
-                                     r.legacy.SEASONAL_RMSE_DIVISOR);
+                                     r.real("change_test", "seasonal_divisor"));
     std::vector<double> want;
     ccd::change_magnitude(e.residuals, bands, r.state.variogram, rmse, want);
     EXPECT_EQ(e.result.comparison_rmse, rmse);
@@ -1192,7 +1204,7 @@ TEST(StandardHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
     EXPECT_EQ(s.end_day, r.dates[79]);
     EXPECT_EQ(s.break_day, r.dates[79]);
     EXPECT_EQ(s.observation_count, 10u);
-    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(r.legacy.COEFFICIENT_MIN));
+    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(r.count("model", "coefficient_min")));
     EXPECT_FALSE(r.state.forced);
     EXPECT_EQ(r.state.exit, Exit::NoFit);
     EXPECT_FALSE(r.state.resumable);   // a record keeps no forced start
@@ -1286,7 +1298,7 @@ TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
     EXPECT_EQ(shortened.suspended().exit, Exit::None);
 
     // A mode's cap.
-    r.strategies = golden::strategies_of();
+    r.strategies = golden::strategies_of(r.config);
     ccd::standard::Procedure capped;
     capped.run(r.workspace, mask, r.strategies, {}, 4);
     EXPECT_EQ(capped.suspended().exit, Exit::None);
@@ -1330,9 +1342,7 @@ MachineRun run_machine(const golden::CharPixel& p)
     ccd::preprocess::apply(
         standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-    ccd::LassoWorkspace lasso(0);
-    ccd::LassoSolver solver(p.a.lasso);
-    const ccd::Strategies strategies = golden::strategies_of(p.a);
+    const ccd::Strategies strategies = golden::strategies_of(p.config);
     const ccd::standard::Context context{p.h, workspace, strategies};
 
     ccd::standard::State state;
@@ -1347,7 +1357,7 @@ ccd::FitResult run_detect(const golden::CharPixel& p)
 {
     const std::size_t T = p.dates.size();
     return ccd::run_pixel(
-        golden::spec_of(p.h, p.a),
+        golden::spec_of(p.h, p.config),
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
         ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
@@ -1466,9 +1476,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
         ccd::preprocess::apply(
             plan.standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-        ccd::LassoWorkspace lasso(0);
-        ccd::LassoSolver solver(p.a.lasso);
-        const ccd::Strategies strategies = golden::strategies_of(p.a);
+        const ccd::Strategies strategies = golden::strategies_of(p.config);
         const ccd::standard::Context context{p.h, workspace, strategies};
 
         ccd::standard::State driven;
@@ -1553,10 +1561,8 @@ TEST(StandardMachine, OneStateServesManyPixels)
         ccd::preprocess::apply(
             plan.standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-        ccd::LassoWorkspace lasso(0);
-        ccd::LassoSolver solver(p.a.lasso);
         ccd::standard::Procedure fresh;
-        const ccd::Strategies strategies = golden::strategies_of(p.a);
+        const ccd::Strategies strategies = golden::strategies_of(p.config);
         const ccd::FitResult once = fresh.run(workspace, mask, strategies);
         const ccd::FitResult again = reused.run(workspace, mask, strategies);
         expect_same(again, once, p.name);
@@ -1619,8 +1625,10 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
             detector.fit(procedure, r.workspace, mask, r.strategies);
         expect_same(
             fit,
-            ccd::fit_whole_series(procedure, r.workspace, mask, r.legacy.MEOW_SIZE,
-                                  golden::Algorithm{}.COEFFICIENT_MIN, r.lasso, r.solver),
+            ccd::fit_whole_series(procedure, r.workspace, mask,
+                                  r.count("edge_fit", "min_observations"),
+                                  r.count("edge_fit", "coefficients"), r.lasso, r.solver),
+
             "whole series");
         ASSERT_EQ(fit.models.size(), 1u);
         EXPECT_EQ(fit.models[0].curve_qa,

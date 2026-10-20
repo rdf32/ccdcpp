@@ -25,7 +25,7 @@
 
 #include "ccd/ccd.hpp"
 
-#include "algorithm.hpp"
+#include "config.hpp"
 
 namespace golden
 {
@@ -118,12 +118,17 @@ inline ccd::HarmonicOptions physical_harmonic()
     return h;
 }
 
-inline golden::Algorithm physical_algorithm()
+// The configuration for the preset's units: the Lasso's alpha and
+// coefficient floor, in each stage that fits a Lasso, divided by SCALE.
+inline ccd::config::ConfigTree physical_config()
 {
-    golden::Algorithm a;
-    a.lasso.alpha = 1.0 / SCALE;
-    a.lasso.coef_floor = 1.0 / SCALE;
-    return a;
+    ccd::config::ConfigTree c = golden::ccdc();
+    for (const char* stage : {"stability_fit", "model", "edge_fit"})
+    {
+        c.at(stage).params.at("alpha") = ccd::config::real(1.0 / SCALE);
+        c.at(stage).params.at("coef_floor") = ccd::config::real(1.0 / SCALE);
+    }
+    return c;
 }
 
 // DN (7, T) block -> the preset's units, in place.

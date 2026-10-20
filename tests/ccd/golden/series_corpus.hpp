@@ -4,7 +4,8 @@
 //
 // Whole pixel series for the tests that cut them at a date: prefix stability
 // (test_prefix.cpp) and resume (test_resume.cpp). Each Series is one pixel's
-// dates, (7, T) spectral and QA codes with the options it runs under:
+// dates, (7, T) spectral and QA codes with the options and configuration it
+// runs under:
 //
 //   * characterization_series(): the pixels of characterisation.hpp;
 //   * csv_series(dir): the pyccd reference pixel, the Atlanta pixel with a
@@ -40,7 +41,7 @@ struct Series
     std::vector<double> spectral;   // (7, T), band-major
     std::vector<std::uint8_t> qas;
     ccd::HarmonicOptions h;
-    golden::Algorithm a;   // the algorithm's options
+    ccd::config::ConfigTree config = golden::ccdc();
 
     std::size_t size() const
     {
@@ -82,7 +83,7 @@ inline ccd::FitResult detect_at(const Series& s, std::int64_t stat_ord)
     ccd::HarmonicOptions h = s.h;
     h.STAT_ORD = stat_ord;
     return ccd::run_pixel(
-        golden::spec_of(h, s.a),
+        golden::spec_of(h, s.config),
         s.date_view(),
         s.spectral_view(),
         s.qa_view()).result;
@@ -94,7 +95,7 @@ inline ccd::PixelRun recorded_at(const Series& s, std::int64_t stat_ord)
     ccd::HarmonicOptions h = s.h;
     h.STAT_ORD = stat_ord;
     return ccd::run_pixel(
-        golden::spec_of(h, s.a, nullptr, nullptr, true),
+        golden::spec_of(h, s.config, nullptr, nullptr, true),
         s.date_view(),
         s.spectral_view(),
         s.qa_view());
@@ -141,7 +142,7 @@ inline std::vector<Series> characterization_series()
 {
     std::vector<Series> out;
     for (const auto& p : characterisation_pixels())
-        out.push_back(Series{p.name, p.dates, p.spectral, p.qas, p.h, p.a});
+        out.push_back(Series{p.name, p.dates, p.spectral, p.qas, p.h, p.config});
     return out;
 }
 
@@ -185,7 +186,8 @@ inline std::vector<Series> synthetic_series()
                 {
                     to_physical(s.spectral.data(), T);
                     s.h = physical_harmonic();
-                    s.a = physical_algorithm();
+                    s.config = physical_config();
+
                 }
                 out.push_back(std::move(s));
             }

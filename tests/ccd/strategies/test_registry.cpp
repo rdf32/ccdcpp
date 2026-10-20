@@ -6,8 +6,9 @@
 //   * the registry lists each stage's strategies, and builds one by name with
 //     its parameters checked against its schema (unknown names, wrong types,
 //     values out of range all refused, naming the stage, strategy and field);
-//   * the configuration the options describe builds the strategies a run
-//     uses, and the refit schedule decides as Extend's inline test did;
+//   * the "ccdc" preset, edited by stage and parameter, builds the
+//     strategies a run uses, and the refit schedule decides as Extend's
+//     inline test did;
 //   * the lasso monitoring model fits, predicts and scores as the shared
 //     kernels do, bit for bit, with the solver options it was configured with;
 //   * the pyccd start search's decisions are pyccd's comparisons with
@@ -40,25 +41,11 @@
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
-#include "../golden/algorithm.hpp"
+#include "../golden/specs.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 namespace
 {
-
-// An algorithm's values as a configuration (golden::Algorithm): `a` with the Lasso's
-// parameters `l`, and its strategies.
-ccd::config::ConfigTree from_options(golden::Algorithm a, const ccd::LassoOptions& l)
-{
-    a.lasso = l;
-    return golden::config_of(a);
-}
-
-ccd::Strategies strategies_for(const golden::Algorithm& a, const ccd::LassoOptions& l)
-{
-    return ccd::strategies::build_strategies(ccd::strategies::library_registry(),
-                                             from_options(a, l));
-}
 
 using ccd::config::StageConfig;
 using ccd::config::Values;
@@ -215,15 +202,14 @@ TEST(Registry, ResolveFillsTheDefaults)
     EXPECT_THROW(r.resolve(partial), std::invalid_argument);
 }
 
-TEST(Registry, TheOptionsConfigurationIsTheirs)
+TEST(Registry, AnEditedPresetBuildsItsStrategies)
 {
-    golden::Algorithm h;
-    h.RETRAIN_MIN_OBS = 30;
-    h.RETRAIN_SPAN_FACTOR = 1.5;
-    const auto tree = from_options(h, ccd::LassoOptions{});
+    ccd::config::ConfigTree tree = golden::ccdc();
+    tree["refit"].params["min_obs"] = ccd::config::integer(30);
+    tree["refit"].params["factor"] = ccd::config::real(1.5);
     const StageConfig& refit = tree.at("refit");
     EXPECT_EQ(refit.strategy, "span-factor");
-    const auto s = strategies_for(h, ccd::LassoOptions{});
+    const auto s = golden::strategies_of(tree);
     EXPECT_TRUE(s.refit->due(30, 1.0, 12, 1.0));
     EXPECT_FALSE(s.refit->due(31, 149.0, 12, 100.0));
     EXPECT_TRUE(s.refit->due(31, 150.0, 12, 100.0));
@@ -234,9 +220,12 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
     EXPECT_EQ(std::get<std::int64_t>(values.at("min_obs")), 30);
     EXPECT_EQ(std::get<double>(values.at("factor")), 1.5);
 
-    // RETRAIN_MIN_OBS past what a configuration holds: refit at every step.
-    h.RETRAIN_MIN_OBS = std::numeric_limits<ccd::index_t>::max();
-    EXPECT_TRUE(strategies_for(h, ccd::LassoOptions{}).refit->due(1u << 20, 1.0, 12, 100.0));
+    // A min_obs (and the change test's model_rmse_up_to) as large as a
+    // configuration holds: refit at every step.
+    const ccd::config::Value most = ccd::config::integer(std::numeric_limits<std::int64_t>::max());
+    tree["refit"].params["min_obs"] = most;
+    tree["change_test"].params["model_rmse_up_to"] = most;
+    EXPECT_TRUE(golden::strategies_of(tree).refit->due(1u << 20, 1.0, 12, 100.0));
 
     expect_refused(
         [&] { ccd::strategies::build_strategies(ccd::strategies::core_registry(), {}); },
@@ -245,12 +234,11 @@ TEST(Registry, TheOptionsConfigurationIsTheirs)
 
 TEST(MonitoringModel, TheLassoIsTheKernelsFit)
 {
-    ccd::LassoOptions l;
-    l.alpha = 0.5;
-    l.max_iter = 300;
-    const auto tree = from_options(golden::Algorithm{}, l);
+    ccd::config::ConfigTree tree = golden::ccdc();
+    tree["model"].params["alpha"] = ccd::config::real(0.5);
+    tree["model"].params["max_iter"] = ccd::config::integer(300);
     EXPECT_EQ(tree.at("model").strategy, "lasso");
-    const auto s = strategies_for(golden::Algorithm{}, l);
+    const auto s = golden::strategies_of(tree);
     const auto& lasso = static_cast<const ccd::strategies::Lasso&>(*s.model);
     EXPECT_EQ(lasso.solver_options().alpha, 0.5);
     EXPECT_EQ(lasso.solver_options().max_iter, 300u);
@@ -280,6 +268,10 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     model->peek_residuals(all_dates.slice(peek), all_spectral.slice(ccd::all(), peek), fitted,
                           got);
 
+    // The kernels' solver with the model's parameters.
+    ccd::LassoOptions l;
+    l.alpha = 0.5;
+    l.max_iter = 300;
     ccd::LassoWorkspace workspace(0);
     ccd::LassoSolver solver(l);
     std::vector<ccd::LassoResult> fits(bands);
@@ -303,23 +295,28 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     EXPECT_TRUE(got[1].empty());   // band 1 was not fitted
 
     const auto& r = ccd::strategies::core_registry();
-    golden::Algorithm nan_threshold;
-    nan_threshold.CHANGE_THRESHOLD = NAN;
-    expect_refused([&] { strategies_for(nan_threshold, l); },
+    const auto nan_threshold =
+        golden::with(tree, "stability_rule", "change_threshold", ccd::config::real(NAN));
+    expect_refused([&] { golden::strategies_of(nan_threshold); },
                    "stability_rule 'pyccd' parameter 'change_threshold' is nan");
     expect_refused(
         [&] { r.make<ccd::MonitoringModel>({"lasso", {{"alpha", ccd::config::real(-1)}}}); },
         "model 'lasso' parameter 'alpha' is -1; it must be at least 0");
 }
 
-// chi2's peek is adjust_peek() of its parameters (the options' PEEK_SIZE
-// and PEEK_REFERENCE_DAYS) at the reference cadence (no adjustment) and at
+// chi2's peek is adjust_peek() of its parameters (peek_size and
+// peek_reference_days) at the reference cadence (no adjustment) and at
 // denser ones; the threshold memo gives adjust_change_threshold()'s value
 // for every sequence of arguments.
 TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
 {
-    const golden::Algorithm h;
-    const auto s = strategies_for(h, ccd::LassoOptions{});
+    const ccd::config::ConfigTree tree = golden::ccdc();
+    const auto peek_size =
+        static_cast<ccd::index_t>(golden::parameter<std::int64_t>(tree, "change_test", "peek_size"));
+    const double reference_days =
+        golden::parameter<double>(tree, "change_test", "peek_reference_days");
+    const double threshold = golden::parameter<double>(tree, "change_test", "change_threshold");
+    const auto s = golden::strategies_of(tree);
     const auto scratch = s.change_test->make_scratch();
     for (const std::int64_t gap : {16, 8, 5})
     {
@@ -334,24 +331,24 @@ TEST(ChangeTest, Chi2PeekIsTheAdjustedPeek)
         EXPECT_TRUE(plan.full);
         EXPECT_EQ(plan.min_window, 0u);
         const ccd::index_t peek = plan.peek;
-        EXPECT_EQ(peek, ccd::adjust_peek(view, h.PEEK_SIZE, h.PEEK_REFERENCE_DAYS)) << gap;
+        EXPECT_EQ(peek, ccd::adjust_peek(view, peek_size, reference_days)) << gap;
         if (gap == 16)
-            EXPECT_EQ(peek, h.PEEK_SIZE);
+            EXPECT_EQ(peek, peek_size);
         else
-            EXPECT_GT(peek, h.PEEK_SIZE) << gap;
+            EXPECT_GT(peek, peek_size) << gap;
     }
 
     // Fewer than two dates: the default peek.
     const std::int64_t one = 730000;
     EXPECT_EQ(s.change_test->prepare(ccd::ArrayView<const std::int64_t, 1>::contiguous(&one, {1}),
                                      ccd::HarmonicOptions{}.DETECTION_BANDS.size(), *scratch).peek,
-              h.PEEK_SIZE);
+              peek_size);
 
     ccd::ChangeThresholdMemo memo;
     for (const ccd::index_t peek : {6u, 9u, 9u, 6u, 12u, 12u, 9u})
         for (const double probability : {0.99, 0.95, 0.99})
-            EXPECT_EQ(memo(peek, 6, h.CHANGE_THRESHOLD, 7, probability),
-                      ccd::adjust_change_threshold(peek, 6, h.CHANGE_THRESHOLD, 7, probability))
+            EXPECT_EQ(memo(peek, 6, threshold, 7, probability),
+                      ccd::adjust_change_threshold(peek, 6, threshold, 7, probability))
                 << peek << " " << probability;
 }
 
@@ -454,7 +451,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
     ccd::config::Registry r;
     ccd::strategies::register_core_strategies(r);
     r.add<ccd::MonitoringModel, Opaque>("opaque");
-    auto tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
+    auto tree = golden::ccdc();
     EXPECT_NO_THROW(ccd::strategies::build_strategies(r, tree));
     tree["model"] = {"opaque", {}};
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
@@ -471,7 +468,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
 
     // The stability rule's needs, from the stability fit; Lookback's too.
     r.add<ccd::StabilityFit, OpaqueFit>("opaque");
-    tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
+    tree = golden::ccdc();
     tree["stability_fit"] = {"opaque", {}};
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
                    "stability_rule 'pyccd' needs model_rmse, in_window_residuals, which "
@@ -484,7 +481,7 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
                    "provide");
 
     // A configuration without an outlier stage.
-    tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
+    tree = golden::ccdc();
     tree.erase("outlier");
     expect_refused([&] { ccd::strategies::build_strategies(r, tree); },
                    "the configuration has no 'outlier' stage");
@@ -492,11 +489,9 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
 
 TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 {
-    golden::Algorithm h;
-    h.OUTLIER_THRESHOLD = 10.0;
-    const auto tree = from_options(h, ccd::LassoOptions{});
+    const auto tree = golden::with(golden::ccdc(), "outlier", "threshold", ccd::config::real(10.0));
     EXPECT_EQ(tree.at("outlier").strategy, "floored");
-    const auto s = strategies_for(h, ccd::LassoOptions{});
+    const auto s = golden::strategies_of(tree);
 
     const std::int64_t day = 730000;
     const std::vector<std::vector<double>> residuals;
@@ -526,10 +521,15 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 
 TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
 {
-    const golden::Algorithm h;
-    const auto s = strategies_for(h, ccd::LassoOptions{});
-    EXPECT_EQ(from_options(h, ccd::LassoOptions{}).at("stability_rule").strategy,
-              "pyccd");
+    const ccd::config::ConfigTree tree = golden::ccdc();
+    const auto s = golden::strategies_of(tree);
+    EXPECT_EQ(tree.at("stability_rule").strategy, "pyccd");
+    const auto count = [&](const char* stage, const char* name)
+    { return static_cast<ccd::index_t>(golden::parameter<std::int64_t>(tree, stage, name)); };
+    const ccd::index_t peek_size = count("change_test", "peek_size");
+    const ccd::index_t coefficient_min = count("stability_fit", "coefficient_min");
+    const ccd::index_t coefficient_max = count("stability_fit", "coefficient_max");
+    const double threshold = golden::parameter<double>(tree, "stability_rule", "change_threshold");
 
     // 24 observations, 16 days apart, of a flat series with noise: a fit
     // whose check is well below the threshold, and one whose slope is not.
@@ -550,7 +550,7 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
     const ccd::BandList detection = ccd::HarmonicOptions{}.DETECTION_BANDS;
 
     const auto scratch = s.stability_rule->make_scratch();
-    s.stability_rule->prepare(ccd::PeekPlan{h.PEEK_SIZE, true, 0, h.PEEK_SIZE}, detection.size(),
+    s.stability_rule->prepare(ccd::PeekPlan{peek_size, true, 0, peek_size}, detection.size(),
                               *scratch);
     const auto fit = s.stability_fit->make_model();
 
@@ -571,15 +571,15 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
     for (const auto* series : {&flat, &steep})
     {
         fit->fit(d, ccd::ArrayView<const double, 2>::contiguous(series->data(), {bands, n}),
-                 h.COEFFICIENT_MIN, h.COEFFICIENT_MAX, detection, ccd::KeepResiduals::Yes);
+                 coefficient_min, coefficient_max, detection, ccd::KeepResiduals::Yes);
         EXPECT_EQ(s.stability_rule->stable(*fit, d, variogram, detection, *scratch),
-                  check(*fit) < h.CHANGE_THRESHOLD);
+                  check(*fit) < threshold);
     }
     fit->fit(d, ccd::ArrayView<const double, 2>::contiguous(flat.data(), {bands, n}),
-             h.COEFFICIENT_MIN, h.COEFFICIENT_MAX, detection, ccd::KeepResiduals::Yes);
+             coefficient_min, coefficient_max, detection, ccd::KeepResiduals::Yes);
     EXPECT_TRUE(s.stability_rule->stable(*fit, d, variogram, detection, *scratch));
     fit->fit(d, ccd::ArrayView<const double, 2>::contiguous(steep.data(), {bands, n}),
-             h.COEFFICIENT_MIN, h.COEFFICIENT_MAX, detection, ccd::KeepResiduals::Yes);
+             coefficient_min, coefficient_max, detection, ccd::KeepResiduals::Yes);
     EXPECT_FALSE(s.stability_rule->stable(*fit, d, variogram, detection, *scratch));
 }
 
@@ -615,11 +615,10 @@ TEST(Params, ABandListTakesBandIndices)
 
 TEST(WindowScreen, TmaskIsTmaskOfItsBands)
 {
-    golden::Algorithm h;
-    h.TMASK_BANDS = {2, 5};
-    h.T_CONST = 3.5;
-    const auto s = strategies_for(h, ccd::LassoOptions{});
-    const auto tree = from_options(h, ccd::LassoOptions{});
+    ccd::config::ConfigTree tree = golden::ccdc();
+    tree["window_screen"].params["bands"] = ccd::config::bands({2, 5});
+    tree["window_screen"].params["t_const"] = ccd::config::real(3.5);
+    const auto s = golden::strategies_of(tree);
     const auto& screen = tree.at("window_screen");
     EXPECT_EQ(screen.strategy, "tmask");
     EXPECT_EQ(std::get<std::vector<std::int64_t>>(screen.params.at("bands")),
@@ -642,7 +641,7 @@ TEST(WindowScreen, TmaskIsTmaskOfItsBands)
     const ccd::Variogram variogram{std::vector<double>(bands, 20.0)};
 
     const ccd::ProcessingMask got = s.window_screen->screen(d, x, variogram);
-    const ccd::ProcessingMask want = ccd::tmask(d, x, variogram, h.TMASK_BANDS, h.T_CONST);
+    const ccd::ProcessingMask want = ccd::tmask(d, x, variogram, ccd::BandList{2, 5}, 3.5);
     ASSERT_EQ(got.size(), want.size());
     for (ccd::index_t i = 0; i < n; ++i)
         EXPECT_EQ(got[i], want[i]) << i;
@@ -652,12 +651,11 @@ TEST(WindowScreen, TmaskIsTmaskOfItsBands)
 
 TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
 {
-    golden::Algorithm h;
-    h.MEOW_SIZE = 10;
-    h.DAY_DELTA = 200;
-    const auto tree = from_options(h, ccd::LassoOptions{});
+    ccd::config::ConfigTree tree = golden::ccdc();
+    tree["start_search"].params["meow_size"] = ccd::config::integer(10);
+    tree["start_search"].params["day_delta"] = ccd::config::integer(200);
     EXPECT_EQ(tree.at("start_search").strategy, "pyccd");
-    const auto s = strategies_for(h, ccd::LassoOptions{});
+    const auto s = golden::strategies_of(tree);
     const ccd::StartSearch& search = *s.start_search;
 
     EXPECT_TRUE(search.too_few(10));
@@ -689,25 +687,29 @@ TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
     EXPECT_TRUE(search.usable(d(10)));
     EXPECT_FALSE(search.usable(d(9)));   // 9 observations
 
-    h.MEOW_SIZE = 0;
-    expect_refused([&] { strategies_for(h, ccd::LassoOptions{}); },
+    tree["start_search"].params["meow_size"] = ccd::config::integer(0);
+    expect_refused([&] { golden::strategies_of(tree); },
                    "start_search 'pyccd' parameter 'meow_size' is 0; it must be at least 1");
 }
 
-TEST(Lookback, PyccdTakesItsParametersFromTheOptions)
+// The preset's Lookback judges at the change test's peek, with the change
+// test's threshold and probability; its outlier threshold is its own.
+TEST(Lookback, PyccdTakesItsParametersFromItsStage)
 {
-    golden::Algorithm h;
-    h.OUTLIER_THRESHOLD = 20.0;
-    const auto tree = from_options(h, ccd::LassoOptions{});
+    auto tree = golden::with(golden::ccdc(), "lookback", "outlier_threshold", ccd::config::real(20.0));
     const auto& lookback = tree.at("lookback");
+    const auto& test = tree.at("change_test");
     EXPECT_EQ(lookback.strategy, "pyccd");
     EXPECT_EQ(std::get<std::int64_t>(lookback.params.at("peek")), 0);   // the test's
-    EXPECT_EQ(std::get<double>(lookback.params.at("change_threshold")), h.CHANGE_THRESHOLD);
-    EXPECT_EQ(std::get<double>(lookback.params.at("change_probability")), h.CHANGE_PROBABILITY);
+    EXPECT_EQ(std::get<double>(lookback.params.at("change_threshold")),
+              std::get<double>(test.params.at("change_threshold")));
+    EXPECT_EQ(std::get<double>(lookback.params.at("change_probability")),
+              std::get<double>(test.params.at("change_probability")));
     EXPECT_EQ(std::get<double>(lookback.params.at("outlier_threshold")), 20.0);
+    EXPECT_NO_THROW(golden::strategies_of(tree));
 
-    h.OUTLIER_THRESHOLD = NAN;
-    expect_refused([&] { strategies_for(h, ccd::LassoOptions{}); },
+    tree["lookback"].params["outlier_threshold"] = ccd::config::real(NAN);
+    expect_refused([&] { golden::strategies_of(tree); },
                    "lookback 'pyccd' parameter 'outlier_threshold' is nan");
 }
 
@@ -779,12 +781,10 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
 
 TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 {
-    golden::Algorithm h;
-    h.COEFFICIENT_MIN = 6;
-    h.MEOW_SIZE = 15;
-    ccd::LassoOptions l;
-    l.alpha = 0.5;
-    const auto tree = from_options(h, l);
+    ccd::config::ConfigTree tree = golden::ccdc();
+    tree["edge_fit"].params["coefficients"] = ccd::config::integer(6);
+    tree["edge_fit"].params["min_observations"] = ccd::config::integer(15);
+    tree["edge_fit"].params["alpha"] = ccd::config::real(0.5);
     const auto& edges = tree.at("edge_fit");
     EXPECT_EQ(edges.strategy, "lasso");
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients")), 6);
@@ -793,7 +793,7 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     EXPECT_EQ(tree.at("segment_fit").strategy, "model-fit");
     EXPECT_EQ(tree.at("mode").strategy, "pyccd");
 
-    const auto s = strategies_for(h, l);
+    const auto s = golden::strategies_of(tree);
     const ccd::index_t n = 40, bands = 3;
     std::vector<std::int64_t> dates(n);
     std::vector<double> spectral(bands * n);
@@ -810,6 +810,9 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     const auto scratch = s.edge_fit->make_scratch();
     const ccd::ChangeModel got =
         s.edge_fit->catch_window(d, x, window, ccd::CurveQA::End, *scratch);
+    // The kernels' solver with the edge fit's parameters.
+    ccd::LassoOptions l;
+    l.alpha = 0.5;
     ccd::LassoWorkspace workspace(0);
     ccd::LassoSolver solver(l);
     const ccd::ChangeModel want =
@@ -826,9 +829,9 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 
 TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
 {
-    golden::Algorithm h;
-    h.VARIOGRAM_MIN_LAG_DAYS = 45;
-    const auto s = strategies_for(h, ccd::LassoOptions{});
+    const auto tree =
+        golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(45));
+    const auto s = golden::strategies_of(tree);
     const ccd::index_t n = 50, bands = 3;
     std::vector<std::int64_t> dates(n);
     std::vector<double> spectral(bands * n);
@@ -841,15 +844,12 @@ TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
     const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
     EXPECT_EQ(s.noise_floor->estimate(d, x), ccd::adjusted_variogram(d, x, 45));
-    EXPECT_EQ(std::get<std::int64_t>(from_options(h, ccd::LassoOptions{})
-                                         .at("noise_floor")
-                                         .params.at("min_lag_days")),
-              45);
+    EXPECT_EQ(golden::parameter<std::int64_t>(tree, "noise_floor", "min_lag_days"), 45);
 }
 
 TEST(ConfigDigest, EqualTreesAndOnlyThem)
 {
-    const auto a = from_options(golden::Algorithm{}, ccd::LassoOptions{});
+    const auto a = golden::ccdc();
     auto b = a;
     EXPECT_EQ(ccd::config::digest(a), ccd::config::digest(b));
     b["refit"].params["factor"] = ccd::config::real(1.34);
@@ -864,8 +864,9 @@ TEST(ConfigDigest, EqualTreesAndOnlyThem)
 TEST(Registry, BandListsAreCheckedAgainstTheInputAsSetAndByDefault)
 {
     const auto& r = ccd::strategies::core_registry();
-    auto tree = from_options(golden::Algorithm{}, ccd::LassoOptions{});
+    auto tree = golden::ccdc();
     EXPECT_NO_THROW(r.check_bands(tree, 7));
+
     expect_refused([&] { r.check_bands(tree, 4); },
                    "window_screen 'tmask' parameter 'bands' holds band 4; the input has 4 bands");
     // Left out: Tmask's default bands, {1, 4}, are checked too.
