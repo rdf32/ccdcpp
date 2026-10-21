@@ -159,7 +159,7 @@ the run's strategies, the observer and the pixel mode's coefficient cap. It hold
 that fits holds its own. The catch segments (StartCatch, EndCatch) fit with edge_segments',
 Initialize with the stability fit's and Extend with the monitoring model's (the `edge_segments`,
 `stability_fit` and `model` stages' parameters), and Lookback reads the stability fit. A direct
-caller of `standard::Procedure` takes the strategies of a configuration resolved against its
+caller of `standard::Detector` takes the strategies of a configuration resolved against its
 input (`config::resolve(strategies::library_registry(), config, input).strategies`), as `Run` does.
 
 **`standard::State`** is one pixel's record:
@@ -182,9 +182,8 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 observations by one rule: a window bound above the dropped position moves down by one.
 
 The record's buffers keep their capacity across pixels: `State::reset` starts a pixel without
-freeing anything. `standard::Procedure` owns one record, `standard::Detector` owns one
-`standard::Procedure`, and a `Worker` (`src/ccd/run/run_pixel.hpp`) holds one `Detector` per
-OpenMP thread.
+freeing anything. `standard::Detector` owns one record, and a `Worker`
+(`src/ccd/run/run_pixel.hpp`) holds one `Detector` per OpenMP thread.
 
 ### Stages and strategies
 
@@ -409,8 +408,8 @@ while (state.phase != Phase::Done)
 }
 ```
 
-`standard::Machine::step` is a `switch` from the phase to its transition, and `standard::run`
-is reset, drive, take the result. A machine supplies its types, its `step`, a name, and
+`standard::Machine::step` is a `switch` from the phase to its transition, and
+`standard::Detector::fit` is reset, drive, take the result. A machine supplies its types, its `step`, a name, and
 `to_string(Phase)` and `summary(State)` for the trace.
 
 An observer (`RunSpec::observer`, [diagnostics.md](diagnostics.md)) is told each transition with
@@ -446,7 +445,7 @@ coefficient count and magnitudes, and the final segment count. `ccd::detect()` w
 returns it inside a `PixelRecord`, with the pixel's input fingerprint and the days the machine dropped
 (`include/ccd/results/record.hpp`).
 
-`standard::resume()` continues from it on the longer series:
+`standard::Detector::resume()` continues from it on the longer series:
 
 1. Prepare runs as for any run, on the series as the filters leave it, with the statistics
    cutoffs capped at the first run's series end, so its cadence, variogram and criteria are the

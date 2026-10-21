@@ -270,8 +270,9 @@ TEST(CCD, DetectStandard)
             spectral(thermal_idx, t) * 10.0 - 27315.0;
     }
 
-    ccd::standard::Procedure fit_procedure;
-    ccd::FitResult result = fit_procedure.run(
+    ccd::standard::Detector detector;
+    ccd::FitResult result = detector.fit(
+        ccd::PixelProcedure::Standard,
         series,
         golden::chain_mask(series, input, "standard", golden::ccdc()),
         hshared,

@@ -17,7 +17,7 @@
 //     reports; lookback_peek()'s three cases.
 //   * Whole pixels stepped by hand: every self-transition is one decision,
 //     and the result is the driven machine's.
-//   * Exits: standard::run() on the characterization pixels that end the
+//   * Exits: Detector::fit() on the characterization pixels that end the
 //     segment loop each way, with the same preprocessing ccd::detect() runs,
 //     against the Exit the run leaves in the record. The result of each run
 //     is also checked against detect()'s, field for field.
@@ -1298,20 +1298,22 @@ TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
     for (index_t i = 0; i < 80; ++i)
         mask.set(i, true);
     auto test = std::make_shared<HookTest>(r.strategies.change_test);
-    ccd::standard::Procedure plain;
-    plain.run(r.workspace, mask, r.shared, r.strategies);
+    ccd::standard::Detector plain;
+    plain.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared, r.strategies);
     EXPECT_NE(plain.suspended().exit, Exit::None);
 
     test->full = false;
     r.strategies.change_test = test;
-    ccd::standard::Procedure shortened;
-    shortened.run(r.workspace, mask, r.shared, r.strategies);
+    ccd::standard::Detector shortened;
+    shortened.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared, r.strategies);
     EXPECT_EQ(shortened.suspended().exit, Exit::None);
 
     // A mode's cap.
     r.strategies = golden::strategies_of(r.config);
-    ccd::standard::Procedure capped;
-    capped.run(r.workspace, mask, r.shared, r.strategies, {}, 4);
+    ccd::PixelMode cap(ccd::PixelProcedure::Standard);
+    cap.max_coefficients = 4;
+    ccd::standard::Detector capped;
+    capped.fit(cap, r.workspace, mask, r.shared, r.strategies);
     EXPECT_EQ(capped.suspended().exit, Exit::None);
 }
 
@@ -1319,7 +1321,7 @@ TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
 // Exits on whole pixels
 //------------------------------------------------------------------------------
 
-// standard::run() on a characterization pixel, preprocessed as detect() does
+// Detector::fit() on a characterization pixel, preprocessed as detect() does
 // for the Standard procedure: the plan's transform on a copy, its chain for
 // the mask.
 struct MachineRun
@@ -1354,14 +1356,11 @@ MachineRun run_machine(const golden::CharPixel& p)
     ccd::preprocess::apply(
         standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-    const ccd::Strategies& strategies = resolved.strategies;
-    const ccd::standard::Context context{resolved.shared, workspace, strategies};
-
-    ccd::standard::State state;
+    ccd::standard::Detector detector;
     MachineRun out;
-    out.result = ccd::standard::run(context, state, std::move(mask));
-    out.exit = state.exit;
-    EXPECT_EQ(state.phase, Phase::Done);
+    out.result = detector.fit(ccd::PixelProcedure::Standard, workspace, std::move(mask),
+                              resolved.shared, resolved.strategies);
+    out.exit = detector.exit();
     return out;
 }
 
@@ -1461,7 +1460,7 @@ TEST(StandardExit, TheEarlyExitsReturnTheMask)
 // after a Tmask drop; each Lookback -> Lookback moves window.start down one
 // (an include, or a drop that moves the window with the series); each Extend
 // -> Extend grows by one or drops the observation at window.stop; and the
-// result equals standard::run()'s.
+// result equals Detector::fit()'s.
 TEST(StandardMachine, EachStepIsOneDecision)
 {
     const auto all = golden::characterisation_pixels();
@@ -1492,8 +1491,9 @@ TEST(StandardMachine, EachStepIsOneDecision)
         const ccd::Strategies& strategies = resolved.strategies;
         const ccd::standard::Context context{resolved.shared, workspace, strategies};
 
-        ccd::standard::State driven;
-        const ccd::FitResult want = ccd::standard::run(context, driven, mask);
+        ccd::standard::Detector driven;
+        const ccd::FitResult want =
+            driven.fit(ccd::PixelProcedure::Standard, workspace, mask, resolved.shared, strategies);
 
         ccd::standard::State s;
         s.reset(workspace, mask);
@@ -1551,7 +1551,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
     // A record reused across pixels gives each pixel the result a fresh one
     // does: reset() starts every pixel from Prepare with nothing carried.
     const auto all = golden::characterisation_pixels();
-    ccd::standard::Procedure reused;
+    ccd::standard::Detector reused;
 
     for (const auto& p : all)
     {
@@ -1575,10 +1575,12 @@ TEST(StandardMachine, OneStateServesManyPixels)
         ccd::preprocess::apply(
             plan.standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-        ccd::standard::Procedure fresh;
+        ccd::standard::Detector fresh;
         const ccd::Strategies strategies = golden::strategies_of(p.config);
-        const ccd::FitResult once = fresh.run(workspace, mask, resolved.shared, strategies);
-        const ccd::FitResult again = reused.run(workspace, mask, resolved.shared, strategies);
+        const ccd::FitResult once = fresh.fit(ccd::PixelProcedure::Standard, workspace, mask,
+                                              resolved.shared, strategies);
+        const ccd::FitResult again = reused.fit(ccd::PixelProcedure::Standard, workspace, mask,
+                                                resolved.shared, strategies);
         expect_same(again, once, p.name);
     }
 }
@@ -1615,8 +1617,8 @@ TEST(SelectProcedure, TheClearThenTheSnowPercentage)
 
 TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
 {
-    // Standard is standard::Procedure::run(); PermanentSnow and
-    // InsufficientClear are the shared whole-series fit, whose curve_qa
+    // Standard is the machine stepped from Prepare to Done; PermanentSnow
+    // and InsufficientClear are the shared whole-series fit, whose curve_qa
     // names the procedure.
     Record r(80);
     ccd::ProcessingMask mask(80);
@@ -1624,12 +1626,12 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
         mask.set(i, true);
 
     ccd::standard::Detector detector;
-    ccd::standard::Procedure standard;
-    expect_same(
-        detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared,
-                     r.strategies),
-        standard.run(r.workspace, mask, r.shared, r.strategies),
-        "standard");
+    const ccd::FitResult standard =
+        detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared, r.strategies);
+    r.state.reset(r.workspace, mask);
+    while (r.state.phase != Phase::Done)
+        r.step();
+    expect_same(standard, r.state.take_result(), "standard");
 
     for (const auto procedure :
          {ccd::PixelProcedure::PermanentSnow, ccd::PixelProcedure::InsufficientClear})

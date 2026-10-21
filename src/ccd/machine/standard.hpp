@@ -319,7 +319,7 @@ struct State
     // Whether a resume can continue this run from its suspension: false once
     // it takes a route the record does not keep (shortened peeks, a forced
     // start, a restored search, drops before a change, no fit; or a mode's
-    // filter or cap), and then Procedure::suspended() is no suspension.
+    // filter or cap), and then Detector::suspended() is no suspension.
     bool resumable = true;
 
     // Extend's carried state.
@@ -523,97 +523,20 @@ struct Machine
     static Phase step(const Context& context, State& state);
 };
 
-// Resets `state` for `mask`, drives it to Done and returns its result.
-FitResult run(const Context& context, State& state, ProcessingMask mask);
-
-// Continues a run that stopped at `from` on a longer series: `mask` is the
-// filter mask of the stored run's series with the observations after it,
-// and the context's statistics cutoffs are the stored run's, so Prepare's
-// values are its values. Prepare runs as usual, on the series as the filters
-// leave it; then the stored run's drops (`excluded_days`, each a day the
-// filters keep) leave the series, the cursor is put back and the guard that
-// failed is tested again: Initialize
-// for NoRoomToInitialize (when there is room) and InitializeExhausted, the
-// peek guard for PeekBeyondEnd, and for SeriesEnd the open segment's models
-// refitted on its fit window, then its pending grow and Extend when a full
-// peek now fits, or the same provisional segment again. Drives to Done; the
-// result's segments are this run's, after the carried final ones, the last
-// of which ended in a change when `carried_change`.
-// `from.exit` is one of those four.
-FitResult resume(
-    const Context& context,
-    State& state,
-    ProcessingMask mask,
-    const Suspended& from,
-    const std::vector<std::int64_t>& excluded_days,
-    bool carried_change = false
-);
-
-//==============================================================================
-//
-// Procedure
-//
-// pyccd's standard procedure: the Standard machine and the per-pixel record
-// it steps. The record is a member so that its buffers keep their capacity
-// across the pixels one object fits; run() resets it for each pixel, so a
-// reused object gives every pixel the result a fresh one does. A second
-// machine has its own Procedure in its own namespace.
-//
-//==============================================================================
-
-class Procedure
-{
-
-public:
-    //----------------------------------------------------------------------
-    // Fits the observations of series that `mask` keeps (the Standard
-    // procedure's processing mask over its series, built by the caller:
-    // Run::pixel builds it with the procedure's filter chain), under the
-    // run's `shared` values, through standard::run(). The result carries
-    // the mask, after an early exit too.
-    //----------------------------------------------------------------------
-    FitResult run(
-        const PixelSeries& series,
-        ProcessingMask mask,
-        const config::Shared& shared,
-        const Strategies& strategies,
-        Observe observe = {},
-        index_t max_coefficients = 0
-    );
-
-    // run() from where a stored run stopped (standard::resume()).
-    FitResult resume(
-        const PixelSeries& series,
-        ProcessingMask mask,
-        const config::Shared& shared,
-        const Strategies& strategies,
-        const Suspended& from,
-        const std::vector<std::int64_t>& excluded_days,
-        Observe observe = {},
-        bool carried_change = false
-    );
-
-    // Where the last run() stopped; no suspension (Exit::None, a resume
-    // reruns the pixel) when the run is not resumable.
-    const Suspended& suspended() const;
-
-private:
-
-    State state_;
-};
-
 //==============================================================================
 //
 // Detector
 //
 // The change detector a run uses for every pixel of a call, whatever its
-// configuration (another procedure is other strategies). Each pixel's procedure is chosen before
-// it, by the run's mode (ModeRule); fit() then fits the pixel's processing
-// mask with this machine for Standard, and with the run's edge_segments strategy
-// (EdgeSegments::whole_series()) for PermanentSnow and InsufficientClear.
+// configuration (another procedure is other strategies). Each pixel's
+// procedure is chosen before it, by the run's mode (ModeRule); fit() then fits
+// the pixel's processing mask with the Standard machine for Standard, and with
+// the run's edge_segments strategy (EdgeSegments::whole_series()) for
+// PermanentSnow and InsufficientClear.
 //
 // Holds the machine's record: one Detector per thread reuses its buffers
-// across the pixels it fits.
+// across the pixels it fits. Each fit resets the record, so a reused Detector
+// gives every pixel the result a fresh one does.
 //
 //==============================================================================
 
@@ -621,10 +544,13 @@ class Detector
 {
 public:
 
-    // Fits the observations of `series` that `mask` keeps (with the
-    // mode's extra mask steps applied) with the mode's procedure:
-    // Procedure::run() with its cap under the run's `shared` values, or
-    // edge_segments' whole_series().
+    // Fits the observations of `series` that `mask` keeps (the procedure's
+    // processing mask, with the mode's extra mask steps applied: Run::pixel
+    // builds it with the procedure's filter chain) with the mode's
+    // procedure, under the run's `shared` values: the Standard machine,
+    // driven from Prepare to Done with the mode's cap on the segments'
+    // coefficients, or edge_segments' whole_series(). The result carries the
+    // mask, after an early exit too.
     FitResult fit(
         const PixelMode& mode,
         const PixelSeries& series,
@@ -634,8 +560,20 @@ public:
         Observe observe = {}
     );
 
-    // The Standard machine from where a stored run stopped (Procedure::
-    // resume()).
+    // Continues a Standard run that stopped at `from` on a longer series:
+    // `mask` is the filter mask of the stored run's series with the
+    // observations after it, and `shared`'s statistics cutoffs are the stored
+    // run's, so Prepare's values are its values. Prepare runs as usual, on
+    // the series as the filters leave it; then the stored run's drops
+    // (`excluded_days`, each a day the filters keep) leave the series, the
+    // cursor is put back and the guard that failed is tested again:
+    // Initialize for NoRoomToInitialize (when there is room) and
+    // InitializeExhausted, the peek guard for PeekBeyondEnd, and for
+    // SeriesEnd the open segment's models refitted on its fit window, then
+    // its pending grow and Extend when a full peek now fits, or the same
+    // provisional segment again. Drives to Done; the result's segments are
+    // this run's, after the carried final ones, the last of which ended in a
+    // change when `carried_change`. `from.exit` is one of those four.
     FitResult resume(
         const PixelSeries& series,
         ProcessingMask mask,
@@ -647,17 +585,20 @@ public:
         bool carried_change = false
     );
 
-    // Where the last Standard fit() stopped; stale after a whole-series fit,
-    // which does not run the machine.
-    const Suspended& suspended() const
+    // Where the last Standard fit() or resume() stopped; no suspension
+    // (Exit::None, a resume reruns the pixel) when the run is not resumable.
+    // Stale after a whole-series fit, which does not run the machine.
+    const Suspended& suspended() const;
+
+    // Why the last Standard fit() or resume() ended its segment loop.
+    Exit exit() const
     {
-        return procedure_.suspended();
+        return state_.exit;
     }
 
 private:
 
-    Procedure procedure_;
-    PerThread<EdgeSegments, Scratch> edges_;   // the whole-series fit's
+    State state_;
 };
 
 } // namespace standard

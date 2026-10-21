@@ -1111,16 +1111,6 @@ Phase Machine::step(const Context& context, State& state)
     return Phase::Done;
 }
 
-FitResult run(const Context& context, State& state, ProcessingMask mask)
-{
-    state.reset(context.pixel, std::move(mask));
-    if (context.max_coefficients > 0)
-        state.resumable = false;   // a resume does not cap
-    drive<Machine>(context, state);
-    report_exit(context, state);
-    return state.take_result();
-}
-
 namespace
 {
 
@@ -1224,17 +1214,52 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
 
 } // namespace
 
-FitResult resume(
-    const Context& context,
-    State& state,
+//------------------------------------------------------------------------------
+// Detector
+//------------------------------------------------------------------------------
+
+FitResult Detector::fit(
+    const PixelMode& mode,
+    const PixelSeries& series,
     ProcessingMask mask,
+    const config::Shared& shared,
+    const Strategies& strategies,
+    Observe observe
+)
+{
+    if (mode.procedure != PixelProcedure::Standard)
+        return strategies.edge_segments->whole_series(
+            mode.procedure, series, std::move(mask),
+            state_.edges.get(strategies.edge_segments,
+                             [](const EdgeSegments& e) { return e.make_scratch(); }));
+
+    LOG_DEBUG("Standard");
+    const Context context{shared, series, strategies, observe, mode.max_coefficients};
+    State& state = state_;
+
+    state.reset(series, std::move(mask));
+    if (context.max_coefficients > 0)
+        state.resumable = false;   // a resume does not cap
+    drive<Machine>(context, state);
+    report_exit(context, state);
+    return state.take_result();
+}
+
+FitResult Detector::resume(
+    const PixelSeries& series,
+    ProcessingMask mask,
+    const config::Shared& shared,
+    const Strategies& strategies,
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days,
+    Observe observe,
     bool carried_change
 )
 {
-    state.reset(context.pixel, std::move(mask));
+    const Context context{shared, series, strategies, observe};
+    State& state = state_;
 
+    state.reset(series, std::move(mask));
     // The statistics are the stored run's, and the series is no shorter, so
     // Prepare neither exits early nor computes other values: it reads the
     // series before any drop, as the stored run's did.
@@ -1305,81 +1330,10 @@ FitResult resume(
     return state.take_result();
 }
 
-FitResult Procedure::resume(
-    const PixelSeries& series,
-    ProcessingMask mask,
-    const config::Shared& shared,
-    const Strategies& strategies,
-    const Suspended& from,
-    const std::vector<std::int64_t>& excluded_days,
-    Observe observe,
-    bool carried_change
-) {
-    const Context context{shared, series, strategies, observe};
-    return standard::resume(context, state_, std::move(mask), from, excluded_days,
-                            carried_change);
-}
-
-FitResult Detector::resume(
-    const PixelSeries& series,
-    ProcessingMask mask,
-    const config::Shared& shared,
-    const Strategies& strategies,
-    const Suspended& from,
-    const std::vector<std::int64_t>& excluded_days,
-    Observe observe,
-    bool carried_change
-)
-{
-    return procedure_.resume(series, std::move(mask), shared, strategies, from,
-                             excluded_days, observe, carried_change);
-}
-
-FitResult Procedure::run(
-    const PixelSeries& series,
-    ProcessingMask mask,
-    const config::Shared& shared,
-    const Strategies& strategies,
-    Observe observe,
-    index_t max_coefficients
-) {
-    const Context context{
-        shared,
-        series,
-        strategies,
-        observe,
-        max_coefficients
-    };
-
-    return standard::run(context, state_, std::move(mask));
-}
-
-const Suspended& Procedure::suspended() const
+const Suspended& Detector::suspended() const
 {
     static const Suspended none;
     return state_.resumable ? state_.suspended : none;
-}
-
-FitResult Detector::fit(
-    const PixelMode& mode,
-    const PixelSeries& series,
-    ProcessingMask mask,
-    const config::Shared& shared,
-    const Strategies& strategies,
-    Observe observe
-)
-{
-    if (mode.procedure == PixelProcedure::Standard)
-    {
-        LOG_DEBUG("Standard");
-        return procedure_.run(series, std::move(mask), shared, strategies, observe,
-                              mode.max_coefficients);
-    }
-
-    return strategies.edge_segments->whole_series(
-        mode.procedure, series, std::move(mask),
-        edges_.get(strategies.edge_segments,
-                   [](const EdgeSegments& e) { return e.make_scratch(); }));
 }
 
 } // namespace standard
