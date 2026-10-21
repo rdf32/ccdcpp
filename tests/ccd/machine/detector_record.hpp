@@ -135,6 +135,18 @@ struct Record
         state.reset(workspace, std::move(mask));
     }
 
+    // Restarts the record keeping reason codes (every observation kept,
+    // Reason::Kept), which its drops write.
+    void with_reasons()
+    {
+        const index_t n = dates.size();
+        ccd::ProcessingMask mask(n);
+        for (index_t i = 0; i < n; ++i)
+            mask.set(i, true);
+        state.reset(workspace, std::move(mask),
+                    std::vector<std::uint8_t>(n, static_cast<std::uint8_t>(ccd::Reason::Kept)));
+    }
+
     // A variogram of `value` in every band, as Prepare would leave one.
     void with_variogram(scalar_t value)
     {

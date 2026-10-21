@@ -21,7 +21,7 @@
 // An Observer is told each step of the machine on the pixels a run observes
 // (RunSpec::observer, RunSpec::observe): every phase transition with where
 // the cursor is, every Extend change test with its outcome and statistics,
-// every observation a test drops, every segment written, and how the pixel
+// every observation a stage drops, every segment written, and how the pixel
 // ends. TextObserver prints them; the Python binding records them as rows
 // (detect(trace=True)).
 //
@@ -41,7 +41,8 @@ struct ObserverEvent
         Transition,   // phase -> next; window, prev_break, observations
         Test,         // an Extend change test: day (the peek's first), outcome, values
                       // (the change test's first statistic, chi2's change_magnitude)
-        Drop,         // an observation dropped: day, outcome (why)
+        Drop,         // an observation dropped: day, outcome (its reason code's
+                      // name, input/processing_mask.hpp)
         Segment,      // a segment written: day and day_to (its first and last
                       // day), outcome (its curve_qa, break day and change
                       // probability), observations (its count)
@@ -107,5 +108,7 @@ private:
             (observe).observer->event((observe).pixel, __VA_ARGS__);      \
     } while (0)
 #else
-#define CCD_OBSERVE_EVENT(observe, ...) do {} while (0)
+// The event is not built; `observe` is read only so that a caller's
+// parameter is not unused.
+#define CCD_OBSERVE_EVENT(observe, ...) do { (void)(observe); } while (0)
 #endif

@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/constants.hpp"
@@ -413,6 +414,11 @@ void validate(const PreprocessPlan& plan, index_t bands);
 // codes. `mask` is resized to T, set to keep every observation, and then
 // narrowed or widened by each step in order.
 //
+// With `reasons`, it is resized to T too, Reason::Kept everywhere, and each
+// step writes the code of what it removes (reason_of() its kind) and
+// Reason::Kept where it takes an observation back: reasons[t] is Kept
+// exactly where mask[t] keeps.
+//
 // The chain is assumed valid for `spectral`'s band count (validate()).
 //
 //------------------------------------------------------------------------------
@@ -422,17 +428,24 @@ void apply(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
     ArrayView<const std::uint8_t, 1> qas,
-    ProcessingMask& mask
+    ProcessingMask& mask,
+    std::vector<std::uint8_t>* reasons = nullptr
 );
 
-// apply()'s steps on `mask` as it is (T entries): a chain after another.
+// apply()'s steps on `mask` (and `reasons`) as they are (T entries): a chain
+// after another.
 void apply_steps(
     const Chain& chain,
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
     ArrayView<const std::uint8_t, 1> qas,
-    ProcessingMask& mask
+    ProcessingMask& mask,
+    std::vector<std::uint8_t>* reasons = nullptr
 );
+
+// The reason code of an observation a step of `kind` removes: KeepQa's is
+// Reason::Qa, OnePerDate's Reason::DuplicateDate, ... (AddQa removes none).
+Reason reason_of(StepKind kind);
 
 } // namespace preprocess
 

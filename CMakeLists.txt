@@ -186,6 +186,7 @@ add_library(
     src/ccd/input/mask/steps.cpp
 
     src/ccd/input/masked_series.cpp
+    src/ccd/input/processing_mask.cpp
     src/ccd/machine/detector.cpp
 
     src/ccd/run/algorithm.cpp
@@ -472,6 +473,10 @@ if(CCD_BUILD_TESTS)
         NO_DISCOVER
         SOURCES tests/ccd/golden/test_resume.cpp tests/ccd/golden/test_run_spec.cpp
     )
+
+    # What a run reports beside its output: each observation's reason code.
+    # See tests/ccd/golden/test_diagnostics.cpp.
+    ccd_add_gtest(test_diagnostics SOURCES tests/ccd/golden/test_diagnostics.cpp)
 
     # Prefix stability: a run on the observations up to a date keeps every
     # final segment of the run on the whole series. See

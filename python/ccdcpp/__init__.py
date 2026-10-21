@@ -11,9 +11,11 @@ from numpy.typing import ArrayLike as _ArrayLike
 from .ccdcpp import (
     CCD_MAX_BANDS,
     CHAIN_CAPACITY,
+    FIRST_DROP,
     NO_BAND,
     NO_STATISTICS_END,
     QA_TABLE_SIZE,
+    REASONS,
     RESULTS_VERSION,
     RESUME_FORMAT,
     ROLES,
@@ -117,7 +119,7 @@ def _configuration(entry: str, config: object) -> Config:
 def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
            input: Input | SensorProfile, config: Config | str = "ccdc", record: bool = False,
            resume: _Mapping[str, _Any] | None = None, band_names: _Sequence[str] | None = None,
-           trace: bool = False) -> results.PixelResult:
+           trace: bool = False, reasons: bool = False) -> results.PixelResult:
     """CCD on one pixel.
 
     dates
@@ -166,6 +168,11 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         next, the window, prev_break, observations, day, day_to, outcome,
         values), ready for pandas.DataFrame. Empty in a build with
         CCD_OBSERVE=OFF.
+    reasons
+        True to also return "mask_reasons", (T,) uint8: why each observation
+        is where the run left it, a code of ccdcpp.REASONS ("kept" in a
+        segment, "qa", "window_screen", "outlier", ...; docs/diagnostics.md).
+        The codes below ccdcpp.FIRST_DROP are those processing_mask keeps.
 
     Returns a dict: models (one dict per segment, each with a bands list of
     B entries in row order), processing_mask and num_bands, plus band_names
@@ -174,7 +181,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     h, profile = _input("detect", input, spectral, band_names)
     cfg = _configuration("detect", config)
     out = _extension.detect(dates, spectral, qas, input=h, config=cfg._algorithm,
-                            record=record, resume=resume, trace=trace)
+                            record=record, resume=resume, trace=trace, reasons=reasons)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -185,7 +192,7 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
                 record: bool = False, resume: _Mapping[str, _Any] | None = None,
                 band_names: _Sequence[str] | None = None,
                 trace_pixels: _Sequence[tuple[int, int]] | None = None,
-                masks: bool = False) -> results.CubeColumns:
+                masks: bool = False, reasons: bool = False) -> results.CubeColumns:
     """CCD on every pixel of a cube, in parallel, as columns.
 
     dates
@@ -227,6 +234,10 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         [r, c] is pixel (r, c)'s (zeros for a failed pixel). T bytes per
         pixel: each pixel writes its mask into the array as it finishes, and
         the array is returned as it is, without a copy.
+    reasons
+        True to also return "mask_reasons", every pixel's reason codes as
+        detect() returns them, in one (H, W, T) uint8 array as masks= does
+        (len(ccdcpp.REASONS), no code, for a failed pixel).
 
     Returns a dict of arrays with one entry per segment: row, col,
     start_day, end_day, break_day, curve_qa, observation_count,
@@ -240,7 +251,7 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     cfg = _configuration("detect_cube", config)
     out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
-                                 trace_pixels=trace_pixels, masks=masks)
+                                 trace_pixels=trace_pixels, masks=masks, reasons=reasons)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -259,12 +270,14 @@ def to_pixels(out: results.CubeColumns) -> list[results.Pixel]:
     """detect_cube()'s columns as one dict per pixel with a segment, in raster
     order: {"row", "col", "models"}, the models as detect() returns them (each
     with a bands list in row order, every value the column's), and with
-    masks=True its "processing_mask" (its row of the cube's array). A pixel
-    with no segment has no entry, as it has no row in the columns."""
+    masks=True its "processing_mask", with reasons=True its "mask_reasons"
+    (its row of the cube's array). A pixel with no segment has no entry, as it
+    has no row in the columns."""
     pixels: list[results.Pixel] = []
     n = len(out["row"])
     B = int(out["num_bands"])
     masks = out.get("processing_mask")
+    reasons = out.get("mask_reasons")
     i = 0
     while i < n:
         row, col = int(out["row"][i]), int(out["col"][i])
@@ -288,5 +301,7 @@ def to_pixels(out: results.CubeColumns) -> list[results.Pixel]:
         pixel: results.Pixel = {"row": row, "col": col, "models": models}
         if masks is not None:
             pixel["processing_mask"] = masks[row, col]
+        if reasons is not None:
+            pixel["mask_reasons"] = reasons[row, col]
         pixels.append(pixel)
     return pixels

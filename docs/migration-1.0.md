@@ -138,6 +138,7 @@ resumed ['digest', 'format', 'results_version', 'series_end', 'statistics_end']
 | `detect_cube_columns(d, s, q, h, lo, threads)` | `detect_cube(d, s, q, input=h, threads=threads)`: the same columns, names and dtypes |
 | `detect_cube(d, s, q, h, lo, threads)` (a dict per pixel) | `ccdcpp.to_pixels(detect_cube(..., masks=True))` |
 | `keep_masks` (the dicts held each pixel's mask) | `detect_cube(..., masks=True)`: `"processing_mask"`, `(H, W, T)` uint8; `to_pixels` gives each pixel its row |
+| `processing_mask` (1 kept, 0 not) | unchanged; `reasons=True` also returns `"mask_reasons"`, why each observation is where the run left it, and `processing_mask == (mask_reasons < ccdcpp.FIRST_DROP)` ([diagnostics.md](diagnostics.md#reason-codes)) |
 | `resume_record=True` | `record=True` |
 | `resume(d, s, q, h, lo, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, input=h, resume=out)`, `out` the earlier `detect(..., record=True)` |
 | `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)` |
@@ -464,7 +465,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `ccd/procedure/pixel_procedure.hpp` | `ccd/input/procedure.hpp` (`PixelProcedure`, with `PROCEDURES` and `name()`; `PreprocessPlan::of()` is a procedure's plan); `fit_whole_series` is in `ccd/strategies/edge_segments/lasso.hpp`, the `mode` stage's `PixelMode` in `ccd/strategies/stages.hpp` |
 | `ccd/procedure/fit.hpp`, `ccd/procedure/kernels.hpp` | the header of each function's owner: `ccd/results/segment.hpp` (`ChangeModel`, `BandFit`, `FitResult`, `CurveQA`), `ccd/core/window.hpp` (`Window`, `span`), `ccd/strategies/stages.hpp` (`Variogram` is `BandNoise`, the `noise` stage's output), `ccd/strategies/model.hpp` (`KeepResiduals`), `ccd/strategies/model/lasso.hpp` (`fit_bands`, `peek_residuals`, `band_fit`), `ccd/strategies/edge_segments/lasso.hpp` (`catch_segment`, `fit_whole_series`), `ccd/strategies/noise/variogram.hpp` (`adjusted_variogram`), `ccd/strategies/window_screen/tmask.hpp` (`tmask`), `ccd/strategies/pyccd/peek_statistics.hpp` (`adjust_peek`, `adjust_change_threshold`, `change_magnitude`, `SeasonalOrder`, `seasonal_rmse`), `ccd/core/maths.hpp` (`chi2_quantile`); `find_closest_doy`, `calculate_variogram`, `check_variogram`, `enough_time` and `enough_samples` are internal or gone |
 
-`RunSpec` is `{input, algorithm, record, masks, observer, observe}`; `algorithm` is a
+`RunSpec` is `{input, algorithm, record, masks, reasons, observer, observe}`; `algorithm` is a
 compiled configuration (`ccd::Algorithm`, `run/algorithm.hpp`), the `ccdc` preset's
 (`Algorithm::preset("ccdc")`) unless set. The values and QA are views of any supported element
 type (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`).

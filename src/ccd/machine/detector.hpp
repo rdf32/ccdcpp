@@ -239,9 +239,11 @@ struct State
                                               // whole-series fit's too
     PerThread<SegmentReport, Scratch> segment_report;
 
-    // The processing mask when the current start's search began, kept for a
-    // start search that restores it when exhausted (Exhaustion::Restore).
+    // The processing mask (and the reason codes, when the run keeps them)
+    // when the current start's search began, kept for a start search that
+    // restores them when exhausted (Exhaustion::Restore).
     ProcessingMask search_mask;
+    std::vector<std::uint8_t> search_reasons;
 
     // A forced start (Exhaustion::Force) until Extend fits it: the segment
     // the series reports if it ends first.
@@ -274,12 +276,14 @@ struct State
     void bind(const Strategies& strategies);
 
     // Starts a pixel: Prepare, no exit, the series of `pixel` that
-    // `mask` keeps, the cursor at 0, no segments and none carried, the peek
-    // plan cleared, Extend untrained, no suspension.
-    void reset(const PixelSeries& pixel, ProcessingMask mask);
+    // `mask` keeps (with `reasons`, the codes its drops write;
+    // MaskedSeries::reset()), the cursor at 0, no segments and none carried,
+    // the peek plan cleared, Extend untrained, no suspension.
+    void reset(const PixelSeries& pixel, ProcessingMask mask,
+               std::vector<std::uint8_t> reasons = {});
 
-    // The pixel's result once Done: the segments (none after an early exit)
-    // and the processing mask. Moves them out.
+    // The pixel's result once Done: the segments (none after an early exit),
+    // the processing mask and the reason codes. Moves them out.
     FitResult take_result();
 };
 
@@ -484,14 +488,16 @@ public:
     // procedure, under the run's `shared` values: the machine,
     // driven from Prepare to Done with the mode's cap on the segments'
     // coefficients, or edge_segments' whole_series(). The result carries the
-    // mask, after an early exit too.
+    // mask, after an early exit too, and with `reasons` (the preprocessing's
+    // codes, preprocess::apply()) the codes with the machine's drops.
     FitResult fit(
         const PixelMode& mode,
         const PixelSeries& series,
         ProcessingMask mask,
         const config::Shared& shared,
         const Strategies& strategies,
-        Observe observe = {}
+        Observe observe = {},
+        std::vector<std::uint8_t> reasons = {}
     );
 
     // Continues a Standard run that stopped at `from` on a longer series:
@@ -507,7 +513,8 @@ public:
     // its pending grow and Extend when a full peek now fits, or the same
     // provisional segment again. Drives to Done; the result's segments are
     // this run's, after the carried final ones, the last of which ended in a
-    // change when `carried_change`. `from.exit` is one of those four.
+    // change when `carried_change`. `from.exit` is one of those four. With
+    // `reasons`, as fit(); the stored drops' code is Reason::Stored.
     FitResult resume(
         const PixelSeries& series,
         ProcessingMask mask,
@@ -516,7 +523,8 @@ public:
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days,
         Observe observe = {},
-        bool carried_change = false
+        bool carried_change = false,
+        std::vector<std::uint8_t> reasons = {}
     );
 
     // Where the last Standard fit() or resume() stopped; no suspension

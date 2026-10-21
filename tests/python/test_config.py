@@ -449,6 +449,53 @@ class Runs(unittest.TestCase):
         self.assertEqual(list(out["traces"]), [(1, 0)])
         self.assertEqual(out["traces"][(1, 0)], rows)
 
+    def test_reason_codes_say_why_each_observation_left(self):
+        d, s, q = pixel()
+        q[10] = 4                  # cloud: keep_qa drops it
+        s[6, 20] = 9000.0          # thermal out of range
+        s[3, 30] = 20000.0         # nir saturated
+        d[41] = d[40]              # a second observation of a date
+        h = ccdcpp.Input()
+        plain = ccdcpp.detect(d, s, q, input=h)
+        self.assertNotIn("mask_reasons", plain)
+        out = ccdcpp.detect(d, s, q, input=h, reasons=True)
+        self.assertEqual(out["models"], plain["models"])
+        assert "mask_reasons" in out
+        reasons = out["mask_reasons"]
+        self.assertEqual(reasons.dtype, np.uint8)
+        self.assertEqual(reasons.shape, d.shape)
+        names = [ccdcpp.REASONS[c] for c in reasons]
+        self.assertEqual([names[10], names[20], names[30], names[41]],
+                         ["qa", "thermal", "band_range", "duplicate_date"])
+        self.assertEqual(ccdcpp.REASONS[:3], ("kept", "no_fit", "no_segment"))
+        self.assertEqual(ccdcpp.REASONS[ccdcpp.FIRST_DROP], "qa")
+        np.testing.assert_array_equal(reasons < ccdcpp.FIRST_DROP, plain["processing_mask"] == 1)
+        # Kept is in a segment's days; the observer's drops are the machine's codes.
+        days = [(m["start_day"], m["end_day"]) for m in out["models"]]
+        for t in np.flatnonzero(reasons == 0):
+            self.assertTrue(any(a <= d[t] <= b for a, b in days))
+        traced = ccdcpp.detect(d, s, q, input=h, reasons=True, trace=True)
+        assert "trace" in traced
+        drops = {r["day"]: r["outcome"] for r in traced["trace"] if r["kind"] == "drop"}
+        machine = {int(d[t]): names[t] for t in range(d.size)
+                   if reasons[t] >= ccdcpp.REASONS.index("window_screen")}
+        if traced["trace"]:
+            self.assertEqual(drops, machine)
+
+        # A cube's: each pixel's, in one (H, W, T) array; to_pixels() gives each its row.
+        cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
+        qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
+        self.assertNotIn("mask_reasons", ccdcpp.detect_cube(d, cube, qc, input=h, threads=1))
+        cols = ccdcpp.detect_cube(d, cube, qc, input=h, threads=2, reasons=True)
+        assert "mask_reasons" in cols
+        self.assertEqual(cols["mask_reasons"].shape, (2, 2, d.size))
+        for r in range(2):
+            for c in range(2):
+                np.testing.assert_array_equal(cols["mask_reasons"][r, c], reasons)
+        for p in ccdcpp.to_pixels(cols):
+            assert "mask_reasons" in p
+            np.testing.assert_array_equal(p["mask_reasons"], reasons)
+
     def test_an_edge_segment_has_more_observations_than_coefficients(self):
         # A peek below coefficient_min: the first k observations are another cover, so the
         # Start segment holds k. It is written only when k exceeds both the peek (2) and

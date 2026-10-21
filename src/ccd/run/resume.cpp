@@ -173,9 +173,10 @@ PixelOutput Run::resumed(
     const ProcessingMask filtered = pixel.mask;
     out.result = continues
         ? detector.resume(pixel.series, std::move(pixel.mask), shared_, strategies,
-                          from.standard, from.excluded_days, worker.observe, carried_change)
+                          from.standard, from.excluded_days, worker.observe, carried_change,
+                          std::move(pixel.reasons))
         : detector.fit(mode, pixel.series, std::move(pixel.mask), shared_, strategies,
-                       worker.observe);
+                       worker.observe, std::move(pixel.reasons));
     fill_record(out.record, mode.procedure, mode.extra_mask.empty(), detector, filtered,
                 out.result, dates_);
 

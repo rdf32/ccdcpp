@@ -6,6 +6,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "../../core/logger.hpp"
 
@@ -300,16 +301,54 @@ void validate(const PreprocessPlan& plan, index_t bands)
         validate_procedure(name(procedure), plan.of(procedure), bands);
 }
 
+Reason reason_of(StepKind kind)
+{
+    switch (kind)
+    {
+        case StepKind::KeepQa:
+        case StepKind::AddQa:        return Reason::Qa;
+        case StepKind::ThermalRange: return Reason::Thermal;
+        case StepKind::BandRange:    return Reason::BandRange;
+        case StepKind::GreenMedian:  return Reason::Green;
+        case StepKind::OnePerDate:   return Reason::DuplicateDate;
+        case StepKind::Custom:       return Reason::CustomStep;
+    }
+    return Reason::CustomStep;
+}
+
+namespace
+{
+
+// After a step of `kind`: its code where it removed an observation, Kept
+// where it took one back.
+void note_step(StepKind kind, const ProcessingMask& mask, std::vector<std::uint8_t>& reasons)
+{
+    const auto kept = static_cast<std::uint8_t>(Reason::Kept);
+    const auto removed = static_cast<std::uint8_t>(reason_of(kind));
+    for (index_t i = 0; i < mask.size(); ++i)
+    {
+        if (!mask[i] && reasons[i] == kept)
+            reasons[i] = removed;
+        else if (mask[i])
+            reasons[i] = kept;
+    }
+}
+
+} // namespace
+
 void apply(
     const Chain& chain,
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
     ArrayView<const std::uint8_t, 1> qas,
-    ProcessingMask& mask
+    ProcessingMask& mask,
+    std::vector<std::uint8_t>* reasons
 )
 {
     mask.data().assign(dates.size(), static_cast<std::uint8_t>(1));
-    apply_steps(chain, dates, spectral, qas, mask);
+    if (reasons)
+        reasons->assign(dates.size(), static_cast<std::uint8_t>(Reason::Kept));
+    apply_steps(chain, dates, spectral, qas, mask, reasons);
 }
 
 void apply_steps(
@@ -317,11 +356,13 @@ void apply_steps(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
     ArrayView<const std::uint8_t, 1> qas,
-    ProcessingMask& mask
+    ProcessingMask& mask,
+    std::vector<std::uint8_t>* reasons
 )
 {
     assert(chain.count <= CHAIN_CAPACITY);
     assert(mask.size() == dates.size());
+    assert(!reasons || reasons->size() == dates.size());
 
     const index_t T = dates.size();
 
@@ -381,6 +422,8 @@ void apply_steps(
                 step.custom->apply(dates, spectral, qas, mask);
                 break;
         }
+        if (reasons)
+            note_step(step.kind, mask, *reasons);
 
         LOG_DEBUG(
             "Processing Mask after " << name(step.kind) << ": "

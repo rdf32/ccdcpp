@@ -16,9 +16,11 @@ __version__: str
 
 CCD_MAX_BANDS: int
 CHAIN_CAPACITY: int
+FIRST_DROP: int
 NO_BAND: int
 NO_STATISTICS_END: int
 QA_TABLE_SIZE: int
+REASONS: tuple[str, ...]
 RESULTS_VERSION: int
 RESUME_FORMAT: int
 ROLES: tuple[str, ...]
@@ -247,6 +249,7 @@ def detect(
     record: bool = False,
     resume: Mapping[str, Any] | None = None,
     trace: bool = False,
+    reasons: bool = False,
 ) -> PixelResult: ...
 
 def detect_cube(
@@ -261,6 +264,7 @@ def detect_cube(
     resume: Mapping[str, Any] | None = None,
     trace_pixels: Sequence[tuple[int, int]] | None = None,
     masks: bool = False,
+    reasons: bool = False,
 ) -> CubeColumns: ...
 
 def plan_of(config: Algorithm | None, input: Input) -> PreprocessPlan: ...

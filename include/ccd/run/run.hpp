@@ -61,6 +61,11 @@ using CubeQa = std::variant<
 //                       per pixel): detect's FitResult::mask, detect_cube's
 //                       CubeOutput::masks; without it the mask is dropped
 //                       once the pixel is done
+//   reasons             also return each pixel's reason codes (Reason,
+//                       input/processing_mask.hpp; T bytes per pixel): why
+//                       each observation is where the run left it,
+//                       detect's FitResult::reasons, detect_cube's
+//                       CubeOutput::reasons. Without it none is kept
 //   observer, observe   where the observed pixels report each step
 //                       (results/diagnostics.hpp): detect's pixel, or
 //                       detect_cube's pixels at the flat indices `observe`
@@ -77,6 +82,7 @@ struct RunSpec
     AlgorithmPtr algorithm = Algorithm::preset("ccdc");
     bool record = false;
     bool masks = false;
+    bool reasons = false;
     std::shared_ptr<Observer> observer = nullptr;
     std::vector<index_t> observe;
 };
@@ -135,7 +141,9 @@ struct CubeFailure
 // (H, W, T) array, row-major: each pixel's T bytes are written into it as the
 // pixel finishes, and its CubePixel::result.mask stays empty, so the masks
 // take T bytes per pixel once. A failed pixel's are zeros. Without
-// RunSpec::masks `masks` is empty.
+// RunSpec::masks `masks` is empty. The same with RunSpec::reasons for
+// `reasons`, every pixel's reason codes, a failed pixel's REASON_COUNT (no
+// code).
 //
 //==============================================================================
 
@@ -158,6 +166,16 @@ struct CubeOutput
     {
         return ArrayView<const std::uint8_t, 1>::contiguous(
             masks.data() + (row * width + col) * timesteps, {timesteps});
+    }
+
+    // Every pixel's reason codes, (H, W, T), with RunSpec::reasons.
+    std::vector<std::uint8_t> reasons;
+
+    // The reason codes of pixel (row, col): T values of `reasons`.
+    ArrayView<const std::uint8_t, 1> reasons_of(index_t row, index_t col) const
+    {
+        return ArrayView<const std::uint8_t, 1>::contiguous(
+            reasons.data() + (row * width + col) * timesteps, {timesteps});
     }
 
     // The call's resume header (RunSpec::record, or a resume).

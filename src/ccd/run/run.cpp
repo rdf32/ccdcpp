@@ -141,6 +141,29 @@ ArrayView<const scalar_t, 2> pixel_values(
     return ArrayView<const scalar_t, 2>::contiguous(buffer.data(), {B, T});
 }
 
+// Step 6, with RunSpec::reasons: the code of each kept observation of
+// `result`, Reason::Kept inside a segment's days, Reason::NoFit after the
+// last segment of a pixel whose machine ended in Exit::NoFit (`no_fit`),
+// Reason::NoSegment otherwise. The segments are in date order.
+void settle_reasons(FitResult& result, ArrayView<const std::int64_t, 1> dates, bool no_fit)
+{
+    const std::vector<ChangeModel>& models = result.models;
+    const auto kept = static_cast<std::uint8_t>(Reason::Kept);
+    std::size_t m = 0;
+    for (index_t t = 0; t < dates.size(); ++t)
+    {
+        if (result.reasons[t] != kept)
+            continue;
+        const std::int64_t day = dates(t);
+        while (m < models.size() && models[m].end_day < day)
+            ++m;
+        if (m < models.size() && models[m].start_day <= day)
+            continue;
+        result.reasons[t] = static_cast<std::uint8_t>(
+            no_fit && m == models.size() ? Reason::NoFit : Reason::NoSegment);
+    }
+}
+
 } // namespace
 
 //==============================================================================
@@ -219,14 +242,16 @@ PreparedPixel Run::prepare(
 
     const preprocess::ProcedurePlan& steps = run_plan_.of(mode.procedure);
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
-    PreparedPixel pixel{std::move(mode), PixelSeries(dates_, values, qas), ProcessingMask()};
+    PreparedPixel pixel{std::move(mode), PixelSeries(dates_, values, qas), ProcessingMask(), {}};
     const PixelSeries& series = pixel.series;
     LOG_DEBUG("initial spectral: " << series.spectral());
 
-    preprocess::apply(steps.chain, series.dates(), series.spectral(), series.qas(), pixel.mask);
+    std::vector<std::uint8_t>* reasons = spec_.reasons ? &pixel.reasons : nullptr;
+    preprocess::apply(steps.chain, series.dates(), series.spectral(), series.qas(), pixel.mask,
+                      reasons);
     if (!pixel.mode.extra_mask.empty())
         preprocess::apply_steps(pixel.mode.extra_mask, series.dates(), series.spectral(),
-                                series.qas(), pixel.mask);
+                                series.qas(), pixel.mask, reasons);
     return pixel;
 }
 
@@ -239,7 +264,7 @@ PixelOutput Run::fresh(PreparedPixel& pixel, Worker& worker) const
     // The record keeps the mask the chain built; the fit takes it.
     const ProcessingMask filtered = spec_.record ? pixel.mask : ProcessingMask();
     out.result = detector.fit(pixel.mode, pixel.series, std::move(pixel.mask), shared_,
-                              resolved_->strategies, worker.observe);
+                              resolved_->strategies, worker.observe, std::move(pixel.reasons));
     if (spec_.record)
         fill_record(out.record, pixel.mode.procedure, pixel.mode.extra_mask.empty(), detector,
                     filtered, out.result, dates_);
@@ -283,6 +308,10 @@ PixelOutput Run::pixel(
         out.record.input_fingerprint = fingerprint(header_.series_end);
         out.record.procedure = prepared.mode.procedure;
     }
+    if (spec_.reasons)
+        settle_reasons(out.result, dates_,
+                       prepared.mode.procedure == PixelProcedure::Standard &&
+                           worker.detector.exit() == machine::Exit::NoFit);
     if (!spec_.masks)
         out.result.mask = ProcessingMask();
     return out;

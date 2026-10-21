@@ -195,6 +195,20 @@ constexpr const char* dtype_name()
     }
 }
 
+// A cube's (H, W, T) bytes as an array whose memory they become, without a
+// copy.
+py::array_t<std::uint8_t> cube_bytes(std::vector<std::uint8_t>&& bytes, index_t H, index_t W,
+                                     index_t T)
+{
+    auto* held = new std::vector<std::uint8_t>(std::move(bytes));
+    const py::capsule owner(
+        held, [](void* p) { delete static_cast<std::vector<std::uint8_t>*>(p); });
+    return py::array_t<std::uint8_t>(
+        std::vector<py::ssize_t>{static_cast<py::ssize_t>(H), static_cast<py::ssize_t>(W),
+                                 static_cast<py::ssize_t>(T)},
+        held->data(), owner);
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------
@@ -362,6 +376,11 @@ ccd::PixelRecord record_from_python(const py::dict& d)
 //                                          observation is kept; zeros for a
 //                                          failed pixel. The run's
 //                                          CubeOutput::masks, not copied.
+//   mask_reasons          uint8 [H, W, T]  with reasons=True only: [r, c] is
+//                                          pixel (r, c)'s reason codes
+//                                          (REASONS); REASON_COUNT for a
+//                                          failed pixel. CubeOutput::reasons,
+//                                          not copied.
 //
 // A pixel can produce zero segments, which is neither an error nor a
 // failure: one whose observations are all fill, NaN, zero or cloud is in no
@@ -384,7 +403,8 @@ py::dict segment_columns(
     index_t W,
     index_t B,
     index_t T,
-    bool masks
+    bool masks,
+    bool reasons
 )
 {
     std::size_t n = 0;
@@ -476,17 +496,9 @@ py::dict segment_columns(
     output["pixels_with_segments"] = static_cast<std::int64_t>(with_segments);
 
     if (masks)
-    {
-        // The cube's (H, W, T) masks become the array's memory, without a copy.
-        auto* held = new std::vector<std::uint8_t>(std::move(cube.masks));
-        const py::capsule owner(
-            held, [](void* p) { delete static_cast<std::vector<std::uint8_t>*>(p); });
-        output["processing_mask"] = py::array_t<std::uint8_t>(
-            std::vector<py::ssize_t>{static_cast<py::ssize_t>(H),
-                                     static_cast<py::ssize_t>(W),
-                                     static_cast<py::ssize_t>(T)},
-            held->data(), owner);
-    }
+        output["processing_mask"] = cube_bytes(std::move(cube.masks), H, W, T);
+    if (reasons)
+        output["mask_reasons"] = cube_bytes(std::move(cube.reasons), H, W, T);
     return output;
 }
 

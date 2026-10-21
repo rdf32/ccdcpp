@@ -16,8 +16,9 @@ namespace ccd
 // Segments
 //
 // What a run reports of one pixel: its segments (ChangeModel), each with one
-// fit per band (BandFit) and its curve QA, and the processing mask they were
-// fitted under (FitResult).
+// fit per band (BandFit) and its curve QA, the processing mask they were
+// fitted under and, when asked for, each observation's reason code
+// (FitResult).
 //
 //==============================================================================
 
@@ -78,10 +79,13 @@ struct ChangeModel {
     std::vector<BandFit> bands;
 };
 
+// `reasons`, with RunSpec::reasons: T codes (Reason, input/processing_mask.hpp)
+// saying why each observation is where the run left it; empty otherwise.
 struct FitResult
 {
     std::vector<ChangeModel> models;
     ProcessingMask mask;
+    std::vector<std::uint8_t> reasons;
 };
 
 } // namespace ccd

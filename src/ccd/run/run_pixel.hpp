@@ -48,9 +48,11 @@ namespace ccd
 //                    pixel's procedure
 //   values           the pixel's (B, T) as scalar_t, with its procedure's
 //                    transform (read in place when nothing needs changing)
-//   mask             its procedure's chain: the processing mask
+//   mask             its procedure's chain: the processing mask (and with
+//                    RunSpec::reasons the preprocessing's reason codes)
 //   fit              the change detector, or a resume of the stored run
-//   finish           the record for the next resume
+//   finish           the record for the next resume, and the reason codes
+//                    of the kept observations no segment holds
 //
 // Run::prepare() makes the first four, into a PreparedPixel; Run::fresh()
 // (no resume) or Run::resumed() the last two.
@@ -86,7 +88,8 @@ struct Worker
 //
 // One pixel after the first four steps: its mode, its series (the dates, its
 // values and its QA codes, in place or in the Worker's buffers) and its
-// processing mask, which the fit takes.
+// processing mask, which the fit takes, with its reason codes
+// (RunSpec::reasons; empty otherwise).
 //
 //------------------------------------------------------------------------------
 struct PreparedPixel
@@ -94,6 +97,7 @@ struct PreparedPixel
     PixelMode mode;
     PixelSeries series;
     ProcessingMask mask;
+    std::vector<std::uint8_t> reasons;
 };
 
 //------------------------------------------------------------------------------

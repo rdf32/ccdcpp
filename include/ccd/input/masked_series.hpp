@@ -113,6 +113,10 @@ void apply_mask(
 //
 //     a window bound above the dropped position moves down by one.
 //
+// With reason codes (reset()'s `reasons`), each drop also writes why at the
+// dropped observation's index in the pixel's series: they stay Reason::Kept
+// exactly where mask() keeps.
+//
 // The buffers keep their capacity across reset(), so a MaskedSeries reused
 // across pixels stops allocating.
 //
@@ -122,8 +126,11 @@ class MaskedSeries
 {
 public:
 
-    // The observations of `pixel` that `mask` keeps.
-    void reset(const PixelSeries& pixel, ProcessingMask mask);
+    // The observations of `pixel` that `mask` keeps, and with `reasons` (T
+    // codes, Reason::Kept where `mask` keeps) the codes the drops write; none
+    // when it is empty.
+    void reset(const PixelSeries& pixel, ProcessingMask mask,
+               std::vector<std::uint8_t> reasons = {});
 
     index_t size() const
     {
@@ -151,16 +158,22 @@ public:
         return mask_;
     }
 
+    // The reason codes (reset()), empty without them.
+    const std::vector<std::uint8_t>& reasons() const
+    {
+        return reasons_;
+    }
+
     // The number of leading observations dated on or before `day`. Dates are
     // non-decreasing, so these are exactly the observations dated <= day.
     index_t count_until(std::int64_t day) const;
 
-    // Drops the observation at `position` and moves `window` with the
-    // observations after it.
-    void drop(index_t position, Window& window);
+    // Drops the observation at `position`, for `why`, and moves `window`
+    // with the observations after it.
+    void drop(index_t position, Window& window, Reason why);
 
-    // Drops the observations `outliers` flags in `window`, if what is left of
-    // the window passes `accept`.
+    // Drops the observations `outliers` flags in `window`, for `why`, if what
+    // is left of the window passes `accept`.
     //
     // outliers[j] flags position window.start + j, so every flagged position
     // is inside the window (outliers.size() == window.size()). The series
@@ -173,6 +186,7 @@ public:
     bool drop_outliers_if(
         const ProcessingMask& outliers,
         Window& window,
+        Reason why,
         Accept&& accept
     )
     {
@@ -190,7 +204,7 @@ public:
         if (!accept(shortened_dates))
             return false;
 
-        commit_without(outliers, window.start);
+        commit_without(outliers, window.start, why);
         window = shortened;
         return true;
     }
@@ -198,16 +212,21 @@ public:
     // Moves the mask out. The series is empty until the next reset().
     ProcessingMask take_mask();
 
+    // Moves the reason codes out (empty without them).
+    std::vector<std::uint8_t> take_reasons();
+
 private:
 
     // kept_ without the positions offset + j that outliers[j] flags, into
     // candidate_.
     void build_without(const ProcessingMask& outliers, index_t offset);
 
-    // Clears those positions in mask_ and makes candidate_ the kept data.
-    void commit_without(const ProcessingMask& outliers, index_t offset);
+    // Clears those positions in mask_, writing `why` at them in reasons_,
+    // and makes candidate_ the kept data.
+    void commit_without(const ProcessingMask& outliers, index_t offset, Reason why);
 
     ProcessingMask mask_;
+    std::vector<std::uint8_t> reasons_;   // T codes, or none
     MaskedData kept_;        // apply_mask(workspace, mask_)
     MaskedData candidate_;   // drop_outliers_if()'s tentative removal
 };

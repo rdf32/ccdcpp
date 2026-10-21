@@ -12,15 +12,17 @@ namespace
 
 //------------------------------------------------------------------------------
 // Clears in `mask` the entry of each masked position offset + j that
-// outliers[j] flags.
+// outliers[j] flags, writing `why` there in `reasons` when it holds codes.
 //
 // Walks the kept observations, counting masked positions. Clearing the
 // current entry after testing it leaves the count of the rest unchanged.
 //------------------------------------------------------------------------------
 void clear_outliers(
     ProcessingMask& mask,
+    std::vector<std::uint8_t>& reasons,
     const ProcessingMask& outliers,
-    index_t offset
+    index_t offset,
+    Reason why
 )
 {
     index_t masked = 0;
@@ -34,17 +36,22 @@ void clear_outliers(
             outliers[masked - offset])
         {
             mask.set(i, false);
+            if (!reasons.empty())
+                reasons[i] = static_cast<std::uint8_t>(why);
         }
         ++masked;
     }
 }
 
 //------------------------------------------------------------------------------
-// Clears in `mask` the entry of masked position `position`.
+// Clears in `mask` the entry of masked position `position`, writing `why`
+// there in `reasons` when it holds codes.
 //------------------------------------------------------------------------------
 void clear_position(
     ProcessingMask& mask,
-    index_t position
+    std::vector<std::uint8_t>& reasons,
+    index_t position,
+    Reason why
 )
 {
     index_t masked = 0;
@@ -56,6 +63,8 @@ void clear_position(
         if (masked == position)
         {
             mask.set(i, false);
+            if (!reasons.empty())
+                reasons[i] = static_cast<std::uint8_t>(why);
             return;
         }
         ++masked;
@@ -114,9 +123,12 @@ void apply_mask(
     }
 }
 
-void MaskedSeries::reset(const PixelSeries& pixel, ProcessingMask mask)
+void MaskedSeries::reset(const PixelSeries& pixel, ProcessingMask mask,
+                         std::vector<std::uint8_t> reasons)
 {
+    assert(reasons.empty() || reasons.size() == mask.size());
     mask_ = std::move(mask);
+    reasons_ = std::move(reasons);
     apply_mask(pixel, mask_, kept_);
 }
 
@@ -128,11 +140,11 @@ index_t MaskedSeries::count_until(std::int64_t day) const
     return static_cast<index_t>(std::upper_bound(first, last, day) - first);
 }
 
-void MaskedSeries::drop(index_t position, Window& window)
+void MaskedSeries::drop(index_t position, Window& window, Reason why)
 {
     assert(position < size());
 
-    clear_position(mask_, position);
+    clear_position(mask_, reasons_, position, why);
     kept_.erase(position);
 
     if (window.start > position)
@@ -176,9 +188,9 @@ void MaskedSeries::build_without(const ProcessingMask& outliers, index_t offset)
     }
 }
 
-void MaskedSeries::commit_without(const ProcessingMask& outliers, index_t offset)
+void MaskedSeries::commit_without(const ProcessingMask& outliers, index_t offset, Reason why)
 {
-    clear_outliers(mask_, outliers, offset);
+    clear_outliers(mask_, reasons_, outliers, offset, why);
     std::swap(kept_, candidate_);
 
     assert(size() == mask_.count());
@@ -191,6 +203,11 @@ ProcessingMask MaskedSeries::take_mask()
     kept_.observations = 0;
 
     return std::move(mask_);
+}
+
+std::vector<std::uint8_t> MaskedSeries::take_reasons()
+{
+    return std::move(reasons_);
 }
 
 } // namespace ccd

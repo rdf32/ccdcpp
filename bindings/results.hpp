@@ -27,15 +27,17 @@ py::dict record_to_python(const ccd::PixelRecord& record);
 ccd::PixelRecord record_from_python(const py::dict& record);
 
 // detect_cube()'s output: one row per (pixel, segment), its counts and, with
-// `masks`, the cube's processing masks (moved out of `cube`); and back, the
-// stored segments of each of the H x W pixels, raster order.
+// `masks`, the cube's processing masks, with `reasons` its reason codes
+// (moved out of `cube`); and back, the stored segments of each of the H x W
+// pixels, raster order.
 py::dict segment_columns(
     ccd::CubeOutput& cube,
     ccd::index_t H,
     ccd::index_t W,
     ccd::index_t B,
     ccd::index_t T,
-    bool masks
+    bool masks,
+    bool reasons
 );
 std::vector<std::vector<ccd::ChangeModel>> segments_from_columns(
     const py::dict& segments,

@@ -51,12 +51,13 @@ its replacement.
   derived from probabilities. It is checked and compiled when built (`ccd::Algorithm`) and
   resolved once per input.
 - **Python: two calls.** `detect(dates, spectral, qas, *, input, config="ccdc", record=False,
-  resume=None, band_names=None, trace=False)` and `detect_cube(..., *, input, config="ccdc",
-  threads=0, record=False, resume=None, band_names=None, trace_pixels=None, masks=False)`, which
+  resume=None, band_names=None, trace=False, reasons=False)` and `detect_cube(..., *, input,
+  config="ccdc", threads=0, record=False, resume=None, band_names=None, trace_pixels=None,
+  masks=False, reasons=False)`, which
   returns 0.10.0's `detect_cube_columns` columns, names and dtypes unchanged; `resume=` is an
   earlier call's output.
 - **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{input,
-  algorithm, record, masks, observer, observe}` on views of float64, float32 or uint16 values,
+  algorithm, record, masks, reasons, observer, observe}` on views of float64, float32 or uint16 values,
   replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
   overloads. `RunSpec::masks` is off by default (0.10.0's `keep_masks` was on).
 - **Profiles describe the data only**: `SensorProfile(name, band_names, roles, units, thermal,
@@ -129,6 +130,13 @@ its replacement.
 - Diagnostics ([docs/diagnostics.md](docs/diagnostics.md)): `ccd::Observer`,
   `ccd::TextObserver`, `detect(trace=True)` and `detect_cube(trace_pixels=)`, compiled out with
   `CCD_OBSERVE=OFF`.
+- Reason codes: `reasons=True` (`RunSpec::reasons`) returns `"mask_reasons"`, one code per
+  observation saying why it is where the run left it: kept in a segment, kept after a model that
+  could not be fitted (`no_fit`) or in no segment, or the preprocessing step (`qa`, `thermal`,
+  `band_range`, `green`, `duplicate_date`, `custom_step`) or the machine's stage
+  (`window_screen`, `lookback_outlier`, `outlier`, `before_change`, `stored`) that removed it;
+  `ccdcpp.REASONS` names them, `ccd::Reason` in C++. The processing mask is the codes below
+  `ccdcpp.FIRST_DROP`. Off by default; the default outputs do not change.
 - `Input.saturation_code` and `thermal_saturation_code`, declared by `landsat_c1_dn()` (20000);
   [docs/units.md](docs/units.md) lists which products store one.
 - Types: `py.typed`, `ccdcpp.pyi`, `qa_tables.pyi`, and the results as `TypedDict`s in

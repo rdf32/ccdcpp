@@ -53,6 +53,15 @@ Peek peek_of(const Context& context, const State& state)
                     state.noise, context.shared.detection_bands};
 }
 
+// Drops the observation at `position` for `why`, told to the observer, and
+// moves `window` with the observations after it.
+void drop(const Context& context, State& state, index_t position, Window& window, Reason why)
+{
+    CCD_OBSERVE_EVENT(context.observe, day_event(ObserverEvent::Kind::Drop,
+                                                 state.series.dates()(position), name(why)));
+    state.series.drop(position, window, why);
+}
+
 } // namespace
 
 //==============================================================================
@@ -133,12 +142,13 @@ const char* to_string(Exit exit)
     return "?";
 }
 
-void State::reset(const PixelSeries& pixel, ProcessingMask mask)
+void State::reset(const PixelSeries& pixel, ProcessingMask mask,
+                  std::vector<std::uint8_t> reasons)
 {
     phase = Phase::Prepare;
     exit = Exit::None;
 
-    series.reset(pixel, std::move(mask));
+    series.reset(pixel, std::move(mask), std::move(reasons));
     cursor = Cursor{};
     segments.clear();
     carried = 0;
@@ -175,6 +185,7 @@ FitResult State::take_result()
     FitResult result;
     result.models = std::move(segments);
     result.mask = series.take_mask();
+    result.reasons = series.take_reasons();
     return result;
 }
 
@@ -375,7 +386,10 @@ Phase begin_search(const Context& context, State& state)
     if (!state.search.resumable)
         state.resumable = false;
     if (state.search.exhausted == Exhaustion::Restore)
+    {
         state.search_mask = state.series.mask();
+        state.search_reasons = state.series.reasons();
+    }
     return Phase::Initialize;
 }
 
@@ -412,6 +426,15 @@ Screened screen_window(const Context& context, State& state,
     if (!outliers.any())
         return Screened::Kept;
 
+#if CCD_OBSERVE
+    // The outliers' days, for the observer, before a drop moves them.
+    std::vector<std::int64_t> days;
+    if (context.observe.observer)
+        for (index_t j = 0; j < outliers.size(); ++j)
+            if (outliers[j])
+                days.push_back(dates(j));
+#endif
+
     //--------------------------------------------------------------------------
     // Update persistent mask: drop them only if the shortened window is still
     // usable; otherwise grow, with nothing dropped
@@ -419,11 +442,18 @@ Screened screen_window(const Context& context, State& state,
     const bool dropped = state.series.drop_outliers_if(
         outliers,
         window,
+        Reason::WindowScreen,
         [&search](ArrayView<const std::int64_t, 1> shortened)
         {
             return search.usable(shortened);
         }
     );
+#if CCD_OBSERVE
+    if (dropped)
+        for (const std::int64_t day : days)
+            CCD_OBSERVE_EVENT(context.observe, day_event(ObserverEvent::Kind::Drop, day,
+                                                         name(Reason::WindowScreen)));
+#endif
     return dropped ? Screened::Dropped : Screened::Rejected;
 }
 
@@ -562,7 +592,7 @@ Phase initialize(const Context& context, State& state)
                     return peek_guard(context, state);
                 case Exhaustion::Restore:
                     // The window screen's drops of this search come back.
-                    state.series.reset(context.pixel, state.search_mask);
+                    state.series.reset(context.pixel, state.search_mask, state.search_reasons);
                     state.resumable = false;
                     break;
                 case Exhaustion::End:
@@ -601,10 +631,7 @@ LookbackOutcome lookback_step(const Context& context, State& state)
         case LookbackVerdict::Drop:
             // The window moves down one position with the observations after
             // the dropped one.
-            CCD_OBSERVE_EVENT(context.observe,
-                              day_event(ObserverEvent::Kind::Drop,
-                                        series.dates()(judged.observation), "lookback outlier"));
-            series.drop(judged.observation, window);
+            drop(context, state, judged.observation, window, Reason::LookbackOutlier);
             return LookbackOutcome::Dropped;
         case LookbackVerdict::Include:
             window.start = judged.observation;
@@ -895,10 +922,7 @@ ExtendOutcome after_no_change(const Context& context, State& state, const Peek& 
         // other bands are this test's, before the drop moves the peek.
         if (window.stop + shortest > series.size() - 1)
             complete_models(context, state);
-        CCD_OBSERVE_EVENT(context.observe, day_event(ObserverEvent::Kind::Drop,
-                                                     series.dates()(peek_window.start),
-                                                     "outlier"));
-        series.drop(peek_window.start, window);
+        drop(context, state, peek_window.start, window, Reason::Outlier);
         return ExtendOutcome::Dropped;
     }
     // A peek too short for the outlier rule to tell: the curve ends here.
@@ -1010,12 +1034,7 @@ Phase on_change(const Context& context, State& state)
     if (at > first)
         state.resumable = false;   // the record keeps no drops before a change
     for (index_t t = first; t < at; ++t)
-    {
-        CCD_OBSERVE_EVENT(context.observe,
-                          day_event(ObserverEvent::Kind::Drop, state.series.dates()(first),
-                                    "before change"));
-        state.series.drop(first, state.cursor.window);
-    }
+        drop(context, state, first, state.cursor.window, Reason::BeforeChange);
     return Phase::Restart;
 }
 
@@ -1217,19 +1236,24 @@ FitResult Detector::fit(
     ProcessingMask mask,
     const config::Shared& shared,
     const Strategies& strategies,
-    Observe observe
+    Observe observe,
+    std::vector<std::uint8_t> reasons
 )
 {
     state_.bind(strategies);
     if (mode.procedure != PixelProcedure::Standard)
-        return strategies.edge_segments->whole_series(mode.procedure, series, std::move(mask),
-                                                      *state_.edges);
+    {
+        FitResult result = strategies.edge_segments->whole_series(
+            mode.procedure, series, std::move(mask), *state_.edges);
+        result.reasons = std::move(reasons);
+        return result;
+    }
 
     LOG_DEBUG("Standard");
     const Context context{shared, series, strategies, observe, mode.max_coefficients};
     State& state = state_;
 
-    state.reset(series, std::move(mask));
+    state.reset(series, std::move(mask), std::move(reasons));
     if (context.max_coefficients > 0)
         state.resumable = false;   // a resume does not cap
     drive(context, state);
@@ -1311,7 +1335,7 @@ void replay_drops(State& state, const std::vector<std::int64_t>& excluded_days)
             throw std::invalid_argument(
                 "the resume record's dropped day " + std::to_string(*day) +
                 " is not an observation the filters keep");
-        state.series.drop(static_cast<index_t>(at - begin), unused);
+        state.series.drop(static_cast<index_t>(at - begin), unused, Reason::Stored);
     }
 }
 
@@ -1371,14 +1395,15 @@ FitResult Detector::resume(
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days,
     Observe observe,
-    bool carried_change
+    bool carried_change,
+    std::vector<std::uint8_t> reasons
 )
 {
     const Context context{shared, series, strategies, observe};
     State& state = state_;
 
     state.bind(strategies);
-    state.reset(series, std::move(mask));
+    state.reset(series, std::move(mask), std::move(reasons));
     // The statistics are the stored run's, and the series is no shorter, so
     // Prepare neither exits early nor computes other values: it reads the
     // series before any drop, as the stored run's did. Should it exit early

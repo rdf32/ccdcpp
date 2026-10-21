@@ -5,7 +5,7 @@ plain ``dict``.
 A key marked ``NotRequired`` is present only when the call asks for it: ``band_names`` with a
 profile, ``resume`` and ``resume_header`` with ``record=True`` or ``resume=``, ``status`` and
 ``counts`` with ``resume=``, ``trace`` / ``traces`` with ``trace=True`` / ``trace_pixels=``, the
-cube's ``processing_mask`` with ``masks=True``.
+cube's ``processing_mask`` with ``masks=True``, ``mask_reasons`` with ``reasons=True``.
 """
 from __future__ import annotations
 
@@ -123,6 +123,8 @@ class PixelResult(TypedDict):
     models: list[Model]
     #: (T,) uint8: 1 where the observation is kept
     processing_mask: NDArray[np.uint8]
+    #: (T,) uint8, with reasons=True: each observation's code in ccdcpp.REASONS
+    mask_reasons: NotRequired[NDArray[np.uint8]]
     num_bands: int
     band_names: NotRequired[tuple[str, ...]]
     resume: NotRequired[PixelRecord]
@@ -158,6 +160,8 @@ class CubeColumns(TypedDict):
     pixels_with_segments: int
     #: (H, W, T) uint8, with masks=True
     processing_mask: NotRequired[NDArray[np.uint8]]
+    #: (H, W, T) uint8, with reasons=True
+    mask_reasons: NotRequired[NDArray[np.uint8]]
     band_names: NotRequired[tuple[str, ...]]
     resume: NotRequired[CubeRecord]
     resume_header: NotRequired[ResumeHeader]
@@ -167,9 +171,10 @@ class CubeColumns(TypedDict):
 
 class Pixel(TypedDict):
     """One pixel of ``ccdcpp.to_pixels()``: its address and models, and with masks=True its
-    processing mask."""
+    processing mask, with reasons=True its reason codes."""
 
     row: int
     col: int
     models: list[Model]
     processing_mask: NotRequired[NDArray[np.uint8]]
+    mask_reasons: NotRequired[NDArray[np.uint8]]

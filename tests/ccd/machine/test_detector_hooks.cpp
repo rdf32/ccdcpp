@@ -161,6 +161,7 @@ TEST(MachineHooks, AnUndecidedTestEndsTheSeries)
 TEST(MachineHooks, ABreakIntoThePeekDropsTheObservationsBeforeIt)
 {
     Record r(80);
+    r.with_reasons();
     with_hooks(r, 0, 40, [](HookTest& t) { t.change = true; t.skip = 2; });
     EXPECT_EQ(r.step(), Phase::Restart);
     ASSERT_EQ(r.state.segments.size(), 1u);
@@ -174,6 +175,10 @@ TEST(MachineHooks, ABreakIntoThePeekDropsTheObservationsBeforeIt)
     EXPECT_EQ(r.state.series.dates()(40), r.dates[42]);
     EXPECT_EQ(r.state.cursor.window.start, 0u);
     EXPECT_EQ(r.state.cursor.window.stop, 40u);
+    // Their code is BeforeChange.
+    std::vector<std::uint8_t> reasons(80, static_cast<std::uint8_t>(ccd::Reason::Kept));
+    reasons[40] = reasons[41] = static_cast<std::uint8_t>(ccd::Reason::BeforeChange);
+    EXPECT_EQ(r.state.series.reasons(), reasons);
 }
 
 // pyccd's outlier rule, or EndSeries at every test.
@@ -301,6 +306,7 @@ TEST(MachineHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
 TEST(MachineHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
 {
     Record r(80);
+    r.with_reasons();
     r.strategies.start_search =
         std::make_shared<Forcing>(r.strategies.start_search, ccd::Exhaustion::Restore);
     r.with_variogram(kVariogram);
@@ -308,14 +314,18 @@ TEST(MachineHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
     // of at least min_window (12) observations.
     r.at(60, 73, 60);
     EXPECT_EQ(ccd::machine::begin_search(r.context, r.state), Phase::Initialize);
-    r.state.series.drop(65, r.state.cursor.window);   // as a window screen's
+    r.state.series.drop(65, r.state.cursor.window, ccd::Reason::WindowScreen);   // as a window screen's
     ASSERT_EQ(r.state.series.size(), 79u);
+    ASSERT_EQ(r.state.series.reasons()[65], static_cast<std::uint8_t>(ccd::Reason::WindowScreen));
     ASSERT_EQ(r.state.cursor.window.size(), r.strategies.start_search->min_window());
 
     r.state.phase = Phase::Initialize;
     EXPECT_EQ(r.step(), Phase::EndCatch);
     EXPECT_EQ(r.state.exit, Exit::InitializeExhausted);
     EXPECT_EQ(r.state.series.size(), 80u);
+    // Its reason codes come back with it.
+    EXPECT_EQ(r.state.series.reasons(),
+              std::vector<std::uint8_t>(80, static_cast<std::uint8_t>(ccd::Reason::Kept)));
     EXPECT_FALSE(r.state.resumable);
 }
 

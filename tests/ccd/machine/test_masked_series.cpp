@@ -131,7 +131,7 @@ TEST(MaskedSeries, DropsKeepMaskAndObservationsInStep)
         const std::int64_t gone = s.dates()(position);
         const std::int64_t next = s.dates()(position + 1);
 
-        s.drop(position, w);
+        s.drop(position, w, ccd::Reason::Outlier);
         expect_in_step(ws, s);
 
         // The observation after it takes its position.
@@ -152,7 +152,7 @@ TEST(MaskedSeries, DropMovesTheWindowWithTheObservations)
     const auto dropped = [&](index_t position, ccd::Window w)
     {
         s.reset(ws, thinned(px.T));
-        s.drop(position, w);
+        s.drop(position, w, ccd::Reason::Outlier);
         return std::make_pair(w.start, w.stop);
     };
 
@@ -185,7 +185,7 @@ TEST(MaskedSeries, RejectedOutlierDropChangesNothing)
     outliers.set(9, true);
 
     std::vector<std::int64_t> asked;
-    const bool dropped = s.drop_outliers_if(outliers, w,
+    const bool dropped = s.drop_outliers_if(outliers, w, ccd::Reason::WindowScreen,
         [&](ccd::ArrayView<const std::int64_t, 1> shortened)
         {
             asked = to_vector(shortened);
@@ -224,7 +224,7 @@ TEST(MaskedSeries, AcceptedOutlierDropCommitsMaskObservationsAndWindow)
     outliers.set(3, true);
     outliers.set(9, true);
 
-    const bool dropped = s.drop_outliers_if(outliers, w,
+    const bool dropped = s.drop_outliers_if(outliers, w, ccd::Reason::WindowScreen,
         [](ccd::ArrayView<const std::int64_t, 1>) { return true; });
 
     EXPECT_TRUE(dropped);
@@ -263,6 +263,46 @@ TEST(MaskedSeries, CountUntilAndTakeMask)
     EXPECT_EQ(taken.size(), px.T);
     EXPECT_EQ(taken.count(), px.T);
     EXPECT_EQ(s.size(), 0u);
+}
+
+// With reason codes, each drop writes its reason at the dropped observation's
+// index in the pixel's series; the codes stay Kept exactly where the mask
+// keeps. Without them nothing is written.
+TEST(MaskedSeries, DropsWriteTheirReasonAtTheSeriesIndex)
+{
+    const Pixel px(40);
+    const auto ws = px.workspace();
+    const ccd::ProcessingMask mask = thinned(px.T);
+    const auto kept = static_cast<std::uint8_t>(ccd::Reason::Kept);
+    std::vector<std::uint8_t> reasons(px.T, kept);
+    for (index_t t = 0; t < px.T; ++t)
+        if (!mask[t])
+            reasons[t] = static_cast<std::uint8_t>(ccd::Reason::Qa);
+
+    ccd::MaskedSeries s;
+    s.reset(ws, mask, reasons);
+    ccd::Window w(4, 14);
+    ccd::ProcessingMask outliers(w.size());
+    outliers.set(3, true);
+    ASSERT_TRUE(s.drop_outliers_if(outliers, w, ccd::Reason::WindowScreen,
+                                   [](ccd::ArrayView<const std::int64_t, 1>) { return true; }));
+    s.drop(0, w, ccd::Reason::LookbackOutlier);
+
+    std::vector<index_t> kept_at;   // the series index of each masked position
+    for (index_t t = 0; t < px.T; ++t)
+        if (mask[t])
+            kept_at.push_back(t);
+    std::vector<std::uint8_t> expected = reasons;
+    expected[kept_at[7]] = static_cast<std::uint8_t>(ccd::Reason::WindowScreen);
+    expected[kept_at[0]] = static_cast<std::uint8_t>(ccd::Reason::LookbackOutlier);
+    EXPECT_EQ(s.reasons(), expected);
+    for (index_t t = 0; t < px.T; ++t)
+        EXPECT_EQ(s.reasons()[t] == kept, s.mask()[t]) << t;
+    EXPECT_EQ(s.take_reasons(), expected);
+
+    s.reset(ws, mask);
+    s.drop(0, w, ccd::Reason::Outlier);
+    EXPECT_TRUE(s.reasons().empty());
 }
 
 TEST(BandNoise, ReadsAndUsable)

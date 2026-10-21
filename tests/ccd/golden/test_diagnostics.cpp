@@ -1,0 +1,450 @@
+//==============================================================================
+//
+// What a run reports beside its output (RunSpec::reasons):
+//
+//   * Reasons.*: each observation's reason code says why it is where the run
+//     left it. Asking for them changes nothing else; the codes below
+//     FIRST_DROP are the processing mask's; every path that removes an
+//     observation from the fit gives its code, on the golden pixels, through
+//     detect() and detect_cube(), a registry's step and strategies, and a
+//     resume.
+//
+//==============================================================================
+
+#include <algorithm>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+
+#include "ccd/ccd.hpp"
+#include "ccd/strategies/change_test/chi2.hpp"
+#include "ccd/strategies/model/lasso.hpp"
+
+#include "characterization.hpp"
+#include "config.hpp"
+#include "dump.hpp"
+#include "series.hpp"
+#include "series_corpus.hpp"
+
+namespace
+{
+
+using ccd::index_t;
+using ccd::Reason;
+using golden::Series;
+
+// `spec` asking for the reason codes.
+ccd::RunSpec with_reasons(ccd::RunSpec spec)
+{
+    spec.reasons = true;
+    return spec;
+}
+
+ccd::PixelOutput run(const ccd::RunSpec& spec, const Series& s)
+{
+    return ccd::detect(spec, s.date_view(), s.spectral_view(), s.qa_view());
+}
+
+// The number of observations of each code.
+std::map<Reason, std::size_t> counts(const std::vector<std::uint8_t>& reasons)
+{
+    std::map<Reason, std::size_t> out;
+    for (const std::uint8_t code : reasons)
+        ++out[static_cast<Reason>(code)];
+    return out;
+}
+
+// The pixels the tests read: the golden corpus's, the transitions', the CSV
+// pixels.
+const std::vector<Series>& pixels()
+{
+    static const std::vector<Series> all = []
+    {
+        std::vector<Series> out = golden::synthetic_series();
+        for (Series& s : golden::characterization_pixels())
+            out.push_back(std::move(s));
+        for (Series& s : golden::csv_series(CCD_TEST_DATA_DIR))
+            out.push_back(std::move(s));
+        return out;
+    }();
+    return all;
+}
+
+// What every result with reason codes holds: one code per observation, below
+// REASON_COUNT; the mask keeps exactly those below FIRST_DROP; a kept
+// observation is Kept exactly when a segment's days hold it.
+void expect_consistent(const ccd::FitResult& r, const Series& s)
+{
+    ASSERT_EQ(r.reasons.size(), s.size()) << s.name;
+    for (std::size_t t = 0; t < s.size(); ++t)
+    {
+        const std::uint8_t code = r.reasons[t];
+        ASSERT_LT(code, ccd::REASON_COUNT) << s.name << " " << t;
+        EXPECT_EQ(code < static_cast<std::uint8_t>(ccd::FIRST_DROP), r.mask[t]) << s.name << " " << t;
+        bool in_segment = false;
+        for (const ccd::ChangeModel& m : r.models)
+            in_segment = in_segment || (m.start_day <= s.dates[t] && s.dates[t] <= m.end_day);
+        if (r.mask[t])
+            EXPECT_EQ(code == static_cast<std::uint8_t>(Reason::Kept), in_segment)
+                << s.name << " " << t;
+    }
+}
+
+} // namespace
+
+TEST(Reasons, EveryObservationHasOneAndTheRunIsTheSame)
+{
+    std::map<Reason, std::size_t> seen;
+    for (const Series& s : pixels())
+    {
+        const ccd::RunSpec plain = golden::spec_of(s.h, s.config);
+        const ccd::FitResult without = run(plain, s).result;
+        const ccd::FitResult with = run(with_reasons(plain), s).result;
+        EXPECT_TRUE(without.reasons.empty()) << s.name;
+        EXPECT_EQ(golden::dump(without), golden::dump(with)) << s.name;
+        expect_consistent(with, s);
+        for (const auto& [code, n] : counts(with.reasons))
+            seen[code] += n;
+    }
+    // The codes the corpus takes: all but those of the routes chi2, the
+    // Lasso and the library's steps never take.
+    for (const Reason code : {Reason::Kept, Reason::NoSegment, Reason::Qa, Reason::Thermal,
+                              Reason::BandRange, Reason::Green, Reason::DuplicateDate,
+                              Reason::WindowScreen, Reason::LookbackOutlier, Reason::Outlier})
+        EXPECT_GT(seen[code], 0u) << ccd::name(code);
+    for (const Reason code : {Reason::NoFit, Reason::CustomStep, Reason::BeforeChange,
+                              Reason::Stored})
+        EXPECT_EQ(seen[code], 0u) << ccd::name(code);
+}
+
+// Each path through the preprocessing and the machine, on a golden pixel that
+// takes it: the number of observations it gives its code.
+TEST(Reasons, EachPathGivesItsCode)
+{
+    struct Pin
+    {
+        const char* pixel;
+        Reason code;
+        std::size_t count;
+    };
+    const Pin pins[] = {
+        // The preprocessing: QA, thermal and band range, the insufficient
+        // clear procedure's green median, the second observation of a date.
+        {"c16:dn:1", Reason::Qa, 74},
+        {"c16:dn:1", Reason::Thermal, 2},
+        {"c16:dn:5", Reason::BandRange, 1},
+        {"c16:dn:47", Reason::Green, 1},
+        {"dup:dn:1", Reason::DuplicateDate, 3},
+        // The machine: Initialize's window screen (Tmask commit), Lookback's
+        // and Extend's outliers.
+        {"lookback_near_break", Reason::WindowScreen, 1},
+        {"lookback_far_peek_decides", Reason::LookbackOutlier, 5},
+        {"series_end_after_outlier", Reason::Outlier, 1},
+        // Kept in no segment: between a break and the next segment's
+        // Lookback change, after the last full peek, an early exit's.
+        {"lookback_near_break", Reason::NoSegment, 23},
+        {"dense_series_end", Reason::NoSegment, 32},
+        {"standard_too_few", Reason::NoSegment, 12},
+        {"variogram_nan", Reason::NoSegment, 61},
+        {"snow_too_few", Reason::NoSegment, 11},
+        {"peek_guard_tail", Reason::Kept, 400},
+    };
+    for (const Pin& pin : pins)
+    {
+        const Series& s = golden::named(pixels(), pin.pixel);
+        const ccd::FitResult r = run(with_reasons(golden::spec_of(s.h, s.config)), s).result;
+        EXPECT_EQ(counts(r.reasons)[pin.code], pin.count) << pin.pixel << " " << ccd::name(pin.code);
+    }
+}
+
+// The observer's drops are the machine's codes, one event per observation,
+// named as the code.
+TEST(Reasons, TheObserversDropsAreTheMachinesCodes)
+{
+#if CCD_OBSERVE
+    struct Drops final : ccd::Observer
+    {
+        std::map<std::int64_t, std::string> by_day;
+        void event(index_t, const ccd::ObserverEvent& e) override
+        {
+            if (e.kind == ccd::ObserverEvent::Kind::Drop)
+                by_day[e.day] = e.outcome;
+        }
+    };
+    for (const char* pixel : {"lookback_near_break_decides", "lookback_far_peek_decides", "pyccd"})
+    {
+        const Series& s = golden::named(pixels(), pixel);
+        auto drops = std::make_shared<Drops>();
+        ccd::RunSpec spec = with_reasons(golden::spec_of(s.h, s.config));
+        spec.observer = drops;
+        const ccd::FitResult r = run(spec, s).result;
+        std::map<std::int64_t, std::string> machine;
+        for (std::size_t t = 0; t < s.size(); ++t)
+            if (r.reasons[t] >= static_cast<std::uint8_t>(Reason::WindowScreen))
+                machine[s.dates[t]] = ccd::name(static_cast<Reason>(r.reasons[t]));
+        EXPECT_FALSE(machine.empty()) << pixel;
+        EXPECT_EQ(drops->by_day, machine) << pixel;
+    }
+#else
+    GTEST_SKIP() << "built with CCD_OBSERVE=OFF";
+#endif
+}
+
+// A cube's codes are each pixel's detect() codes, in one (H, W, T) array.
+TEST(Reasons, ACubesCodesAreEachPixels)
+{
+    const golden::Cube c = golden::make_cube(13, golden::Regime::Duplicates, 2, 3);
+    const index_t T = c.T;
+    ccd::RunSpec spec = with_reasons(golden::spec_of(ccd::Input{}, golden::pyccd()));
+    spec.masks = false;
+    const ccd::CubeOutput cube = ccd::detect_cube(
+        spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
+        ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {2, 3, 7, T}),
+        ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {2, 3, T}), 2);
+    ASSERT_EQ(cube.reasons.size(), 6 * T);
+    EXPECT_TRUE(cube.masks.empty());
+    for (index_t p = 0; p < 6; ++p)
+    {
+        const ccd::FitResult one = ccd::detect(
+            spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
+            ccd::ArrayView<const double, 2>::contiguous(c.spectral.data() + p * 7 * T, {7, T}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T})).result;
+        const auto codes = cube.reasons_of(p / 3, p % 3);
+        EXPECT_EQ(std::vector<std::uint8_t>(&codes(0), &codes(0) + T), one.reasons) << p;
+        EXPECT_TRUE(cube.pixels[p].result.reasons.empty()) << p;
+    }
+}
+
+namespace
+{
+
+//------------------------------------------------------------------------------
+// A registry's step and strategies, each taking a route the library's do not
+//------------------------------------------------------------------------------
+
+// Drops the observations dated `day`.
+class DropDay final : public ccd::preprocess::CustomStep
+{
+public:
+    explicit DropDay(std::int64_t day) : day_(day) {}
+
+    void apply(ccd::ArrayView<const std::int64_t, 1> dates, ccd::ArrayView<const double, 2>,
+               ccd::ArrayView<const std::uint8_t, 1>, ccd::ProcessingMask& mask) const override
+    {
+        for (index_t t = 0; t < dates.size(); ++t)
+            if (dates(t) == day_)
+                mask.set(t, false);
+    }
+    void validate(index_t) const override {}
+    std::string describe() const override { return "DropDay"; }
+
+private:
+    std::int64_t day_;
+};
+
+struct DropDayStep
+{
+    struct Params
+    {
+        std::int64_t day = 0;
+    };
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        static const std::vector<ccd::config::Field<Params>> s = {
+            {"day", &Params::day, ccd::config::Unit::None, ccd::config::any(), "the date dropped"},
+        };
+        return s;
+    }
+    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::Input&,
+                                                     const ccd::config::StepContext&)
+    {
+        return ccd::preprocess::Step::of(std::make_shared<const DropDay>(params.day));
+    }
+};
+
+// chi2, but a change breaks one observation into the peek: the peek's first
+// observation leaves the series before the change.
+struct SkipChi2 final : ccd::ChangeTest
+{
+    using Params = ccd::strategies::Chi2::Params;
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        return ccd::strategies::Chi2::schema();
+    }
+    explicit SkipChi2(const Params& p) : chi2(p) {}
+
+    ccd::Capabilities needs() const override { return chi2.needs(); }
+    ccd::Capabilities provides() const override { return chi2.provides(); }
+    std::vector<std::string> statistics() const override { return chi2.statistics(); }
+    std::unique_ptr<ccd::Scratch> make_scratch() const override { return chi2.make_scratch(); }
+    ccd::PeekPlan prepare(ccd::ArrayView<const std::int64_t, 1> dates, index_t bands,
+                          ccd::Scratch& scratch) const override
+    {
+        return chi2.prepare(dates, bands, scratch);
+    }
+    ccd::TestOutcome test(const ccd::Peek& peek, ccd::Scratch& scratch,
+                          ccd::PeekResult& result) const override
+    {
+        return chi2.test(peek, scratch, result);
+    }
+    index_t break_at(const ccd::Peek& peek, const ccd::Scratch& scratch) const override
+    {
+        return chi2.break_at(peek, scratch) + 1;
+    }
+    double magnitude(const ccd::Peek& peek, const ccd::Scratch& scratch,
+                     index_t band) const override
+    {
+        return chi2.magnitude(peek, scratch, band);
+    }
+
+    ccd::strategies::Chi2 chi2;
+};
+
+// The Lasso, but no monitoring fit succeeds: Extend's first refit is NoFit.
+struct NeverFits final : ccd::MonitoringModel
+{
+    class Fits final : public ccd::Model
+    {
+    public:
+        bool fit(ccd::ArrayView<const std::int64_t, 1>, ccd::ArrayView<const double, 2>, index_t,
+                 index_t, const ccd::BandList&, ccd::KeepResiduals) override
+        {
+            return false;
+        }
+        void peek_residuals(ccd::ArrayView<const std::int64_t, 1>, ccd::ArrayView<const double, 2>,
+                            const ccd::BandList&, std::vector<std::vector<double>>&) override {}
+        double rmse(index_t) const override { return 0; }
+        const std::vector<double>& residuals(index_t) const override { return none_; }
+        ccd::BandFit band_fit(index_t) const override { return {}; }
+
+    private:
+        std::vector<double> none_;
+    };
+
+    using Params = ccd::strategies::Lasso::Params;
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        return ccd::strategies::Lasso::schema();
+    }
+    explicit NeverFits(const Params& p) : lasso(p) {}
+
+    ccd::Capabilities provides() const override { return lasso.provides(); }
+    std::unique_ptr<ccd::Model> make_model() const override { return std::make_unique<Fits>(); }
+    ccd::CoefficientRule coefficients() const override { return lasso.coefficients(); }
+
+    ccd::strategies::Lasso lasso;
+};
+
+const ccd::config::Registry& test_registry()
+{
+    static const ccd::config::Registry registry = []
+    {
+        ccd::config::Registry r;
+        ccd::strategies::register_core_strategies(r);
+        r.add_step<DropDayStep>("drop_day");
+        r.add<ccd::ChangeTest, SkipChi2>("skip-chi2");
+        r.add<ccd::MonitoringModel, NeverFits>("never-fits");
+        return r;
+    }();
+    return registry;
+}
+
+// `config` with stage `stage`'s strategy `strategy`, its parameters kept.
+ccd::config::Config with_strategy(ccd::config::Config config, const std::string& stage,
+                                  const std::string& strategy)
+{
+    config.stages.at(stage).strategy = strategy;
+    return config;
+}
+
+ccd::FitResult run_in_test_registry(const Series& s, const ccd::config::Config& config)
+{
+    return run(with_reasons(golden::spec_of(
+                   s.h, std::make_shared<const ccd::Algorithm>(config, test_registry()))),
+               s)
+        .result;
+}
+
+} // namespace
+
+TEST(Reasons, ARegistrysStepAndStrategiesGiveTheirCodes)
+{
+    const Series& s = golden::named(pixels(), "lookback_near_break");
+    const ccd::FitResult plain = run(with_reasons(golden::spec_of(s.h, s.config)), s).result;
+    ASSERT_EQ(plain.models.size(), 2u);
+
+    // A step a registry adds: its code, CustomStep, where it removes one.
+    std::size_t kept = 0;
+    while (plain.reasons[kept] != static_cast<std::uint8_t>(Reason::Kept))
+        ++kept;
+    ccd::config::Config config = s.config;
+    auto& steps = config.preprocess.at("standard").steps;
+    steps.insert(steps.begin() + 1, {"drop_day", {{"day", ccd::config::integer(s.dates[kept])}}});
+    const ccd::FitResult stepped = run_in_test_registry(s, config);
+    EXPECT_EQ(stepped.reasons[kept], static_cast<std::uint8_t>(Reason::CustomStep));
+    expect_consistent(stepped, s);
+
+    // A change test breaking past the peek's first observation: that one is
+    // BeforeChange, the first observation after the first segment.
+    const ccd::FitResult skipped =
+        run_in_test_registry(s, with_strategy(s.config, "change_test", "skip-chi2"));
+    ASSERT_GE(skipped.models.size(), 2u);
+    ASSERT_EQ(counts(skipped.reasons)[Reason::BeforeChange], 1u);
+    for (std::size_t t = 0; t < s.size(); ++t)
+        if (skipped.reasons[t] == static_cast<std::uint8_t>(Reason::BeforeChange))
+            EXPECT_GT(s.dates[t], skipped.models[0].end_day);
+    expect_consistent(skipped, s);
+
+    // A model that cannot fit: Extend's first refit is NoFit, and every kept
+    // observation from its window on (there is no segment) is NoFit.
+    const ccd::FitResult unfitted =
+        run_in_test_registry(s, with_strategy(s.config, "model", "never-fits"));
+    EXPECT_TRUE(unfitted.models.empty());
+    const auto unfit = counts(unfitted.reasons);
+    EXPECT_GT(unfit.at(Reason::NoFit), 0u);
+    EXPECT_EQ(unfit.count(Reason::Kept), 0u);
+    expect_consistent(unfitted, s);
+}
+
+// A resumed pixel's codes are the full run's, but the stored drops, which
+// the record keeps by day only: Stored.
+TEST(Reasons, AResumeGivesTheStoredDropsTheirOwnCode)
+{
+    std::size_t with_stored = 0;
+    for (const Series& s : golden::synthetic_series())
+    {
+        const Series cut = s.prefix(s.size() * 2 / 3);
+        const ccd::PixelOutput stored = run(golden::spec_of(cut.h, cut.config, true), cut);
+        if (stored.record.excluded_days.empty())
+            continue;
+        const ccd::RunSpec spec = with_reasons(golden::spec_of(s.h, s.config));
+        const ccd::PixelOutput resumed = ccd::detect(
+            spec, s.date_view(), s.spectral_view(), s.qa_view(),
+            ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+        if (resumed.status != ccd::ResumeStatus::Resumed)
+            continue;
+        ccd::RunSpec capped = spec;
+        capped.algorithm = golden::algorithm(golden::with_shared(
+            s.config, "statistics_end",
+            ccd::config::integer(std::min(s.statistics_end(), stored.header.statistics_end))));
+        const ccd::FitResult full = run(capped, s).result;
+        ASSERT_EQ(golden::dump(resumed.result), golden::dump(full)) << s.name;
+
+        std::vector<std::uint8_t> expected = full.reasons;
+        for (std::size_t t = 0; t < s.size(); ++t)
+            for (const std::int64_t day : stored.record.excluded_days)
+                if (s.dates[t] == day && !full.mask[t])
+                    expected[t] = static_cast<std::uint8_t>(Reason::Stored);
+        EXPECT_EQ(resumed.result.reasons, expected) << s.name;
+        ++with_stored;
+        if (with_stored == 10)
+            break;
+    }
+    EXPECT_EQ(with_stored, 10u);
+}
