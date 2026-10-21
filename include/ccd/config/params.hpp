@@ -164,7 +164,9 @@ std::string number(double v);
 //            bands): a threshold for the detection bands' change statistic.
 //
 // A Shared or Chi2 field is not a parameter of its stage: a stage that sets
-// one is refused, naming the shared value to set instead.
+// one is refused, naming the shared value to set instead. A configured run
+// always sets it from the shared value, so its member default is only what a
+// strategy built from Params{} runs with.
 enum class Source : std::uint8_t
 {
     Own,
