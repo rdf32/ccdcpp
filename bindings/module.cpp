@@ -5,7 +5,7 @@
 //     preprocess.cpp      // bind_preprocess: PreprocessPlan and its parts, plan_of
 //     arrays.cpp          // the arrays of detect and detect_cube as the run's views (arrays.hpp)
 //     detect.cpp          // bind_detect: detect, detect_cube, resume_schema
-//     resume.cpp          // the resume record and segments as Python data (resume.hpp)
+//     results.cpp         // the results as Python data and back (results.hpp)
 //     config.cpp          // bind_config: Algorithm, the configuration helpers
 
 #include <pybind11/pybind11.h>

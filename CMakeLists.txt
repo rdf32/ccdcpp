@@ -1126,7 +1126,7 @@ if(CCD_BUILD_PYTHON)
         bindings/preprocess.cpp
         bindings/arrays.cpp
         bindings/detect.cpp
-        bindings/resume.cpp
+        bindings/results.cpp
     )
 
     # Python import name:
