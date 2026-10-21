@@ -48,12 +48,8 @@ const std::vector<config::Field<LassoEdges::Params>>& LassoEdges::schema()
 
 std::unique_ptr<Scratch> LassoEdges::make_scratch() const
 {
-    LassoOptions o;
-    o.max_iter = p_.max_iter;
-    o.alpha = p_.alpha;
-    o.tolerance = p_.tolerance;
-    o.coef_floor = p_.coef_floor;
-    return std::make_unique<EdgeScratch>(o);
+    return std::make_unique<EdgeScratch>(
+        LassoOptions{p_.max_iter, p_.alpha, p_.tolerance, p_.coef_floor});
 }
 
 ChangeModel LassoEdges::catch_window(ArrayView<const std::int64_t, 1> dates,

@@ -108,12 +108,7 @@ CoefficientRule Lasso::coefficients() const
 
 LassoOptions Lasso::solver_options() const
 {
-    LassoOptions o;
-    o.max_iter = p_.max_iter;
-    o.alpha = p_.alpha;
-    o.tolerance = p_.tolerance;
-    o.coef_floor = p_.coef_floor;
-    return o;
+    return LassoOptions{p_.max_iter, p_.alpha, p_.tolerance, p_.coef_floor};
 }
 
 Capabilities Lasso::provides() const

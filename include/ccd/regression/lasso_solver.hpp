@@ -13,6 +13,8 @@ namespace ccd
 {
 
 
+// The solver's four parameters, in the order a strategy writes them:
+// LassoOptions{max_iter, alpha, tolerance, coef_floor}.
 struct LassoOptions {
     
     //--------------------------------------------------------------------------
