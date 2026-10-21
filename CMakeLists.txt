@@ -189,6 +189,7 @@ add_library(
     src/ccd/config/convert.cpp
     src/ccd/config/digest.cpp
     src/ccd/config/params.cpp
+    src/ccd/config/presets.cpp
     src/ccd/config/registry.cpp
     src/ccd/config/resolve.cpp
     src/ccd/config/preprocess.cpp

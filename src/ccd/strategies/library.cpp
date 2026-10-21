@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "ccd/config/shared.hpp"
+#include "ccd/config/presets.hpp"
 #include "ccd/input/mask/steps.hpp"
 #include "ccd/strategies/change_test/chi2.hpp"
 #include "ccd/strategies/edge_fit/lasso.hpp"
@@ -45,47 +45,7 @@ void register_core_strategies(config::Registry& registry)
     registry.add_step<preprocess::GreenMedian>("green_median");
     registry.add_step<preprocess::Dedupe>("dedupe");
 
-    // "ccdc": pyccd's algorithm, in physical terms: the shared values'
-    // defaults (alpha 1e-4, probabilities, detection bands by role, no
-    // statistics cutoff), each strategy's, and pyccd's preprocessing, each
-    // step at its defaults (clear and water kept, the thermal range -93.2 to
-    // 70.7 degrees Celsius, reflectance in (0, 1), the green median 0.04
-    // above). Every procedure's chain begins with the same four steps,
-    // keep_qa, thermal_range, band_range and dedupe; Standard then ends,
-    // reading thermal through the input's transform; PermanentSnow adds snow
-    // back, dedupes and tests the thermal range again, over the snow
-    // observations too (the first test keeps a clear observation with an
-    // implausible thermal value from taking its date in the dedupe);
-    // InsufficientClear runs the green median and dedupes.
-    // Every procedure's thermal range covers every observation its fit uses,
-    // in degrees Celsius: Standard tests the transformed row, the other two
-    // the stored row against the bounds taken back through the transform.
-    config::Config ccdc;
-    ccdc.shared = config::shared_defaults();
-    for (const auto& [stage, strategy] : std::initializer_list<std::pair<const char*, const char*>>{
-             {ModeRule::stage, "pyccd"}, {NoiseFloor::stage, "variogram"},
-             {StartSearch::stage, "pyccd"}, {WindowScreen::stage, "tmask"},
-             {StabilityFit::stage, "lasso"}, {StabilityRule::stage, "pyccd"},
-             {Lookback::stage, "pyccd"}, {MonitoringModel::stage, "lasso"},
-             {RefitSchedule::stage, "span-factor"}, {ChangeTest::stage, "chi2"},
-             {OutlierRule::stage, "floored"}, {SegmentFit::stage, "model-fit"},
-             {EdgeFit::stage, "lasso"}})
-        ccdc.stages[stage] = {strategy, registry.defaults(stage, strategy)};
-    const auto chain = [&](bool thermal_transform, std::initializer_list<const char*> steps)
-    {
-        config::ProcedureConfig procedure;
-        procedure.thermal_transform = thermal_transform;
-        for (const char* step : steps)
-            procedure.steps.push_back({step, registry.step_defaults(step)});
-        return procedure;
-    };
-    ccdc.preprocess["standard"] = chain(true, {"keep_qa", "thermal_range", "band_range", "dedupe"});
-    ccdc.preprocess["snow"] = chain(
-        false, {"keep_qa", "thermal_range", "band_range", "dedupe", "add_qa", "dedupe",
-                "thermal_range"});
-    ccdc.preprocess["insufficient_clear"] = chain(
-        false, {"keep_qa", "thermal_range", "band_range", "dedupe", "green_median", "dedupe"});
-    registry.add_preset("ccdc", std::move(ccdc));
+    registry.add_preset("ccdc", config::ccdc_preset(registry));
 }
 
 const config::Registry& library_registry()
