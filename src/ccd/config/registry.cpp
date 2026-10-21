@@ -3,11 +3,10 @@
 #include <algorithm>
 #include <set>
 #include <string>
-#include <type_traits>
 
 #include "ccd/core/maths.hpp"
 
-#include "../core/fnv.hpp"
+#include "digest.hpp"
 
 namespace ccd
 {
@@ -213,69 +212,6 @@ index_t resolve_shared(const Values& given, const Input* input, Shared& shared)
     return detection;
 }
 
-void hash(detail::Fnv& h, const Values& values)
-{
-    h.integer(static_cast<std::int64_t>(values.size()));
-    for (const auto& [name, value] : values)
-    {
-        h.text(name);
-        h.byte(static_cast<std::uint8_t>(value.index()));
-        std::visit(
-            [&](const auto& v)
-            {
-                using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T, bool>)
-                    h.flag(v);
-                else if constexpr (std::is_same_v<T, std::int64_t>)
-                    h.integer(v);
-                else if constexpr (std::is_same_v<T, double>)
-                    h.real(v);
-                else if constexpr (std::is_same_v<T, std::string>)
-                    h.text(v);
-                else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>)
-                {
-                    h.integer(static_cast<std::int64_t>(v.size()));
-                    for (const std::int64_t b : v)
-                        h.integer(b);
-                }
-                else
-                {
-                    h.integer(static_cast<std::int64_t>(v.size()));
-                    for (const std::string& r : v)
-                        h.text(r);
-                }
-            },
-            value);
-    }
-}
-
-void hash(detail::Fnv& h, const ConfigTree& stages)
-{
-    h.integer(static_cast<std::int64_t>(stages.size()));
-    for (const auto& [stage, chosen] : stages)
-    {
-        h.text(stage);
-        h.text(chosen.strategy);
-        hash(h, chosen.params);
-    }
-}
-
-void hash(detail::Fnv& h, const PreprocessConfig& preprocess)
-{
-    h.integer(static_cast<std::int64_t>(preprocess.size()));
-    for (const auto& [procedure, chain] : preprocess)
-    {
-        h.text(procedure);
-        h.flag(chain.thermal_transform);
-        h.integer(static_cast<std::int64_t>(chain.steps.size()));
-        for (const StepConfig& step : chain.steps)
-        {
-            h.text(step.step);
-            hash(h, step.params);
-        }
-    }
-}
-
 // The plan of procedure `name`.
 preprocess::ProcedurePlan& procedure_plan(preprocess::PreprocessPlan& plan, const std::string& name)
 {
@@ -335,36 +271,6 @@ void check_band_list(const BandList& list, index_t bands, const std::string& whe
             throw std::invalid_argument(where + " holds band " + std::to_string(band) +
                                         " twice");
     }
-}
-
-std::uint64_t digest(const Values& values)
-{
-    detail::Fnv h;
-    hash(h, values);
-    return h.value();
-}
-
-std::uint64_t digest(const ConfigTree& stages)
-{
-    detail::Fnv h;
-    hash(h, stages);
-    return h.value();
-}
-
-std::uint64_t digest(const PreprocessConfig& preprocess)
-{
-    detail::Fnv h;
-    hash(h, preprocess);
-    return h.value();
-}
-
-std::uint64_t digest(const Config& config)
-{
-    detail::Fnv h;
-    hash(h, config.shared);
-    hash(h, config.stages);
-    hash(h, config.preprocess);
-    return h.value();
 }
 
 std::map<std::string, std::vector<ParameterInfo>> Registry::step_schemas() const
@@ -542,12 +448,7 @@ Resolved Registry::resolve(const Config& config, const Input& input) const
     }
     preprocess::validate(out.plan, input.bands());
 
-    detail::Fnv h;
-    h.integer(static_cast<std::int64_t>(digest(input)));
-    hash(h, with.shared);
-    hash(h, out.stages);
-    hash(h, out.preprocess);
-    out.digest = h.value();
+    out.digest = resolution_digest(input, with.shared, out.stages, out.preprocess);
     return out;
 }
 

@@ -186,6 +186,7 @@ add_library(
 
     src/ccd/run/algorithm.cpp
     src/ccd/run/run.cpp
+    src/ccd/config/digest.cpp
     src/ccd/config/params.cpp
     src/ccd/config/registry.cpp
     src/ccd/config/preprocess.cpp
