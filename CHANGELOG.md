@@ -71,7 +71,7 @@ its replacement.
   public header. The run (`Run`, `Worker`) and the Standard machine (`machine/standard.hpp`,
   `machine/machine.hpp`) are internal, under `src/ccd/`. Each strategy's functions are in its
   own header (the Lasso fits in `strategies/model/lasso.hpp`, the catch and whole-series fits in
-  `strategies/edge_fit/lasso.hpp`, `adjusted_variogram()` and `tmask()` with their strategies),
+  `strategies/edge_segments/lasso.hpp`, `adjusted_variogram()` and `tmask()` with their strategies),
   pyccd's peek statistics in `strategies/pyccd/peek_statistics.hpp`, the segments in
   `results/segment.hpp`, `Window` in `core/window.hpp`, `Variogram` in `strategies/stages.hpp`
   and `chi2_quantile()` in `core/maths.hpp`; 0.10.0's `procedure/fit.hpp` and
@@ -86,15 +86,15 @@ its replacement.
   (`config/registry.hpp`) is the catalogue of strategies, steps and presets, and
   `config::check()`, `config::resolve()` and `config::build_strategies()` (`config/resolve.hpp`)
   check a configuration and resolve it against an input. The mask filters are named for their preprocess steps:
-  `filter::apply_dedupe`, `apply_thermal_range`, `apply_band_range` and `apply_green_median`
+  `filter::apply_one_per_date`, `apply_thermal_range`, `apply_band_range` and `apply_green_median`
   (its `green_offset`) replace `remove_duplicate_dates`, `apply_thermal_filter`,
   `apply_saturation_filter` and `apply_green_median_filter` (`filter_range`).
 
 ### Added
 
 - Stages and strategies (`include/ccd/strategies/`, [docs/ccdc-state-machine.md](docs/ccdc-state-machine.md#stages-and-strategies)):
-  `mode`, `noise_floor`, `start_search`, `window_screen`, `stability_fit`, `stability_rule`,
-  `lookback`, `model`, `refit`, `change_test`, `outlier`, `segment_fit`, `edge_fit`, each with
+  `mode`, `noise`, `start_search`, `window_screen`, `stability_fit`, `stability_rule`,
+  `lookback`, `model`, `refit`, `change_test`, `outlier`, `segment_report`, `edge_segments`, each with
   its pyccd strategy; a registry of strategies, steps and presets with parameter schemas;
   strategy extensions through CMake's `CCD_EXTENSIONS`.
 - Configurations from Python ([docs/config.md](docs/config.md)): `ccdcpp.config()` (a preset,
@@ -153,7 +153,7 @@ its replacement.
   a debug build).
 - A TOML stage table holding anything but `strategy` and `[<stage>.params]` (a parameter
   written beside `strategy`, which was dropped silently) is refused, naming the keys.
-- A Start or End segment is written only on more observations than the edge fit's
+- A Start or End segment is written only on more observations than edge_segments'
   coefficients (`coefficient_min`), as well as more than the peek: a `peek_size` below
   `coefficient_min` (2 or 3, or `coefficient_min` 7 or 8 with the default peek) wrote a
   segment of too few observations, with a NaN or infinite RMSE (and an assertion in a debug

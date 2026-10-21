@@ -375,8 +375,8 @@ class LayoutValidation(unittest.TestCase):
             (dict(change_test__peek_reference_days=0.0), chi2 + "'peek_reference_days' is 0; it must be greater than 0"),
             (dict(change_test__peek_reference_days=-16.0), chi2 + "'peek_reference_days' is -16"),
             (dict(change_test__peek_reference_days=nan), chi2 + "'peek_reference_days' is nan"),
-            (dict(noise_floor__min_lag_days=0), "noise_floor 'variogram' parameter 'min_lag_days' is 0; it must be greater than 0"),
-            (dict(noise_floor__min_lag_days=-30), "noise_floor 'variogram' parameter 'min_lag_days' is -30"),
+            (dict(noise__min_lag_days=0), "noise 'variogram' parameter 'min_lag_days' is 0; it must be greater than 0"),
+            (dict(noise__min_lag_days=-30), "noise 'variogram' parameter 'min_lag_days' is -30"),
             (dict(refit__min_obs=0), "refit 'span-factor' parameter 'min_obs' is 0; it must be at least 1"),
             (dict(refit__min_obs=-1), "refit 'span-factor' parameter 'min_obs' is -1"),
             (dict(refit__factor=0.0), "refit 'span-factor' parameter 'factor' is 0; it must be greater than 0"),
@@ -402,7 +402,7 @@ class CadenceParameters(unittest.TestCase):
     # (stage, parameter): the ccdc preset's value.
     DEFAULTS = {
         ("change_test", "peek_reference_days"): 16.0,
-        ("noise_floor", "min_lag_days"): 30,
+        ("noise", "min_lag_days"): 30,
         ("refit", "min_obs"): 24,
         ("refit", "factor"): 1.33,
         ("change_test", "seasonal_count"): 24,
@@ -412,7 +412,7 @@ class CadenceParameters(unittest.TestCase):
 
     UNITS = {
         ("change_test", "peek_reference_days"): "days",
-        ("noise_floor", "min_lag_days"): "days",
+        ("noise", "min_lag_days"): "days",
         ("refit", "min_obs"): "observations",
         ("refit", "factor"): "none",
         ("change_test", "seasonal_count"): "observations",

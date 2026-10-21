@@ -30,7 +30,7 @@ peek_size = 6
 seasonal_count = 24
 seasonal_divisor = 4.0
 
-[edge_fit]
+[edge_segments]
 strategy = "lasso"
 
 [lookback]
@@ -47,9 +47,9 @@ snow_pct_threshold = 0.75
 [model]
 strategy = "lasso"
 
-[noise_floor]
+[noise]
 strategy = "variogram"
-[noise_floor.params]
+[noise.params]
 min_lag_days = 30
 
 [outlier]
@@ -63,7 +63,7 @@ strategy = "span-factor"
 factor = 1.33
 min_obs = 24
 
-[segment_fit]
+[segment_report]
 strategy = "model-fit"
 
 [stability_fit]
@@ -91,7 +91,7 @@ steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
     { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
-    { step = "dedupe" },
+    { step = "one_per_date" },
 ]
 
 [preprocess.snow]
@@ -100,9 +100,9 @@ steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
     { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
-    { step = "dedupe" },
+    { step = "one_per_date" },
     { step = "add_qa", codes = ["snow"] },
-    { step = "dedupe" },
+    { step = "one_per_date" },
     { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
 ]
 
@@ -112,7 +112,7 @@ steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
     { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
-    { step = "dedupe" },
+    { step = "one_per_date" },
     { step = "green_median", offset = 0.04, scope = "stat_window" },
-    { step = "dedupe" },
+    { step = "one_per_date" },
 ]

@@ -29,7 +29,7 @@ from ccdcpp.results import PixelResult  # noqa: E402
 from ccdcpp import (  # noqa: E402
     AddQa,
     BandRange,
-    Dedupe,
+    OnePerDate,
     GreenMedian,
     KeepQa,
     Preprocess,
@@ -50,18 +50,18 @@ def strip(outs: Mapping[str, Any]) -> dict[str, Any]:
 def keeps_snow(base: ccdcpp.Config = CCDC) -> ccdcpp.Config:
     """`base` with the Standard procedure keeping snow observations, by name."""
     return base.replace(preprocess__standard=ProcedureChain(
-        steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
+        steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
         thermal_transform=True,
     ))
 
 
 def written_default() -> Preprocess:
     """pyccd's chain, written out step by step with every field left to its default."""
-    common = (KeepQa(), ThermalRange(), BandRange(), Dedupe())
+    common = (KeepQa(), ThermalRange(), BandRange(), OnePerDate())
     return Preprocess(
         standard=ProcedureChain(steps=common, thermal_transform=True),
-        snow=ProcedureChain(steps=common + (AddQa(), Dedupe(), ThermalRange())),
-        insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), Dedupe())),
+        snow=ProcedureChain(steps=common + (AddQa(), OnePerDate(), ThermalRange())),
+        insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), OnePerDate())),
     )
 
 
@@ -71,12 +71,12 @@ def written_default_explicit() -> Preprocess:
     keep = KeepQa(("clear", "water"))
     thermal = ThermalRange(min=-93.2, max=70.7, inclusive=(False, False))
     band = BandRange(bands=sat, min=0.0, max=1.0, inclusive=(False, False))
-    common = (keep, thermal, band, Dedupe())
+    common = (keep, thermal, band, OnePerDate())
     return Preprocess(
         standard=ProcedureChain(steps=common, thermal_transform=True),
-        snow=ProcedureChain(steps=common + (AddQa(("snow",)), Dedupe(), thermal)),
+        snow=ProcedureChain(steps=common + (AddQa(("snow",)), OnePerDate(), thermal)),
         insufficient_clear=ProcedureChain(steps=common + (
-            GreenMedian(offset=0.04, scope="stat_window"), Dedupe(),
+            GreenMedian(offset=0.04, scope="stat_window"), OnePerDate(),
         )),
     )
 
@@ -90,12 +90,12 @@ class Plans(unittest.TestCase):
         h = ccdcpp.Input()
         plan = ccdcpp.plan_of("ccdc", h)
         K = ccdcpp.StepKind
-        common = [K.KeepQa, K.ThermalRange, K.BandRange, K.Dedupe]
+        common = [K.KeepQa, K.ThermalRange, K.BandRange, K.OnePerDate]
         self.assertEqual([s.kind for s in plan.standard.chain], common)
         self.assertEqual([s.kind for s in plan.snow.chain],
-                         common + [K.AddQa, K.Dedupe, K.ThermalRange])
+                         common + [K.AddQa, K.OnePerDate, K.ThermalRange])
         self.assertEqual([s.kind for s in plan.insufficient_clear.chain],
-                         common + [K.GreenMedian, K.Dedupe])
+                         common + [K.GreenMedian, K.OnePerDate])
         t = plan.standard.transform
         assert t is not None
         self.assertEqual((t.band, t.scale, t.offset), (6, 10.0, -27315.0))
@@ -158,7 +158,7 @@ class Plans(unittest.TestCase):
         self.assertNotEqual(plan, ccdcpp.plan_of("ccdc", h))   # the green median's date
         chain = plan.standard.chain
         self.assertEqual(len(chain), 4)
-        self.assertEqual(chain[-1].kind, ccdcpp.StepKind.Dedupe)
+        self.assertEqual(chain[-1].kind, ccdcpp.StepKind.OnePerDate)
         with self.assertRaises(IndexError):
             chain[4]
 
@@ -168,7 +168,7 @@ class Plans(unittest.TestCase):
         self.assertEqual(text, repr(plan))
         for line in ("standard", "  transform  band 6 <- x * 10 - 27315",
                      "  0  KeepQa codes {0, 1}", "  1  ThermalRange band 6, -9320 < x < 7070",
-                     "  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000", "  3  Dedupe",
+                     "  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000", "  3  OnePerDate",
                      "snow", "  transform  none", "  4  AddQa codes {3}",
                      "  6  ThermalRange band 6, 1799.5 < x < 3438.5", "insufficient_clear",
                      "  4  GreenMedian band 1, drop x >= median(dates <= 736694) + 400, "
@@ -217,11 +217,11 @@ class WrittenChains(unittest.TestCase):
     def test_ten_band_default(self):
         profile = tp.ten_band_profile()
         dates, cube, scl = tp.ten_band_inputs()
-        common = (KeepQa(), BandRange(), Dedupe())
+        common = (KeepQa(), BandRange(), OnePerDate())
         written = Preprocess(
             standard=ProcedureChain(steps=common, thermal_transform=True),
-            snow=ProcedureChain(steps=common + (AddQa(), Dedupe())),
-            insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), Dedupe())),
+            snow=ProcedureChain(steps=common + (AddQa(), OnePerDate())),
+            insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), OnePerDate())),
         )
         cfg = tp.TEN_BAND_CONFIG.replace(preprocess=written)
         self.assertEqual(ccdcpp.plan_of(cfg, profile),
@@ -359,13 +359,13 @@ class Replace(unittest.TestCase):
             self.assertEqual(len(steps), 2 if procedure == "snow" else 1)
         flag = CCDC.replace(preprocess__snow__thermal_transform=True)
         self.assertTrue(flag.preprocess("snow")["thermal_transform"])
-        chain = CCDC.replace(preprocess__snow=[KeepQa(), Dedupe()])
+        chain = CCDC.replace(preprocess__snow=[KeepQa(), OnePerDate()])
         self.assertEqual([s["step"] for s in chain.preprocess("snow")["steps"]],
-                         ["keep_qa", "dedupe"])
+                         ["keep_qa", "one_per_date"])
         self.assertFalse(chain.preprocess("snow")["thermal_transform"])
-        as_dict = CCDC.replace(preprocess__snow={"steps": [{"step": "dedupe"}]})
-        self.assertEqual(as_dict.preprocess("snow")["steps"], [{"step": "dedupe"}])
-        whole = CCDC.replace(preprocess=Preprocess(snow=ProcedureChain(steps=(Dedupe(),))))
+        as_dict = CCDC.replace(preprocess__snow={"steps": [{"step": "one_per_date"}]})
+        self.assertEqual(as_dict.preprocess("snow")["steps"], [{"step": "one_per_date"}])
+        whole = CCDC.replace(preprocess=Preprocess(snow=ProcedureChain(steps=(OnePerDate(),))))
         self.assertEqual(whole.preprocess("snow"), as_dict.preprocess("snow"))
         self.assertEqual(whole.preprocess("standard"), CCDC.preprocess("standard"))
         # An int given for a real is a real.
@@ -374,15 +374,15 @@ class Replace(unittest.TestCase):
             1.0)
 
     def test_refusals_in_replace(self):
-        with self.assertRaisesRegex(ValueError, "2 'dedupe' steps"):
-            CCDC.replace(preprocess__snow__dedupe__x=1)
+        with self.assertRaisesRegex(ValueError, "2 'one_per_date' steps"):
+            CCDC.replace(preprocess__snow__one_per_date__x=1)
         with self.assertRaisesRegex(ValueError, "step 4 'green_median' parameter 'max_date' is "
                                                 "the shared value 'statistics_end'"):
             CCDC.replace(preprocess__green_median__max_date=1)
         with self.assertRaisesRegex(ValueError, "has no parameter 'width'"):
             CCDC.replace(preprocess__band_range__width=1)
         with self.assertRaisesRegex(ValueError, "no procedure 'cloudy'"):
-            CCDC.replace(preprocess__cloudy=[Dedupe()])
+            CCDC.replace(preprocess__cloudy=[OnePerDate()])
         with self.assertRaisesRegex(ValueError, "no 'green_mean' step"):
             CCDC.replace(preprocess__green_mean__offset=0.1)
 
@@ -404,12 +404,12 @@ class Replace(unittest.TestCase):
         with open(path, "w") as f:
             f.write('extends = "ccdc"\n\n[preprocess.snow]\n'
                     'steps = [{step = "keep_qa", codes = ["clear", "water"]}, '
-                    '{step = "dedupe"}]\n')
+                    '{step = "one_per_date"}]\n')
         try:
             got = ccdcpp.config(path)
         finally:
             os.remove(path)
-        self.assertEqual(got, CCDC.replace(preprocess__snow=[KeepQa(), Dedupe()]))
+        self.assertEqual(got, CCDC.replace(preprocess__snow=[KeepQa(), OnePerDate()]))
         self.assertEqual(got.preprocess("standard"), CCDC.preprocess("standard"))
 
 
@@ -435,7 +435,7 @@ class Validation(unittest.TestCase):
             "not a preprocessing step": lambda: CCDC.replace(preprocess__snow=[{"step": "smooth"}]),
             "green_median.* parameter 'scope' is 'some'":
                 lambda: CCDC.replace(preprocess__green_median__scope="some"),
-            "at most 8": lambda: CCDC.replace(preprocess__snow=[Dedupe()] * 9),
+            "at most 8": lambda: CCDC.replace(preprocess__snow=[OnePerDate()] * 9),
             "no 'snow' procedure": without_snow,
             "'cirrus', which is not a QA code name": with_codes,
             "green_median.* 'max_date' is the shared value 'statistics_end'": with_max_date,
@@ -448,9 +448,9 @@ class Validation(unittest.TestCase):
         # configuration against it.
         d, s, q = DATES, CUBE_DN[0, 0], CODES[0, 0]
         h = ccdcpp.Input()
-        no_dedupe = CCDC.replace(preprocess__snow=[KeepQa(), AddQa()])
-        with self.assertRaisesRegex(ValueError, "must be followed by a Dedupe"):
-            ccdcpp.detect(d, s, q, input=h, config=no_dedupe)
+        no_one_per_date = CCDC.replace(preprocess__snow=[KeepQa(), AddQa()])
+        with self.assertRaisesRegex(ValueError, "must be followed by a OnePerDate"):
+            ccdcpp.detect(d, s, q, input=h, config=no_one_per_date)
         # A band the input lacks, against the input.
         with self.assertRaisesRegex(ValueError, "'coastal', which the input does not have"):
             ccdcpp.plan_of(CCDC.replace(preprocess__band_range__bands=["coastal"]), h)
@@ -479,7 +479,7 @@ class Validation(unittest.TestCase):
         # The library's steps; an extension may register more.
         steps = ccdcpp.steps()
         self.assertLessEqual({"keep_qa", "add_qa", "thermal_range", "band_range",
-                              "green_median", "dedupe"}, set(steps))
+                              "green_median", "one_per_date"}, set(steps))
         units = {p["name"]: p["unit"] for p in steps["thermal_range"]}
         self.assertEqual(units["min"], "celsius")
         self.assertEqual({p["name"]: p["unit"] for p in steps["keep_qa"]}["codes"], "qa_codes")

@@ -1,4 +1,4 @@
-#include "ccd/strategies/edge_fit/lasso.hpp"
+#include "ccd/strategies/edge_segments/lasso.hpp"
 
 #include <cassert>
 #include <utility>
@@ -159,7 +159,7 @@ const std::vector<config::Field<LassoEdges::Params>>& LassoEdges::schema()
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
         {"coefficients", &Params::coefficients, Unit::None, config::at_least(1),
-         "coefficients of every edge fit", config::Source::Shared, "coefficient_min"},
+         "coefficients of every edge segment's fit", config::Source::Shared, "coefficient_min"},
         {"min_observations", &Params::min_observations, Unit::Observations, config::any(),
          "kept observations a whole-series curve needs", config::Source::Shared,
          "min_observations"},

@@ -41,8 +41,8 @@ Scratch& stability_scratch(const Context& context, State& state)
 
 Scratch& edge_scratch(const Context& context, State& state)
 {
-    return state.edges.get(context.strategies.edge_fit,
-                           [](const EdgeFit& e) { return e.make_scratch(); });
+    return state.edges.get(context.strategies.edge_segments,
+                           [](const EdgeSegments& e) { return e.make_scratch(); });
 }
 
 Scratch& lookback_scratch(const Context& context, State& state)
@@ -57,8 +57,8 @@ namespace
 // The state's segment-fit scratch, of the run's segment-fit strategy.
 Scratch& segment_scratch(const Context& context, State& state)
 {
-    return state.segment_fit.get(context.strategies.segment_fit,
-                                 [](const SegmentFit& f) { return f.make_scratch(); });
+    return state.segment_report.get(context.strategies.segment_report,
+                                 [](const SegmentReport& f) { return f.make_scratch(); });
 }
 
 // The last day of the input, whatever its QA.
@@ -308,7 +308,7 @@ bool start_catch_due(const Context& context, const State& state)
     assert(cursor.window.start >= cursor.prev_break);
 
     return state.segments.empty() && state.carried == 0 &&
-        context.strategies.edge_fit->start_due(cursor.window.start - cursor.prev_break,
+        context.strategies.edge_segments->start_due(cursor.window.start - cursor.prev_break,
                                                state.cadence.peek);
 }
 
@@ -399,7 +399,7 @@ Phase prepare(const Context& context, State& state)
 
     LOG_DEBUG("Peek size: " << state.cadence.peek);
 
-    state.variogram.bands = context.strategies.noise_floor->estimate(stat_dates, stat_spectral);
+    state.variogram.bands = context.strategies.noise->estimate(stat_dates, stat_spectral);
 
     if (!state.variogram.usable())
     {
@@ -665,7 +665,7 @@ void write_start_segment(const Context& context, State& state)
     assert(state.segments.empty() && cursor.prev_break == 0);
 
     auto window_0 = Window(cursor.prev_break, cursor.window.start);
-    ChangeModel result = context.strategies.edge_fit->catch_window(
+    ChangeModel result = context.strategies.edge_segments->catch_window(
         state.series.dates(),
         state.series.spectral(),
         window_0,
@@ -730,8 +730,8 @@ void complete_models(const Context& context, State& state)
 // Writes the segment Extend has grown, from its last peek test, and ends the
 // extend. On a change (change probability 1) it breaks at the change
 // test's break_at(); at the series end (0) at the first observation after
-// the window, or its last when none is left. Its coefficients are the
-// segment fit's; each band's magnitude is the change test's, or `magnitude`
+// the window, or its last when none is left. Its coefficients are
+// segment_report's; each band's magnitude is the change test's, or `magnitude`
 // when given (a resumed series end, whose last test the stored run made).
 void write_extended_segment(
     const Context& context,
@@ -763,7 +763,7 @@ void write_extended_segment(
     result.observation_count = window.stop - window.start;
     result.change_probability = change ? 1.0 : 0.0;
 
-    const index_t num_coef = context.strategies.segment_fit->segment(
+    const index_t num_coef = context.strategies.segment_report->segment(
         *extend.model, masked_dates, series.spectral(), window, extend.num_coef,
         context.max_coefficients, segment_scratch(context, state), result.bands);
     result.curve_qa = static_cast<CurveQA>(num_coef);
@@ -776,8 +776,8 @@ void write_extended_segment(
     extend.trained = false;
 }
 
-// The segment of a forced start the series ended before Extend fitted: the
-// segment fit's of its window (SegmentFit::unfitted()), through the last
+// The segment of a forced start the series ended before Extend fitted:
+// segment_report's of its window (SegmentReport::unfitted()), through the last
 // observation, change probability 0.
 void write_forced_segment(const Context& context, State& state)
 {
@@ -792,7 +792,7 @@ void write_forced_segment(const Context& context, State& state)
     result.break_day = result.end_day;
     result.observation_count = window.size();
     result.change_probability = 0.0;
-    const index_t num_coef = context.strategies.segment_fit->unfitted(
+    const index_t num_coef = context.strategies.segment_report->unfitted(
         refit_model(context, state.extend), masked_dates, series.spectral(), window,
         state.coefficients.count(window.size()), context.max_coefficients,
         segment_scratch(context, state), result.bands);
@@ -1066,7 +1066,7 @@ void write_end_segment(const Context& context, State& state)
 {
     const MaskedSeries& series = state.series;
     auto window_1 = Window(state.cursor.prev_break, series.size());
-    ChangeModel result = context.strategies.edge_fit->catch_window(
+    ChangeModel result = context.strategies.edge_segments->catch_window(
         series.dates(),
         series.spectral(),
         window_1,
@@ -1084,7 +1084,7 @@ Phase end_catch(const Context& context, State& state)
     const bool after_change = state.segments.empty()
         ? state.carried > 0 && state.carried_change
         : state.segments.back().change_probability == 1.0;
-    if (context.strategies.edge_fit->end_due(state.series.size() - prev_break,
+    if (context.strategies.edge_segments->end_due(state.series.size() - prev_break,
                                              state.cadence.peek, after_change))
         write_end_segment(context, state);
     return Phase::Done;
@@ -1376,9 +1376,9 @@ FitResult Detector::fit(
                               mode.max_coefficients);
     }
 
-    return strategies.edge_fit->whole_series(
+    return strategies.edge_segments->whole_series(
         mode.procedure, series, std::move(mask),
-        edges_.get(strategies.edge_fit, [](const EdgeFit& e) { return e.make_scratch(); }));
+        edges_.get(strategies.edge_segments, [](const EdgeSegments& e) { return e.make_scratch(); }));
 }
 
 } // namespace standard

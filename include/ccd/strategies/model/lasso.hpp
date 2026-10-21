@@ -19,7 +19,7 @@ namespace ccd
 // The per-band Lasso fits
 //
 // The fits of the Lasso strategies (the model and stability fit below, the
-// edge fit "lasso"): every band of a window fitted with a Lasso model, its
+// edge_segments "lasso"): every band of a window fitted with a Lasso model, its
 // residuals over a peek, and a band's fit as a segment reports it. Each
 // takes what it reads as arguments, and none fixes a coefficient count of
 // its own: the caller passes it.

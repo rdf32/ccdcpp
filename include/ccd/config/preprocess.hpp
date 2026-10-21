@@ -25,7 +25,7 @@ namespace config
 // input's codes, rows and units.
 //
 // The library's step types are keep_qa, add_qa, thermal_range, band_range,
-// green_median and dedupe (input/mask/steps.hpp).
+// green_median and one_per_date (input/mask/steps.hpp).
 //
 //==============================================================================
 

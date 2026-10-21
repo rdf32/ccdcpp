@@ -236,7 +236,7 @@ ProcessingMask build_mask(
 }
 
 // Whether a stored record's drops can be replayed on this input: a stored
-// drop on a date the mask keeps twice (a plan without Dedupe) does not say
+// drop on a date the mask keeps twice (a plan without OnePerDate) does not say
 // which of the two it was, so such a pixel is rerun.
 bool drops_unambiguous(
     const std::vector<std::int64_t>& days,

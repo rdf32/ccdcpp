@@ -1,4 +1,4 @@
-#include "ccd/strategies/noise_floor/variogram.hpp"
+#include "ccd/strategies/noise/variogram.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -163,7 +163,7 @@ std::vector<scalar_t> adjusted_variogram(
 namespace strategies
 {
 
-const std::vector<config::Field<VariogramFloor::Params>>& VariogramFloor::schema()
+const std::vector<config::Field<VariogramNoise::Params>>& VariogramNoise::schema()
 {
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
@@ -173,7 +173,7 @@ const std::vector<config::Field<VariogramFloor::Params>>& VariogramFloor::schema
     return s;
 }
 
-std::vector<scalar_t> VariogramFloor::estimate(ArrayView<const std::int64_t, 1> dates,
+std::vector<scalar_t> VariogramNoise::estimate(ArrayView<const std::int64_t, 1> dates,
                                                ArrayView<const scalar_t, 2> spectral) const
 {
     return adjusted_variogram(dates, spectral, p_.min_lag_days);

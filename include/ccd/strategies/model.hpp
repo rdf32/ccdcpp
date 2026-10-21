@@ -50,7 +50,7 @@ public:
     // band's in-window residuals (residuals()) when `keep` is Yes. The other
     // bands' fits are not touched (a model may fit them too). False when
     // the window cannot be fitted with num_coef coefficients: the machine
-    // then reads no fit of it (a segment fit refitting may still report
+    // then reads no fit of it (a segment_report refitting may still report
     // what the model holds).
     virtual bool fit(
         ArrayView<const std::int64_t, 1> dates,

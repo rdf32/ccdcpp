@@ -39,15 +39,15 @@ constexpr std::int64_t NO_STATISTICS_END = std::numeric_limits<std::int64_t>::ma
 //   outlier_probability  none           outlier's threshold and lookback's
 //                                       outlier_threshold, its quantile
 //   alpha, coef_floor    reflectance    the Lasso's (model, stability_fit,
-//   max_iter, tolerance  none           edge_fit)
+//   max_iter, tolerance  none           edge_segments)
 //   coefficient_min/_mid/_max,          the coefficient rule of model and
-//   num_obs_factor       none           stability_fit; edge_fit's
+//   num_obs_factor       none           stability_fit; edge_segments'
 //                                       coefficients is coefficient_min
 //   min_observations     observations   the fewest observations a curve is
 //                                       fitted on: start_search's window
 //                                       (pyccd's meow_size) and the
 //                                       observations it needs after it, and
-//                                       edge_fit's least for a whole-series
+//                                       edge_segments' least for a whole-series
 //                                       curve
 //   statistics_end       ordinal day    the statistics cutoff: the procedure
 //                                       choice, the cadence, the variogram

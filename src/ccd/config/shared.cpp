@@ -27,7 +27,7 @@ const std::vector<Field<Shared>>& shared_schema()
          "a Lasso sweep whose largest update is at most this times max(largest "
          "coefficient, coef_floor) checks the duality gap"},
         {"coefficient_min", &Shared::coefficient_min, Unit::None, at_least(1),
-         "coefficients of a short window's fit, of a start window's and of an edge fit"},
+         "coefficients of a short window's fit, of a start window's and of an edge segment's"},
         {"coefficient_mid", &Shared::coefficient_mid, Unit::None, at_least(1),
          "coefficients from coefficient_mid * num_obs_factor observations"},
         {"coefficient_max", &Shared::coefficient_max, Unit::None, at_least(1),

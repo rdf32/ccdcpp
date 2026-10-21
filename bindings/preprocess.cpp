@@ -127,7 +127,7 @@ std::string step_fields(const pp::Step& s)
                         : "dates <= " + std::to_string(s.max_date)) +
                    ") + " + number(s.green_offset) + ", scope " + scope_name(s.scope);
 
-        case pp::StepKind::Dedupe:
+        case pp::StepKind::OnePerDate:
             return "";
 
         case pp::StepKind::Custom:
@@ -248,7 +248,7 @@ void bind_preprocess(py::module_& m)
         m,
         "StepKind",
         "What a preprocessing Step does to the processing mask: KeepQa, "
-        "AddQa, ThermalRange, BandRange, GreenMedian, Dedupe, or Custom (a "
+        "AddQa, ThermalRange, BandRange, GreenMedian, OnePerDate, or Custom (a "
         "step type a registry adds)."
     )
     .value("KeepQa", pp::StepKind::KeepQa)
@@ -256,7 +256,7 @@ void bind_preprocess(py::module_& m)
     .value("ThermalRange", pp::StepKind::ThermalRange)
     .value("BandRange", pp::StepKind::BandRange)
     .value("GreenMedian", pp::StepKind::GreenMedian)
-    .value("Dedupe", pp::StepKind::Dedupe)
+    .value("OnePerDate", pp::StepKind::OnePerDate)
     .value("Custom", pp::StepKind::Custom);
 
     py::class_<pp::Step>(

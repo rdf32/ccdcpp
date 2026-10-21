@@ -152,7 +152,7 @@ class StepKind:
     ThermalRange: ClassVar[StepKind]
     BandRange: ClassVar[StepKind]
     GreenMedian: ClassVar[StepKind]
-    Dedupe: ClassVar[StepKind]
+    OnePerDate: ClassVar[StepKind]
     Custom: ClassVar[StepKind]
     __members__: ClassVar[dict[str, StepKind]]
     def __init__(self, value: int) -> None: ...

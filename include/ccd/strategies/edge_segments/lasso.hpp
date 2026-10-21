@@ -69,7 +69,7 @@ namespace strategies
 {
 
 //------------------------------------------------------------------------------
-// edge_fit "lasso": pyccd's. Every band of the window, or of the whole
+// edge_segments "lasso": pyccd's. Every band of the window, or of the whole
 // series, a Lasso fit of `coefficients` coefficients (catch_segment(),
 // fit_whole_series()), solved with the Lasso parameters; the whole series
 // has no segment with fewer than min_observations kept observations. The
@@ -78,7 +78,7 @@ namespace strategies
 // than `coefficients`, so that the fit's RMSE has a degree of freedom (a
 // peek_size below coefficient_min leaves those observations without one).
 //------------------------------------------------------------------------------
-struct LassoEdges final : EdgeFit
+struct LassoEdges final : EdgeSegments
 {
     struct Params
     {

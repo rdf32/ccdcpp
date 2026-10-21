@@ -13,7 +13,7 @@
 #include "ccd/input/pixel_series.hpp"
 
 #include "ccd/results/segment.hpp"
-#include "ccd/strategies/edge_fit/lasso.hpp"
+#include "ccd/strategies/edge_segments/lasso.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/procedure.hpp"
 #include "../golden/config.hpp"
@@ -280,9 +280,9 @@ TEST(CCD, DetectSnow)
         series,
         golden::chain_mask(series, input, "snow", golden::ccdc()),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "min_observations")),
+            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_segments", "min_observations")),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "coefficients")),
+            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_segments", "coefficients")),
         lworkspace,
         solver
     );

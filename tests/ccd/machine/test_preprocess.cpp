@@ -212,7 +212,7 @@ void reference_thermal(
 }
 
 // Clear and water kept, the thermal range (reference_thermal), the
-// reflectance range, deduped.
+// reflectance range, one per date.
 ccd::ProcessingMask reference_common(
     const PixelView& px,
     const Options& options,
@@ -237,7 +237,7 @@ ccd::ProcessingMask reference_common(
         mask
     );
 
-    ccd::filter::apply_dedupe(px.dates, mask);
+    ccd::filter::apply_one_per_date(px.dates, mask);
 
     return mask;
 }
@@ -264,7 +264,7 @@ ccd::ProcessingMask reference_snow(
             mask.set(i, true);
     }
 
-    ccd::filter::apply_dedupe(px.dates, mask);
+    ccd::filter::apply_one_per_date(px.dates, mask);
     reference_thermal(px, options, false, mask);
 
     return mask;
@@ -288,7 +288,7 @@ ccd::ProcessingMask reference_insufficient_clear(
         mask
     );
 
-    ccd::filter::apply_dedupe(px.dates, mask);
+    ccd::filter::apply_one_per_date(px.dates, mask);
 
     return mask;
 }
@@ -679,7 +679,7 @@ ccd::FitResult run_detect(
 TEST(CcdcPlan, Shape)
 {
     using K = pp::StepKind;
-    const std::vector<K> common = {K::KeepQa, K::ThermalRange, K::BandRange, K::Dedupe};
+    const std::vector<K> common = {K::KeepQa, K::ThermalRange, K::BandRange, K::OnePerDate};
 
     auto kinds = [](const pp::Chain& chain)
     {
@@ -697,11 +697,11 @@ TEST(CcdcPlan, Shape)
     EXPECT_EQ(kinds(plan.standard.chain), common);
 
     std::vector<K> snow = common;
-    snow.insert(snow.end(), {K::AddQa, K::Dedupe, K::ThermalRange});
+    snow.insert(snow.end(), {K::AddQa, K::OnePerDate, K::ThermalRange});
     EXPECT_EQ(kinds(plan.snow.chain), snow);
 
     std::vector<K> clear = common;
-    clear.insert(clear.end(), {K::GreenMedian, K::Dedupe});
+    clear.insert(clear.end(), {K::GreenMedian, K::OnePerDate});
     EXPECT_EQ(kinds(plan.insufficient_clear.chain), clear);
 
     ASSERT_TRUE(plan.standard.transform.has_value());
@@ -732,7 +732,7 @@ TEST(CcdcPlan, Shape)
     no_thermal.roles[6] = "other";
     const pp::PreprocessPlan nt = golden::plan_of(config, no_thermal);
     EXPECT_FALSE(nt.standard.transform.has_value());
-    EXPECT_EQ(kinds(nt.standard.chain), (std::vector<K>{K::KeepQa, K::BandRange, K::Dedupe}));
+    EXPECT_EQ(kinds(nt.standard.chain), (std::vector<K>{K::KeepQa, K::BandRange, K::OnePerDate}));
 }
 
 namespace
@@ -793,7 +793,7 @@ pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double th
         out.push_back(pp::Step::band_range(
             band_rows(ccd::config::Value(std::string("reflective")), input),
             {{0.0, false}, {refl_hi, false}}));
-        out.push_back(pp::Step::dedupe());
+        out.push_back(pp::Step::one_per_date());
         return out;
     };
     const pp::Chain common = chain(stored_lo, stored_hi);
@@ -803,12 +803,12 @@ pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double th
     plan.standard.chain = chain(therm_lo, therm_hi);
     plan.snow.chain = common;
     plan.snow.chain.push_back(pp::Step::add_qa(pp::qa_set({input.qa_snow})));
-    plan.snow.chain.push_back(pp::Step::dedupe());
+    plan.snow.chain.push_back(pp::Step::one_per_date());
     thermal(plan.snow.chain, stored_lo, stored_hi);
     plan.insufficient_clear.chain = common;
     plan.insufficient_clear.chain.push_back(pp::Step::green_median(
         input.index("green"), green, golden::PYCCD_STATISTICS_END, ccd::GreenFilterScope::StatWindow));
-    plan.insufficient_clear.chain.push_back(pp::Step::dedupe());
+    plan.insufficient_clear.chain.push_back(pp::Step::one_per_date());
     return plan;
 }
 
@@ -936,19 +936,19 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
                                                {{"keep_qa", {{"codes", names({"clear", "water"})}}},
                                                 {"thermal_range", thermal},
                                                 {"band_range", band},
-                                                {"dedupe", {}}}};
+                                                {"one_per_date", {}}}};
         procedure.steps.insert(procedure.steps.end(), after.begin(), after.end());
         return procedure;
     };
     ccd::config::Config written = golden::pyccd();
     written.preprocess = {
         {"standard", chain(true, {})},
-        {"snow", chain(false, {{"add_qa", {{"codes", names({"snow"})}}}, {"dedupe", {}},
+        {"snow", chain(false, {{"add_qa", {{"codes", names({"snow"})}}}, {"one_per_date", {}},
                                {"thermal_range", thermal}})},
         {"insufficient_clear",
          chain(false, {{"green_median", {{"offset", real(0.04)},
                                          {"scope", ccd::config::Value(std::string("stat_window"))}}},
-                       {"dedupe", {}}})},
+                       {"one_per_date", {}}})},
     };
 
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
@@ -1180,7 +1180,7 @@ TEST(PlanValidation, TransformBandInBandRange)
     EXPECT_NO_THROW(pp::validate(plan, 7));
 }
 
-TEST(PlanValidation, AddQaNotFollowedByDedupe)
+TEST(PlanValidation, AddQaNotFollowedByOnePerDate)
 {
     const Options options;
     const ccd::Input& h = options.input;
@@ -1188,13 +1188,13 @@ TEST(PlanValidation, AddQaNotFollowedByDedupe)
         // AddQa last.
         pp::PreprocessPlan plan = plan_of(options);
         plan.standard.chain.push_back(pp::Step::add_qa(pp::qa_set({h.qa_snow})));
-        expect_rejected(plan, 7, "standard step 4 (AddQa): must be followed by a Dedupe");
+        expect_rejected(plan, 7, "standard step 4 (AddQa): must be followed by a OnePerDate");
     }
     {
         // AddQa followed by another step.
         pp::PreprocessPlan plan = plan_of(options);
         plan.snow.chain[5] = pp::Step::keep_qa(pp::qa_set({h.qa_clear}));
-        expect_rejected(plan, 7, "snow step 4 (AddQa): must be followed by a Dedupe");
+        expect_rejected(plan, 7, "snow step 4 (AddQa): must be followed by a OnePerDate");
     }
 }
 
@@ -1202,8 +1202,8 @@ TEST(PlanValidation, ChainOverCapacity)
 {
     pp::Chain chain;
     for (index_t i = 0; i < pp::CHAIN_CAPACITY; ++i)
-        chain.push_back(pp::Step::dedupe());
-    EXPECT_THROW(chain.push_back(pp::Step::dedupe()), std::invalid_argument);
+        chain.push_back(pp::Step::one_per_date());
+    EXPECT_THROW(chain.push_back(pp::Step::one_per_date()), std::invalid_argument);
 
     pp::PreprocessPlan plan = plan_of(Options{});
     plan.standard.chain.count = pp::CHAIN_CAPACITY + 1;
@@ -1211,7 +1211,7 @@ TEST(PlanValidation, ChainOverCapacity)
 }
 
 // A configuration whose plan validate() refuses (an add_qa without its
-// dedupe) is refused when it is resolved, before any pixel: detect() and
+// one_per_date) is refused when it is resolved, before any pixel: detect() and
 // detect_cube() throw rather than landing in CubeOutput::failures.
 TEST(PlanValidation, EntryPointsReject)
 {
@@ -1221,7 +1221,7 @@ TEST(PlanValidation, EntryPointsReject)
 
     ccd::config::Config bad = golden::pyccd();
     auto& snow_steps = bad.preprocess.at("snow").steps;
-    snow_steps.erase(snow_steps.begin() + 5);   // the dedupe after add_qa
+    snow_steps.erase(snow_steps.begin() + 5);   // the one_per_date after add_qa
 
     const PixelView px = view(c.dates, c.spectral.data(), 7, c.qas.data());
     EXPECT_THROW(run_detect(px, h, bad), std::invalid_argument);

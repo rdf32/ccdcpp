@@ -306,8 +306,8 @@ TEST(Validation, CadenceRules)
             "change_test 'chi2' parameter 'peek_reference_days'", "it must be greater than 0");
 
     for (const std::int64_t days : {0, -30})
-        expect_error("noise_floor", "min_lag_days", integer(days),
-            "noise_floor 'variogram' parameter 'min_lag_days'", "it must be");
+        expect_error("noise", "min_lag_days", integer(days),
+            "noise 'variogram' parameter 'min_lag_days'", "it must be");
 
     expect_error("refit", "min_obs", integer(0),
         "refit 'span-factor' parameter 'min_obs' is 0", "it must be at least 1");
@@ -338,7 +338,7 @@ TEST(Validation, CadenceRules)
     ccd::config::Config c = golden::pyccd();
     c.stages["change_test"].params["peek_size"] = integer(2);
     c.stages["change_test"].params["peek_reference_days"] = real(1e-9);
-    c.stages["noise_floor"].params["min_lag_days"] = integer(1);
+    c.stages["noise"].params["min_lag_days"] = integer(1);
     c.stages["refit"].params["min_obs"] = integer(1);
     c.stages["change_test"].params["model_rmse_up_to"] = integer(1);
     c.stages["refit"].params["factor"] = real(1e-9);
@@ -356,7 +356,7 @@ namespace
 {
 
 // `config` with every coefficient count set to `count`: the shared
-// coefficient rule, which the stability fit, the model and the edge fit read.
+// coefficient rule, which the stability fit, the model and edge_segments read.
 ccd::config::Config with_coefficients(ccd::config::Config config, std::int64_t count)
 {
     for (const char* name : {"coefficient_min", "coefficient_mid", "coefficient_max"})

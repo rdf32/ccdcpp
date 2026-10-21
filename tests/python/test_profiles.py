@@ -191,9 +191,9 @@ def outlier_threshold(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> 
 
 # The parameters one shared value fills in, as a run resolves them.
 GROUPS: dict[str, tuple[tuple[str, str], ...]] = {
-    "alpha": (("model", "alpha"), ("stability_fit", "alpha"), ("edge_fit", "alpha")),
+    "alpha": (("model", "alpha"), ("stability_fit", "alpha"), ("edge_segments", "alpha")),
     "coef_floor": (("model", "coef_floor"), ("stability_fit", "coef_floor"),
-                   ("edge_fit", "coef_floor")),
+                   ("edge_segments", "coef_floor")),
     "change_threshold": (("change_test", "change_threshold"),
                          ("stability_rule", "change_threshold"),
                          ("lookback", "change_threshold")),
@@ -946,7 +946,7 @@ class Profiles(unittest.TestCase):
         self.assertEqual(cfg.shared()["min_observations"], 18)
         stages = cfg.resolve(h)["stages"]
         self.assertEqual(stages["start_search"]["params"]["meow_size"], 18)
-        self.assertEqual(stages["edge_fit"]["params"]["min_observations"], 18)
+        self.assertEqual(stages["edge_segments"]["params"]["min_observations"], 18)
         self.assertEqual(cfg.shared()["statistics_end"], ccdcpp.NO_STATISTICS_END)
         self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], 2**63 - 1)
         out = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(), config=cfg)

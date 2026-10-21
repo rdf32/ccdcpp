@@ -75,8 +75,8 @@ class Presets(unittest.TestCase):
         clear = ccdcpp.config("ccdc").preprocess("insufficient_clear")
         self.assertFalse(clear["thermal_transform"])
         self.assertEqual([s["step"] for s in clear["steps"]],
-                         ["keep_qa", "thermal_range", "band_range", "dedupe", "green_median",
-                          "dedupe"])
+                         ["keep_qa", "thermal_range", "band_range", "one_per_date", "green_median",
+                          "one_per_date"])
         self.assertEqual(clear["steps"][0]["codes"], ["clear", "water"])
         self.assertEqual((clear["steps"][1]["min"], clear["steps"][1]["max"]), (-93.2, 70.7))
         self.assertEqual((clear["steps"][2]["min"], clear["steps"][2]["max"]), (0.0, 1.0))
@@ -260,12 +260,12 @@ class Replace(unittest.TestCase):
                                                 r"code names\) or of ints \(band rows, QA "
                                                 r"codes\), not a mix"):
             ccdcpp.config().replace(preprocess__standard__keep_qa__codes=["clear", 1])
-        with self.assertRaisesRegex(ValueError, r"^segment_fit 'model-fit' has no parameter "
+        with self.assertRaisesRegex(ValueError, r"^segment_report 'model-fit' has no parameter "
                                                 r"'x'$"):
-            ccdcpp.config().replace(segment_fit__x=1)
-        with self.assertRaisesRegex(ValueError, r"^preprocess standard step 3 'dedupe' has no "
+            ccdcpp.config().replace(segment_report__x=1)
+        with self.assertRaisesRegex(ValueError, r"^preprocess standard step 3 'one_per_date' has no "
                                                 r"parameter 'x'$"):
-            ccdcpp.config().replace(preprocess__dedupe__x=1)
+            ccdcpp.config().replace(preprocess__one_per_date__x=1)
         with self.assertRaises(TypeError):
             ccdcpp.ccdcpp._config_digest(None)  # pyright: ignore[reportArgumentType]  # None, refused
 
@@ -378,8 +378,8 @@ class Runs(unittest.TestCase):
 
     def test_an_edge_segment_has_more_observations_than_coefficients(self):
         # A peek below coefficient_min: the first k observations are another cover, so the
-        # Start segment holds k. It is written only when k exceeds both the peek (2) and the
-        # edge fit's 4 coefficients, so its RMSE has a degree of freedom.
+        # Start segment holds k. It is written only when k exceeds both the peek (2) and
+        # edge_segments' 4 coefficients, so its RMSE has a degree of freedom.
         rng = np.random.default_rng(3)
         dates = 724642 + 16 * np.arange(400, dtype=np.int64)
         cycle = 80.0 * np.cos(2 * np.pi * (dates - dates[0]) / 365.25)

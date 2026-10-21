@@ -14,8 +14,8 @@ namespace ccd
 // Before any change detection, each pixel takes one of three procedures from
 // its QA statistics, chosen by the run's mode (ModeRule,
 // strategies/stages.hpp). Standard runs the change detector; PermanentSnow
-// and InsufficientClear fit one curve over the whole series instead (the
-// edge fit's EdgeFit::whole_series()). Each has its own preprocessing
+// and InsufficientClear fit one curve over the whole series instead
+// (edge_segments' EdgeSegments::whole_series()). Each has its own preprocessing
 // (preprocess::PreprocessPlan::of()), named as in the configuration's
 // preprocess section:
 //

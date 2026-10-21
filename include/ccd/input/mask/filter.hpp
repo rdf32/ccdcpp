@@ -88,12 +88,12 @@ inline bool in_range(scalar_t value, const Range& range)
 
 //------------------------------------------------------------------------------
 //
-// The dedupe step: removes duplicate acquisition dates, keeping the first
+// The one_per_date step: removes duplicate acquisition dates, keeping the first
 // observation of each date.
 //
 //------------------------------------------------------------------------------
 
-void apply_dedupe(
+void apply_one_per_date(
     ArrayView<const std::int64_t, 1> dates,
     ProcessingMask& mask
 );

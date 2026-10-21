@@ -24,7 +24,7 @@ const char* name(StepKind kind)
         case StepKind::ThermalRange: return "ThermalRange";
         case StepKind::BandRange:    return "BandRange";
         case StepKind::GreenMedian:  return "GreenMedian";
-        case StepKind::Dedupe:       return "Dedupe";
+        case StepKind::OnePerDate:       return "OnePerDate";
         case StepKind::Custom:       return "Custom";
     }
     return "unknown";
@@ -190,15 +190,15 @@ void check_step(
     switch (step.kind)
     {
         case StepKind::KeepQa:
-        case StepKind::Dedupe:
+        case StepKind::OnePerDate:
             break;
 
         case StepKind::AddQa:
             if (i + 1 >= chain.size() ||
-                chain[i + 1].kind != StepKind::Dedupe)
+                chain[i + 1].kind != StepKind::OnePerDate)
             {
                 reject(procedure, where,
-                    "must be followed by a Dedupe step: an added "
+                    "must be followed by a OnePerDate step: an added "
                     "observation can share a date with a kept one");
             }
             break;
@@ -373,8 +373,8 @@ void apply_steps(
                 );
                 break;
 
-            case StepKind::Dedupe:
-                filter::apply_dedupe(dates, mask);
+            case StepKind::OnePerDate:
+                filter::apply_one_per_date(dates, mask);
                 break;
 
             case StepKind::Custom:

@@ -269,7 +269,7 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `GREEN_FILTER_SCOPE` | `StatWindow` | `preprocess` `green_median`'s `scope` (`"stat_window"`) |
 | `STAT_ORD` | 736694 | `shared__statistics_end` (default: none, `NO_STATISTICS_END`) |
 | `DETECTION_BANDS` | [1, 2, 3, 4, 5] | `shared__detection_bands` (roles: green, red, nir, swir1, swir2) |
-| `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_fit`'s `min_observations`) |
+| `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_segments`'s `min_observations`) |
 | `PEEK_SIZE` | 6 | `change_test__peek_size` (`stability_rule__peek` and `lookback__peek` are 0: the change test's peek) |
 | `DAY_DELTA` | 365 | `start_search__day_delta` |
 | `CLEAR_PCT_THRESHOLD` | 0.25 | `mode__clear_pct_threshold` |
@@ -279,7 +279,7 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `T_CONST` | 4.89 | `window_screen__t_const` |
 | `TMASK_BANDS` | [1, 4] | `window_screen__bands` (roles: green, swir1) |
 | `PEEK_REFERENCE_DAYS` | 16.0 | `change_test__peek_reference_days` |
-| `VARIOGRAM_MIN_LAG_DAYS` | 30 | `noise_floor__min_lag_days` |
+| `VARIOGRAM_MIN_LAG_DAYS` | 30 | `noise__min_lag_days` |
 | `RETRAIN_MIN_OBS` | 24 | `refit__min_obs` and `change_test__model_rmse_up_to` (two parameters, set alike) |
 | `RETRAIN_SPAN_FACTOR` | 1.33 | `refit__factor` |
 | `SEASONAL_RMSE_COUNT` | 24 | `change_test__seasonal_count` |
@@ -348,6 +348,7 @@ The chain is part of the configuration. `preprocess=`, the profile's `preprocess
 | `ProcedureChain(steps, transform="default")` / `transform=None` | `ProcedureChain(steps, thermal_transform=True)` / `False` (the input's transform) |
 | `Transform(role, scale, offset)` | the input's `thermal_scale`, `thermal_offset` |
 | `BandRange(roles=...)` | `BandRange(bands=...)` (roles or `"reflective"`) |
+| `Dedupe()`, `StepKind.Dedupe` (C++ `preprocess::Step::dedupe()`, `StepKind::Dedupe`) | `OnePerDate()`, `StepKind.OnePerDate` (`Step::one_per_date()`, `StepKind::OnePerDate`): the step `one_per_date` |
 | `GreenMedian(offset, scope, max_date, role)` | `GreenMedian(offset, scope)`; its date is the shared `statistics_end`, its band the green role |
 | the bounds in the input's units | the bounds in physical units: reflectance, degrees Celsius |
 | `default_plan(h)` | `plan_of("ccdc", h)` |
@@ -452,9 +453,9 @@ window_screen 'tmask' parameter 'bands' is empty
 | `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`ccd/strategies/coefficients.hpp`) |
 | `Clock`, `elapsed_ms`, `print_change_model(s)` | none |
 | `ccd/types.hpp`, `ccd/pmask.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, `ccd/harmonic/...`, `ccd/preprocess/...` | `ccd/core/types.hpp`, `ccd/input/processing_mask.hpp`, none (the machine is internal; `ccd/machine/suspended.hpp` holds the record's `Suspended`), `ccd/results/record.hpp`, `ccd/input/...`, `ccd/input/mask/...` (`preprocess/preprocess.hpp` is `input/mask/chain.hpp`, the plans and their chains; `ccd/ccd.hpp` includes every public header) |
-| `filter::remove_duplicate_dates`, `apply_thermal_filter`, `apply_saturation_filter`, `apply_green_median_filter(..., filter_range, ...)` | `filter::apply_dedupe`, `apply_thermal_range`, `apply_band_range`, `apply_green_median(..., green_offset, ...)` (`ccd/input/mask/filter.hpp`), each named for its preprocess step |
-| `ccd/procedure/pixel_procedure.hpp` | `ccd/input/procedure.hpp` (`PixelProcedure`, with `PROCEDURES` and `name()`; `PreprocessPlan::of()` is a procedure's plan); `fit_whole_series` is in `ccd/strategies/edge_fit/lasso.hpp`, the `mode` stage's `PixelMode` in `ccd/strategies/stages.hpp` |
-| `ccd/procedure/fit.hpp`, `ccd/procedure/kernels.hpp` | the header of each function's owner: `ccd/results/segment.hpp` (`ChangeModel`, `BandFit`, `FitResult`, `CurveQA`), `ccd/core/window.hpp` (`Window`, `span`), `ccd/strategies/stages.hpp` (`Variogram`), `ccd/strategies/model.hpp` (`KeepResiduals`), `ccd/strategies/model/lasso.hpp` (`fit_bands`, `peek_residuals`, `band_fit`), `ccd/strategies/edge_fit/lasso.hpp` (`catch_segment`, `fit_whole_series`), `ccd/strategies/noise_floor/variogram.hpp` (`adjusted_variogram`), `ccd/strategies/window_screen/tmask.hpp` (`tmask`), `ccd/strategies/pyccd/peek_statistics.hpp` (`adjust_peek`, `adjust_change_threshold`, `change_magnitude`, `SeasonalOrder`, `seasonal_rmse`), `ccd/core/maths.hpp` (`chi2_quantile`); `find_closest_doy`, `calculate_variogram`, `check_variogram`, `enough_time` and `enough_samples` are internal or gone |
+| `filter::remove_duplicate_dates`, `apply_thermal_filter`, `apply_saturation_filter`, `apply_green_median_filter(..., filter_range, ...)` | `filter::apply_one_per_date`, `apply_thermal_range`, `apply_band_range`, `apply_green_median(..., green_offset, ...)` (`ccd/input/mask/filter.hpp`), each named for its preprocess step |
+| `ccd/procedure/pixel_procedure.hpp` | `ccd/input/procedure.hpp` (`PixelProcedure`, with `PROCEDURES` and `name()`; `PreprocessPlan::of()` is a procedure's plan); `fit_whole_series` is in `ccd/strategies/edge_segments/lasso.hpp`, the `mode` stage's `PixelMode` in `ccd/strategies/stages.hpp` |
+| `ccd/procedure/fit.hpp`, `ccd/procedure/kernels.hpp` | the header of each function's owner: `ccd/results/segment.hpp` (`ChangeModel`, `BandFit`, `FitResult`, `CurveQA`), `ccd/core/window.hpp` (`Window`, `span`), `ccd/strategies/stages.hpp` (`Variogram`), `ccd/strategies/model.hpp` (`KeepResiduals`), `ccd/strategies/model/lasso.hpp` (`fit_bands`, `peek_residuals`, `band_fit`), `ccd/strategies/edge_segments/lasso.hpp` (`catch_segment`, `fit_whole_series`), `ccd/strategies/noise/variogram.hpp` (`adjusted_variogram`), `ccd/strategies/window_screen/tmask.hpp` (`tmask`), `ccd/strategies/pyccd/peek_statistics.hpp` (`adjust_peek`, `adjust_change_threshold`, `change_magnitude`, `SeasonalOrder`, `seasonal_rmse`), `ccd/core/maths.hpp` (`chi2_quantile`); `find_closest_doy`, `calculate_variogram`, `check_variogram`, `enough_time` and `enough_samples` are internal or gone |
 
 `RunSpec` is `{input, algorithm, record, masks, observer, observe}`; `algorithm` is a
 compiled configuration (`ccd::Algorithm`, `run/algorithm.hpp`), the `ccdc` preset's

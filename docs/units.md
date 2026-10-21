@@ -166,9 +166,9 @@ transform is non-decreasing; `ccd::preprocess::stored_range()`), so the stored t
 exactly the values whose transform Standard's test keeps, NaN included, for every flag. On
 Collection-1 DN -93.2 and 70.7 °C are 1799.5 and 3438.5 (179.95 and 343.85 K); with the
 identity transform (`landsat_c1_physical`, `landsat_c2`) the bounds are the transformed ones.
-The snow chain tests the range twice: on its clear and water observations before the dedupe,
+The snow chain tests the range twice: on its clear and water observations before its one_per_date step,
 as pyccd does, so that one with an implausible thermal value does not take its date from a snow
-observation, and again after it adds the snow observations back and dedupes, so that the snow
+observation, and again after it adds the snow observations back and keeps one per date, so that the snow
 observations are tested too (pyccd tests only the clear and water ones).
 
 ```python

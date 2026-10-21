@@ -93,7 +93,7 @@ void apply_band_range(
     }
 }
 
-void apply_dedupe(
+void apply_one_per_date(
     ArrayView<const std::int64_t, 1> dates,
     ProcessingMask& mask
 )

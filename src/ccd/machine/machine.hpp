@@ -33,7 +33,7 @@ namespace ccd
 //
 // Around a machine, also shared: the per-pixel procedure
 // (input/procedure.hpp), which the mode stage chooses, and the whole-series
-// fit of the pixels that take no machine, which is the edge fit's.
+// fit of the pixels that take no machine, which is edge_segments'.
 // docs/ccdc-state-machine.md describes the design as a whole.
 //
 //==============================================================================

@@ -150,15 +150,15 @@ std::optional<Step> GreenMedian::make(const Params& params, const Input& input, 
                               *green_filter_scope(params.scope));
 }
 
-const std::vector<Field<Dedupe::Params>>& Dedupe::schema()
+const std::vector<Field<OnePerDate::Params>>& OnePerDate::schema()
 {
     static const std::vector<Field<Params>> s = {};
     return s;
 }
 
-std::optional<Step> Dedupe::make(const Params&, const Input&, const config::StepContext&)
+std::optional<Step> OnePerDate::make(const Params&, const Input&, const config::StepContext&)
 {
-    return Step::dedupe();
+    return Step::one_per_date();
 }
 
 } // namespace preprocess

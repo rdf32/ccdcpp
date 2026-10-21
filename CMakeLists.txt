@@ -196,16 +196,16 @@ add_library(
     src/ccd/config/shared.cpp
     src/ccd/strategies/change_test/chi2.cpp
     src/ccd/strategies/capabilities.cpp
-    src/ccd/strategies/edge_fit/lasso.cpp
+    src/ccd/strategies/edge_segments/lasso.cpp
     src/ccd/strategies/lookback/pyccd.cpp
     src/ccd/strategies/mode/pyccd.cpp
     src/ccd/strategies/model/lasso.cpp
-    src/ccd/strategies/noise_floor/variogram.cpp
+    src/ccd/strategies/noise/variogram.cpp
     src/ccd/strategies/outlier/floored.cpp
     src/ccd/strategies/pyccd/peek_statistics.cpp
     src/ccd/strategies/library.cpp
     src/ccd/strategies/refit/span_factor.cpp
-    src/ccd/strategies/segment_fit/model_fit.cpp
+    src/ccd/strategies/segment_report/model_fit.cpp
     src/ccd/strategies/stability_rule/pyccd.cpp
     src/ccd/strategies/start_search/pyccd.cpp
     src/ccd/strategies/window_screen/tmask.cpp

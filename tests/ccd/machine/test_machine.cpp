@@ -50,7 +50,7 @@
 #include "ccd/machine/standard.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
 #include "../golden/config.hpp"
-#include "ccd/strategies/edge_fit/lasso.hpp"
+#include "ccd/strategies/edge_segments/lasso.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/library.hpp"
@@ -1270,7 +1270,7 @@ TEST(StandardHooks, TheModesExtraMaskStepsFollowTheChain)
         r.resolved.plan.insufficient_clear.chain[4].green_offset,
         r.shared.statistics_end,
         ccd::GreenFilterScope::All);
-    const ccd::preprocess::Chain chain{ccd::preprocess::Step::dedupe()};
+    const ccd::preprocess::Chain chain{ccd::preprocess::Step::one_per_date()};
     ccd::PixelMode mode(ccd::PixelProcedure::Standard);
     mode.extra_mask.push_back(green);
 
@@ -1639,8 +1639,8 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
         expect_same(
             fit,
             ccd::fit_whole_series(procedure, r.workspace, mask,
-                                  r.count("edge_fit", "min_observations"),
-                                  r.count("edge_fit", "coefficients"), r.lasso, r.solver),
+                                  r.count("edge_segments", "min_observations"),
+                                  r.count("edge_segments", "coefficients"), r.lasso, r.solver),
 
             "whole series");
         ASSERT_EQ(fit.models.size(), 1u);

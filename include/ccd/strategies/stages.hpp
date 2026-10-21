@@ -43,7 +43,7 @@ class Model;   // strategies/model.hpp
 //
 //   mode             the pixel's procedure: change detection, or one curve
 //                    over the whole series
-//   noise_floor      each band's noise, which every test scales by
+//   noise            each band's noise, which every test scales by
 //   start_search     where the search for a stable start window begins, and
 //                    when it has no candidate left
 //   window_screen    the outliers of a candidate start window, dropped before
@@ -58,8 +58,8 @@ class Model;   // strategies/model.hpp
 //   change_test      the pixel's peek, whether a peek is a change, and the
 //                    segment's break and magnitudes
 //   outlier          whether the first peek observation is an outlier
-//   segment_fit      the coefficients a segment Extend grew reports
-//   edge_fit         the fits of the Start and End segments and of the
+//   segment_report   the coefficients a segment Extend grew reports
+//   edge_segments    the fits of the Start and End segments and of the
 //                    whole-series curve
 //
 // At an Extend peek the stages read one Peek, and the change test's results
@@ -77,7 +77,7 @@ class Model;   // strategies/model.hpp
 //------------------------------------------------------------------------------
 // mode: the pixel's procedure, from the QA statistics of its statistics
 // window: Standard (the change-detection machine), or PermanentSnow or
-// InsufficientClear (one curve over the whole series, the edge fit's); with
+// InsufficientClear (one curve over the whole series, edge_segments'); with
 // what it asks of a Standard pixel's detection (PixelMode).
 //------------------------------------------------------------------------------
 
@@ -107,15 +107,15 @@ struct ModeRule
 };
 
 //------------------------------------------------------------------------------
-// noise_floor: each band's noise floor, from the pixel's statistics-window
+// noise: each band's noise floor, from the pixel's statistics-window
 // observations (dates, spectral (B, n)): one value per spectral row. A NaN in
 // it ends the pixel without segments.
 //------------------------------------------------------------------------------
-struct NoiseFloor
+struct Noise
 {
-    static constexpr const char* stage = "noise_floor";
+    static constexpr const char* stage = "noise";
 
-    virtual ~NoiseFloor() = default;
+    virtual ~Noise() = default;
     virtual std::vector<scalar_t> estimate(ArrayView<const std::int64_t, 1> dates,
                                            ArrayView<const scalar_t, 2> spectral) const = 0;
 };
@@ -123,7 +123,7 @@ struct NoiseFloor
 //------------------------------------------------------------------------------
 // Variogram
 //
-// One pixel's per-band noise floor: the noise floor's estimate() of its
+// One pixel's per-band noise floor: the noise stage's estimate() of its
 // statistics-window observations, one value per spectral row, in row order.
 // Computed once per pixel and read, never written, by Tmask, the stability
 // check and the change magnitudes. Not tied to a procedure.
@@ -493,7 +493,7 @@ struct OutlierRule
 };
 
 //------------------------------------------------------------------------------
-// segment_fit: the coefficients of every band of a segment Extend grew, into
+// segment_report: the coefficients of every band of a segment Extend grew, into
 // `bands` (one per band; the change test sets the magnitudes after), and the
 // coefficient count the segment reports (its curve_qa). segment() reads the
 // monitoring model as its last refit left it, fitted with num_coef on the
@@ -503,11 +503,11 @@ struct OutlierRule
 // its size. The pixel's mode caps the coefficients at max_coefficients (0:
 // no cap). Either may refit `model`: the segment is its last use.
 //------------------------------------------------------------------------------
-struct SegmentFit
+struct SegmentReport
 {
-    static constexpr const char* stage = "segment_fit";
+    static constexpr const char* stage = "segment_report";
 
-    virtual ~SegmentFit() = default;
+    virtual ~SegmentReport() = default;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
     virtual index_t segment(Model& model, ArrayView<const std::int64_t, 1> dates,
                             ArrayView<const scalar_t, 2> spectral, const Window& window,
@@ -520,7 +520,7 @@ struct SegmentFit
 };
 
 //------------------------------------------------------------------------------
-// edge_fit: the fits that are not a test's. catch_window() is the segment
+// edge_segments: the fits that are not a test's. catch_window() is the segment
 // catching `window` of the masked series (`dates`, `spectral` (B, n)): the
 // Start segment before the first stable start, the End segment after the
 // last break; whole_series() is a PermanentSnow or InsufficientClear pixel's
@@ -533,11 +533,11 @@ struct SegmentFit
 // after_change whether that segment ended in a change. `peek` is the
 // pixel's peek size.
 //------------------------------------------------------------------------------
-struct EdgeFit
+struct EdgeSegments
 {
-    static constexpr const char* stage = "edge_fit";
+    static constexpr const char* stage = "edge_segments";
 
-    virtual ~EdgeFit() = default;
+    virtual ~EdgeSegments() = default;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
     virtual bool start_due(index_t before, index_t peek) const = 0;
     virtual bool end_due(index_t after, index_t peek, bool after_change) const = 0;
@@ -552,7 +552,7 @@ struct EdgeFit
 struct Strategies
 {
     std::shared_ptr<const ModeRule> mode;
-    std::shared_ptr<const NoiseFloor> noise_floor;
+    std::shared_ptr<const Noise> noise;
     std::shared_ptr<const StartSearch> start_search;
     std::shared_ptr<const WindowScreen> window_screen;
     std::shared_ptr<const StabilityFit> stability_fit;
@@ -562,8 +562,8 @@ struct Strategies
     std::shared_ptr<const RefitSchedule> refit;
     std::shared_ptr<const ChangeTest> change_test;
     std::shared_ptr<const OutlierRule> outlier;
-    std::shared_ptr<const SegmentFit> segment_fit;
-    std::shared_ptr<const EdgeFit> edge_fit;
+    std::shared_ptr<const SegmentReport> segment_report;
+    std::shared_ptr<const EdgeSegments> edge_segments;
 };
 
 } // namespace ccd

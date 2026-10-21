@@ -99,7 +99,7 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/results/segment.hpp"
-#include "ccd/strategies/edge_fit/lasso.hpp"
+#include "ccd/strategies/edge_segments/lasso.hpp"
 #include "ccd/input/procedure.hpp"
 #include "ccd/input/mask/filter.hpp"
 
@@ -317,9 +317,9 @@ ccd::FitResult run_insufficient_clear(
         series,
         golden::chain_mask(series, h, "insufficient_clear", config),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(tree, "edge_fit", "min_observations")),
+            golden::parameter<std::int64_t>(tree, "edge_segments", "min_observations")),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(tree, "edge_fit", "coefficients")),
+            golden::parameter<std::int64_t>(tree, "edge_segments", "coefficients")),
         lworkspace,
         solver
     );

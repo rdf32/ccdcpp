@@ -51,8 +51,8 @@
 #include "ccd/core/maths.hpp"
 #include "ccd/core/window.hpp"
 #include "ccd/results/segment.hpp"
-#include "ccd/strategies/edge_fit/lasso.hpp"
-#include "ccd/strategies/noise_floor/variogram.hpp"
+#include "ccd/strategies/edge_segments/lasso.hpp"
+#include "ccd/strategies/noise/variogram.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/window_screen/tmask.hpp"
 #include "ccd/strategies/model.hpp"
@@ -89,8 +89,8 @@ void expect_refused(F make, const std::string& fragment)
 TEST(Registry, ListsTheCoreStrategies)
 {
     const auto names = golden::core_registry().names();
-    ASSERT_EQ(names.count("noise_floor"), 1u);
-    EXPECT_EQ(names.at("noise_floor"), (std::vector<std::string>{"variogram"}));
+    ASSERT_EQ(names.count("noise"), 1u);
+    EXPECT_EQ(names.at("noise"), (std::vector<std::string>{"variogram"}));
     // The library's registry holds every core strategy (and its extensions').
     const auto library = ccd::strategies::library_registry().names();
     for (const auto& [stage, strategies] : names)
@@ -102,10 +102,10 @@ TEST(Registry, ListsTheCoreStrategies)
         }
     ASSERT_EQ(names.count("mode"), 1u);
     EXPECT_EQ(names.at("mode"), (std::vector<std::string>{"pyccd"}));
-    ASSERT_EQ(names.count("segment_fit"), 1u);
-    EXPECT_EQ(names.at("segment_fit"), (std::vector<std::string>{"model-fit"}));
-    ASSERT_EQ(names.count("edge_fit"), 1u);
-    EXPECT_EQ(names.at("edge_fit"), (std::vector<std::string>{"lasso"}));
+    ASSERT_EQ(names.count("segment_report"), 1u);
+    EXPECT_EQ(names.at("segment_report"), (std::vector<std::string>{"model-fit"}));
+    ASSERT_EQ(names.count("edge_segments"), 1u);
+    EXPECT_EQ(names.at("edge_segments"), (std::vector<std::string>{"lasso"}));
     ASSERT_EQ(names.count("start_search"), 1u);
     EXPECT_EQ(names.at("start_search"), (std::vector<std::string>{"pyccd"}));
     ASSERT_EQ(names.count("window_screen"), 1u);
@@ -232,7 +232,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
                                   {"peek_size", integer(6)},
                                   {"seasonal_count", integer(24)},
                                   {"seasonal_divisor", real(4.0)}}}},
-        {"edge_fit", {"lasso", {{"alpha", real(1.0)},
+        {"edge_segments", {"lasso", {{"alpha", real(1.0)},
                                 {"coef_floor", real(1.0)},
                                 {"coefficients", integer(4)},
                                 {"max_iter", integer(1000)},
@@ -252,12 +252,12 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
                              {"max_iter", integer(1000)},
                              {"num_obs_factor", integer(3)},
                              {"tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
-        {"noise_floor", {"variogram", {{"min_lag_days", integer(30)}}}},
+        {"noise", {"variogram", {{"min_lag_days", integer(30)}}}},
         {"outlier", {"floored", {{"statistic", ccd::config::Value(std::string("change_magnitude"))},
                                  {"threshold", real(0x1.1f1b01b9054dfp+5)}}}},
         {"refit", {"span-factor", {{"factor", real(0x1.547ae147ae148p+0)},
                                    {"min_obs", integer(24)}}}},
-        {"segment_fit", {"model-fit", {}}},
+        {"segment_report", {"model-fit", {}}},
         {"stability_fit", {"lasso", {{"alpha", real(1.0)},
                                      {"coef_floor", real(1.0)},
                                      {"coefficient_max", integer(8)},
@@ -366,7 +366,7 @@ TEST(Registry, SharedValuesReachTheirStages)
 
     // Reflectance values times the input's unit, in every Lasso stage.
     const auto lasso = golden::with_shared(golden::ccdc(), "alpha", real(0.5));
-    for (const char* stage : {"model", "stability_fit", "edge_fit"})
+    for (const char* stage : {"model", "stability_fit", "edge_segments"})
     {
         EXPECT_EQ(golden::parameter<double>(ccd::config::resolve(r, lasso, reflectance).stages, stage, "alpha"),
                   0.5)
@@ -399,9 +399,9 @@ TEST(Registry, SharedValuesReachTheirStages)
     EXPECT_EQ(ccd::config::resolve(r, probable, ccd::Input{}).shared.detection_bands,
               (ccd::BandList{2, 3, 4, 5}));
 
-    // edge_fit's coefficients are the coefficient rule's minimum.
+    // edge_segments' coefficients are the coefficient rule's minimum.
     const auto six = golden::with_shared(golden::ccdc(), "coefficient_min", ccd::config::integer(6));
-    EXPECT_EQ(golden::parameter<std::int64_t>(ccd::config::resolve(r, six, ccd::Input{}).stages, "edge_fit",
+    EXPECT_EQ(golden::parameter<std::int64_t>(ccd::config::resolve(r, six, ccd::Input{}).stages, "edge_segments",
                                               "coefficients"),
               6);
 
@@ -1088,7 +1088,7 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
     EXPECT_EQ(judged.observation, 14u);
 }
 
-TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
+TEST(EdgeSegments, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 {
     ccd::config::Config config = golden::ccdc();
     config.shared["coefficient_min"] = ccd::config::integer(6);
@@ -1097,13 +1097,13 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     ccd::Input reflectance;
     reflectance.reflectance_scale = 1.0;
     const ccd::config::ConfigTree tree = golden::resolved(config, reflectance).stages;
-    const auto& edges = tree.at("edge_fit");
+    const auto& edges = tree.at("edge_segments");
     EXPECT_EQ(edges.strategy, "lasso");
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients")), 6);
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("min_observations")), 15);
     EXPECT_EQ(golden::parameter<std::int64_t>(tree, "start_search", "meow_size"), 15);
     EXPECT_EQ(std::get<double>(edges.params.at("alpha")), 0.5);
-    EXPECT_EQ(tree.at("segment_fit").strategy, "model-fit");
+    EXPECT_EQ(tree.at("segment_report").strategy, "model-fit");
     EXPECT_EQ(tree.at("mode").strategy, "pyccd");
 
     const auto s = golden::strategies_of(config, reflectance);
@@ -1120,10 +1120,10 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
     const ccd::Window window(3, 31);
 
-    const auto scratch = s.edge_fit->make_scratch();
+    const auto scratch = s.edge_segments->make_scratch();
     const ccd::ChangeModel got =
-        s.edge_fit->catch_window(d, x, window, ccd::CurveQA::End, *scratch);
-    // The kernels' solver with the edge fit's parameters.
+        s.edge_segments->catch_window(d, x, window, ccd::CurveQA::End, *scratch);
+    // The kernels' solver with edge_segments' parameters.
     ccd::LassoOptions l;
     l.alpha = 0.5;
     ccd::LassoWorkspace workspace(0);
@@ -1140,10 +1140,10 @@ TEST(EdgeFit, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     EXPECT_EQ(got.curve_qa, ccd::CurveQA::End);
 }
 
-TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
+TEST(Noise, VariogramIsTheAdjustedVariogram)
 {
     const auto tree =
-        golden::with(golden::ccdc(), "noise_floor", "min_lag_days", ccd::config::integer(45));
+        golden::with(golden::ccdc(), "noise", "min_lag_days", ccd::config::integer(45));
     const auto s = golden::strategies_of(tree);
     const ccd::index_t n = 50, bands = 3;
     std::vector<std::int64_t> dates(n);
@@ -1156,8 +1156,8 @@ TEST(NoiseFloor, VariogramIsTheAdjustedVariogram)
     }
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
     const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
-    EXPECT_EQ(s.noise_floor->estimate(d, x), ccd::adjusted_variogram(d, x, 45));
-    EXPECT_EQ(golden::parameter<std::int64_t>(golden::resolved(tree).stages, "noise_floor",
+    EXPECT_EQ(s.noise->estimate(d, x), ccd::adjusted_variogram(d, x, 45));
+    EXPECT_EQ(golden::parameter<std::int64_t>(golden::resolved(tree).stages, "noise",
                                               "min_lag_days"),
               45);
 }
@@ -1321,7 +1321,7 @@ TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
     {
         const std::string message = e.what();
         const std::string listed = message.substr(message.find("the steps are "));
-        for (const char* step : {"add_qa", "band_range", "dedupe", "green_median", "keep_qa",
+        for (const char* step : {"add_qa", "band_range", "one_per_date", "green_median", "keep_qa",
                                  "thermal_range"})
             EXPECT_NE(listed.find(step), std::string::npos) << step << ": " << message;
     }
@@ -1340,7 +1340,7 @@ TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
     ccd::config::Config long_chain = golden::ccdc();
     auto& steps = long_chain.preprocess.at("standard").steps;
     while (steps.size() <= static_cast<std::size_t>(ccd::preprocess::CHAIN_CAPACITY))
-        steps.push_back({"dedupe", {}});
+        steps.push_back({"one_per_date", {}});
     expect_refused([&] { build(long_chain); },
                    "preprocess standard has 9 steps; a chain holds at most 8");
 

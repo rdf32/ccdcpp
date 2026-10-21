@@ -42,9 +42,9 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/core/window.hpp"
 #include "ccd/results/segment.hpp"
-#include "ccd/strategies/edge_fit/lasso.hpp"
+#include "ccd/strategies/edge_segments/lasso.hpp"
 #include "ccd/strategies/model/lasso.hpp"
-#include "ccd/strategies/noise_floor/variogram.hpp"
+#include "ccd/strategies/noise/variogram.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)
@@ -364,10 +364,10 @@ std::int64_t preset_count(const char* stage, const char* name)
     return golden::parameter<std::int64_t>(golden::resolved().stages, stage, name);
 }
 
-// The edge fit's coefficient count in the preset.
+// edge_segments' coefficient count in the preset.
 index_t edge_coefficients()
 {
-    return static_cast<index_t>(preset_count("edge_fit", "coefficients"));
+    return static_cast<index_t>(preset_count("edge_segments", "coefficients"));
 }
 
 } // namespace
@@ -598,7 +598,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
                 // The magnitude over them, against the positional sum, with
                 // the models' RMSE and with a stand-in seasonal RMSE.
                 const ccd::Variogram variogram{
-                    ccd::adjusted_variogram(dates, spectral, preset_count("noise_floor", "min_lag_days"))};
+                    ccd::adjusted_variogram(dates, spectral, preset_count("noise", "min_lag_days"))};
 
                 for (const scalar_t scale : {1.0, 0.37})
                 {

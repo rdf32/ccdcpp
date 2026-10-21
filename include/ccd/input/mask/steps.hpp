@@ -59,7 +59,7 @@ struct KeepQa
 };
 
 // add_qa: also keep every observation whose QA code is one of `codes`,
-// whatever an earlier step decided; a dedupe must follow it.
+// whatever an earlier step decided; a one_per_date must follow it.
 struct AddQa
 {
     struct Params
@@ -130,8 +130,8 @@ struct GreenMedian
                                    const config::StepContext& context);
 };
 
-// dedupe: keep the first kept observation of each date.
-struct Dedupe
+// one_per_date: keep the first kept observation of each date.
+struct OnePerDate
 {
     struct Params
     {

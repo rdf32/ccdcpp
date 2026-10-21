@@ -3,7 +3,7 @@
 // The cadence and change-probability parameters of the "ccdc" configuration.
 //
 // change_test's peek_reference_days, seasonal_count, seasonal_divisor and
-// model_rmse_up_to; noise_floor's min_lag_days; refit's min_obs and factor;
+// model_rmse_up_to; noise's min_lag_days; refit's min_obs and factor;
 // and the change probability of change_test, stability_rule and lookback.
 // These tests hold two claims:
 //
@@ -33,7 +33,7 @@
 #include <gtest/gtest.h>
 
 #include "ccd/ccd.hpp"
-#include "ccd/strategies/noise_floor/variogram.hpp"
+#include "ccd/strategies/noise/variogram.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 
 #include "golden.hpp"
@@ -137,7 +137,7 @@ ccd::config::Config spelled_out(ccd::config::Config c)
     using ccd::config::integer;
     using ccd::config::real;
     c.stages["change_test"].params["peek_reference_days"] = real(16.0);
-    c.stages["noise_floor"].params["min_lag_days"] = integer(30);
+    c.stages["noise"].params["min_lag_days"] = integer(30);
     c.stages["refit"].params["min_obs"] = integer(24);
     c.stages["change_test"].params["model_rmse_up_to"] = integer(24);
     c.stages["refit"].params["factor"] = real(1.33);
@@ -181,7 +181,7 @@ TEST(Cadence, Defaults)
     using golden::parameter;
     const ccd::config::ConfigTree c = golden::resolved().stages;
     EXPECT_EQ(parameter<double>(c, "change_test", "peek_reference_days"), 16.0);
-    EXPECT_EQ(parameter<std::int64_t>(c, "noise_floor", "min_lag_days"), 30);
+    EXPECT_EQ(parameter<std::int64_t>(c, "noise", "min_lag_days"), 30);
     EXPECT_EQ(parameter<std::int64_t>(c, "refit", "min_obs"), 24);
     EXPECT_EQ(parameter<std::int64_t>(c, "change_test", "model_rmse_up_to"), 24);
     EXPECT_EQ(parameter<double>(c, "refit", "factor"), 1.33);
@@ -275,7 +275,7 @@ TEST(Cadence, PeekReferenceDays)
 }
 
 //==============================================================================
-// noise_floor's min_lag_days: a longer minimum lag measures the variogram
+// noise's min_lag_days: a longer minimum lag measures the variogram
 // over pairs further apart, which on a seasonal signal is larger, so a step
 // must be larger to count as change.
 //==============================================================================
@@ -301,9 +301,9 @@ TEST(Cadence, VariogramMinLagDays)
     EXPECT_EQ(ccd::adjusted_variogram(d, s, 60)[0], 40.0);  // lag 4, 64 days
 
     const ccd::config::Config shorter =
-        golden::with(golden::pyccd(), "noise_floor", "min_lag_days", ccd::config::integer(10));
+        golden::with(golden::pyccd(), "noise", "min_lag_days", ccd::config::integer(10));
     const ccd::config::Config longer =
-        golden::with(golden::pyccd(), "noise_floor", "min_lag_days", ccd::config::integer(60));
+        golden::with(golden::pyccd(), "noise", "min_lag_days", ccd::config::integer(60));
 
     const auto small = make_pixel(300.0, 0.0, {{250, T, 150.0}});
     EXPECT_EQ(breaks(run(small, shorter)), 1);

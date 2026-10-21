@@ -8,10 +8,10 @@ its input with the rest of the configuration; ``ccdcpp.plan_of(config, input)`` 
 result. The classes here write a chain; a field left None is the step's default
 (``ccdcpp.steps()`` lists them)::
 
-    from ccdcpp import BandRange, Dedupe, KeepQa, ProcedureChain, ThermalRange
+    from ccdcpp import BandRange, OnePerDate, KeepQa, ProcedureChain, ThermalRange
 
     keeps_snow = ccdcpp.config("ccdc").replace(preprocess__standard=ProcedureChain(
-        steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
+        steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
         thermal_transform=True,
     ))
 """
@@ -21,7 +21,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["AddQa", "BandRange", "Dedupe", "GreenMedian", "KeepQa", "PROCEDURES", "Preprocess",
+__all__ = ["AddQa", "BandRange", "OnePerDate", "GreenMedian", "KeepQa", "PROCEDURES", "Preprocess",
            "ProcedureChain", "QA_CODE_NAMES", "REFLECTIVE", "ThermalRange"]
 
 #: The procedures of a configuration's preprocess section.
@@ -94,7 +94,7 @@ class KeepQa:
 @dataclass(frozen=True)
 class AddQa:
     """add_qa: also keep every observation whose QA code is in ``codes``, whatever an earlier
-    step decided; a :class:`Dedupe` must follow it. None: snow."""
+    step decided; a :class:`OnePerDate` must follow it. None: snow."""
 
     codes: tuple[str | int, ...] | None = None
 
@@ -170,14 +170,14 @@ class GreenMedian:
 
 
 @dataclass(frozen=True)
-class Dedupe:
-    """dedupe: keep the first kept observation of each date."""
+class OnePerDate:
+    """one_per_date: keep the first kept observation of each date."""
 
     def to_dict(self) -> dict[str, Any]:
-        return {"step": "dedupe"}
+        return {"step": "one_per_date"}
 
 
-_STEP_TYPES = (KeepQa, AddQa, ThermalRange, BandRange, GreenMedian, Dedupe)
+_STEP_TYPES = (KeepQa, AddQa, ThermalRange, BandRange, GreenMedian, OnePerDate)
 
 
 def step_dict(step: object) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-#include "ccd/strategies/segment_fit/model_fit.hpp"
+#include "ccd/strategies/segment_report/model_fit.hpp"
 
 #include <algorithm>
 

@@ -484,10 +484,10 @@ A value several stages read is written once, in `shared`, and the stages that re
 | `detection_bands` | `["green", "red", "nir", "swir1", "swir2"]` | roles | the bands every test reads; their count is the chi-squared degrees of freedom |
 | `change_probability` | `0.99` | probability | `change_test`, `stability_rule` and `lookback`: their change threshold is its chi-squared quantile |
 | `outlier_probability` | `0.999999` | probability | `outlier`'s and `lookback`'s outlier threshold, its chi-squared quantile |
-| `alpha`, `coef_floor` | `1e-4`, `1e-4` | reflectance | the Lasso of `model`, `stability_fit` and `edge_fit` |
+| `alpha`, `coef_floor` | `1e-4`, `1e-4` | reflectance | the Lasso of `model`, `stability_fit` and `edge_segments` |
 | `max_iter`, `tolerance` | `1000`, `1e-4` | none | the same three |
-| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | `4`, `6`, `8`, `3` | none | the coefficient rule of `model` and `stability_fit`; `edge_fit` fits `coefficient_min`, and writes a Start or End segment only on more observations than the peek and than `coefficient_min` |
-| `min_observations` | `12` | observations | the fewest observations a curve is fitted on: `start_search`'s start window, `edge_fit`'s whole-series curve; more than `coefficient_min` |
+| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | `4`, `6`, `8`, `3` | none | the coefficient rule of `model` and `stability_fit`; `edge_segments` fits `coefficient_min`, and writes a Start or End segment only on more observations than the peek and than `coefficient_min` |
+| `min_observations` | `12` | observations | the fewest observations a curve is fitted on: `start_search`'s start window, `edge_segments`'s whole-series curve; more than `coefficient_min` |
 | `statistics_end` | none (`NO_STATISTICS_END`) | ordinal day | the last date the QA statistics, the cadence, the variogram and the green median read |
 
 **`ccdc` has no statistics cutoff**: the statistics read the whole series. PyCCD and LCMAP's 2018 production baseline stop them at 2017-12-31, ordinal 736694; `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` runs that cutoff. `shared__statistics_end=None` is no cutoff.
@@ -497,7 +497,7 @@ A value several stages read is written once, in `shared`, and the stages that re
 | Stage | Decides | `ccdc`'s strategy |
 |---|---|---|
 | `mode` | the pixel's procedure from its QA statistics | `pyccd` (`clear_pct_threshold` 0.25, `snow_pct_threshold` 0.75) |
-| `noise_floor` | each band's noise floor | `variogram` (`min_lag_days` 30) |
+| `noise` | each band's noise floor | `variogram` (`min_lag_days` 30) |
 | `start_search` | where a stable start is searched for | `pyccd` (`day_delta` 365; the shared `min_observations`) |
 | `window_screen` | the outliers of a candidate start window | `tmask` (`bands` green and swir1, `t_const` 4.89) |
 | `stability_fit`, `stability_rule` | the start window's fit and whether it is stable | `lasso`, `pyccd` |
@@ -505,7 +505,7 @@ A value several stages read is written once, in `shared`, and the stages that re
 | `model`, `refit` | the monitoring model and when it is refitted | `lasso`, `span-factor` (`min_obs` 24, `factor` 1.33) |
 | `change_test` | whether a peek is a change | `chi2` (`peek_size` 6, `peek_reference_days` 16, `model_rmse_up_to` 24, `seasonal_count` 24, `seasonal_divisor` 4) |
 | `outlier` | whether a peek's first observation is an outlier | `floored` |
-| `segment_fit`, `edge_fit` | the fits a segment reports; the Start, End and whole-series curves | `model-fit`, `lasso` |
+| `segment_report`, `edge_segments` | the fits a segment reports; the Start, End and whole-series curves | `model-fit`, `lasso` |
 
 [docs/ccdc-state-machine.md](docs/ccdc-state-machine.md#stages-and-strategies) has what each stage decides and each strategy's rule. The public library has one strategy per stage; a C++ build extension registers more ([docs/config.md](docs/config.md#experiments)).
 
@@ -547,7 +547,7 @@ The Standard procedure has parameters that assume something about the revisit in
 | `change_test__peek_reference_days` | `16.0` | days | | the peek size: `round(peek_size * peek_reference_days / median gap)`, never below `peek_size` |
 | `shared__change_probability` | `0.99` | probability | | the change threshold at a peek of `peek_size` is its chi-squared quantile for the detection-band count (15.0863 for five), and a longer peek's the quantile at `1 - (1 - change_probability) ** (peek_size / peek)` |
 | `shared__outlier_probability` | `0.999999` | probability | | the outlier threshold is its chi-squared quantile (35.8882 for five bands) |
-| `noise_floor__min_lag_days` | `30` | days | | the variogram: the smallest lag whose most common separation exceeds this, over the pairs further apart than this |
+| `noise__min_lag_days` | `30` | days | | the variogram: the smallest lag whose most common separation exceeds this, over the pairs further apart than this |
 | `refit__min_obs` | `24` | observations | `change_test__model_rmse_up_to` | Extend: refit while the window holds at most this many; such a window compares against the model RMSE, a longer one against the seasonal RMSE |
 | `refit__factor` | `1.33` | ratio | | Extend: refit once the window spans at least this times the span of the last fit |
 | `change_test__seasonal_count` | `24` | observations | | the seasonal RMSE: residuals of this many fit observations closest in day of year to the last peek observation |
@@ -577,11 +577,11 @@ Before a procedure fits a pixel it builds the processing mask, the observations 
 | Step | Effect |
 |------|--------|
 | `keep_qa` (`KeepQa(codes)`) | keep only observations whose QA code is in `codes` (names: `ccdcpp.QA_CODE_NAMES`, or ints) |
-| `add_qa` (`AddQa(codes)`) | also keep every observation whose code is in `codes`; must be followed by `dedupe` |
+| `add_qa` (`AddQa(codes)`) | also keep every observation whose code is in `codes`; must be followed by `one_per_date` |
 | `thermal_range` (`ThermalRange(min, max, inclusive)`) | keep only observations whose thermal value is in the range, degrees Celsius; skipped without a thermal row |
 | `band_range` (`BandRange(bands, min, max, inclusive)`) | keep only observations on which every band (roles, tested in order, or `"reflective"`, the default: every row whose role is not thermal or other) is in the range, reflectance; an empty list is refused |
 | `green_median` (`GreenMedian(offset, scope)`) | drop observations at or above the median green over the kept observations dated up to the shared `statistics_end`, plus `offset` (reflectance), at the dates `scope` names |
-| `dedupe` (`Dedupe()`) | keep the first kept observation of each date |
+| `one_per_date` (`OnePerDate()`) | keep the first kept observation of each date |
 
 A range keeps `min < x < max`; an inclusive end also keeps a value equal to it, and NaN passes only a range inclusive at both ends. The defaults are exclusive at both ends of both ranges, pyccd's `0 < v < 10000` and `-9320 < v < 7070` on DN: an observation with a reflective band at exactly a bound, or NaN, is dropped. A chain holds at most `CHAIN_CAPACITY` (8) steps.
 
@@ -601,24 +601,24 @@ standard
   0  KeepQa codes {0, 1}
   1  ThermalRange band 6, -9320 < x < 7070
   2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
-  3  Dedupe
+  3  OnePerDate
 snow
   transform  none
   0  KeepQa codes {0, 1}
   1  ThermalRange band 6, 1799.5 < x < 3438.5
   2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
-  3  Dedupe
+  3  OnePerDate
   4  AddQa codes {3}
-  5  Dedupe
+  5  OnePerDate
   6  ThermalRange band 6, 1799.5 < x < 3438.5
 insufficient_clear
   transform  none
   0  KeepQa codes {0, 1}
   1  ThermalRange band 6, 1799.5 < x < 3438.5
   2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
-  3  Dedupe
+  3  OnePerDate
   4  GreenMedian band 1, drop x >= median(every date) + 400, scope StatWindow
-  5  Dedupe
+  5  OnePerDate
 ```
 
 Only `standard` sets `thermal_transform` (the input's `thermal_scale`/`thermal_offset`, none when that is the identity) and tests the thermal range on the transformed row; the other two read the thermal band in the caller's unit and test it against the same degrees Celsius taken back through the transform: 1799.5 to 3438.5, Kelvin x 10, here. Each chain's thermal range covers every observation its fit uses: `snow` tests it again as its last step, after adding the snow observations back ([docs/units.md](docs/units.md#the-thermal-range)).
@@ -628,10 +628,10 @@ Only `standard` sets `thermal_transform` (the input's `thermal_scale`/`thermal_o
 A chain is part of the configuration: `Config.replace()` edits one step's parameter (`preprocess__<procedure>__<step>__<param>`), every step of a type (`preprocess__<step>__<param>`), a procedure's transform (`preprocess__<procedure>__thermal_transform`) or a whole chain (`preprocess__<procedure>=ccdcpp.ProcedureChain(...)`); a TOML preset holds `[preprocess.<procedure>]` tables. Here the Standard procedure keeps snow observations too:
 
 ```python
-from ccdcpp import BandRange, Dedupe, KeepQa, ProcedureChain, ThermalRange
+from ccdcpp import BandRange, OnePerDate, KeepQa, ProcedureChain, ThermalRange
 
 snowy_cfg = ccdcpp.config("ccdc").replace(preprocess__standard=ProcedureChain(
-    steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
+    steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
     thermal_transform=True))
 print(ccdcpp.plan_of(snowy_cfg, ccdcpp.Input()).standard.chain[0])
 snowy = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), config=snowy_cfg)
@@ -664,7 +664,7 @@ print([m["break_day"] for m in from_raw["models"]] == [m["break_day"] for m in o
 True
 ```
 
-A configuration is checked when it is built (an unknown step, QA code name or scope, a missing procedure, a chain over capacity) and its plan when it is resolved against an input (a band not below the band count, a role the input lacks, a transformed band also tested by a `band_range` of its procedure, an `add_qa` not followed by a `dedupe`), with `ValueError` (`std::invalid_argument` in C++) naming the procedure and the step, before any pixel runs.
+A configuration is checked when it is built (an unknown step, QA code name or scope, a missing procedure, a chain over capacity) and its plan when it is resolved against an input (a band not below the band count, a role the input lacks, a transformed band also tested by a `band_range` of its procedure, an `add_qa` not followed by a `one_per_date`), with `ValueError` (`std::invalid_argument` in C++) naming the procedure and the step, before any pixel runs.
 
 # Resuming a run
 

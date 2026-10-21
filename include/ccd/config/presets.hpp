@@ -18,12 +18,12 @@ namespace config
 //     registry.add_preset("ccdc", config::ccdc_preset(registry));
 //
 // Every procedure's chain begins with the same four steps, keep_qa,
-// thermal_range, band_range and dedupe; Standard then ends, reading thermal
-// through the input's transform; PermanentSnow adds snow back, dedupes and
+// thermal_range, band_range and one_per_date; Standard then ends, reading thermal
+// through the input's transform; PermanentSnow adds snow back, keeps one observation per date and
 // tests the thermal range again, over the snow observations too (the first
 // test keeps a clear observation with an implausible thermal value from
-// taking its date in the dedupe); InsufficientClear runs the green median
-// and dedupes. Every procedure's thermal range covers every observation its
+// taking its date in one_per_date); InsufficientClear runs the green median
+// and keeps one per date. Every procedure's thermal range covers every observation its
 // fit uses, in degrees Celsius: Standard tests the transformed row, the other
 // two the stored row against the bounds taken back through the transform.
 Config ccdc_preset(const Registry& registry);

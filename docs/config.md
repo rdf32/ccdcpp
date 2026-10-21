@@ -83,7 +83,7 @@ print(len(pixel["models"]), cols["pixels_with_segments"], cfg3 == cfg)
 ```
 
 ```text
-['change_test', 'edge_fit', 'lookback', 'mode'] span-factor {'min_obs': 24, 'factor': 1.33}
+['change_test', 'edge_segments', 'lookback', 'mode'] span-factor {'min_obs': 24, 'factor': 1.33}
 ['green', 'red', 'nir', 'swir1', 'swir2'] True
 2 12 True
 ```
@@ -131,7 +131,7 @@ peek_reference_days | days | own | 16.0
 change_threshold | none | chi2 | None
 change_probability | none | shared | None
 ['detection_bands', 'change_probability', 'outlier_probability', 'alpha']
-['add_qa', 'band_range', 'dedupe', 'green_median', 'keep_qa', 'thermal_range']
+['add_qa', 'band_range', 'one_per_date', 'green_median', 'keep_qa', 'thermal_range']
 ```
 
 A parameter whose source is `shared` or `chi2` reads a shared value (its chi-squared quantile
@@ -146,10 +146,10 @@ the configuration as a preset file; a `Config` pickles, so it can go to worker p
 | `detection_bands` | green, red, nir, swir1, swir2 | roles | every test; their count is the chi-squared degrees of freedom |
 | `change_probability` | 0.99 | probability | `change_test`, `stability_rule`, `lookback` (their `change_threshold`, derived) |
 | `outlier_probability` | 0.999999 | probability | `outlier`'s `threshold`, `lookback`'s `outlier_threshold` (derived) |
-| `alpha`, `coef_floor` | 1e-4, 1e-4 | reflectance (difference) | the Lasso of `model`, `stability_fit`, `edge_fit` |
+| `alpha`, `coef_floor` | 1e-4, 1e-4 | reflectance (difference) | the Lasso of `model`, `stability_fit`, `edge_segments` |
 | `max_iter`, `tolerance` | 1000, 1e-4 | none | the same three |
-| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | 4, 6, 8, 3 | none | `model`, `stability_fit` (the coefficient rule); `edge_fit`'s `coefficients` (`coefficient_min`) |
-| `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_fit`'s `min_observations`; more than `coefficient_min` |
+| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | 4, 6, 8, 3 | none | `model`, `stability_fit` (the coefficient rule); `edge_segments`'s `coefficients` (`coefficient_min`) |
+| `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_segments`'s `min_observations`; more than `coefficient_min` |
 | `statistics_end` | `NO_STATISTICS_END` (none) | ordinal day | the QA statistics, the cadence, the variogram, `green_median`'s date |
 
 `statistics_end` is none (`ccdcpp.NO_STATISTICS_END`, the largest int64, which TOML writes as
@@ -159,10 +159,10 @@ pyccd's 2017-12-31 is `replace(shared__statistics_end=736694)`.
 ### Preprocessing
 
 ```python
-from ccdcpp import BandRange, Dedupe, KeepQa, ProcedureChain, ThermalRange
+from ccdcpp import BandRange, OnePerDate, KeepQa, ProcedureChain, ThermalRange
 
 keeps_snow = cfg.replace(preprocess__standard=ProcedureChain(
-    steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
+    steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
     thermal_transform=True,
 ))
 colder = cfg.replace(preprocess__thermal_range__min=-80.0)      # every thermal_range step
@@ -201,9 +201,9 @@ factor = 2.0
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "band_range" },
-    { step = "dedupe" },
+    { step = "one_per_date" },
     { step = "green_median", offset = 0.05 },
-    { step = "dedupe" },
+    { step = "one_per_date" },
 ]
 ```
 

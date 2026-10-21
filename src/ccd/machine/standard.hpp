@@ -298,8 +298,8 @@ struct State
     PerThread<StabilityFit, Model> init_model;
     PerThread<StabilityRule, Scratch> stability;
     PerThread<Lookback, Scratch> lookback;   // the lookback's per-pixel state
-    PerThread<EdgeFit, Scratch> edges;       // the edge fit's buffers
-    PerThread<SegmentFit, Scratch> segment_fit;
+    PerThread<EdgeSegments, Scratch> edges;       // edge_segments' buffers
+    PerThread<SegmentReport, Scratch> segment_report;
 
     // The processing mask when the current start's search began, kept for a
     // start search that restores it when exhausted (Exhaustion::Restore).
@@ -439,7 +439,7 @@ LookbackOutcome lookback_step(const Context& context, State& state);
 Phase lookback(const Context& context, State& state);
 
 // Writes the Start segment over (prev_break, window.start) with
-// the edge fit's. Next: Extend, or EndCatch (PeekBeyondEnd).
+// edge_segments'. Next: Extend, or EndCatch (PeekBeyondEnd).
 Phase start_catch(const Context& context, State& state);
 
 // One Extend step, one peek test after the window. Pre: peek_fits(). A
@@ -469,17 +469,17 @@ ExtendOutcome extend_step(const Context& context, State& state);
 // that left no full peek) writes the segment with change probability 0,
 // moves prev_break to the window's stop and goes to EndCatch (SeriesEnd):
 // the curve that reaches the end is the last one. The segment's curve_qa is
-// the segment fit's; its break day is the change's first observation, or at
+// segment_report's; its break day is the change's first observation, or at
 // the series end the first observation after the window (its last when
 // none is left). After NoFit, Done (SeriesEnd) with a forced start's own
-// segment (SegmentFit::unfitted(), through the last observation) or none.
+// segment (SegmentReport::unfitted(), through the last observation) or none.
 Phase extend(const Context& context, State& state);
 
 // prev_break moves to window.stop and the window to the start search's
 // first(stop). Next: Initialize, or EndCatch (NoRoomToInitialize).
 Phase restart(const Context& context, State& state);
 
-// Writes the End segment over (prev_break, size) when the edge fit's
+// Writes the End segment over (prev_break, size) when edge_segments'
 // end_due() says. Next: Done.
 Phase end_catch(const Context& context, State& state);
 
@@ -495,7 +495,7 @@ bool room_to_initialize(const Context& context, const State& state);
 bool peek_fits(const State& state);
 
 // The first segment's leading observations need a Start segment: no
-// segment yet, and the edge fit's start_due() of window.start - prev_break.
+// segment yet, and edge_segments' start_due() of window.start - prev_break.
 bool start_catch_due(const Context& context, const State& state);
 
 // After a stable start: Lookback when window.start > prev_break, else
@@ -609,8 +609,8 @@ private:
 // The change detector a run uses for every pixel of a call, whatever its
 // configuration (another procedure is other strategies). Each pixel's procedure is chosen before
 // it, by the run's mode (ModeRule); fit() then fits the pixel's processing
-// mask with this machine for Standard, and with the run's edge fit
-// (EdgeFit::whole_series()) for PermanentSnow and InsufficientClear.
+// mask with this machine for Standard, and with the run's edge_segments strategy
+// (EdgeSegments::whole_series()) for PermanentSnow and InsufficientClear.
 //
 // Holds the machine's record: one Detector per thread reuses its buffers
 // across the pixels it fits.
@@ -623,8 +623,8 @@ public:
 
     // Fits the observations of `series` that `mask` keeps (with the
     // mode's extra mask steps applied) with the mode's procedure:
-    // Procedure::run() with its cap under the run's `shared` values, or the
-    // edge fit's whole_series().
+    // Procedure::run() with its cap under the run's `shared` values, or
+    // edge_segments' whole_series().
     FitResult fit(
         const PixelMode& mode,
         const PixelSeries& series,
@@ -657,7 +657,7 @@ public:
 private:
 
     Procedure procedure_;
-    PerThread<EdgeFit, Scratch> edges_;   // the whole-series fit's
+    PerThread<EdgeSegments, Scratch> edges_;   // the whole-series fit's
 };
 
 } // namespace standard

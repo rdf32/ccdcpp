@@ -47,7 +47,7 @@ namespace preprocess
 // is resolved, never per pixel.
 //
 // apply() starts from a mask that keeps every observation; each step then
-// narrows it (KeepQa, ThermalRange, BandRange, GreenMedian, Dedupe) or
+// narrows it (KeepQa, ThermalRange, BandRange, GreenMedian, OnePerDate) or
 // widens it (AddQa). Each step is one loop over the time series, chosen by a
 // switch on its kind; a Custom step runs its own rule (CustomStep).
 //
@@ -75,7 +75,7 @@ enum class StepKind : std::uint8_t
     KeepQa,
 
     // Also keep every observation whose QA code is in `codes`, whatever an
-    // earlier step decided. Must be followed by Dedupe.
+    // earlier step decided. Must be followed by OnePerDate.
     AddQa,
 
     // Keep only the observations whose `band` value is in_range() of
@@ -94,8 +94,8 @@ enum class StepKind : std::uint8_t
     GreenMedian,
 
     // Keep the first kept observation of each date
-    // (filter::apply_dedupe).
-    Dedupe,
+    // (filter::apply_one_per_date).
+    OnePerDate,
 
     // A step a registry adds beyond these (config::Registry::add_step()):
     // `custom` decides.
@@ -142,7 +142,7 @@ public:
 //   ThermalRange    band, range
 //   BandRange       bands, range
 //   GreenMedian     band, green_offset, max_date, scope
-//   Dedupe          none
+//   OnePerDate          none
 //   Custom          custom
 //
 // The named constructors below fill exactly those.
@@ -151,7 +151,7 @@ public:
 
 struct Step
 {
-    StepKind kind = StepKind::Dedupe;
+    StepKind kind = StepKind::OnePerDate;
 
     QaSet codes;
     BandList bands;
@@ -214,10 +214,10 @@ struct Step
         return s;
     }
 
-    static Step dedupe()
+    static Step one_per_date()
     {
         Step s;
-        s.kind = StepKind::Dedupe;
+        s.kind = StepKind::OnePerDate;
         return s;
     }
 
@@ -400,7 +400,7 @@ std::optional<Affine> thermal_transform(const Input& input);
 //     band is not below `bands`;
 //   * GreenMedian step has no band (NO_BAND);
 //   * transform band is in one of its chain's BandRange steps;
-//   * AddQa step is not immediately followed by a Dedupe step;
+//   * AddQa step is not immediately followed by a OnePerDate step;
 //   * Custom step's validate() refuses `bands`.
 //
 //------------------------------------------------------------------------------

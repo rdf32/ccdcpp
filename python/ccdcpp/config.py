@@ -50,7 +50,7 @@ table per stage and one ``[preprocess.<procedure>]`` table per procedure:
     factor = 2.0
 
     [preprocess.snow]
-    steps = [{step = "keep_qa", codes = ["clear", "water"]}, {step = "dedupe"}]
+    steps = [{step = "keep_qa", codes = ["clear", "water"]}, {step = "one_per_date"}]
 
 A stage a file names with the base's strategy changes only the parameters it gives; with
 another strategy, the stage starts from that strategy's defaults. A procedure a file names

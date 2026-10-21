@@ -12,7 +12,7 @@ namespace strategies
 {
 
 //------------------------------------------------------------------------------
-// segment_fit "model-fit": pyccd's. A segment reports the monitoring
+// segment_report "model-fit": pyccd's. A segment reports the monitoring
 // model's fits, as its last refit left them (Model::band_fit()), with the
 // count of that refit. Under a mode's cap below it, and for a forced start
 // the series ended before Extend fitted, the model is fitted on the
@@ -24,7 +24,7 @@ inline index_t capped_coefficients(index_t num_coef, index_t max_coefficients)
     return max_coefficients > 0 && max_coefficients < num_coef ? max_coefficients : num_coef;
 }
 
-struct ModelFit final : SegmentFit
+struct ModelFit final : SegmentReport
 {
     struct Params
     {

@@ -224,7 +224,7 @@ TEST(ResumeEqualsTheFullRun, AChainOfResumes)
     EXPECT_GT(chains, 50u);
 }
 
-// A plan without Dedupe keeps two observations of one date, so a dropped
+// A plan without OnePerDate keeps two observations of one date, so a dropped
 // day may not say which of them the stored run dropped: such a pixel is rerun
 // rather than continued, and either way the result is the full run's.
 TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
@@ -253,12 +253,12 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
     std::size_t ordinal = 0;
     for (const auto& s : pixels)
     {
-        // The Standard chain without its dedupe: the same date kept twice.
+        // The Standard chain without its one_per_date: the same date kept twice.
         ccd::config::Config given = s.config;
         auto& steps = given.preprocess.at("standard").steps;
         steps.erase(std::remove_if(steps.begin(), steps.end(),
                                    [](const ccd::config::StepConfig& step)
-                                   { return step.step == "dedupe"; }),
+                                   { return step.step == "one_per_date"; }),
                     steps.end());
 
         const bool more_cuts = s.name.rfind("dup:", 0) != 0;
