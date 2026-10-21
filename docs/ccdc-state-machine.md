@@ -16,7 +16,8 @@ otherwise (the rules in section 7); see the README's
 `Run::pixel` (`src/ccd/run/run.cpp`) is a straight pipeline, not a machine. A `Run` is built
 once per call (`src/ccd/run/run_pixel.hpp`, internal): it checks the input, dates and QA, takes the
 configuration resolved for the input (its strategies and preprocessing plan) and holds
-what every pixel shares; each OpenMP thread holds a `Worker` with the buffers and the change
+what every pixel shares. `detect_cube` runs a cube's pixels on OpenMP threads
+(`src/ccd/run/cube.cpp`), each thread holding a `Worker` with the buffers and the change
 detector it reuses from pixel to pixel. The steps of one pixel:
 
 1. decode the QA (through the input's `QaTable` when it has one);
