@@ -117,7 +117,8 @@ static double now_ms()
 }
 
 // The process's peak resident set size in MB of 10^6 bytes: ru_maxrss is bytes
-// on macOS, kilobytes on Linux.
+// on macOS, kilobytes on Linux. It never falls, so each cube line's peak is
+// the run's so far, and the last line's the whole run's.
 static double peak_mb()
 {
     struct rusage u {};
@@ -258,8 +259,8 @@ int main(int argc, char** argv)
                     ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
                     threads);
                 const double c1 = now_ms();
-                std::fprintf(stderr, "cube %s %s threads=%d: %.1f ms (%.3f ms/px)\n",
-                    spec.name, o.name, threads, c1 - c0, (c1 - c0) / N);
+                std::fprintf(stderr, "cube %s %s threads=%d: %.1f ms (%.3f ms/px); peak %.0f MB\n",
+                    spec.name, o.name, threads, c1 - c0, (c1 - c0) / N, peak_mb());
                 if (bench) continue;
 
                 std::sort(cube.pixels.begin(), cube.pixels.end(),
