@@ -404,8 +404,14 @@ if(CCD_BUILD_TESTS)
 
     # The preprocessing plan: the "ccdc" plan (plan_of()) against the
     # hand-written chains, custom plans through detect(), and plan
-    # validation. See tests/ccd/machine/test_preprocess.cpp.
-    ccd_add_gtest(test_preprocess SOURCES tests/ccd/machine/test_preprocess.cpp)
+    # validation. See tests/ccd/machine/test_preprocess.cpp and
+    # test_preprocess_validation.cpp.
+    ccd_add_gtest(
+        test_preprocess
+        SOURCES
+            tests/ccd/machine/test_preprocess.cpp
+            tests/ccd/machine/test_preprocess_validation.cpp
+    )
 
     # apply() timed against the hand-written chains
     # (tools/bench/bench_preprocess.cpp): built with the tests, so it keeps
