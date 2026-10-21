@@ -12,9 +12,10 @@
 #include "ccd/core/types.hpp"
 
 #include "ccd/core/window.hpp"
+#include "ccd/input/mask/preprocess.hpp"
 #include "ccd/input/pixel_series.hpp"
+#include "ccd/input/procedure.hpp"
 #include "ccd/input/qa_statistics.hpp"
-#include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/capabilities.hpp"
 #include "ccd/strategies/coefficients.hpp"
@@ -77,9 +78,26 @@ class Model;   // strategies/model.hpp
 // mode: the pixel's procedure, from the QA statistics of its statistics
 // window: Standard (the change-detection machine), or PermanentSnow or
 // InsufficientClear (one curve over the whole series, the edge fit's); with
-// what it asks of a Standard pixel's detection (PixelMode,
-// machine/pixel_procedure.hpp).
+// what it asks of a Standard pixel's detection (PixelMode).
 //------------------------------------------------------------------------------
+
+// A pixel's procedure (input/procedure.hpp) with what the mode asks of its
+// change detection: mask steps after the procedure's chain
+// (preprocess::apply_steps(), after the run's mask), and a cap on the
+// coefficients its segments report (0: none; the detection itself is not
+// capped).
+//
+//     PixelMode mode(PixelProcedure::Standard);
+//     mode.max_coefficients = 4;   // its segments report at most 4
+struct PixelMode
+{
+    PixelMode(PixelProcedure procedure = PixelProcedure::Standard) : procedure(procedure) {}
+
+    PixelProcedure procedure;
+    preprocess::Chain extra_mask;
+    index_t max_coefficients = 0;
+};
+
 struct ModeRule
 {
     static constexpr const char* stage = "mode";

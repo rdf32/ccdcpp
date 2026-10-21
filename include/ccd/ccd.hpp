@@ -33,7 +33,6 @@
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/regression/robust_solver.hpp"
 
-#include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/machine/suspended.hpp"
 
 #include "ccd/strategies/capabilities.hpp"

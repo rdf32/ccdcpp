@@ -100,7 +100,7 @@
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/edge_fit/lasso.hpp"
-#include "ccd/machine/pixel_procedure.hpp"
+#include "ccd/input/procedure.hpp"
 #include "ccd/input/mask/filter.hpp"
 
 namespace {

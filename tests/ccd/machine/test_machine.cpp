@@ -46,7 +46,7 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/preprocess.hpp"
 #include "ccd/machine/machine.hpp"    // internal (src/)
-#include "ccd/machine/pixel_procedure.hpp"
+#include "ccd/input/procedure.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
 #include "../golden/config.hpp"

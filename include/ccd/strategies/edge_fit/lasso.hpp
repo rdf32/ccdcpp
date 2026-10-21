@@ -7,7 +7,7 @@
 #include "ccd/core/window.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/pmask.hpp"
-#include "ccd/machine/pixel_procedure.hpp"
+#include "ccd/input/procedure.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/stages.hpp"

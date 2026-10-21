@@ -15,7 +15,7 @@
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/edge_fit/lasso.hpp"
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/machine/pixel_procedure.hpp"
+#include "ccd/input/procedure.hpp"
 #include "../golden/config.hpp"
 
 

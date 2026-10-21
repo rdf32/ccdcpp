@@ -14,7 +14,6 @@
 
 #include "machine.hpp"
 #include "ccd/input/masked_series.hpp"
-#include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/model.hpp"

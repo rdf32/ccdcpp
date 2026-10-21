@@ -32,7 +32,7 @@ namespace ccd
 //   * drive() (below), the loop, with its trace.
 //
 // Around a machine, also shared: the per-pixel procedure
-// (pixel_procedure.hpp), which the mode stage chooses, and the whole-series
+// (input/procedure.hpp), which the mode stage chooses, and the whole-series
 // fit of the pixels that take no machine, which is the edge fit's.
 // docs/ccdc-state-machine.md describes the design as a whole.
 //
