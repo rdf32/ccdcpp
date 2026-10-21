@@ -541,7 +541,7 @@ The Standard procedure has parameters that assume something about the revisit in
 
 | Parameter | Default | Unit | Also in | Read by |
 |---|---|---|---|---|
-| `change_test__peek_size` | `6` | observations | | the peek at the reference cadence; the stability rule and Lookback use the test's peek (their `peek` is 0) |
+| `change_test__peek_size` | `6` | observations | | the peek at the reference cadence; the stability rule and Lookback use the test's peek (their `peek` is `"change_test"`) |
 | `change_test__peek_reference_days` | `16.0` | days | | the peek size: `round(peek_size * peek_reference_days / median gap)`, never below `peek_size` |
 | `shared__change_probability` | `0.99` | probability | | the change threshold at a peek of `peek_size` is its chi-squared quantile for the detection-band count (15.0863 for five), and a longer peek's the quantile at `1 - (1 - change_probability) ** (peek_size / peek)` |
 | `shared__outlier_probability` | `0.999999` | probability | | the outlier threshold is its chi-squared quantile (35.8882 for five bands) |

@@ -89,7 +89,8 @@ namespace strategies
 // solved by coordinate descent (regression/lasso_solver.hpp) with these
 // parameters; its RMSE has the model's coefficient count as its degrees of
 // freedom. Its coefficients follow the rule of coefficient_min, _mid, _max
-// and num_obs_factor (CoefficientRule).
+// and num_obs_factor (CoefficientRule), the shared coefficients.min, .mid,
+// .max and .per.
 //------------------------------------------------------------------------------
 struct Lasso final : MonitoringModel, StabilityFit
 {

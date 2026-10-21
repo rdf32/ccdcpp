@@ -233,8 +233,8 @@ read, or derives it from one:
 | the Lasso's constants | shared `lasso.max_iter`, `lasso.alpha`, `lasso.tolerance`, `lasso.coef_floor`: `model`'s, `stability_fit`'s and `edge_segments`' |
 | the refit and model-RMSE window, 24 observations | two parameters, `refit`'s `min_obs` and `change_test`'s `model_rmse_up_to`, which a configuration may set apart |
 
-The stability rule's and the lookback's `peek` is 0, the change test's peek; N gives them a peek
-of N, with their `change_threshold` for it, unadjusted. The machine's other decisions are made
+The stability rule's and the lookback's `peek` is `"change_test"`, the change test's peek; N
+gives them a peek of N, with their `change_threshold` for it, unadjusted. The machine's other decisions are made
 inside its phases. The peek size the change test chooses is also what the machine's guards and
 the stability rule's and lookback's `prepare()` read.
 
