@@ -10,10 +10,13 @@
 #include "ccd/config/registry.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/input/mask/chain.hpp"
+#include "ccd/input/pixel_series.hpp"
+#include "ccd/input/processing_mask.hpp"
 #include "../machine/standard.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/results/record.hpp"
 #include "ccd/run/run.hpp"
+#include "ccd/strategies/stages.hpp"
 
 namespace ccd
 {
@@ -48,6 +51,9 @@ namespace ccd
 //   fit              the change detector, or a resume of the stored run
 //   finish           the record for the next resume
 //
+// Run::prepare() makes the first four, into a PreparedPixel; Run::fresh()
+// (no resume) or Run::resumed() the last two.
+//
 //==============================================================================
 
 //------------------------------------------------------------------------------
@@ -73,6 +79,20 @@ struct Worker
 
     // The pixel's (T) QA codes, when its raw QA is decoded through a QaTable.
     std::vector<std::uint8_t> qas;
+};
+
+//------------------------------------------------------------------------------
+//
+// One pixel after the first four steps: its mode, its series (the dates, its
+// values and its QA codes, in place or in the Worker's buffers) and its
+// processing mask, which the fit takes.
+//
+//------------------------------------------------------------------------------
+struct PreparedPixel
+{
+    PixelMode mode;
+    PixelSeries series;
+    ProcessingMask mask;
 };
 
 //------------------------------------------------------------------------------
@@ -140,6 +160,22 @@ public:
                       index_t at, Worker& worker) const;
 
 private:
+
+    // The first four steps on one pixel, into the worker's buffers.
+    template<typename Value, typename Qa>
+    PreparedPixel prepare(ArrayView<const Value, 2> spectral, ArrayView<const Qa, 1> qa,
+                          Worker& worker) const;
+
+    // The fit of a run without a resume and, with RunSpec::record, the
+    // record's suspension and drops.
+    PixelOutput fresh(PreparedPixel& pixel, Worker& worker) const;
+
+    // The fit of the resume's pixel at flat index `at`, whose input up to the
+    // stored series end has `fingerprint`: the stored run continued, or the
+    // pixel rerun. The status, the result and the record's suspension and
+    // drops.
+    PixelOutput resumed(PreparedPixel& pixel, Worker& worker, index_t at,
+                        std::uint64_t fingerprint) const;
 
     const RunSpec& spec_;
     ArrayView<const std::int64_t, 1> dates_;

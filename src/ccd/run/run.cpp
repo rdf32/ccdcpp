@@ -100,6 +100,17 @@ void check_resume(
             std::to_string(from.series_end));
 }
 
+// A resumed pixel's refusal: fewer stored segments than its record's final
+// ones.
+void check_stored(const PixelRecord& from, const std::vector<ChangeModel>& stored)
+{
+    if (from.procedure == PixelProcedure::Standard &&
+        stored.size() < from.standard.final_segments)
+        throw std::invalid_argument(
+            "the resume record has " + std::to_string(from.standard.final_segments) +
+            " final segments; " + std::to_string(stored.size()) + " were given");
+}
+
 //==============================================================================
 // Resume: the cutoffs of a run resumed from one whose series ended at `end`
 //==============================================================================
@@ -224,17 +235,6 @@ ArrayView<const scalar_t, 2> pixel_values(
     return ArrayView<const scalar_t, 2>::contiguous(buffer.data(), {B, T});
 }
 
-// Step 4. The processing mask: the procedure's chain over the pixel.
-ProcessingMask build_mask(
-    const preprocess::Chain& chain,
-    const PixelSeries& pixel
-)
-{
-    ProcessingMask mask;
-    preprocess::apply(chain, pixel.dates(), pixel.spectral(), pixel.qas(), mask);
-    return mask;
-}
-
 // Whether a stored record's drops can be replayed on this input: a stored
 // drop on a date the mask keeps twice (a plan without OnePerDate) does not say
 // which of the two it was, so such a pixel is rerun.
@@ -285,83 +285,6 @@ void fill_record(
             if (filtered[t] && !result.mask[t])
                 record.excluded_days.push_back(dates(t));
     }
-}
-
-// What one pass of the steps is asked to do besides fitting.
-struct PassRequest
-{
-    PixelRecord* record = nullptr;          // fill this record
-    std::int64_t through = 0;               // its fingerprint up to this date
-    const PixelRecord* continue_from = nullptr;   // continue this stored run
-    bool carried_change = false;   // its last final segment ended in a change
-};
-
-// The steps on one pixel, under `input`, `shared` and `plan`. Sets `continued` to
-// whether the stored run was continued (only with request.continue_from).
-template<typename Value, typename Qa>
-FitResult run_steps(
-    ArrayView<const std::int64_t, 1> dates,
-    ArrayView<const Value, 2> spectral,
-    ArrayView<const Qa, 1> raw_qas,
-    const QaTable* qa_table,
-    const preprocess::PreprocessPlan& plan,
-    const Input& input,
-    const config::Shared& shared,
-    const Strategies& strategies,
-    Worker& worker,
-    const PassRequest& request,
-    bool& continued
-)
-{
-    const auto qas = decode_qa<Qa>(raw_qas, qa_table, worker.qas);
-    const PixelMode mode =
-        choose_procedure(qas, dates, input, shared.statistics_end, *strategies.mode);
-    const PixelProcedure procedure = mode.procedure;
-
-    if (request.record)
-    {
-        request.record->input_fingerprint = detail::fingerprint_of<Value>(
-            dates, spectral, qas, input.qa_fill, request.through);
-        request.record->procedure = procedure;
-    }
-
-    const preprocess::ProcedurePlan& steps = plan.of(procedure);
-    const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
-    const PixelSeries pixel(dates, values, qas);
-    LOG_DEBUG("initial spectral: " << pixel.spectral());
-
-    ProcessingMask mask = build_mask(steps.chain, pixel);
-    if (!mode.extra_mask.empty())
-        preprocess::apply_steps(mode.extra_mask, pixel.dates(), pixel.spectral(), pixel.qas(),
-                                mask);
-
-    // Step 5. The fit: the run's change detector, or the stored run continued.
-    standard::Detector& detector = worker.standard;
-
-    if (!request.record && !request.continue_from)
-        return detector.fit(mode, pixel, std::move(mask), shared, strategies,
-                            worker.observe);
-
-    // A pixel its mode filters or caps is fitted again, as a whole-series
-    // one is.
-    const ProcessingMask filtered = mask;
-    const bool continues =
-        request.continue_from && procedure == PixelProcedure::Standard &&
-        mode.extra_mask.empty() && mode.max_coefficients == 0 &&
-        drops_unambiguous(request.continue_from->excluded_days, dates, mask);
-
-    FitResult result = continues
-        ? detector.resume(pixel, std::move(mask), shared, strategies,
-                          request.continue_from->standard, request.continue_from->excluded_days,
-                          worker.observe, request.carried_change)
-        : detector.fit(mode, pixel, std::move(mask), shared, strategies,
-                       worker.observe);
-    continued = continues;
-
-    if (request.record)
-        fill_record(*request.record, procedure, mode.extra_mask.empty(), detector, filtered,
-                    result, dates);
-    return result;
 }
 
 } // namespace
@@ -425,6 +348,108 @@ Observe Run::observed(index_t at) const
     return Observe{spec_.observer.get(), at};
 }
 
+// Steps 1 to 4. The mask is the procedure's chain over the pixel, then the
+// mode's extra mask steps.
+template<typename Value, typename Qa>
+PreparedPixel Run::prepare(
+    ArrayView<const Value, 2> spectral,
+    ArrayView<const Qa, 1> qa,
+    Worker& worker
+) const
+{
+    const auto qas = decode_qa<Qa>(qa, spec_.input.qa_table.get(), worker.qas);
+    PixelMode mode = choose_procedure(qas, dates_, spec_.input, shared_.statistics_end,
+                                      *resolved_->strategies.mode);
+
+    const preprocess::ProcedurePlan& steps = run_plan_.of(mode.procedure);
+    const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
+    PreparedPixel pixel{std::move(mode), PixelSeries(dates_, values, qas), ProcessingMask()};
+    const PixelSeries& series = pixel.series;
+    LOG_DEBUG("initial spectral: " << series.spectral());
+
+    preprocess::apply(steps.chain, series.dates(), series.spectral(), series.qas(), pixel.mask);
+    if (!pixel.mode.extra_mask.empty())
+        preprocess::apply_steps(pixel.mode.extra_mask, series.dates(), series.spectral(),
+                                series.qas(), pixel.mask);
+    return pixel;
+}
+
+// Step 5 and, with RunSpec::record, step 6.
+PixelOutput Run::fresh(PreparedPixel& pixel, Worker& worker) const
+{
+    PixelOutput out;
+    standard::Detector& detector = worker.standard;
+    const Strategies& strategies = resolved_->strategies;
+
+    if (!spec_.record)
+    {
+        out.result = detector.fit(pixel.mode, pixel.series, std::move(pixel.mask), shared_,
+                                  strategies, worker.observe);
+        return out;
+    }
+
+    const ProcessingMask filtered = pixel.mask;
+    out.result = detector.fit(pixel.mode, pixel.series, std::move(pixel.mask), shared_,
+                              strategies, worker.observe);
+    fill_record(out.record, pixel.mode.procedure, pixel.mode.extra_mask.empty(), detector,
+                filtered, out.result, dates_);
+    return out;
+}
+
+// Steps 5 and 6 of a resume: continued from the record when the input up to
+// the stored series end is the stored run's and the machine stopped where it
+// can continue; rerun under the capped cutoffs otherwise.
+PixelOutput Run::resumed(
+    PreparedPixel& pixel,
+    Worker& worker,
+    index_t at,
+    std::uint64_t fingerprint
+) const
+{
+    const PixelRecord& from = resume_->records[at];
+    const std::vector<ChangeModel>& stored = resume_->segments[at];
+    const PixelMode& mode = pixel.mode;
+
+    PixelOutput out;
+    out.status = fingerprint == from.input_fingerprint
+        ? ResumeStatus::Resumed
+        : ResumeStatus::RerunInputChanged;
+
+    // A pixel its mode filters or caps is fitted again, as a whole-series
+    // one is; so is one whose stored drops this mask cannot replay. Then its
+    // result is a whole rerun, without the stored segments.
+    const bool continues =
+        out.status == ResumeStatus::Resumed &&
+        from.procedure == PixelProcedure::Standard &&
+        resumable(from.standard.exit) &&
+        mode.procedure == PixelProcedure::Standard &&
+        mode.extra_mask.empty() && mode.max_coefficients == 0 &&
+        drops_unambiguous(from.excluded_days, dates_, pixel.mask);
+
+    const index_t carried = from.standard.final_segments;
+    const bool carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
+
+    standard::Detector& detector = worker.standard;
+    const Strategies& strategies = resolved_->strategies;
+    const ProcessingMask filtered = pixel.mask;
+    out.result = continues
+        ? detector.resume(pixel.series, std::move(pixel.mask), shared_, strategies,
+                          from.standard, from.excluded_days, worker.observe, carried_change)
+        : detector.fit(mode, pixel.series, std::move(pixel.mask), shared_, strategies,
+                       worker.observe);
+    fill_record(out.record, mode.procedure, mode.extra_mask.empty(), detector, filtered,
+                out.result, dates_);
+
+    if (continues)
+    {
+        out.result.models.insert(
+            out.result.models.begin(),
+            stored.begin(),
+            stored.begin() + carried);
+    }
+    return out;
+}
+
 template<typename Value, typename Qa>
 PixelOutput Run::pixel(
     ArrayView<const Value, 2> spectral,
@@ -442,68 +467,25 @@ PixelOutput Run::pixel(
             std::to_string(timesteps_) + " timesteps");
     if (std::is_same_v<Qa, std::uint16_t> && !raw_qa_)
         throw std::invalid_argument("the pixel's QA is raw (uint16); the run was built for codes");
-    PixelOutput out;
-    bool continued = false;
-    const QaTable* table = spec_.input.qa_table.get();
+    if (resume_)
+        check_stored(resume_->records[at], resume_->segments[at]);
 
-    if (!resume_)
+    PreparedPixel prepared = prepare<Value, Qa>(spectral, qa, worker);
+
+    // The pixel's input up to `through`, as a record holds it.
+    const auto fingerprint = [&](std::int64_t through)
     {
-        PassRequest request;
-        if (spec_.record)
-        {
-            request.record = &out.record;
-            request.through = header_.series_end;
-        }
-        out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
-                                          shared_, resolved_->strategies, worker, request,
-                                          continued);
-        if (!spec_.masks)
-            out.result.mask = ProcessingMask();
-        return out;
-    }
+        return detail::fingerprint_of<Value>(dates_, spectral, prepared.series.qas(),
+                                             spec_.input.qa_fill, through);
+    };
 
-    // A resume: continued from the record when the input up to the stored
-    // series end is the stored run's and the machine stopped where it can
-    // continue; rerun under the capped cutoffs otherwise.
-    const PixelRecord& from = resume_->records[at];
-    const std::vector<ChangeModel>& stored = resume_->segments[at];
-    if (from.procedure == PixelProcedure::Standard &&
-        stored.size() < from.standard.final_segments)
-        throw std::invalid_argument(
-            "the resume record has " + std::to_string(from.standard.final_segments) +
-            " final segments; " + std::to_string(stored.size()) + " were given");
-
-    const std::uint64_t fingerprint = detail::fingerprint_of<Value>(
-        dates_, spectral, decode_qa<Qa>(qa, table, worker.qas),
-        spec_.input.qa_fill, resume_->header.series_end);
-
-    out.status = fingerprint == from.input_fingerprint
-        ? ResumeStatus::Resumed
-        : ResumeStatus::RerunInputChanged;
-
-    const bool continues =
-        out.status == ResumeStatus::Resumed &&
-        from.procedure == PixelProcedure::Standard &&
-        resumable(from.standard.exit);
-
-    PassRequest request;
-    request.record = &out.record;
-    request.through = dates_(dates_.size() - 1);
-    request.continue_from = continues ? &from : nullptr;
-    const index_t carried = from.standard.final_segments;
-    request.carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
-    out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
-                                      shared_, resolved_->strategies, worker, request, continued);
-
-    // The machine may still not continue (a stored drop on a date the plan
-    // keeps twice): then its result is a whole rerun, without the stored
-    // segments.
-    if (continued)
+    PixelOutput out = resume_
+        ? resumed(prepared, worker, at, fingerprint(resume_->header.series_end))
+        : fresh(prepared, worker);
+    if (spec_.record || resume_)
     {
-        out.result.models.insert(
-            out.result.models.begin(),
-            stored.begin(),
-            stored.begin() + from.standard.final_segments);
+        out.record.input_fingerprint = fingerprint(header_.series_end);
+        out.record.procedure = prepared.mode.procedure;
     }
     if (!spec_.masks)
         out.result.mask = ProcessingMask();
