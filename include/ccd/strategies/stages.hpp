@@ -17,9 +17,9 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/procedure.hpp"
 #include "ccd/input/qa_statistics.hpp"
+#include "ccd/regression/coefficients.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/capabilities.hpp"
-#include "ccd/strategies/coefficients.hpp"
 #include "ccd/strategies/per_thread.hpp"
 
 namespace ccd
@@ -264,7 +264,7 @@ struct StabilityFit
     virtual Capabilities provides() const = 0;
     virtual std::unique_ptr<Model> make_model() const = 0;
     // Its fits' coefficients: a candidate is fitted with min, in a basis max
-    // wide (strategies/coefficients.hpp).
+    // wide (regression/coefficients.hpp).
     virtual CoefficientRule coefficients() const = 0;
 };
 
@@ -370,7 +370,7 @@ struct MonitoringModel
     virtual Capabilities provides() const = 0;
     virtual std::unique_ptr<Model> make_model() const = 0;
     // The coefficients it fits a window with, by the window's size, and the
-    // widest (strategies/coefficients.hpp); read once per pixel.
+    // widest (regression/coefficients.hpp); read once per pixel.
     virtual CoefficientRule coefficients() const = 0;
 };
 

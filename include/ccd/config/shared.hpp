@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "ccd/config/params.hpp"
+#include "ccd/regression/coefficients.hpp"
 #include "ccd/regression/lasso_solver.hpp"
-#include "ccd/strategies/coefficients.hpp"
 
 namespace ccd
 {

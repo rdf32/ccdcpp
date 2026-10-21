@@ -455,7 +455,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `default_plan(h)`, `PreprocessPlanPtr`, the `preprocess` argument | `plan_of(config, input)` (`ccd/run/algorithm.hpp`), the plan the configuration resolves to |
 | `select_procedure()`, `standard::measure_cadence()` | the `mode` stage's `choose()`, the change test's `prepare()` |
 | `HarmonicWorkspace` | `PixelSeries` (`ccd/input/pixel_series.hpp`): views of the pixel's dates, values and QA codes; `MaskedData` and `apply_mask()` are in `ccd/input/masked_series.hpp`, with `MaskedSeries` |
-| `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`ccd/strategies/coefficients.hpp`) |
+| `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`ccd/regression/coefficients.hpp`) |
 | `Clock`, `elapsed_ms`, `print_change_model(s)` | none |
 | `ccd/types.hpp`, `ccd/pmask.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, `ccd/harmonic/...`, `ccd/preprocess/...` | `ccd/core/types.hpp`, `ccd/input/processing_mask.hpp`, none (the machine is internal; `ccd/machine/suspended.hpp` holds the record's `Suspended`), `ccd/results/record.hpp`, `ccd/input/...`, `ccd/input/mask/...` (`preprocess/preprocess.hpp` is `input/mask/chain.hpp`, the plans and their chains; `ccd/ccd.hpp` includes every public header) |
 | `filter::remove_duplicate_dates`, `apply_thermal_filter`, `apply_saturation_filter`, `apply_green_median_filter(..., filter_range, ...)` | `filter::apply_one_per_date`, `apply_thermal_range`, `apply_band_range`, `apply_green_median(..., green_offset, ...)` (`ccd/input/mask/filter.hpp`), each named for its preprocess step |

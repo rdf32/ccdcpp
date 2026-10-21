@@ -32,6 +32,7 @@
 #include "ccd/input/qa_table.hpp"
 #include "ccd/input/qa_tables.hpp"
 
+#include "ccd/regression/coefficients.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/regression/robust_solver.hpp"
@@ -39,7 +40,6 @@
 #include "ccd/machine/suspended.hpp"
 
 #include "ccd/strategies/capabilities.hpp"
-#include "ccd/strategies/coefficients.hpp"
 #include "ccd/strategies/library.hpp"
 #include "ccd/strategies/model.hpp"
 #include "ccd/strategies/per_thread.hpp"

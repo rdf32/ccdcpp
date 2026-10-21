@@ -141,7 +141,7 @@ The guards inside one call, in the order they are tested:
   models and peek residuals an every-band refit would have.
 
 Initialize fits the stability fit's `coefficients.min` coefficients, Extend's fits follow the
-monitoring model's rule (`CoefficientRule`, `include/ccd/strategies/coefficients.hpp`:
+monitoring model's rule (`CoefficientRule`, `include/ccd/regression/coefficients.hpp`:
 `coefficients.min`, `.mid` or `.max` by window length), and both peek bases are `coefficients.max`
 wide: a model predicts with zeros above its own count. Extend's fits are the monitoring model's
 (the `model` stage, below), which `extend` holds.
