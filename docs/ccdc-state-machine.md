@@ -96,7 +96,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 | Phase | One call | Next |
 |---|---|---|
 | `Prepare` (`prepare`) | The early exits; the statistics window; the peek plan (the change test's `prepare()`, the pixel's peek); the stability rule's and the lookback's `prepare()`; the stability fit's and the monitoring model's coefficient rules; the variogram; the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
-| `Initialize` (`initialize`) | One candidate start window: `ccd::initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
+| `Initialize` (`initialize`) | One candidate start window: `initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
 | `Lookback` (`lookback`) | One observation before the window: `lookback_step` returns a `LookbackOutcome` | itself while `window.start > prev_break`; then StartCatch, Extend or EndCatch |
 | `StartCatch` (`start_catch`) | The first segment's leading observations as a Start segment (curve_qa 14) | Extend or EndCatch |
 | `Extend` (`extend`) | One peek test after the window: `extend_step` returns an `ExtendOutcome`; `extend` writes the segment | itself while a peek fits; Restart after a change; EndCatch at the series end |
@@ -107,11 +107,11 @@ The guards inside one call, in the order they are tested:
 
 - **Initialize** (`initialize_step`, `src/ccd/machine/standard.cpp`): the start search finds
   no candidate left (`Exhausted`) or a span too short (`ShortSpan`, grow; pyccd: under
-  `day_delta`); the window screen (Tmask) flags
+  `day_delta`); the window screen (Tmask, `screen_window`) flags
   every observation (`AllOutliers`, grow); it flags some and the shortened window is not a
   candidate (the search's `usable()`)
   (`RejectedOutliers`, grow, nothing dropped); then the detection bands are fitted by the
-  stability fit and judged by the stability rule (`Stable`, or `Unstable` and a shift). When Tmask's outliers are dropped, the
+  stability fit and judged by the stability rule (`fit_stable`: `Stable`, or `Unstable` and a shift). When Tmask's outliers are dropped, the
   same call fits the shortened window, as pyccd does in one pass of its loop; those steps report
   `DroppedThenStable` and `DroppedThenUnstable`.
 - **Lookback** (`lookback_step`): the lookback strategy's verdict on the observation before the
@@ -122,9 +122,9 @@ The guards inside one call, in the order they are tested:
   before the window; near it, down to the previous break and never below. The comparison RMSE
   is the stable start window's: nothing is refitted while the window grows backward, as in
   Zhu's TrendSeasonalFit.
-- **Extend** (`extend_step`): first the refit schedule (refit when untrained, at most
+- **Extend** (`extend_step`): first the refit schedule (`refit_if_due`: refit when untrained, at most
   `min_obs` observations, or once the window spans `factor` times the last fit; pyccd's 24 and
-  1.33); then the change test (`Change`); the outlier rule (`Dropped`, the observation at
+  1.33); then the change test (`test_peek`: `Change`); the outlier rule (`after_no_change`: `Dropped`, the observation at
   `window.stop` leaves the series; pyccd's: its statistic above the rule's `threshold`); a peek that
   reached the last observation (`SeriesEnd`: the curve ends at the window, before the
   observation the peek starts at, its break day); otherwise `Grown` (`window.stop + 1`). The
@@ -512,8 +512,8 @@ is that function and its test (the numbers are those of the tests and the CHANGE
 | 3. Lookback compares against the stable start window's RMSE | the `pyccd` lookback's `judge()` |
 | 4. Initialize fits the stability fit's `coefficient_min` coefficients; both peek bases are `coefficient_max` wide | `State::stability_coefficients` (the stability fit's `CoefficientRule`: its `max`, which Lookback's peek reads), and Extend's monitoring model (its rule's `max` as its fits' basis width) |
 | 5. Every exit, the early ones too, returns the processing mask | `State::take_result`; `fit_whole_series` |
-| 6. A curve ends once its peek reaches the last observation, and is the last curve | `extend_step`'s `SeriesEnd`; `extend` |
-| 7. Extend refits while the window holds at most the refit's `min_obs` observations | `extend_step`'s refit schedule |
+| 6. A curve ends once its peek reaches the last observation, and is the last curve | `extend_step`'s `SeriesEnd`; `extend`'s `on_series_end` |
+| 7. Extend refits while the window holds at most the refit's `min_obs` observations | `refit_if_due`, Extend's refit schedule |
 
 A sensor variant works the same way: a time-based start window or refit rule would change
 Initialize's and Extend's guards and nothing else.
