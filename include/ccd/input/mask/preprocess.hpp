@@ -79,22 +79,22 @@ enum class StepKind : std::uint8_t
     AddQa,
 
     // Keep only the observations whose `band` value is in_range() of
-    // `range` (filter::apply_thermal_filter).
+    // `range` (filter::apply_thermal_range).
     ThermalRange,
 
     // Keep only the observations on which every one of `bands` is
     // in_range() of `range`, the bands tested in list order
-    // (filter::apply_saturation_filter).
+    // (filter::apply_band_range).
     BandRange,
 
     // Drop the kept observations whose `band` value is at or above the
     // median of that band over the kept observations dated <= `max_date`,
     // plus `green_offset`, at the dates `scope` names
-    // (filter::apply_green_median_filter).
+    // (filter::apply_green_median).
     GreenMedian,
 
     // Keep the first kept observation of each date
-    // (filter::remove_duplicate_dates).
+    // (filter::apply_dedupe).
     Dedupe,
 
     // A step a registry adds beyond these (config::Registry::add_step()):

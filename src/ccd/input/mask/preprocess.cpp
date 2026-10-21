@@ -352,17 +352,17 @@ void apply_steps(
             }
 
             case StepKind::ThermalRange:
-                filter::apply_thermal_filter(
+                filter::apply_thermal_range(
                     spectral, step.band, step.range, mask);
                 break;
 
             case StepKind::BandRange:
-                filter::apply_saturation_filter(
+                filter::apply_band_range(
                     spectral, step.bands, step.range, mask);
                 break;
 
             case StepKind::GreenMedian:
-                filter::apply_green_median_filter(
+                filter::apply_green_median(
                     dates,
                     spectral,
                     step.band,
@@ -374,7 +374,7 @@ void apply_steps(
                 break;
 
             case StepKind::Dedupe:
-                filter::remove_duplicate_dates(dates, mask);
+                filter::apply_dedupe(dates, mask);
                 break;
 
             case StepKind::Custom:

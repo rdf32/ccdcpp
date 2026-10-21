@@ -675,7 +675,7 @@ TEST(Units, BoundsAreUnitConstants)
 // Negative control 4 -- the constant detect() cannot see.
 //
 // Through the InsufficientClear procedure, because that is the only caller of
-// apply_green_median_filter. Two assertions: the plain-divisor equivalence holds
+// apply_green_median. Two assertions: the plain-divisor equivalence holds
 // for this procedure too, and the green filter at its DN value, 400.0, breaks
 // it.
 //------------------------------------------------------------------------------

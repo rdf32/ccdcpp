@@ -230,14 +230,14 @@ ccd::ProcessingMask reference_common(
 
     reference_thermal(px, options, transformed, mask);
 
-    ccd::filter::apply_saturation_filter(
+    ccd::filter::apply_band_range(
         px.spectral,
         bounds_of(options).bands,
         bounds_of(options).reflectance,
         mask
     );
 
-    ccd::filter::remove_duplicate_dates(px.dates, mask);
+    ccd::filter::apply_dedupe(px.dates, mask);
 
     return mask;
 }
@@ -264,7 +264,7 @@ ccd::ProcessingMask reference_snow(
             mask.set(i, true);
     }
 
-    ccd::filter::remove_duplicate_dates(px.dates, mask);
+    ccd::filter::apply_dedupe(px.dates, mask);
     reference_thermal(px, options, false, mask);
 
     return mask;
@@ -278,7 +278,7 @@ ccd::ProcessingMask reference_insufficient_clear(
     ccd::ProcessingMask mask = reference_common(px, options, false);
     const Bounds bounds = bounds_of(options);
 
-    ccd::filter::apply_green_median_filter(
+    ccd::filter::apply_green_median(
         px.dates,
         px.spectral,
         options.input.index("green"),
@@ -288,7 +288,7 @@ ccd::ProcessingMask reference_insufficient_clear(
         mask
     );
 
-    ccd::filter::remove_duplicate_dates(px.dates, mask);
+    ccd::filter::apply_dedupe(px.dates, mask);
 
     return mask;
 }

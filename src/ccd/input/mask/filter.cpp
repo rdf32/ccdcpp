@@ -34,7 +34,7 @@ std::optional<GreenFilterScope> green_filter_scope(const std::string& name)
 namespace filter
 {
 
-void apply_thermal_filter(
+void apply_thermal_range(
     ArrayView<const scalar_t, 2> spectral,
     index_t thermal_band,
     const Range& range,
@@ -60,7 +60,7 @@ void apply_thermal_filter(
     }
 }
 
-void apply_saturation_filter(
+void apply_band_range(
     ArrayView<const scalar_t, 2> spectral,
     const BandList& bands,
     const Range& range,
@@ -93,7 +93,7 @@ void apply_saturation_filter(
     }
 }
 
-void remove_duplicate_dates(
+void apply_dedupe(
     ArrayView<const std::int64_t, 1> dates,
     ProcessingMask& mask
 )
@@ -112,12 +112,12 @@ void remove_duplicate_dates(
     }
 
 }
-void apply_green_median_filter(
+void apply_green_median(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
     index_t green_band,
     std::int64_t max_date,
-    scalar_t filter_range,
+    scalar_t green_offset,
     GreenFilterScope scope,
     ProcessingMask& mask
 )
@@ -161,14 +161,14 @@ void apply_green_median_filter(
     // Compute threshold
     //----------------------------------------------------------------------
     const scalar_t threshold =
-        median(green_values) + filter_range;
+        median(green_values) + green_offset;
 
     //----------------------------------------------------------------------
     // Apply filter
     //
     // Equivalent to:
     //
-    // green_mask = green < median + filter_range
+    // green_mask = green < median + green_offset
     //
     // over the masked observations dated <= max_date for StatWindow, and
     // over every masked observation for All.

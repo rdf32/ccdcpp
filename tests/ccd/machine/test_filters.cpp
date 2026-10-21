@@ -158,7 +158,7 @@ TEST(Bounds, ConfigurationDefaults)
     EXPECT_FALSE(thermal.range.hi.inclusive);
 }
 
-// The saturation filter, in DN and in reflectance, every mode. One band out
+// The band_range filter, in DN and in reflectance, every mode. One band out
 // of range is enough to reject the observation.
 TEST(Bounds, SaturationFilterAtTheBounds)
 {
@@ -176,7 +176,7 @@ TEST(Bounds, SaturationFilterAtTheBounds)
             {
                 const auto spectral = spectral_of(series, B);
                 auto mask = all_true(T);
-                ccd::filter::apply_saturation_filter(
+                ccd::filter::apply_band_range(
                     ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                         spectral.data(), {B, T}),
                     ccd::BandList{0, 1, 2},
@@ -194,7 +194,7 @@ TEST(Bounds, SaturationFilterAtTheBounds)
                 for (ccd::index_t t = 0; t < T; ++t)
                     spectral[2 * T + t] = series[t];
                 auto mask = all_true(T);
-                ccd::filter::apply_saturation_filter(
+                ccd::filter::apply_band_range(
                     ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                         spectral.data(), {B, T}),
                     ccd::BandList{0, 1, 2},
@@ -206,7 +206,7 @@ TEST(Bounds, SaturationFilterAtTheBounds)
     }
 }
 
-// The thermal filter, in Celsius x 100 and Celsius / 100, every mode.
+// The thermal_range filter, in Celsius x 100 and Celsius / 100, every mode.
 TEST(Bounds, ThermalFilterAtTheBounds)
 {
     struct Unit { ccd::scalar_t lo, hi; };
@@ -228,7 +228,7 @@ TEST(Bounds, ThermalFilterAtTheBounds)
         for (const auto& mode : MODES)
         {
             auto mask = all_true(T);
-            ccd::filter::apply_thermal_filter(
+            ccd::filter::apply_thermal_range(
                 ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                     spectral.data(), {B, T}),
                 1,

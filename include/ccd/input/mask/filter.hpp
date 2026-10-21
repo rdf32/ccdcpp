@@ -52,8 +52,8 @@ namespace filter
 
 //------------------------------------------------------------------------------
 //
-// A bound of a valid range, and the range test the thermal and saturation
-// filters share.
+// A bound of a valid range, and the range test the thermal_range and
+// band_range steps share.
 //
 // in_range() keeps `value` when it lies above `lo` and below `hi`, an
 // inclusive end also keeping a value equal to it. Each end is written so that
@@ -88,13 +88,12 @@ inline bool in_range(scalar_t value, const Range& range)
 
 //------------------------------------------------------------------------------
 //
-// Remove duplicate acquisition dates.
-//
-// Keeps the first observation for each date.
+// The dedupe step: removes duplicate acquisition dates, keeping the first
+// observation of each date.
 //
 //------------------------------------------------------------------------------
 
-void remove_duplicate_dates(
+void apply_dedupe(
     ArrayView<const std::int64_t, 1> dates,
     ProcessingMask& mask
 );
@@ -102,7 +101,7 @@ void remove_duplicate_dates(
 
 //------------------------------------------------------------------------------
 //
-// Remove observations with invalid thermal values.
+// The thermal_range step: removes observations with invalid thermal values.
 //
 // An observation is kept when its thermal value is in_range() of `range`
 // (the thermal_range step's bounds, exclusive on both ends by default). The
@@ -112,7 +111,7 @@ void remove_duplicate_dates(
 //
 //------------------------------------------------------------------------------
 
-void apply_thermal_filter(
+void apply_thermal_range(
     ArrayView<const scalar_t, 2> spectral,
     index_t thermal_band,
     const Range& range,
@@ -122,7 +121,7 @@ void apply_thermal_filter(
 
 //------------------------------------------------------------------------------
 //
-// Remove saturated observations.
+// The band_range step: removes saturated observations.
 //
 // An observation is saturated when any of `bands` is not in_range() of
 // `range` (the band_range step's bounds, exclusive on both ends by default);
@@ -134,7 +133,7 @@ void apply_thermal_filter(
 //
 //------------------------------------------------------------------------------
 
-void apply_saturation_filter(
+void apply_band_range(
     ArrayView<const scalar_t, 2> spectral,
     const BandList& bands,
     const Range& range,
@@ -144,24 +143,24 @@ void apply_saturation_filter(
 
 //------------------------------------------------------------------------------
 //
-// Insufficient clear procedure green filter.
+// The green_median step, the insufficient clear procedure's green filter.
 //
 // Removes masked observations where
 //
 //   green >= median(green of the masked observations dated <= max_date)
-//            + filter_range
+//            + green_offset
 //
 // at any date (scope All), only at dates <= max_date (StatWindow), or none
 // (Off). See GreenFilterScope above.
 //
 //------------------------------------------------------------------------------
 
-void apply_green_median_filter(
+void apply_green_median(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
     index_t green_band,
     std::int64_t max_date,
-    scalar_t filter_range,
+    scalar_t green_offset,
     GreenFilterScope scope,
     ProcessingMask& mask
 );
