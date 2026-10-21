@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "ccd/machine/pixel_procedure.hpp"
@@ -29,13 +31,16 @@ namespace ccd
 //==============================================================================
 
 // The layout of the record. Bumped when a field is added or its meaning
-// changes.
-inline constexpr std::uint16_t RESUME_FORMAT = 1;
+// changes. 2: the header's digest covers the input (its QA table included)
+// and the resolved configuration (its preprocessing included); 0.10.0's
+// header held options_digest in its place.
+inline constexpr std::uint16_t RESUME_FORMAT = 2;
 
-// The outputs. Bumped whenever an output can change for the same input and
-// options, so a record of another version describes a run this one would
-// not make.
-inline constexpr std::uint32_t RESULTS_VERSION = 2;
+// The outputs. Bumped whenever a release can change an output for the same
+// input and configuration, or changes the default configuration's outputs,
+// so a record of another version describes a run this one would not make.
+// 3: the "ccdc" preset has no statistics cutoff.
+inline constexpr std::uint32_t RESULTS_VERSION = 3;
 
 // One call's part of the record, shared by its pixels.
 struct ResumeHeader
@@ -55,6 +60,23 @@ struct ResumeHeader
     // run, the first run's for a run resumed from it.
     std::int64_t statistics_end = 0;
 };
+
+// The refusal of a header of another record format or results version
+// (std::invalid_argument): a record of another format is not read, and one
+// of another results version describes a run this ccdcpp would not make.
+// A resume checks it before anything else of the record.
+inline void check_version(const ResumeHeader& header)
+{
+    if (header.format != RESUME_FORMAT)
+        throw std::invalid_argument(
+            "the resume record's format is " + std::to_string(header.format) +
+            "; this ccdcpp reads " + std::to_string(RESUME_FORMAT));
+    if (header.results_version != RESULTS_VERSION)
+        throw std::invalid_argument(
+            "the resume record's results version is " +
+            std::to_string(header.results_version) + "; this ccdcpp's is " +
+            std::to_string(RESULTS_VERSION) + ": rerun in full");
+}
 
 // One pixel's part of the record.
 struct PixelRecord

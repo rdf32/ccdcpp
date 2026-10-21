@@ -91,15 +91,7 @@ void check_resume(
     ArrayView<const std::int64_t, 1> dates
 )
 {
-    if (from.format != RESUME_FORMAT)
-        throw std::invalid_argument(
-            "the resume record's format is " + std::to_string(from.format) +
-            "; this ccdcpp reads " + std::to_string(RESUME_FORMAT));
-    if (from.results_version != RESULTS_VERSION)
-        throw std::invalid_argument(
-            "the resume record's results version is " +
-            std::to_string(from.results_version) + "; this ccdcpp's is " +
-            std::to_string(RESULTS_VERSION) + ": rerun in full");
+    check_version(from);
     if (from.digest != digest)
         throw std::invalid_argument(
             "the resume record was made with another input or configuration");

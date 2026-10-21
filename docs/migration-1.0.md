@@ -89,10 +89,10 @@ step to the `snow` and `insufficient_clear` chains ([config.md](config.md#prepro
 
 A 0.10.0 record does not continue: its header has `options_digest` where 1.0's has `digest`, and
 1.0's digest covers the input (its QA table included) and the resolved configuration (its
-preprocessing included). It is refused before any pixel runs, with `ValueError: the resume
-header has no "digest"` (renamed by hand, `the resume record was made with another input or
-configuration`). Rerun the detection once with `record=True` and store its records; they
-continue from then on. `RESULTS_VERSION` stays 2.
+preprocessing included), so `RESUME_FORMAT` is 2 (0.10.0's was 1); 1.0's default outputs
+differ, so `RESULTS_VERSION` is 3 (0.10.0's was 2). A 0.10.0 record is refused before any pixel
+runs, with `ValueError: the resume record's format is 1; this ccdcpp reads 2`. Rerun the
+detection once with `record=True` and store its records; they continue from then on.
 
 ```python
 # 0.10.0

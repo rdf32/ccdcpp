@@ -52,7 +52,9 @@ its replacement.
 - **Error messages** name the stage, strategy and parameter (`change_test 'chi2' parameter
   'peek_size' is 1; it must be at least 2`), or `shared` for a shared value.
 - **Resume**: the header's digest (`digest`, was `options_digest`) covers the input and the
-  resolved configuration, so a 0.10.0 record is refused. `RESULTS_VERSION` stays 2.
+  resolved configuration: `RESUME_FORMAT` is 2, and a 0.10.0 record is refused by its format
+  (`the resume record's format is 1; this ccdcpp reads 2`). `RESULTS_VERSION` is 3: the
+  default outputs changed.
 - **The source layout**: `include/ccd/` and `src/ccd/` in `core/`, `input/`, `regression/`,
   `config/`, `strategies/`, `machine/`, `results/` and `run/`; `ccd/ccd.hpp` includes every
   header. `HarmonicWorkspace` is `PixelSeries`.

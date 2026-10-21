@@ -349,6 +349,33 @@ class Cube(unittest.TestCase):
         self.assertEqual(counts_of(out)["failed"], 1)
         self.assertEqual(int(statuses_of(out)[standard[0]]), 2)
 
+    def test_a_0_10_header_is_refused_by_its_format(self):
+        # 0.10.0's header: format 1, results version 2, options_digest where 1.0 has digest.
+        def old(header: ResumeHeader) -> dict[str, Any]:
+            return {"format": 1, "options_digest": header["digest"], "results_version": 2,
+                    "series_end": header["series_end"],
+                    "statistics_end": header["statistics_end"]}
+
+        message = (r"^the resume record's format is 1; this ccdcpp reads "
+                   rf"{ccdcpp.RESUME_FORMAT}$")
+        self.assertEqual((ccdcpp.RESUME_FORMAT, ccdcpp.RESULTS_VERSION), (2, 3))
+        dates, spectral, qas = pixel(1)
+        n = upto(dates, CUT_2019)
+        stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
+                               input=ccdcpp.Input(), record=True)
+        with self.assertRaisesRegex(ValueError, message):
+            ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
+                          resume=dict(stored, resume_header=old(header_of(stored))))
+
+        dates, spectral, qas = cube(range(50, 56), 2, 3)
+        stored_cube = ccdcpp.detect_cube(
+            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
+            threads=1, record=True)
+        with self.assertRaisesRegex(ValueError, message):
+            ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(), threads=1,
+                               resume=dict(stored_cube,
+                                           resume_header=old(header_of(stored_cube))))
+
     def test_the_schema_names_the_columns(self):
         dates, spectral, qas = cube(range(2), 1, 2)
         out = ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(),

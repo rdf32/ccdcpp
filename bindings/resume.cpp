@@ -115,6 +115,7 @@ ccd::ResumeHeader header_from_python(const py::dict& d)
     ccd::ResumeHeader header;
     header.format = count_of<std::uint16_t>(d, "format", what);
     header.results_version = count_of<std::uint32_t>(d, "results_version", what);
+    ccd::check_version(header);   // before the fields another format may not hold
     header.digest = bits_of(d, "digest", what);
     header.series_end = field(d, "series_end", what).cast<std::int64_t>();
     header.statistics_end = field(d, "statistics_end", what).cast<std::int64_t>();
