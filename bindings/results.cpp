@@ -3,6 +3,9 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
@@ -95,6 +98,75 @@ ccd::BandFit band_from_python(const py::dict& b)
 
 // record_columns()' status of a pixel that failed (CubeOutput::failures).
 constexpr std::uint8_t STATUS_FAILED = 2;
+
+// A record column: its name, and T, the element type record_columns()
+// writes.
+template<typename T>
+struct RecordColumn
+{
+    using type = T;
+    const char* name;
+};
+
+// The record columns, in the order record_columns() writes them and
+// resume_schema() lists them, indexed by the enum below;
+// records_from_columns() reads them by name.
+constexpr std::tuple RECORD_COLUMNS{
+    RecordColumn<std::int32_t>{"row"},
+    RecordColumn<std::int32_t>{"col"},
+    RecordColumn<std::uint64_t>{"input_fingerprint"},
+    RecordColumn<std::uint8_t>{"procedure"},
+    RecordColumn<std::uint8_t>{"exit"},
+    RecordColumn<std::int64_t>{"window_start"},
+    RecordColumn<std::int64_t>{"window_stop"},
+    RecordColumn<std::int64_t>{"prev_break"},
+    RecordColumn<std::int64_t>{"fit_stop"},
+    RecordColumn<bool>{"grow"},
+    RecordColumn<std::uint8_t>{"num_coef"},
+    RecordColumn<ccd::scalar_t>{"magnitude"},
+    RecordColumn<std::int64_t>{"final_segments"},
+    RecordColumn<std::int64_t>{"excluded_offsets"},
+    RecordColumn<std::int64_t>{"excluded_days"},
+    RecordColumn<std::uint8_t>{"status"},
+};
+
+enum : std::size_t
+{
+    ROW, COL, INPUT_FINGERPRINT, PROCEDURE, EXIT, WINDOW_START, WINDOW_STOP, PREV_BREAK,
+    FIT_STOP, GROW, NUM_COEF, MAGNITUDE, FINAL_SEGMENTS, EXCLUDED_OFFSETS, EXCLUDED_DAYS,
+    STATUS, RECORD_COLUMN_COUNT
+};
+static_assert(std::tuple_size_v<decltype(RECORD_COLUMNS)> == RECORD_COLUMN_COUNT);
+
+template<std::size_t I>
+constexpr const char* name_of()
+{
+    return std::get<I>(RECORD_COLUMNS).name;
+}
+
+// Record column I, empty, in its element type.
+template<std::size_t I>
+auto new_column(std::vector<py::ssize_t> shape)
+{
+    using T = typename std::tuple_element_t<I, decltype(RECORD_COLUMNS)>::type;
+    return py::array_t<T>(std::move(shape));
+}
+
+// The numpy dtype of an element type.
+template<typename T>
+constexpr const char* dtype_name()
+{
+    if constexpr (std::is_same_v<T, bool>)          return "bool";
+    else if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8";
+    else if constexpr (std::is_same_v<T, std::int32_t>)  return "int32";
+    else if constexpr (std::is_same_v<T, std::int64_t>)  return "int64";
+    else if constexpr (std::is_same_v<T, std::uint64_t>) return "uint64";
+    else
+    {
+        static_assert(std::is_same_v<T, double>);
+        return "float64";
+    }
+}
 
 } // namespace
 
@@ -498,13 +570,22 @@ py::dict record_columns(
     }
 
     const auto n = static_cast<py::ssize_t>(N);
-    py::array_t<std::int32_t> row(n), col(n);
-    py::array_t<std::uint64_t> fingerprint(n);
-    py::array_t<std::uint8_t> procedure(n), exit(n), num_coef(n), status_arr(n);
-    py::array_t<std::int64_t> window_start(n), window_stop(n), prev_break(n), fit_stop(n),
-        final_segments(n), offsets(n + 1), excluded(static_cast<py::ssize_t>(days));
-    py::array_t<bool> grow(n);
-    py::array_t<ccd::scalar_t> magnitude(std::vector<py::ssize_t>{n, static_cast<py::ssize_t>(B)});
+    auto row = new_column<ROW>({n});
+    auto col = new_column<COL>({n});
+    auto fingerprint = new_column<INPUT_FINGERPRINT>({n});
+    auto procedure = new_column<PROCEDURE>({n});
+    auto exit = new_column<EXIT>({n});
+    auto window_start = new_column<WINDOW_START>({n});
+    auto window_stop = new_column<WINDOW_STOP>({n});
+    auto prev_break = new_column<PREV_BREAK>({n});
+    auto fit_stop = new_column<FIT_STOP>({n});
+    auto grow = new_column<GROW>({n});
+    auto num_coef = new_column<NUM_COEF>({n});
+    auto magnitude = new_column<MAGNITUDE>({n, static_cast<py::ssize_t>(B)});
+    auto final_segments = new_column<FINAL_SEGMENTS>({n});
+    auto offsets = new_column<EXCLUDED_OFFSETS>({n + 1});
+    auto excluded = new_column<EXCLUDED_DAYS>({static_cast<py::ssize_t>(days)});
+    auto status_arr = new_column<STATUS>({n});
 
     auto rv = row.mutable_unchecked<1>(); auto cv = col.mutable_unchecked<1>();
     auto fv = fingerprint.mutable_unchecked<1>();
@@ -545,16 +626,23 @@ py::dict record_columns(
     ov(n) = next;
 
     py::dict d;
-    d["row"] = row; d["col"] = col;
-    d["input_fingerprint"] = fingerprint;
-    d["procedure"] = procedure; d["exit"] = exit;
-    d["window_start"] = window_start; d["window_stop"] = window_stop;
-    d["prev_break"] = prev_break; d["fit_stop"] = fit_stop;
-    d["grow"] = grow; d["num_coef"] = num_coef; d["magnitude"] = magnitude;
-    d["final_segments"] = final_segments;
-    d["excluded_offsets"] = offsets; d["excluded_days"] = excluded;
+    d[name_of<ROW>()] = row;
+    d[name_of<COL>()] = col;
+    d[name_of<INPUT_FINGERPRINT>()] = fingerprint;
+    d[name_of<PROCEDURE>()] = procedure;
+    d[name_of<EXIT>()] = exit;
+    d[name_of<WINDOW_START>()] = window_start;
+    d[name_of<WINDOW_STOP>()] = window_stop;
+    d[name_of<PREV_BREAK>()] = prev_break;
+    d[name_of<FIT_STOP>()] = fit_stop;
+    d[name_of<GROW>()] = grow;
+    d[name_of<NUM_COEF>()] = num_coef;
+    d[name_of<MAGNITUDE>()] = magnitude;
+    d[name_of<FINAL_SEGMENTS>()] = final_segments;
+    d[name_of<EXCLUDED_OFFSETS>()] = offsets;
+    d[name_of<EXCLUDED_DAYS>()] = excluded;
     if (status)
-        d["status"] = status_arr;
+        d[name_of<STATUS>()] = status_arr;
     return d;
 }
 
@@ -571,22 +659,22 @@ std::vector<ccd::PixelRecord> records_from_columns(
 
     const auto n = static_cast<py::ssize_t>(N);
     const auto b = static_cast<py::ssize_t>(B);
-    const auto row = column<std::int64_t>(records, "row", what, n);
-    const auto col = column<std::int64_t>(records, "col", what, n);
-    const auto fingerprint = column<std::uint64_t>(records, "input_fingerprint", what, n);
-    const auto procedure = column<std::uint8_t>(records, "procedure", what, n);
-    const auto exit = column<std::uint8_t>(records, "exit", what, n);
-    const auto window_start = column<std::int64_t>(records, "window_start", what, n);
-    const auto window_stop = column<std::int64_t>(records, "window_stop", what, n);
-    const auto prev_break = column<std::int64_t>(records, "prev_break", what, n);
-    const auto fit_stop = column<std::int64_t>(records, "fit_stop", what, n);
-    const auto grow = column<bool>(records, "grow", what, n);
-    const auto num_coef = column<std::uint8_t>(records, "num_coef", what, n);
-    const auto magnitude = column<ccd::scalar_t>(records, "magnitude", what, n, 2, b);
-    const auto final_segments = column<std::int64_t>(records, "final_segments", what, n);
-    const auto offsets = column<std::int64_t>(records, "excluded_offsets", what, n + 1);
+    const auto row = column<std::int64_t>(records, name_of<ROW>(), what, n);
+    const auto col = column<std::int64_t>(records, name_of<COL>(), what, n);
+    const auto fingerprint = column<std::uint64_t>(records, name_of<INPUT_FINGERPRINT>(), what, n);
+    const auto procedure = column<std::uint8_t>(records, name_of<PROCEDURE>(), what, n);
+    const auto exit = column<std::uint8_t>(records, name_of<EXIT>(), what, n);
+    const auto window_start = column<std::int64_t>(records, name_of<WINDOW_START>(), what, n);
+    const auto window_stop = column<std::int64_t>(records, name_of<WINDOW_STOP>(), what, n);
+    const auto prev_break = column<std::int64_t>(records, name_of<PREV_BREAK>(), what, n);
+    const auto fit_stop = column<std::int64_t>(records, name_of<FIT_STOP>(), what, n);
+    const auto grow = column<bool>(records, name_of<GROW>(), what, n);
+    const auto num_coef = column<std::uint8_t>(records, name_of<NUM_COEF>(), what, n);
+    const auto magnitude = column<ccd::scalar_t>(records, name_of<MAGNITUDE>(), what, n, 2, b);
+    const auto final_segments = column<std::int64_t>(records, name_of<FINAL_SEGMENTS>(), what, n);
+    const auto offsets = column<std::int64_t>(records, name_of<EXCLUDED_OFFSETS>(), what, n + 1);
     const auto excluded = column<std::int64_t>(
-        records, "excluded_days", what, length_of(records, "excluded_days", what));
+        records, name_of<EXCLUDED_DAYS>(), what, length_of(records, name_of<EXCLUDED_DAYS>(), what));
 
     {
         // Raster order, and offsets that slice excluded_days whole.
@@ -657,13 +745,9 @@ py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures)
 py::dict resume_schema()
 {
     py::dict d;
-    for (const auto& [name, dtype] : std::initializer_list<std::pair<const char*, const char*>>{
-             {"row", "int32"}, {"col", "int32"}, {"input_fingerprint", "uint64"},
-             {"procedure", "uint8"}, {"exit", "uint8"}, {"window_start", "int64"},
-             {"window_stop", "int64"}, {"prev_break", "int64"}, {"fit_stop", "int64"},
-             {"grow", "bool"}, {"num_coef", "uint8"}, {"magnitude", "float64"},
-             {"final_segments", "int64"}, {"excluded_offsets", "int64"},
-             {"excluded_days", "int64"}, {"status", "uint8"}})
-        d[name] = dtype;
+    std::apply(
+        [&d](const auto&... column)
+        { ((d[column.name] = dtype_name<typename std::decay_t<decltype(column)>::type>()), ...); },
+        RECORD_COLUMNS);
     return d;
 }
