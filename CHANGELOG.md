@@ -186,7 +186,22 @@ its replacement.
   `tests/ccd/support`: one pixel type (`series.hpp`) and one CSV reader, the dumps
   (`dump.hpp`), the units (`units.hpp`), the fixture checks (`fixture.hpp`) and the golden
   cubes (`synthetic.hpp`, `GOLDEN_CUBES`). The Python tests share their start-up
-  (`tests/python/_harness.py`).
+  (`tests/python/_harness.py`), which lays out the package as the wheel does; every one
+  imports the package, and those of the extension take it from there. They share their
+  corpus (`_corpus.py`) and one comparison of outputs (`_compare.py`).
+- `test_profiles.py` (ctest `python_profiles`) is five files by subject, with their helpers in
+  `_profiles.py`: `python_profiles_landsat`, `python_profiles_api`,
+  `python_profiles_qa_options`, `python_profiles_band_order` and `python_profiles_sensors`.
+  The package's own tests are `test_package.py` (`python_package`), the tests of the
+  docstrings' prose `test_docs.py` (`python_docs`).
+- `test_machine` is built from `tests/ccd/machine/test_standard_steps.cpp`,
+  `test_standard_hooks.cpp` and `test_standard_whole_pixel.cpp`, `test_preprocess` from
+  `test_preprocess.cpp` and `test_preprocess_validation.cpp`, `test_resume` from
+  `tests/ccd/golden/test_resume.cpp` and `test_run_spec.cpp`.
+- One test per pixel or case, named for it: `Transitions.PathsAsDocumented` is
+  `Transitions/PathsAsDocumented.Pixel/<pixel>`, `StandardExit.EachWayTheMachineStops`
+  `StandardExit/EachWayTheMachineStops.Pixel/<pixel>`, and `ResumeRefuses.WhatItCannotContinue`
+  `ResumeRefuses/WhatItCannotContinue.Case/<case>` with `ResumeAccepts.ExactlyTheFinalSegments`.
 - `test_clear`, `test_snow` and `test_standard` are one `test_pyccd_reference`; its tests are
   `PyccdReference.InsufficientClearMatchesPyccd`, `PermanentSnowMatchesPyccd`,
   `StandardMatchesPyccd` and `HalfDayMedianGapMatchesPyccd` (were `CCD.DetectClear`,
