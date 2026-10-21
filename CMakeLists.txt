@@ -378,9 +378,17 @@ if(CCD_BUILD_TESTS)
     # bit. See tests/ccd/machine/test_kernels.cpp.
     ccd_add_gtest(test_kernels INTERNAL SOURCES tests/ccd/machine/test_kernels.cpp)
 
-    # The strategy registry and parameter schemas. See
-    # tests/ccd/strategies/test_registry.cpp.
-    ccd_add_gtest(test_registry SOURCES tests/ccd/strategies/test_registry.cpp)
+    # The strategy registry and parameter schemas, each strategy against what
+    # it stands for, and the configuration's preprocessing section. See
+    # tests/ccd/strategies/test_registry.cpp, test_strategies.cpp and
+    # test_registry_preprocess.cpp.
+    ccd_add_gtest(
+        test_registry
+        SOURCES
+            tests/ccd/strategies/test_registry.cpp
+            tests/ccd/strategies/test_strategies.cpp
+            tests/ccd/strategies/test_registry_preprocess.cpp
+    )
 
     # The Standard machine: its routing and steps from hand-built records,
     # its routes under test-only strategies, and its exit reasons on whole
