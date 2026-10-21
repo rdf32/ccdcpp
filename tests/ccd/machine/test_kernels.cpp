@@ -51,7 +51,7 @@
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
-#include "../golden/golden.hpp"
+#include "golden.hpp"
 #include "find_closest_doy.hpp"
 
 namespace

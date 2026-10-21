@@ -32,7 +32,7 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/processing_mask.hpp"
 
-#include "../golden/config.hpp"
+#include "config.hpp"
 
 namespace
 {

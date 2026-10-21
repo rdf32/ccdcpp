@@ -56,6 +56,7 @@ for t in "${labels[@]}"; do
   O=/out/$t; mkdir -p "$O/golden"
   cp -r "/src/$t" "/work-$t"
   G=/work-$t/tests/ccd/golden
+  I=/work-$t/tests/ccd/support; [ -d "$I" ] || I=$G
   cmake -S "/work-$t" -B "/b-$t" -DCMAKE_BUILD_TYPE=Release -DCCD_BUILD_PYTHON=OFF \
     -DCCD_ENABLE_OPENMP=ON -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_PREFIX_PATH=/opt/env \
     > "$O/configure.log" 2>&1
@@ -63,7 +64,7 @@ for t in "${labels[@]}"; do
   [ -f "$G/test_transitions.cpp" ] && targets="$targets test_transitions"
   cmake --build "/b-$t" -j"$N" --target $targets > "$O/build.log" 2>&1 \
     || { tail -30 "$O/build.log"; exit 1; }
-  "$CXX" -std=c++17 -O3 -DNDEBUG -I"/work-$t/include" -I"$G" -I/opt/env/include \
+  "$CXX" -std=c++17 -O3 -DNDEBUG -I"/work-$t/include" -I"$I" -I/opt/env/include \
     -I/opt/env/include/eigen3 -fopenmp /tool/golden_driver.cpp "/b-$t/libccd_core.a" \
     -o "/b-$t/golden_driver"
   D=/work-$t/tests/ccd/data; [ -d "$D" ] || D=/work-$t/tests/ccd/machine

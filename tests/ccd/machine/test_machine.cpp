@@ -39,7 +39,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../golden/specs.hpp"
+#include "specs.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/pixel_series.hpp"
@@ -48,13 +48,13 @@
 #include "ccd/input/procedure.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
-#include "../golden/config.hpp"
+#include "config.hpp"
 #include "ccd/strategies/edge_segments/lasso.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/library.hpp"
 
-#include "../golden/characterisation.hpp"
+#include "characterisation.hpp"
 #include "find_closest_doy.hpp"
 
 namespace

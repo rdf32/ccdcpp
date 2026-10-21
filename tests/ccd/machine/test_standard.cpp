@@ -9,7 +9,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../golden/specs.hpp"
+#include "specs.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/core/types.hpp"
@@ -20,7 +20,7 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)
-#include "../golden/specs.hpp"
+#include "specs.hpp"
 
 
 struct TestData

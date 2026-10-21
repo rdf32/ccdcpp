@@ -22,11 +22,11 @@
 
 #include <gtest/gtest.h>
 
-#include "../golden/specs.hpp"
+#include "specs.hpp"
 
 #include "ccd/ccd.hpp"
 
-#include "../golden/characterisation.hpp"
+#include "characterisation.hpp"
 
 namespace
 {

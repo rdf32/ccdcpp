@@ -59,9 +59,9 @@
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 #include "ccd/strategies/refit/span_factor.hpp"
-#include "../golden/specs.hpp"
-#include "../golden/golden.hpp"
-#include "../golden/synthetic.hpp"
+#include "specs.hpp"
+#include "golden.hpp"
+#include "synthetic.hpp"
 #include "ccd/strategies/library.hpp"
 
 namespace

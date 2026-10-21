@@ -28,7 +28,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../golden/specs.hpp"
+#include "specs.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"

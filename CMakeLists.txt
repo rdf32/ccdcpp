@@ -330,7 +330,8 @@ if(CCD_BUILD_TESTS)
     include(GoogleTest)
 
     # A test executable: `name` built from SOURCES, linked with the library and
-    # gtest_main, with DEFINES as its compile definitions; INTERNAL gives it
+    # gtest_main, with the shared test headers (tests/ccd/support) and DEFINES
+    # as its compile definitions; INTERNAL gives it
     # the library's internal headers (src/), which the library does not
     # export. Its tests are discovered unless NO_DISCOVER, for the tests that
     # discover theirs in shards (below). Every test opens its CSVs in
@@ -341,6 +342,7 @@ if(CCD_BUILD_TESTS)
         add_executable(${name} ${test_SOURCES})
         target_link_libraries(${name} PRIVATE ccd_core GTest::gtest_main)
         target_compile_features(${name} PRIVATE cxx_std_17)
+        target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/support)
         target_compile_definitions(
             ${name} PRIVATE CCD_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/data" ${test_DEFINES})
         if(test_INTERNAL)
@@ -413,7 +415,6 @@ if(CCD_BUILD_TESTS)
     # The resume record: what detect() with RunSpec::record writes. See
     # tests/ccd/machine/test_record.cpp.
     ccd_add_gtest(test_record SOURCES tests/ccd/machine/test_record.cpp)
-    target_include_directories(test_record PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/golden)
 
     # Resume equals the full run. See tests/ccd/golden/test_resume.cpp.
     ccd_add_gtest(test_resume NO_DISCOVER SOURCES tests/ccd/golden/test_resume.cpp)
@@ -423,7 +424,7 @@ if(CCD_BUILD_TESTS)
     # tests/ccd/golden/test_prefix.cpp.
     ccd_add_gtest(test_prefix NO_DISCOVER SOURCES tests/ccd/golden/test_prefix.cpp)
 
-    # The sweeps over cuts (tests/ccd/golden/series_corpus.hpp) run as shards:
+    # The sweeps over cuts (tests/ccd/support/series_corpus.hpp) run as shards:
     # "sample" in every run, "restN" labelled corpus, so `ctest -LE corpus` is
     # the quick tier. CMake before 3.22 cannot filter discovery: no label.
     if(CMAKE_VERSION VERSION_LESS 3.22)
@@ -486,7 +487,7 @@ if(CCD_BUILD_GOLDEN_DRIVER)
         golden_driver
 
         PRIVATE
-            ${PROJECT_SOURCE_DIR}/tests/ccd/golden
+            ${PROJECT_SOURCE_DIR}/tests/ccd/support
     )
 
     target_link_libraries(

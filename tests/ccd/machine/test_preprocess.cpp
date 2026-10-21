@@ -43,16 +43,16 @@
 
 #include <gtest/gtest.h>
 
-#include "../golden/specs.hpp"
+#include "specs.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/chain.hpp"
 
-#include "../golden/golden.hpp"
-#include "../golden/synthetic.hpp"
-#include "../golden/synthetic_bands.hpp"
-#include "../golden/band_profiles.hpp"
+#include "golden.hpp"
+#include "synthetic.hpp"
+#include "synthetic_bands.hpp"
+#include "band_profiles.hpp"
 
 namespace
 {

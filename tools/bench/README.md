@@ -24,7 +24,7 @@ which is enough for the synthetic bench. The cell bench needs the package: copy
 `python/ccdcpp/*.py` of the tree and the built extension into `<dir>/ccdcpp/`.
 
 The synthetic corpus is the golden corpus's `c16` cube: 2000 pixels at a 16-day cadence, from
-`tests/ccd/golden/synthetic.hpp`. Make it once with the golden driver
+`tests/ccd/support/synthetic.hpp`. Make it once with the golden driver
 (`tools/linux-compare/golden_driver.cpp`), which writes `c16.bin` with the other cubes:
 
 ```

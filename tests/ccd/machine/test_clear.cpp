@@ -16,7 +16,7 @@
 #include "ccd/strategies/edge_segments/lasso.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/procedure.hpp"
-#include "../golden/config.hpp"
+#include "config.hpp"
 
 
 struct TestData

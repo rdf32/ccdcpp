@@ -11,7 +11,7 @@
 // differs from the detect() dump of the same input; with bench it only times.
 //
 // <csv_dir> is a tree's tests/ccd/data. Build it against a tree's
-// include/, tests/ccd/golden/ and libccd_core.a. Every tree's dumps compare
+// include/, tests/ccd/support/ and libccd_core.a. Every tree's dumps compare
 // file for file with every other's: v0.6.1 to v0.10.0 ran it through their
 // option-argument detect() and detect_cube() (this driver as of v0.10.0), 1.0
 // on through the RunSpec ones. It is the golden check's driver and
