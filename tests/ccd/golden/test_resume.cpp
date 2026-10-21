@@ -72,7 +72,7 @@ ccd::PixelOutput resume_on(const Series& whole, const ccd::PixelOutput& stored)
         whole.date_view(),
         whole.spectral_view(),
         whole.qa_view(),
-        ccd::PixelResume{stored.header, stored.record, stored.result.models});
+        ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
 }
 
 // Two records say the same, field by field.
@@ -279,7 +279,7 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
                 s.date_view(),
                 s.spectral_view(),
                 s.qa_view(),
-                ccd::PixelResume{stored.header, stored.record, stored.result.models});
+                ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
 
             // Every statistics cutoff capped at T: the shared statistics_end, which
             // the green median step reads too.
@@ -429,7 +429,7 @@ TEST(ResumeRefuses, WhatItCannotContinue)
                 input.date_view(),
                 input.spectral_view(),
                 input.qa_view(),
-                ccd::PixelResume{header, stored.record, given}),
+                ccd::Resume{header, {stored.record}, {given}}),
             std::invalid_argument);
     };
     const std::size_t all_segments = stored.result.models.size();
@@ -458,7 +458,16 @@ TEST(ResumeRefuses, WhatItCannotContinue)
         s.date_view(),
         s.spectral_view(),
         s.qa_view(),
-        ccd::PixelResume{stored.header, stored.record, final_only}));
+        ccd::Resume{stored.header, {stored.record}, {final_only}}));
+
+    // A pixel's resume holds one record and one segment list.
+    EXPECT_THROW(ccd::detect(
+        golden::spec_of(s.h, s.config),
+        s.date_view(),
+        s.spectral_view(),
+        s.qa_view(),
+        ccd::Resume{stored.header, {stored.record, stored.record}, {final_only, final_only}}),
+                 std::invalid_argument);
 }
 
 //------------------------------------------------------------------------------
@@ -528,14 +537,14 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
             ASSERT_TRUE(stored.failures.empty());
             ASSERT_EQ(stored.pixels.size(), N);
 
-            ccd::CubeResumeFrom from;
+            ccd::Resume from;
             from.header = stored.header;
-            from.pixels.resize(N);
+            from.records.resize(N);
             from.segments.resize(N);
             for (const auto& px : stored.pixels)
             {
                 const std::size_t at = px.row * c.W + px.col;
-                from.pixels[at] = px.record;
+                from.records[at] = px.record;
                 from.segments[at] = px.result.models;
             }
 
@@ -585,15 +594,15 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
         cut.qa(),
         1);
 
-    ccd::CubeResumeFrom from;
+    ccd::Resume from;
     from.header = stored.header;
-    from.pixels.resize(N);
+    from.records.resize(N);
     from.segments.resize(N);
     std::size_t victim = N;
     for (const auto& px : stored.pixels)
     {
         const std::size_t at = px.row * c.W + px.col;
-        from.pixels[at] = px.record;
+        from.records[at] = px.record;
         from.segments[at] = px.result.models;
         if (victim == N && px.record.standard.final_segments > 0)
             victim = at;
@@ -613,7 +622,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     EXPECT_EQ(resumed.pixels.size(), N - 1);
 
     // The call itself refuses records that do not cover the cube.
-    from.pixels.pop_back();
+    from.records.pop_back();
     EXPECT_THROW(ccd::detect_cube(
         golden::spec_of(ccd::Input{}),
         whole.dates(),

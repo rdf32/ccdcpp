@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "ccd/core/array_view.hpp"
@@ -34,7 +33,7 @@ namespace ccd
 //            thread.
 //   Worker   one per thread: the buffers and the change detector a pixel
 //            needs, reused from pixel to pixel.
-//   Run::pixel<Value, Qa>(spectral, qa, prior, worker)
+//   Run::pixel<Value, Qa>(spectral, qa, at, worker)
 //            one pixel through the steps below, in order.
 //
 // detect() and detect_cube() do this for one pixel and for a cube.
@@ -50,23 +49,6 @@ namespace ccd
 //   finish           the record for the next resume
 //
 //==============================================================================
-
-// One pixel's stored run, for a resume: its record and its stored segments
-// (of which the first record.standard.final_segments are kept as given).
-struct PixelPrior
-{
-    const PixelRecord* record = nullptr;
-    const std::vector<ChangeModel>* segments = nullptr;
-};
-
-// One pixel's outcome: its result, and with RunSpec::record or a resume its
-// record for the next resume and what was done.
-struct PixelOutcome
-{
-    FitResult result;
-    PixelRecord record;
-    ResumeStatus status = ResumeStatus::Resumed;
-};
 
 //------------------------------------------------------------------------------
 //
@@ -100,8 +82,9 @@ struct Worker
 // The constructor makes the checks detect() lists, before any pixel, in that
 // order (std::invalid_argument).
 //
-// A Run reads the `spec` and the `dates` it was built with, without a copy:
-// they must outlive it (a temporary spec is refused at compile time).
+// A Run reads the `spec`, the `dates` and the `resume` it was built with,
+// without a copy: they must outlive it (a temporary spec is refused at
+// compile time).
 //
 //------------------------------------------------------------------------------
 class Run
@@ -114,7 +97,7 @@ public:
         index_t timesteps,
         index_t qa_timesteps,
         bool raw_qa,
-        const ResumeHeader* resume = nullptr);
+        const Resume* resume = nullptr);
 
     Run(RunSpec&& spec,
         ArrayView<const std::int64_t, 1> dates,
@@ -122,13 +105,13 @@ public:
         index_t timesteps,
         index_t qa_timesteps,
         bool raw_qa,
-        const ResumeHeader* resume = nullptr) = delete;
+        const Resume* resume = nullptr) = delete;
 
     // The call's header: digest, series end, statistics cutoff (for
     // a resume the stored run's), with RunSpec::record or a resume.
     const ResumeHeader& header() const { return header_; }
 
-    bool resuming() const { return resume_.has_value(); }
+    bool resuming() const { return resume_ != nullptr; }
 
     // Where the pixel at flat index `at` of a cube reports: the spec's
     // observer when it observes that pixel.
@@ -137,13 +120,15 @@ public:
     const RunSpec& spec() const { return spec_; }
 
     // One pixel through the steps of the file comment, for one pair of
-    // element types (instantiated in run.cpp for every supported pair).
-    // Without a resume `prior` is ignored; with one it is required
-    // (std::invalid_argument without it). The input must have the run's band
-    // and timestep counts, and raw (uint16) QA only when the Run was built for
-    // it (detect and detect_cube see to both; std::invalid_argument
-    // otherwise), and a resume's prior at least its record's final segments
-    // (std::invalid_argument).
+    // element types (instantiated in run.cpp for every supported pair): the
+    // pixel at flat index `at` of the resume's records and segments, which
+    // must hold it (detect and detect_cube check their sizes); without a
+    // resume `at` is not read. The input must have the run's band and
+    // timestep counts, and raw (uint16) QA only when the Run was built for it
+    // (detect and detect_cube see to both; std::invalid_argument otherwise),
+    // and a resumed pixel at least its record's final segments
+    // (std::invalid_argument). The output's header is left to the caller
+    // (header()).
     //
     // A resume continues the pixel from its record when its input up to the
     // stored series end is the stored run's and the machine stopped where it
@@ -151,8 +136,8 @@ public:
     // cutoff, and the status says why. Either way the result equals the
     // pixel's run under that cutoff, whole output.
     template<typename Value, typename Qa>
-    PixelOutcome pixel(ArrayView<const Value, 2> spectral, ArrayView<const Qa, 1> qa,
-                       const PixelPrior& prior, Worker& worker) const;
+    PixelOutput pixel(ArrayView<const Value, 2> spectral, ArrayView<const Qa, 1> qa,
+                      index_t at, Worker& worker) const;
 
 private:
 
@@ -173,8 +158,8 @@ private:
 
     ResumeHeader header_;
 
-    // The stored call's header, for a resume.
-    std::optional<ResumeHeader> resume_;
+    // The stored call, for a resume.
+    const Resume* resume_;
 };
 
 } // namespace ccd

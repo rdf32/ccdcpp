@@ -784,10 +784,10 @@ The library is the CMake target `ccd_core`; `#include "ccd/ccd.hpp"` includes ev
 namespace ccd {
 PixelOutput detect(const RunSpec& spec, ArrayView<const std::int64_t, 1> dates,
                    const PixelSpectral& spectral, const PixelQa& qas,
-                   const PixelResume* resume = nullptr);
+                   const Resume* resume = nullptr);
 CubeOutput detect_cube(const RunSpec& spec, ArrayView<const std::int64_t, 1> dates,
                        const CubeSpectral& spectral, const CubeQa& qas,
-                       int threads = 0, const CubeResumeFrom* resume = nullptr);
+                       int threads = 0, const Resume* resume = nullptr);
 }
 ```
 
@@ -826,7 +826,7 @@ ccd::RunSpec a_spec(const ccd::Input& input)
 }
 ```
 
-**Resume.** A stored run is the call's last argument: `detect(spec, dates, spectral, qas, ccd::PixelResume{header, record, segments})` for a pixel, `detect_cube(spec, dates, cube, qas, threads, &from)` with a `ccd::CubeResumeFrom{header, pixels, segments}` for a cube (`include/ccd/results/record.hpp`). A resume is refused unless its header's digest is that of the call's input and configuration.
+**Resume.** A stored run is the call's last argument, a `ccd::Resume{header, records, segments}` (`include/ccd/results/record.hpp`): the stored call's header and each pixel's record and segments, in raster order. `detect(spec, dates, spectral, qas, ccd::Resume{header, {record}, {segments}})` resumes a pixel, `detect_cube(spec, dates, cube, qas, threads, &from)` a cube from H × W of each. A resume is refused unless its header's digest is that of the call's input and configuration.
 
 **Extensions.** A new decision rule is a strategy class for its stage's interface (`include/ccd/strategies/stages.hpp`), and a new preprocessing step a step type (`Registry::add_step()`), each registered by name in `ccd::strategies::library_registry()` through a build extension (CMake's `CCD_EXTENSIONS`). [docs/config.md](docs/config.md) shows one, and [docs/ccdc-state-machine.md](docs/ccdc-state-machine.md) the machine they plug into.
 

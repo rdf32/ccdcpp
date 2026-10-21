@@ -399,9 +399,10 @@ Run::Run(
     index_t timesteps,
     index_t qa_timesteps,
     bool raw_qa,
-    const ResumeHeader* resume
+    const Resume* resume
 )
-    : spec_(spec), dates_(dates), bands_(bands), timesteps_(timesteps), raw_qa_(raw_qa)
+    : spec_(spec), dates_(dates), bands_(bands), timesteps_(timesteps), raw_qa_(raw_qa),
+      resume_(resume)
 {
     check_shapes(spec_.input, bands, timesteps, dates, qa_timesteps);
     check_qa(raw_qa, spec_.input.qa_table.get());
@@ -422,9 +423,8 @@ Run::Run(
 
     if (resume)
     {
-        check_resume(*resume, header_.digest, dates);
-        header_.statistics_end = resume->statistics_end;
-        resume_ = *resume;
+        check_resume(resume->header, header_.digest, dates);
+        header_.statistics_end = resume->header.statistics_end;
         // A resumed run reruns what it does not continue under the stored
         // run's statistics cutoff.
         shared_ = capped(resolved_->shared, header_.statistics_end);
@@ -448,10 +448,10 @@ Observe Run::observed(index_t at) const
 }
 
 template<typename Value, typename Qa>
-PixelOutcome Run::pixel(
+PixelOutput Run::pixel(
     ArrayView<const Value, 2> spectral,
     ArrayView<const Qa, 1> qa,
-    const PixelPrior& prior,
+    index_t at,
     Worker& worker
 ) const
 {
@@ -464,10 +464,7 @@ PixelOutcome Run::pixel(
             std::to_string(timesteps_) + " timesteps");
     if (std::is_same_v<Qa, std::uint16_t> && !raw_qa_)
         throw std::invalid_argument("the pixel's QA is raw (uint16); the run was built for codes");
-    if (resume_ && (!prior.record || !prior.segments))
-        throw std::invalid_argument("a resumed run needs each pixel's stored record and segments");
-
-    PixelOutcome out;
+    PixelOutput out;
     bool continued = false;
     const QaTable* table = spec_.input.qa_table.get();
 
@@ -490,8 +487,8 @@ PixelOutcome Run::pixel(
     // A resume: continued from the record when the input up to the stored
     // series end is the stored run's and the machine stopped where it can
     // continue; rerun under the capped cutoffs otherwise.
-    const PixelRecord& from = *prior.record;
-    const std::vector<ChangeModel>& stored = *prior.segments;
+    const PixelRecord& from = resume_->records[at];
+    const std::vector<ChangeModel>& stored = resume_->segments[at];
     if (from.procedure == PixelProcedure::Standard &&
         stored.size() < from.standard.final_segments)
         throw std::invalid_argument(
@@ -500,7 +497,7 @@ PixelOutcome Run::pixel(
 
     const std::uint64_t fingerprint = detail::fingerprint_of<Value>(
         dates_, spectral, decode_qa<Qa>(qa, table, worker.qas),
-        spec_.input.qa_fill, resume_->series_end);
+        spec_.input.qa_fill, resume_->header.series_end);
 
     out.status = fingerprint == from.input_fingerprint
         ? ResumeStatus::Resumed
@@ -536,19 +533,19 @@ PixelOutcome Run::pixel(
 }
 
 // Every supported pair of element types.
-template PixelOutcome Run::pixel<double, std::uint8_t>(
-    ArrayView<const double, 2>, ArrayView<const std::uint8_t, 1>, const PixelPrior&, Worker&) const;
-template PixelOutcome Run::pixel<double, std::uint16_t>(
-    ArrayView<const double, 2>, ArrayView<const std::uint16_t, 1>, const PixelPrior&, Worker&) const;
-template PixelOutcome Run::pixel<float, std::uint8_t>(
-    ArrayView<const float, 2>, ArrayView<const std::uint8_t, 1>, const PixelPrior&, Worker&) const;
-template PixelOutcome Run::pixel<float, std::uint16_t>(
-    ArrayView<const float, 2>, ArrayView<const std::uint16_t, 1>, const PixelPrior&, Worker&) const;
-template PixelOutcome Run::pixel<std::uint16_t, std::uint8_t>(
-    ArrayView<const std::uint16_t, 2>, ArrayView<const std::uint8_t, 1>, const PixelPrior&,
+template PixelOutput Run::pixel<double, std::uint8_t>(
+    ArrayView<const double, 2>, ArrayView<const std::uint8_t, 1>, index_t, Worker&) const;
+template PixelOutput Run::pixel<double, std::uint16_t>(
+    ArrayView<const double, 2>, ArrayView<const std::uint16_t, 1>, index_t, Worker&) const;
+template PixelOutput Run::pixel<float, std::uint8_t>(
+    ArrayView<const float, 2>, ArrayView<const std::uint8_t, 1>, index_t, Worker&) const;
+template PixelOutput Run::pixel<float, std::uint16_t>(
+    ArrayView<const float, 2>, ArrayView<const std::uint16_t, 1>, index_t, Worker&) const;
+template PixelOutput Run::pixel<std::uint16_t, std::uint8_t>(
+    ArrayView<const std::uint16_t, 2>, ArrayView<const std::uint8_t, 1>, index_t,
     Worker&) const;
-template PixelOutcome Run::pixel<std::uint16_t, std::uint16_t>(
-    ArrayView<const std::uint16_t, 2>, ArrayView<const std::uint16_t, 1>, const PixelPrior&,
+template PixelOutput Run::pixel<std::uint16_t, std::uint16_t>(
+    ArrayView<const std::uint16_t, 2>, ArrayView<const std::uint16_t, 1>, index_t,
     Worker&) const;
 
 //==============================================================================
@@ -560,7 +557,7 @@ PixelOutput detect(
     ArrayView<const std::int64_t, 1> dates,
     const PixelSpectral& spectral,
     const PixelQa& qas,
-    const PixelResume* resume
+    const Resume* resume
 )
 {
     const auto [bands, timesteps] = std::visit(
@@ -568,31 +565,24 @@ PixelOutput detect(
     const index_t qa_timesteps = std::visit([](auto q) { return q.size(); }, qas);
     const bool raw_qa = std::holds_alternative<ArrayView<const std::uint16_t, 1>>(qas);
 
-    const Run run(spec, dates, bands, timesteps, qa_timesteps, raw_qa,
-                  resume ? &resume->header : nullptr);
+    const Run run(spec, dates, bands, timesteps, qa_timesteps, raw_qa, resume);
 
-    PixelPrior prior;
-    if (resume)
-    {
-        prior.record = &resume->record;
-        prior.segments = &resume->segments;
-    }
+    if (resume && (resume->records.size() != 1 || resume->segments.size() != 1))
+        throw std::invalid_argument(
+            "the resume holds " + std::to_string(resume->records.size()) + " records and " +
+            std::to_string(resume->segments.size()) + " segment lists; detect resumes one pixel");
 
     Worker worker;
     worker.observe = Observe{spec.observer.get(), 0};
-    PixelOutcome outcome = std::visit(
+    PixelOutput out = std::visit(
         [&](auto s, auto q)
         {
             using Value = std::remove_const_t<typename decltype(s)::value_type>;
             using Qa = std::remove_const_t<typename decltype(q)::value_type>;
-            return run.pixel<Value, Qa>(s, q, prior, worker);
+            return run.pixel<Value, Qa>(s, q, 0, worker);
         },
         spectral, qas);
 
-    PixelOutput out;
-    out.result = std::move(outcome.result);
-    out.record = std::move(outcome.record);
-    out.status = outcome.status;
     out.header = run.header();
     return out;
 }
@@ -604,8 +594,7 @@ CubeOutput cube_loop(
     const Run& run,
     ArrayView<const Value, 4> spectral,       // (H,W,B,T)
     ArrayView<const Qa, 3> qas,               // (H,W,T)
-    int threads,
-    const CubeResumeFrom* resume
+    int threads
 )
 {
     const index_t H = spectral.extent(0);
@@ -693,16 +682,9 @@ CubeOutput cube_loop(
             {
                 const std::size_t at = static_cast<std::size_t>(pixel);
 
-                PixelPrior prior;
-                if (resume)
-                {
-                    prior.record = &resume->pixels[at];
-                    prior.segments = &resume->segments[at];
-                }
-
                 worker.observe = run.observed(at);
-                PixelOutcome outcome =
-                    run.pixel<Value, Qa>(spect_view, qa_view, prior, worker);
+                PixelOutput outcome =
+                    run.pixel<Value, Qa>(spect_view, qa_view, static_cast<index_t>(at), worker);
 
                 if (masks)
                 {
@@ -795,7 +777,7 @@ CubeOutput detect_cube(
     const CubeSpectral& spectral,
     const CubeQa& qas,
     int threads,
-    const CubeResumeFrom* resume
+    const Resume* resume
 )
 {
     return std::visit(
@@ -811,21 +793,20 @@ CubeOutput detect_cube(
                 throw std::runtime_error("qas shape must be (height, width, timesteps)");
 
             const Run run(spec, dates, s.extent(2), T, q.extent(2),
-                          std::is_same_v<Qa, std::uint16_t>,
-                          resume ? &resume->header : nullptr);
+                          std::is_same_v<Qa, std::uint16_t>, resume);
 
             if (resume)
             {
                 const std::size_t cells =
                     static_cast<std::size_t>(H) * static_cast<std::size_t>(W);
-                if (resume->pixels.size() != cells || resume->segments.size() != cells)
+                if (resume->records.size() != cells || resume->segments.size() != cells)
                     throw std::invalid_argument(
-                        "the resume records hold " + std::to_string(resume->pixels.size()) +
+                        "the resume records hold " + std::to_string(resume->records.size()) +
                         " pixels and " + std::to_string(resume->segments.size()) +
                         " segment lists; the cube has " + std::to_string(cells));
             }
 
-            return cube_loop<Value, Qa>(run, s, q, threads, resume);
+            return cube_loop<Value, Qa>(run, s, q, threads);
         },
         spectral, qas);
 }

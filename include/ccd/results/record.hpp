@@ -125,14 +125,16 @@ enum class ResumeStatus : std::uint8_t
                         // end differ from the stored run's: rerun in full
 };
 
-// What a cube resumes from, in raster order over the cube (H x W entries
-// each): the stored call's header, each pixel's record and each pixel's
-// stored segments. A pixel without a stored record (one that failed) has a
-// default PixelRecord, whose fingerprint does not match: it is rerun.
-struct CubeResumeFrom
+// A stored call to resume from (detect's and detect_cube's `resume`): its
+// header, and each pixel's record and stored segments (of which the first
+// record.standard.final_segments are kept as given), in raster order over
+// the cube: H x W entries each, one each for detect. A pixel without a
+// stored record (one that failed) has a default PixelRecord, whose
+// fingerprint does not match: it is rerun.
+struct Resume
 {
     ResumeHeader header;
-    std::vector<PixelRecord> pixels;
+    std::vector<PixelRecord> records;
     std::vector<std::vector<ChangeModel>> segments;
 };
 

@@ -35,7 +35,7 @@ py::dict record_columns(
 
 // What detect_cube()'s resume reads: the header, record_columns()'s dict and
 // detect_cube()'s segment columns.
-ccd::CubeResumeFrom cube_from_python(
+ccd::Resume cube_from_python(
     const py::dict& header,
     const py::dict& records,
     const py::dict& segments,

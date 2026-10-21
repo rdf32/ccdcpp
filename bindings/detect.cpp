@@ -314,14 +314,14 @@ static py::dict detect_wrapper(
     // ValueError, as above.
     ccd::validate_dates(dates_view);
 
-    std::optional<ccd::PixelResume> from;
+    std::optional<ccd::Resume> from;
     if (!resume.is_none())
     {
         const py::dict previous = previous_output(resume, "detect", "models");
-        from = ccd::PixelResume{
+        from = ccd::Resume{
             header_from_python(previous["resume_header"].cast<py::dict>()),
-            record_from_python(previous["resume"].cast<py::dict>()),
-            segments_from_python(previous["models"].cast<py::list>())};
+            {record_from_python(previous["resume"].cast<py::dict>())},
+            {segments_from_python(previous["models"].cast<py::list>())}};
     }
 
     const auto spectral_view = ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
@@ -343,7 +343,7 @@ static py::dict detect_wrapper(
     {
         py::gil_scoped_release release;
 
-        const ccd::PixelResume* prior = from ? &*from : nullptr;
+        const ccd::Resume* prior = from ? &*from : nullptr;
         if (raw16)
             run = ccd::detect(spec, dates_view, spectral_view,
                               ccd::ArrayView<const std::uint16_t, 1>::contiguous(
@@ -479,7 +479,7 @@ static ccd::CubeOutput detect_views(
     const CubeInput& in,
     const ccd::RunSpec& spec,
     int threads,
-    const ccd::CubeResumeFrom* from
+    const ccd::Resume* from
 )
 {
     const auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(in.dates.data(), {in.T});
@@ -702,7 +702,7 @@ static py::dict detect_cube_wrapper(
     spec.masks = masks;
     spec.record = record;
 
-    std::optional<ccd::CubeResumeFrom> from;
+    std::optional<ccd::Resume> from;
     if (!resume.is_none())
     {
         const py::dict previous = previous_output(resume, "detect_cube", "row");

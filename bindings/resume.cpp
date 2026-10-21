@@ -261,7 +261,7 @@ py::dict record_columns(
     return d;
 }
 
-ccd::CubeResumeFrom cube_from_python(
+ccd::Resume cube_from_python(
     const py::dict& header,
     const py::dict& records,
     const py::dict& segments,
@@ -273,9 +273,9 @@ ccd::CubeResumeFrom cube_from_python(
     const std::size_t N = static_cast<std::size_t>(H) * static_cast<std::size_t>(W);
     const char* what = "the resume records";
 
-    ccd::CubeResumeFrom from;
+    ccd::Resume from;
     from.header = header_from_python(header);
-    from.pixels.resize(N);
+    from.records.resize(N);
     from.segments.resize(N);
 
     const auto n = static_cast<py::ssize_t>(N);
@@ -327,7 +327,7 @@ ccd::CubeResumeFrom cube_from_python(
     for (std::size_t i = 0; i < N; ++i)
     {
         const auto s = static_cast<py::ssize_t>(i);
-        ccd::PixelRecord& r = from.pixels[i];
+        ccd::PixelRecord& r = from.records[i];
         r.input_fingerprint = f(s);
         r.procedure = static_cast<ccd::PixelProcedure>(p(s));
         r.standard.exit = static_cast<ccd::standard::Exit>(e(s));

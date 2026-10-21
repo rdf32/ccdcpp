@@ -81,15 +81,6 @@ struct RunSpec
     std::vector<index_t> observe;
 };
 
-// A stored pixel run to continue: the stored call's header and the pixel's
-// record and segments.
-struct PixelResume
-{
-    ResumeHeader header;
-    PixelRecord record;
-    std::vector<ChangeModel> segments;
-};
-
 struct PixelResult
 {
     index_t row;
@@ -190,11 +181,12 @@ struct CubeOutput
 // validate() included); and for a resume, a header of another record format
 // or results version, made with another input (its QA table included) or
 // configuration (by Resolved::digest), or for a series that ends before the
-// stored one. Then on a resume with fewer stored segments than its record's
-// final ones.
+// stored one. Then on a resume of other than one record and one segment
+// list, and on one with fewer stored segments than its record's final ones.
 //
-// With `resume`, continues that stored run on the whole of a longer series:
-// the stored run's input with the observations after its series end. The
+// With `resume`, continues that stored pixel run on the whole of a longer
+// series: the stored run's input with the observations after its series
+// end. The
 // pixel continues from its record when its input up to the stored series end
 // is the stored run's and the machine stopped where it can continue;
 // otherwise it is rerun under the stored statistics cutoff, and the status
@@ -217,7 +209,7 @@ PixelOutput detect(
     ArrayView<const std::int64_t, 1> dates,
     const PixelSpectral& spectral,
     const PixelQa& qas,
-    const PixelResume* resume = nullptr
+    const Resume* resume = nullptr
 );
 
 inline PixelOutput detect(
@@ -225,7 +217,7 @@ inline PixelOutput detect(
     ArrayView<const std::int64_t, 1> dates,
     const PixelSpectral& spectral,
     const PixelQa& qas,
-    const PixelResume& resume
+    const Resume& resume
 )
 {
     return detect(spec, dates, spectral, qas, &resume);
@@ -267,7 +259,7 @@ CubeOutput detect_cube(
     const CubeSpectral& spectral,
     const CubeQa& qas,
     int threads = 0,
-    const CubeResumeFrom* resume = nullptr
+    const Resume* resume = nullptr
 );
 
 } // namespace ccd
