@@ -365,7 +365,8 @@ directory in CMake's `CCD_EXTENSIONS` whose `extension.cmake` adds its sources, 
 directories and registration functions (`CCD_EXTENSION_SOURCES`, `CCD_EXTENSION_INCLUDE_DIRS`,
 `CCD_EXTENSION_REGISTRATIONS`); the library calls each registration function when the registry
 is first built (`src/ccd/strategies/register_extensions.cpp.in`). A public build has none; the
-registry's listing is `library_registry().names()`.
+registry's listing is `library_registry().names()`. [writing-a-strategy.md](writing-a-strategy.md) adds a
+strategy through one, end to end.
 
 ## 4. Shared functions and Standard's own
 

@@ -392,13 +392,14 @@ if(CCD_BUILD_TESTS)
 
     # The worked example of docs/writing-a-strategy.md: the outlier rule
     # "residual-cap" (tests/ccd/extension, an extension directory), registered
-    # beside the library's strategies. See
-    # tests/ccd/strategies/test_residual_cap.cpp.
+    # beside the library's strategies, and the guide's quotes of its files.
+    # See tests/ccd/strategies/test_residual_cap.cpp.
     ccd_add_gtest(
         test_residual_cap
         SOURCES
             tests/ccd/strategies/test_residual_cap.cpp
             tests/ccd/extension/outlier/residual_cap.cpp
+        DEFINES CCD_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     )
     target_include_directories(test_residual_cap PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/extension)
 

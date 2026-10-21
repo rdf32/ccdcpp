@@ -10,7 +10,8 @@ stage its strategy and that strategy's parameters, and for every procedure its
 **preprocessing**: the steps that build the processing mask. A run without one uses the `ccdc`
 preset: pyccd's algorithm with ccdcpp's corrections, each strategy and step at its defaults,
 with no statistics cutoff, on any input. The stages and their strategies are in
-[ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies).
+[ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies), and where each sits in a run
+in [architecture.md](architecture.md).
 
 The examples use `dates`, `spectral`, `qas`, `cube` and `cube_qa` from the README's
 [quick start](../README.md#quick-start).
@@ -368,38 +369,11 @@ print(sweep)
 {1.2: 12, 1.33: 12, 1.5: 12, 2.0: 12}
 ```
 
-A strategy of your own is a class for its stage's interface
-(`include/ccd/strategies/stages.hpp`) with a `Params` struct and its schema, registered once:
-
-```cpp
-// A refit schedule that refits every n-th test.
-struct EveryN final : RefitSchedule
-{
-    struct Params { index_t n = 5; };
-    static const std::vector<config::Field<Params>>& schema()
-    {
-        static const std::vector<config::Field<Params>> s = {
-            {"n", &Params::n, config::Unit::Observations, config::at_least(1), "refit every n tests"}};
-        return s;
-    }
-    explicit EveryN(const Params& p) : p_(p) {}
-    bool due(index_t window_size, scalar_t, index_t, scalar_t) const override
-    {
-        return window_size % p_.n == 0;
-    }
-private:
-    Params p_;
-};
-
-void register_every_n(config::Registry& registry)   // an extension's registration function
-{
-    registry.add<RefitSchedule, EveryN>("every-n");
-}
-```
-
-and then `cfg.replace(refit="every-n", refit__n=3)`. A build adds strategies through an
-extension directory (CMake's `CCD_EXTENSIONS`; see
-[ccdc-state-machine.md](ccdc-state-machine.md#configurations-and-extensions)).
+A strategy of your own is a C++ class for its stage's interface, with a `Params` struct and its
+schema, registered by name in a build extension (CMake's `CCD_EXTENSIONS`); then
+`cfg.replace(outlier="residual-cap", outlier__limit=0.02)` selects it like any other.
+[writing-a-strategy.md](writing-a-strategy.md) adds that one end to end, and
+[architecture.md](architecture.md) shows where each stage sits.
 
 ## Resume records
 

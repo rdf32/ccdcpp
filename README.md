@@ -507,7 +507,7 @@ A value several stages read is written once, in `shared`, and the stages that re
 | `outlier` | whether a peek's first observation is an outlier | `floored` |
 | `segment_report`, `edge_segments` | the fits a segment reports; the Start, End and whole-series curves | `model-fit`, `lasso` |
 
-[docs/ccdc-state-machine.md](docs/ccdc-state-machine.md#stages-and-strategies) has what each stage decides and each strategy's rule. The public library has one strategy per stage; a C++ build extension registers more ([docs/config.md](docs/config.md#experiments)).
+[docs/ccdc-state-machine.md](docs/ccdc-state-machine.md#stages-and-strategies) has what each stage decides and each strategy's rule. The public library has one strategy per stage; a C++ build extension registers more ([docs/writing-a-strategy.md](docs/writing-a-strategy.md)).
 
 ## TOML presets
 
@@ -826,7 +826,7 @@ ccd::RunSpec a_spec(const ccd::Input& input)
 
 **Resume.** A stored run is the call's last argument, a `ccd::Resume{header, records, segments}` (`include/ccd/results/record.hpp`): the stored call's header and each pixel's record and segments, in raster order. `detect(spec, dates, spectral, qas, ccd::Resume{header, {record}, {segments}})` resumes a pixel, `detect_cube(spec, dates, cube, qas, threads, &from)` a cube from H × W of each. A resume is refused unless its header's digest is that of the call's input and configuration.
 
-**Extensions.** A new decision rule is a strategy class for its stage's interface (`include/ccd/strategies/stages.hpp`), and a new preprocessing step a step type (`Registry::add_step()`), each registered by name in `ccd::strategies::library_registry()` through a build extension (CMake's `CCD_EXTENSIONS`). [docs/config.md](docs/config.md) shows one, and [docs/ccdc-state-machine.md](docs/ccdc-state-machine.md) the machine they plug into.
+**Extensions.** A new decision rule is a strategy class for its stage's interface (`include/ccd/strategies/stages.hpp`), and a new preprocessing step a step type (`Registry::add_step()`), each registered by name in `ccd::strategies::library_registry()` through a build extension (CMake's `CCD_EXTENSIONS`). [docs/writing-a-strategy.md](docs/writing-a-strategy.md) adds one end to end, and [docs/architecture.md](docs/architecture.md) shows where each stage sits.
 
 # How it works
 
@@ -873,6 +873,7 @@ The Standard procedure is a small state machine: a per-pixel record, one transit
 The start window is the shared `min_observations` (pyccd's `meow_size`). The phases and routes are fixed; what a phase decides is a stage, decided by the strategy the configuration names for it ([Configurations and presets](#configurations-and-presets)). Because the record holds everything that survives from one step to the next, a run can stop at a size guard and continue on a longer series ([Resuming a run](#resuming-a-run)), and an observer can report each step ([Diagnostics](#diagnostics)).
 
 - [Architecture](docs/architecture.md): a run end to end, the machine's phases, the stages and their contracts, the registry, configuration and resolve, and where each piece lives, against 0.10.0.
+- [Writing a strategy](docs/writing-a-strategy.md): a strategy and a preprocessing step added end to end, from the scaffold (`tools/new_strategy.py`) to selecting and testing it.
 - [CCDC as a state machine](docs/ccdc-state-machine.md): the phases, guards and routes, the record, the stages and strategies, resuming, and why the code is shaped this way.
 - [Floating-point sums](docs/floating-point-sums.md): why the order of the Lasso solver's sums is part of the output, and how they are made fast.
 

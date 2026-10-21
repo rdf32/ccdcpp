@@ -12,12 +12,17 @@
 //   * a run with it drops more observations at a smaller limit, and
 //     detect_cube() gives detect()'s dump of every pixel, on 1 and 4 threads;
 //   * a limit outside its bounds is refused, naming the stage, strategy and
-//     parameter.
+//     parameter;
+//   * every block docs/writing-a-strategy.md quotes from a file (the
+//     "<!-- from: path -->" line before it) is in that file, word for word.
 //
 //==============================================================================
 
 #include <algorithm>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <sstream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -165,4 +170,38 @@ TEST(ResidualCap, RefusesALimitOutsideItsBounds)
                   std::string::npos)
             << e.what();
     }
+}
+
+namespace
+{
+
+std::string read(const std::string& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in) << "cannot read " << path;
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+} // namespace
+
+TEST(ResidualCap, TheGuideQuotesItsFiles)
+{
+    const std::string marker = "<!-- from: ";
+    std::istringstream guide(read(CCD_SOURCE_DIR "/docs/writing-a-strategy.md"));
+    std::string line;
+    int quotes = 0;
+    while (std::getline(guide, line))
+    {
+        if (line.rfind(marker, 0) != 0)
+            continue;
+        const std::string path = line.substr(marker.size(), line.find(" -->") - marker.size());
+        ASSERT_TRUE(std::getline(guide, line) && line.rfind("```", 0) == 0) << path;
+        std::string block;
+        while (std::getline(guide, line) && line != "```")
+            block += line + "\n";
+        EXPECT_NE(read(CCD_SOURCE_DIR "/" + path).find(block), std::string::npos)
+            << "docs/writing-a-strategy.md quotes " << path << " as\n" << block;
+        ++quotes;
+    }
+    EXPECT_GE(quotes, 10);
 }
