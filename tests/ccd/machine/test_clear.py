@@ -3,7 +3,7 @@ import pandas as pd
 
 from ccd.procedures import insufficient_clear_procedure  # pyright: ignore[reportMissingImports]  # pyccd, the reference
 
-from ccd import (  # pyccd, the reference
+from ccd import (  # pyright: ignore[reportMissingImports]  # pyccd, the reference
     app,  # pyright: ignore[reportAttributeAccessIssue]
     attr_from_str,  # pyright: ignore[reportAttributeAccessIssue]
     __check_inputs,  # pyright: ignore[reportAttributeAccessIssue]
