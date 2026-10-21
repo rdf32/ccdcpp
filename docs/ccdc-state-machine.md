@@ -160,7 +160,7 @@ that fits holds its own. The catch segments (StartCatch, EndCatch) fit with edge
 Initialize with the stability fit's and Extend with the monitoring model's (the `edge_segments`,
 `stability_fit` and `model` stages' parameters), and Lookback reads the stability fit. A direct
 caller of `standard::Procedure` takes the strategies of a configuration resolved against its
-input (`strategies::library_registry().resolve(config, input).strategies`), as `Run` does.
+input (`config::resolve(strategies::library_registry(), config, input).strategies`), as `Run` does.
 
 **`standard::State`** is one pixel's record:
 
@@ -276,7 +276,7 @@ the variogram and the detection bands), and the change test writes what it found
 `statistic`). What each strategy provides and needs is declared as `Capabilities`
 (`include/ccd/strategies/capabilities.hpp`: the model's `peek_residuals`, `model_rmse` and
 `in_window_residuals`; the change test's `comparison_rmse`) and as statistic names
-(`ChangeTest::statistics()`, `OutlierRule::statistics()`), and the registry refuses a
+(`ChangeTest::statistics()`, `OutlierRule::statistics()`), and `config::check()` refuses a
 configuration in which a strategy needs what no earlier stage's strategy provides:
 
 ```cpp

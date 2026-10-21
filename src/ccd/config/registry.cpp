@@ -2,8 +2,6 @@
 
 #include <string>
 
-#include "convert.hpp"
-
 namespace ccd
 {
 namespace config
@@ -18,12 +16,12 @@ const StrategyType& Registry::strategy(const std::string& stage, const std::stri
         if (t != s->second.end())
             return t->second;
     }
-    std::string known;
+    std::vector<std::string> known;
     if (s != strategies_.end())
         for (const auto& [n, _] : s->second)
-            known += std::string(known.empty() ? "" : ", ") + n;
+            known.push_back(n);
     throw std::invalid_argument(stage + " has no strategy '" + name + "'" +
-                                (known.empty() ? "" : "; it has " + known));
+                                (known.empty() ? "" : "; it has " + listed(known)));
 }
 
 const StepType& Registry::step(const std::string& name, const std::string& where) const

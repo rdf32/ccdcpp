@@ -37,12 +37,15 @@ namespace preprocess
 // Params member's default is its value on the default Input (Collection-1
 // DN, the Landsat rows), a schema's default_value the physical one, as for
 // the strategies (config/params.hpp). make() builds the step from parameters
-// resolved against `input` (its units, rows and codes), or none where the
-// step does not apply to the input; `context` is where the step is (its
-// procedure, whether the procedure applies the thermal transform, its
-// position; config/preprocess.hpp). A std::invalid_argument it throws is
-// refused naming the step ("preprocess standard step 2 'band_range': ..."). A registry's other step types are the
-// same, and return a Step::of() a preprocess::CustomStep.
+// resolved against `input` (its units, rows and codes: config::resolve()
+// converts them first), or none where the step does not apply to the input;
+// of the input it reads only the layout, which row is thermal or green, and
+// the thermal transform. `context` is where the step is (its procedure,
+// whether the procedure applies the thermal transform, its position;
+// config/preprocess.hpp). A std::invalid_argument it throws is refused
+// naming the step ("preprocess standard step 2 'band_range': ..."). A
+// registry's other step types are the same, and return a Step::of() a
+// preprocess::CustomStep.
 //
 //==============================================================================
 

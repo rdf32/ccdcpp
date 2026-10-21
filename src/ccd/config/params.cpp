@@ -15,6 +15,14 @@ std::string number(double v)
     return out.str();
 }
 
+std::string listed(const std::vector<std::string>& names)
+{
+    std::string out;
+    for (const std::string& n : names)
+        out += (out.empty() ? "" : ", ") + n;
+    return out;
+}
+
 std::string describe(const Bounds& b)
 {
     const bool lo = std::isfinite(b.lo), hi = std::isfinite(b.hi);

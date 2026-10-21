@@ -210,14 +210,6 @@ void check_names(const std::vector<ParameterInfo>& info, const Values& given,
 
 } // namespace
 
-std::string listed(const std::vector<std::string>& names)
-{
-    std::string out;
-    for (const std::string& n : names)
-        out += (out.empty() ? "" : ", ") + n;
-    return out;
-}
-
 Values section_values(const std::vector<ParameterInfo>& info, const Values& given,
                       const std::string& where, const SectionContext& with, const char* noun)
 {

@@ -415,7 +415,7 @@ class Replace(unittest.TestCase):
 
 class Validation(unittest.TestCase):
     def test_refused_when_built(self):
-        # Building a Config compiles it (Registry::check()) and refuses it there.
+        # Building a Config compiles it (config::check()) and refuses it there.
         def without_snow() -> ccdcpp.Config:
             tree = CCDC.to_dict()
             del tree["preprocess"]["snow"]

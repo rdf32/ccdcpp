@@ -242,8 +242,12 @@ Config canonical(const Registry& registry, const Config& config)
     for (auto& [stage, chosen] : out.stages)
         chosen.params = spelled_out(registry.strategy(stage, chosen.strategy).info, chosen.params);
     for (auto& [procedure, chain] : out.preprocess)
-        for (StepConfig& step : chain.steps)
-            step.params = spelled_out(registry.step(step.step, procedure).info, step.params);
+        for (std::size_t i = 0; i < chain.steps.size(); ++i)
+        {
+            StepConfig& step = chain.steps[i];
+            const std::string at = StepContext{procedure, chain.thermal_transform, i}.where();
+            step.params = spelled_out(registry.step(step.step, at).info, step.params);
+        }
     return out;
 }
 

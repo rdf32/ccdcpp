@@ -154,6 +154,9 @@ std::string describe(const Bounds& b);
 // A number as a message shows it: 1.33, 24, 1e-09.
 std::string number(double v);
 
+// Names as a message lists them: "a, b, c".
+std::string listed(const std::vector<std::string>& names);
+
 // Where a field's value comes from:
 //
 //   Own      the stage's parameters (or the configuration's default);

@@ -25,8 +25,8 @@ namespace ccd
 // A compiled configuration: a config::Config checked once, at construction,
 // by its schemas (config::check(): the strategies, every parameter and
 // shared value as written, what each strategy needs), held in full
-// (config::canonical()), and resolved against each input it runs on once. Immutable, so one Algorithm serves every call
-// and thread.
+// (config::canonical()), and resolved against each input it runs on once.
+// Immutable, so one Algorithm serves every call and thread.
 //
 // for_input() resolves the configuration against an input and builds its
 // strategies the first time it sees that input, and returns the same
@@ -65,8 +65,8 @@ public:
     const config::Registry& registry() const { return *registry_; }
 
     // The configuration resolved against `input` (config::resolve()),
-    // cached per input, the CACHE_CAPACITY used last. Throws what config::resolve() throws; `input` must
-    // pass validate() (ccd.hpp).
+    // cached per input, the CACHE_CAPACITY used last. Throws what
+    // config::resolve() throws; `input` must pass validate() (ccd.hpp).
     std::shared_ptr<const config::Resolved> for_input(const Input& input) const;
 
 private:

@@ -36,8 +36,5 @@ Values section_values(const std::vector<ParameterInfo>& info, const Values& give
                       const std::string& where, const SectionContext& with,
                       const char* noun = "parameter");
 
-// The names of `names` as a message lists them: "a, b, c".
-std::string listed(const std::vector<std::string>& names);
-
 } // namespace config
 } // namespace ccd
