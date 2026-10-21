@@ -1,6 +1,6 @@
 #include <pybind11/pybind11.h>
 
-#include "ccd/input/quality.hpp"
+#include "ccd/input/qa_statistics.hpp"
 
 namespace py = pybind11;
 
@@ -8,33 +8,33 @@ namespace py = pybind11;
 void bind_quality(py::module_& m)
 {
 
-    py::class_<ccd::Quality::Statistics>(
+    py::class_<ccd::QaStatistics>(
         m,
-        "QualityStatistics"
+        "QaStatistics"
     )
 
     .def_readonly(
         "total_count",
-        &ccd::Quality::Statistics::total_count
+        &ccd::QaStatistics::total_count
     )
 
     .def_readonly(
         "clear_count",
-        &ccd::Quality::Statistics::clear_count
+        &ccd::QaStatistics::clear_count
     )
 
     .def_readonly(
         "cloud_count",
-        &ccd::Quality::Statistics::cloud_count
+        &ccd::QaStatistics::cloud_count
     )
 
     .def_readonly(
         "snow_count",
-        &ccd::Quality::Statistics::snow_count
+        &ccd::QaStatistics::snow_count
     )
 
     .def_readonly(
         "clear_probability",
-        &ccd::Quality::Statistics::clear_probability
+        &ccd::QaStatistics::clear_probability
     );
 }

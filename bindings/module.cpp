@@ -4,7 +4,7 @@
 //     regression.cpp      // LassoModel, LassoScore, LassoResult
 //     fit.cpp             // ChangeModel, FitResult, CurveQA
 //     pmask.cpp           // ProcessingMask
-//     quality.cpp         // Quality::Statistics
+//     quality.cpp         // QaStatistics
 //     qa_tables.cpp       // QaTable, ccdcpp.qa_tables
 //     preprocess.cpp      // PreprocessPlan and its parts, plan_of
 //     config.cpp          // Algorithm, the configuration helpers

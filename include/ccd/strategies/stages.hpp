@@ -11,7 +11,7 @@
 #include "ccd/core/types.hpp"
 
 #include "ccd/input/pixel_series.hpp"
-#include "ccd/input/quality.hpp"
+#include "ccd/input/qa_statistics.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/strategies/capabilities.hpp"
@@ -83,7 +83,7 @@ struct ModeRule
     static constexpr const char* stage = "mode";
 
     virtual ~ModeRule() = default;
-    virtual PixelMode choose(const Quality::Statistics& statistics) const = 0;
+    virtual PixelMode choose(const QaStatistics& statistics) const = 0;
 };
 
 //------------------------------------------------------------------------------

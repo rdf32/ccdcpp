@@ -1595,7 +1595,7 @@ TEST(SelectProcedure, TheClearThenTheSnowPercentage)
 
     auto stats = [](scalar_t clear, scalar_t snow)
     {
-        ccd::Quality::Statistics s;
+        ccd::QaStatistics s;
         s.clear_probability = clear;
         s.snow_probability = snow;
         return s;

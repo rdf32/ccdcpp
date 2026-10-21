@@ -21,7 +21,7 @@ detector it reuses from pixel to pixel. The steps of one pixel:
 
 1. decode the QA (through the input's `QaTable` when it has one);
 2. compute the QA statistics of the observations dated up to the shared `statistics_end`
-   (`Quality::compute_until`, `include/ccd/input/quality.hpp`);
+   (`qa_statistics()`, `include/ccd/input/qa_statistics.hpp`);
 3. choose the pixel's procedure: the run's `mode` stage (`ModeRule::choose`,
    `include/ccd/strategies/stages.hpp`);
 4. apply that procedure's transform to the pixel's private copy and run its filter chain to

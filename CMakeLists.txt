@@ -173,6 +173,7 @@ add_library(
     src/ccd/input/mask/filter.cpp
     src/ccd/input/pixel_series.cpp
     src/ccd/input/input.cpp
+    src/ccd/input/qa_statistics.cpp
 
     src/ccd/input/mask/preprocess.cpp
     src/ccd/input/mask/steps.cpp

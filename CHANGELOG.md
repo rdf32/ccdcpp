@@ -106,6 +106,8 @@ its replacement.
 - C++: `HarmonicOptions`, `LassoOptions` as a call argument, `CLEAR_OBSERVATION_THRESHOLD`,
   `QA_IDX`, `Recorded`, `Resumed`, `CubeResult` (`CubeOutput`), `CubeResumeFrom` (`Resume`, which
   `detect` takes too), `DetectScratch` (the run's per-thread buffers are internal),
+  `Quality` (`QaStatistics` and `qa_statistics()`, `ccd/input/qa_statistics.hpp`; the `mode`
+  stage's `choose()` takes a `QaStatistics`),
   `options_digest()`, `default_plan()`, `PreprocessPlanPtr`, `select_procedure()`,
   `standard::measure_cadence()`, `standard::coefficient_count()`, `Clock`, `elapsed_ms` and
   `print_change_model(s)`.

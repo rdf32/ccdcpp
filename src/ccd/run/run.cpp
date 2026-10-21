@@ -22,7 +22,7 @@ int omp_get_thread_num() { return 0; }
 #include <utility>
 
 #include "ccd/ccd.hpp"
-#include "ccd/input/quality.hpp"
+#include "ccd/input/qa_statistics.hpp"
 #include "ccd/core/logger.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/strategies/register_core.hpp"
@@ -177,9 +177,7 @@ PixelMode choose_procedure(
     const ModeRule& mode
 )
 {
-    const Quality::Statistics statistics =
-        Quality::compute_until(qas, dates, input, statistics_end);
-    return mode.choose(statistics);
+    return mode.choose(qa_statistics(qas, dates, input, statistics_end));
 }
 
 // The plan of procedure `type`.

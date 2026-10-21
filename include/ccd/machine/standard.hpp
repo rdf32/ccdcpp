@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "ccd/input/quality.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/kernels.hpp"
 #include "ccd/machine/machine.hpp"

@@ -27,7 +27,7 @@ struct PyccdMode final : ModeRule
 
     explicit PyccdMode(const Params& p) : p_(p) {}
 
-    PixelMode choose(const Quality::Statistics& statistics) const override;
+    PixelMode choose(const QaStatistics& statistics) const override;
 
 private:
     Params p_;
