@@ -160,7 +160,7 @@ class BandCount(unittest.TestCase):
 
 
 class PixelLayouts(unittest.TestCase):
-    def test_float32_uint16_and_strided_pixels_are_float64s(self):
+    def test_every_dtype_and_layout_is_the_float64_run(self):
         d, s, q = noisy(7, 120, seed=3)
         q = q.copy()
         q[::7] = 4
@@ -175,6 +175,11 @@ class PixelLayouts(unittest.TestCase):
             "uint16": (s.astype(np.uint16), q),
             "transposed": (np.asfortranarray(s), q),
             "strided": (wide[:, ::2], qs[::2]),
+            # Converted before the run: negative strides, another byte order, int64.
+            "reversed": (np.ascontiguousarray(s[:, ::-1])[:, ::-1],
+                         np.ascontiguousarray(q[::-1])[::-1]),
+            "byte-swapped": (s.astype(s.dtype.newbyteorder()), q),
+            "int64": (s.astype(np.int64), q),
         }
         for name, (spectral, qas) in forms.items():
             with self.subTest(form=name):
