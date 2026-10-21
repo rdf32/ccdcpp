@@ -199,6 +199,9 @@ Values spelled_out(const std::vector<ParameterInfo>& info, const Values& given)
         if (const auto* whole = std::get_if<std::int64_t>(&value))
             if (std::holds_alternative<double>(*p.default_value))
                 value = real(static_cast<double>(*whole));
+        if (const auto* wholes = std::get_if<std::vector<std::int64_t>>(&value))
+            if (std::holds_alternative<std::vector<double>>(*p.default_value))
+                value = reals(std::vector<double>(wholes->begin(), wholes->end()));
         out[p.name] = std::move(value);
     }
     return out;

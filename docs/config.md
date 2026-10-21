@@ -165,7 +165,7 @@ keeps_snow = cfg.replace(preprocess__standard=ProcedureChain(
     steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
     thermal_transform=True,
 ))
-colder = cfg.replace(preprocess__thermal_range__min=-80.0)      # every thermal_range step
+colder = cfg.replace(preprocess__thermal_range__celsius=[-80.0, 70.7])   # every thermal_range step
 print(ccdcpp.plan_of(keeps_snow, ccdcpp.Input()).standard.chain[0])
 print(ccdcpp.plan_of(colder, ccdcpp.Input()).standard.chain[1])  # the plan, in the input's units
 ```

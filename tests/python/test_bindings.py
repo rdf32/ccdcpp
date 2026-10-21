@@ -533,10 +533,8 @@ class BoundFlags(unittest.TestCase):
     """The bounds' inclusive flags: band_range's and thermal_range's parameters."""
 
     FLAGS = {
-        ("band_range", "min_inclusive"): False,
-        ("band_range", "max_inclusive"): False,
-        ("thermal_range", "min_inclusive"): False,
-        ("thermal_range", "max_inclusive"): False,
+        ("band_range", "inclusive"): [False, False],
+        ("thermal_range", "inclusive"): [False, False],
     }
 
     def test_defaults_and_docstrings(self):
@@ -544,12 +542,12 @@ class BoundFlags(unittest.TestCase):
         for (step, name), value in self.FLAGS.items():
             with self.subTest(step=step, name=name):
                 (param,) = [p for p in steps[step] if p["name"] == name]
-                self.assertIs(param["default"], value)
+                self.assertEqual(param["default"], value)
                 self.assertTrue(param["doc"])
                 for chain in preset()["preprocess"].values():
                     for s in chain["steps"]:
                         if s["step"] == step:
-                            self.assertIs(s[name], value)
+                            self.assertEqual(s[name], value)
 
     def mask(self, values: Sequence[float], band: int, **flags: object) -> list[int]:
         """processing_mask of detect on a pixel whose `band` holds `values` at
@@ -564,12 +562,11 @@ class BoundFlags(unittest.TestCase):
         values = [0.0, 10000.0, -1.0, 10001.0]
         for flags, expected in (
             (dict(), [0, 0, 0, 0]),
-            (dict(band_range__min_inclusive=True, band_range__max_inclusive=True),
-             [1, 1, 0, 0]),
-            (dict(band_range__min_inclusive=True), [1, 0, 0, 0]),
-            (dict(band_range__max_inclusive=True), [0, 1, 0, 0]),
+            (dict(band_range__inclusive=[True, True]), [1, 1, 0, 0]),
+            (dict(band_range__inclusive=[True, False]), [1, 0, 0, 0]),
+            (dict(band_range__inclusive=[False, True]), [0, 1, 0, 0]),
         ):
-            with self.subTest(**flags):
+            with self.subTest(flags=flags):
                 self.assertEqual([int(v) for v in self.mask(values, 3, **flags)], expected)
 
     def test_thermal_bounds(self):
@@ -578,21 +575,20 @@ class BoundFlags(unittest.TestCase):
         values = [at(-9320.0), at(7070.0), at(0.0)]
         for flags, expected in (
             (dict(), [0, 0, 1]),
-            (dict(thermal_range__min_inclusive=True, thermal_range__max_inclusive=True),
-             [1, 1, 1]),
-            (dict(thermal_range__min_inclusive=True), [1, 0, 1]),
+            (dict(thermal_range__inclusive=[True, True]), [1, 1, 1]),
+            (dict(thermal_range__inclusive=[True, False]), [1, 0, 1]),
         ):
-            with self.subTest(**flags):
+            with self.subTest(flags=flags):
                 self.assertEqual([int(v) for v in self.mask(values, 6, **flags)], expected)
 
     def test_exclusive_bounds_reject_nan(self):
         # An exclusive end rejects NaN, so the pixel fits without it. (Both ends
         # inclusive let NaN through to the fit; see the README.)
         for band, flags in ((3, dict()),
-                            (3, dict(band_range__min_inclusive=True)),
-                            (3, dict(band_range__max_inclusive=True)),
+                            (3, dict(band_range__inclusive=[True, False])),
+                            (3, dict(band_range__inclusive=[False, True])),
                             (6, dict())):
-            with self.subTest(band=band, **flags):
+            with self.subTest(band=band, flags=flags):
                 self.assertEqual(self.mask([np.nan, 1000.0 if band != 6 else 2900.0], band, **flags),
                                  [0, 1])
 

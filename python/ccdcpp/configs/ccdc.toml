@@ -93,8 +93,8 @@ t_const = 4.89
 thermal_transform = true
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
-    { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
+    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
+    { step = "band_range", bands = "reflective", inclusive = [false, false], reflectance = [0.0, 1.0] },
     { step = "one_per_date" },
 ]
 
@@ -102,20 +102,20 @@ steps = [
 thermal_transform = false
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
-    { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
+    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
+    { step = "band_range", bands = "reflective", inclusive = [false, false], reflectance = [0.0, 1.0] },
     { step = "one_per_date" },
     { step = "add_qa", codes = ["snow"] },
     { step = "one_per_date" },
-    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
+    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
 ]
 
 [preprocess.insufficient_clear]
 thermal_transform = false
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", max = 70.7, max_inclusive = false, min = -93.2, min_inclusive = false },
-    { step = "band_range", bands = "reflective", max = 1.0, max_inclusive = false, min = 0.0, min_inclusive = false },
+    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
+    { step = "band_range", bands = "reflective", inclusive = [false, false], reflectance = [0.0, 1.0] },
     { step = "one_per_date" },
     { step = "green_median", offset = 0.04, scope = "stat_window" },
     { step = "one_per_date" },

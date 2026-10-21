@@ -600,9 +600,8 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
         h.thermal_offset = 0.0;
         return h;
     };
-    const ccd::config::Config open = golden::with_steps(
-        golden::with_steps(golden::pyccd(), "thermal_range", "min", ccd::config::real(-INF)),
-        "thermal_range", "max", ccd::config::real(INF));
+    const ccd::config::Config open = golden::with_steps(golden::pyccd(), "thermal_range",
+                                                        "celsius", ccd::config::reals({-INF, INF}));
 
     const auto optical_only = [&](const ccd::FitResult& r) { return select_bands(r, optical); };
 

@@ -49,6 +49,25 @@ std::optional<double> number_of(const Value& value)
     return std::nullopt;
 }
 
+// The numbers of `value` through `f`, as reals: a number, or each of a list
+// of numbers (a range's [min, max]); another value as given.
+template<class F>
+Value each_number(const Value& value, F f)
+{
+    if (const auto v = number_of(value))
+        return real(f(*v));
+    std::vector<double> out;
+    if (const auto* list = std::get_if<std::vector<double>>(&value))
+        for (const double v : *list)
+            out.push_back(f(v));
+    else if (const auto* wholes = std::get_if<std::vector<std::int64_t>>(&value))
+        for (const std::int64_t v : *wholes)
+            out.push_back(f(static_cast<double>(v)));
+    else
+        return value;
+    return reals(std::move(out));
+}
+
 // A reflectance level as the input holds it: r x reflectance_scale +
 // reflectance_offset.
 Value to_reflectance(const Value& value, const Input& input)
@@ -56,29 +75,26 @@ Value to_reflectance(const Value& value, const Input& input)
     // Two statements, so the product is rounded before the offset is added
     // (no fused multiply-add): at offset 0 a level is the product itself
     // (but for -0, which becomes +0).
-    if (const auto v = number_of(value))
-    {
-        const double scaled = *v * input.reflectance_scale;
-        return real(scaled + input.reflectance_offset);
-    }
-    return value;
+    return each_number(value,
+                       [&](double v)
+                       {
+                           const double scaled = v * input.reflectance_scale;
+                           return scaled + input.reflectance_offset;
+                       });
 }
 
 // A reflectance difference as the input holds it: times reflectance_scale.
 Value to_reflectance_delta(const Value& value, const Input& input)
 {
-    if (const auto v = number_of(value))
-        return real(*v * input.reflectance_scale);
-    return value;
+    return each_number(value, [&](double v) { return v * input.reflectance_scale; });
 }
 
 // Degrees Celsius in the thermal row's unit after the input's transform
 // (thermal_at_100c).
 Value to_thermal_unit(const Value& value, const Input& input)
 {
-    if (const auto v = number_of(value))
-        return real(*v * 100.0 * input.thermal_at_100c / 10000.0);
-    return value;
+    return each_number(value,
+                       [&](double v) { return v * 100.0 * input.thermal_at_100c / 10000.0; });
 }
 
 // A date "YYYY-MM-DD" as its ordinal day (0001-01-01 is 1, as Python's

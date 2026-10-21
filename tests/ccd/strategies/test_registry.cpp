@@ -1268,14 +1268,14 @@ TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
 
     ccd::config::Config config = golden::with_step(golden::ccdc(), "standard", 0, "codes",
                                                    names({"clear", "water", "cloud"}));
-    config = golden::with_step(config, "standard", 1, "min", real(-50.0));
-    config = golden::with_step(config, "standard", 2, "max", real(0.5));
+    config = golden::with_step(config, "standard", 1, "celsius", ccd::config::reals({-50.0, 70.7}));
+    config = golden::with_step(config, "standard", 2, "reflectance", ccd::config::reals({0.0, 0.5}));
     const ccd::config::Resolved got = ccd::config::resolve(r, config, renumbered);
     const auto& standard = got.preprocess.at("standard").steps;
     EXPECT_EQ(standard.at(0).params.at("codes"),
               ccd::config::Value(std::vector<std::int64_t>{20, 21, 24}));
-    EXPECT_EQ(standard.at(1).params.at("min"), real(-5000.0));
-    EXPECT_EQ(standard.at(2).params.at("max"), real(5000.0));
+    EXPECT_EQ(std::get<std::vector<double>>(standard.at(1).params.at("celsius")).at(0), -5000.0);
+    EXPECT_EQ(std::get<std::vector<double>>(standard.at(2).params.at("reflectance")).at(1), 5000.0);
     EXPECT_TRUE(got.plan.standard.chain[0].codes.test(24));
     EXPECT_FALSE(got.plan.standard.chain[0].codes.test(0));
     EXPECT_EQ(got.plan.snow.chain[4].codes, ccd::preprocess::qa_set({23}));

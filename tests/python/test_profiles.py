@@ -681,10 +681,8 @@ class Bounds(unittest.TestCase):
             for therm in ((False, False), (True, True), (False, True)):
                 with self.subTest(refl=refl, therm=therm):
                     cfg = ccdcpp.config("ccdc").replace(
-                        preprocess__band_range__min_inclusive=refl[0],
-                        preprocess__band_range__max_inclusive=refl[1],
-                        preprocess__thermal_range__min_inclusive=therm[0],
-                        preprocess__thermal_range__max_inclusive=therm[1])
+                        preprocess__band_range__inclusive=list(refl),
+                        preprocess__thermal_range__inclusive=list(therm))
                     snow = ccdcpp.plan_of(cfg, base).snow.chain
                     standard = ccdcpp.plan_of(cfg, base).standard.chain
                     for thermal, band in ((snow[1], snow[2]), (snow[6], snow[2]),

@@ -79,8 +79,9 @@ class Presets(unittest.TestCase):
                          ["keep_qa", "thermal_range", "band_range", "one_per_date", "green_median",
                           "one_per_date"])
         self.assertEqual(clear["steps"][0]["codes"], ["clear", "water"])
-        self.assertEqual((clear["steps"][1]["min"], clear["steps"][1]["max"]), (-93.2, 70.7))
-        self.assertEqual((clear["steps"][2]["min"], clear["steps"][2]["max"]), (0.0, 1.0))
+        self.assertEqual(clear["steps"][1], {"step": "thermal_range", "celsius": [-93.2, 70.7],
+                                             "inclusive": [False, False]})
+        self.assertEqual(clear["steps"][2]["reflectance"], [0.0, 1.0])
         self.assertEqual(clear["steps"][4], {"step": "green_median", "offset": 0.04,
                                              "scope": "stat_window"})
         self.assertTrue(ccdcpp.config("ccdc").preprocess("standard")["thermal_transform"])
@@ -104,8 +105,8 @@ class Presets(unittest.TestCase):
         self.assertEqual(r["shared"]["detection_bands"], [1, 2, 3, 4, 5])
         clear = r["preprocess"]["insufficient_clear"]["steps"]
         self.assertEqual(clear[0]["codes"], [0, 1])
-        self.assertEqual((clear[1]["min"], clear[1]["max"]), (-9320.0, 7070.0))
-        self.assertEqual((clear[2]["min"], clear[2]["max"]), (0.0, 10000.0))
+        self.assertEqual(clear[1]["celsius"], [-9320.0, 7070.0])
+        self.assertEqual(clear[2]["reflectance"], [0.0, 10000.0])
         self.assertEqual(clear[4], {"step": "green_median", "offset": 400.0,
                                     "scope": "stat_window", "max_date": "none"})
 
@@ -297,11 +298,13 @@ class Replace(unittest.TestCase):
                     ccdcpp.config().replace(**change)
         ccdcpp.config().replace(shared__min_observations=5).check(ccdcpp.Input())
         # The thermal and reflectance bounds take any number: an infinity is an open end.
-        ccdcpp.config().replace(preprocess__thermal_range__min=-inf).check(ccdcpp.Input())
+        ccdcpp.config().replace(preprocess__thermal_range__celsius=[-inf, 70.7]).check(
+            ccdcpp.Input())
         # A list mixes no names and numbers; a strategy without parameters names none.
         with self.assertRaisesRegex(ValueError, r"'codes' is a list of strs \(band roles, QA "
-                                                r"code names\) or of ints \(band rows, QA "
-                                                r"codes\), not a mix"):
+                                                r"code names\), of ints \(band rows, QA "
+                                                r"codes\), of numbers \(a range\) or of bools "
+                                                r"\(a range's ends\), not a mix"):
             ccdcpp.config().replace(preprocess__standard__keep_qa__codes=["clear", 1])
         with self.assertRaisesRegex(ValueError, r"^segment_report 'model-fit' has no parameter "
                                                 r"'x'$"):

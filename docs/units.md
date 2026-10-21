@@ -20,7 +20,7 @@ for input in (ccdcpp.Input(), physical):
 
 ```text
 1.0 1.0 1.0 0.0
-{'step': 'thermal_range', 'min': -93.2, 'max': 70.7, 'min_inclusive': False, 'max_inclusive': False}
+{'step': 'thermal_range', 'celsius': [-93.2, 70.7], 'inclusive': [False, False]}
 <Step ThermalRange band 6, -9320 < x < 7070> <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000>
 <Step ThermalRange band 6, -0.932 < x < 0.707> <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 1>
 ```

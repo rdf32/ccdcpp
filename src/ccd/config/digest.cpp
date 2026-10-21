@@ -48,11 +48,23 @@ void hash(detail::Fnv& h, const Values& values)
                     for (const std::int64_t b : v)
                         h.integer(b);
                 }
-                else
+                else if constexpr (std::is_same_v<T, std::vector<std::string>>)
                 {
                     h.integer(static_cast<std::int64_t>(v.size()));
                     for (const std::string& r : v)
                         h.text(r);
+                }
+                else if constexpr (std::is_same_v<T, std::vector<double>>)
+                {
+                    h.integer(static_cast<std::int64_t>(v.size()));
+                    for (const double r : v)
+                        h.real(r);
+                }
+                else
+                {
+                    h.integer(static_cast<std::int64_t>(v.size()));
+                    for (const bool f : v)
+                        h.flag(f);
                 }
             },
             value);

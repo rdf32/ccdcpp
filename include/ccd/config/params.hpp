@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -96,11 +97,18 @@ enum class Unit : std::uint8_t
 constexpr const char* REFLECTIVE = "reflective";
 
 // One parameter's value, as a configuration holds it: a flag, a whole
-// number, a real, a name, a list of whole numbers (band rows, QA codes), or a
-// list of names (band roles, QA code names). A resolved configuration holds
-// no names in a list: they are its input's rows and codes.
+// number, a real, a name, a list of whole numbers (band rows, QA codes), a
+// list of names (band roles, QA code names), a list of reals (a range's
+// [min, max]) or a list of flags (its ends' [min, max]). A resolved
+// configuration holds no names in a list: they are its input's rows and
+// codes.
 using Value = std::variant<bool, std::int64_t, double, std::string, std::vector<std::int64_t>,
-                           std::vector<std::string>>;
+                           std::vector<std::string>, std::vector<double>, std::vector<bool>>;
+
+// A range's ends, [min, max] (thermal_range's celsius, band_range's
+// reflectance), and whether each is kept, [min, max] (their inclusive).
+using Interval = std::array<double, 2>;
+using Inclusive = std::array<bool, 2>;
 
 // A strategy's parameters, by name.
 using Values = std::map<std::string, Value>;
@@ -121,6 +129,14 @@ inline Value roles(std::vector<std::string> v)
 inline Value names(std::vector<std::string> v)
 {
     return Value(std::in_place_type<std::vector<std::string>>, std::move(v));
+}
+inline Value reals(std::vector<double> v)
+{
+    return Value(std::in_place_type<std::vector<double>>, std::move(v));
+}
+inline Value flags(std::vector<bool> v)
+{
+    return Value(std::in_place_type<std::vector<bool>>, std::move(v));
 }
 
 // The allowed values of a number: lo <(=) value <(=) hi. NaN never passes,
@@ -195,7 +211,8 @@ template<class P>
 struct Field
 {
     using Member = std::variant<double P::*, index_t P::*, std::int64_t P::*, bool P::*,
-                                BandList P::*, std::string P::*, std::vector<std::int64_t> P::*>;
+                                BandList P::*, std::string P::*, std::vector<std::int64_t> P::*,
+                                Interval P::*, Inclusive P::*>;
 
     const char* name;
     Member member;
@@ -222,6 +239,8 @@ void assign(double& member, const Value& value, const Bounds& bounds, const std:
 void assign(index_t& member, const Value& value, const Bounds& bounds, const std::string& at);
 void assign(std::int64_t& member, const Value& value, const Bounds& bounds,
             const std::string& at);
+void assign(Interval& member, const Value& value, const Bounds& bounds, const std::string& at);
+void assign(Inclusive& member, const Value& value, const Bounds& bounds, const std::string& at);
 
 //------------------------------------------------------------------------------
 // The parameters `values` give `params`, starting from its defaults: each by
@@ -292,6 +311,10 @@ Values to_values(const std::vector<Field<P>>& schema, const P& params)
                     out[f.name] = Value(params.*member);
                 else if constexpr (std::is_same_v<T, double>)
                     out[f.name] = real(params.*member);
+                else if constexpr (std::is_same_v<T, Interval>)
+                    out[f.name] = reals({(params.*member)[0], (params.*member)[1]});
+                else if constexpr (std::is_same_v<T, Inclusive>)
+                    out[f.name] = flags({(params.*member)[0], (params.*member)[1]});
                 else if (f.keyword &&
                          static_cast<std::int64_t>(params.*member) == f.keyword->value)
                     out[f.name] = Value(std::string(f.keyword->name));

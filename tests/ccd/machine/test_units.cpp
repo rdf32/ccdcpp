@@ -217,10 +217,10 @@ ccd::Input physical_input()
 ccd::config::Config with_bounds(const std::string& step, double lo, double hi,
                                 bool inclusive = false)
 {
-    ccd::config::Config c = golden::with_steps(golden::pyccd(), step, "min", ccd::config::real(lo));
-    c = golden::with_steps(c, step, "max", ccd::config::real(hi));
-    c = golden::with_steps(c, step, "min_inclusive", ccd::config::flag(inclusive));
-    return golden::with_steps(c, step, "max_inclusive", ccd::config::flag(inclusive));
+    const char* range = step == "thermal_range" ? "celsius" : "reflectance";
+    const ccd::config::Config c =
+        golden::with_steps(golden::pyccd(), step, range, ccd::config::reals({lo, hi}));
+    return golden::with_steps(c, step, "inclusive", ccd::config::flags({inclusive, inclusive}));
 }
 
 // "ccdc" with the shared alpha and coef_floor at `alpha` and `coef_floor`

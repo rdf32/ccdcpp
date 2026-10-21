@@ -336,10 +336,9 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
     for (const auto& mode : MODES)
     {
         const ccd::Input h;
-        const ccd::config::Config config = golden::with_steps(
-            golden::with_steps(golden::pyccd(), "band_range", "min_inclusive",
-                               ccd::config::flag(mode.lo_inclusive)),
-            "band_range", "max_inclusive", ccd::config::flag(mode.hi_inclusive));
+        const ccd::config::Config config =
+            golden::with_steps(golden::pyccd(), "band_range", "inclusive",
+                               ccd::config::flags({mode.lo_inclusive, mode.hi_inclusive}));
 
         const ccd::config::Shared shared = golden::shared_of(config);
         const ccd::PixelSeries workspace(
@@ -362,10 +361,9 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
     for (const auto& mode : MODES)
     {
         const ccd::Input h;
-        const ccd::config::Config config = golden::with_steps(
-            golden::with_steps(golden::pyccd(), "thermal_range", "min_inclusive",
-                               ccd::config::flag(mode.lo_inclusive)),
-            "thermal_range", "max_inclusive", ccd::config::flag(mode.hi_inclusive));
+        const ccd::config::Config config =
+            golden::with_steps(golden::pyccd(), "thermal_range", "inclusive",
+                               ccd::config::flags({mode.lo_inclusive, mode.hi_inclusive}));
 
         const ccd::config::Shared shared = golden::shared_of(config);
         const ccd::PixelSeries workspace(

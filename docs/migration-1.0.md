@@ -263,8 +263,8 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `QA_IDX` | | none (nothing read it) |
 | `CLEAR_OBSERVATION_THRESHOLD` | | none (nothing read it) |
 | `SATURATION_BANDS` | [0, 1, 2, 3, 4, 5] | `preprocess` `band_range`'s `bands`: `"reflective"` (every row but thermal and other) or roles |
-| `REFL_MIN`, `REFL_MAX`, `REFL_MIN_INCLUSIVE`, `REFL_MAX_INCLUSIVE` | 0, 10000, false, false | `preprocess` `band_range`'s `min`, `max` (reflectance: 0, 1) and `min_inclusive`, `max_inclusive` |
-| `THERM_MIN`, `THERM_MAX`, `THERM_MIN_INCLUSIVE`, `THERM_MAX_INCLUSIVE` | -9320, 7070, false, false | `preprocess` `thermal_range`'s `min`, `max` (degrees Celsius: -93.2, 70.7) and flags |
+| `REFL_MIN`, `REFL_MAX`, `REFL_MIN_INCLUSIVE`, `REFL_MAX_INCLUSIVE` | 0, 10000, false, false | `preprocess` `band_range`'s `reflectance = [0.0, 1.0]` and `inclusive = [false, false]` |
+| `THERM_MIN`, `THERM_MAX`, `THERM_MIN_INCLUSIVE`, `THERM_MAX_INCLUSIVE` | -9320, 7070, false, false | `preprocess` `thermal_range`'s `celsius = [-93.2, 70.7]` (degrees Celsius) and `inclusive` |
 | `MEDIAN_GREEN_FILTER` | 400 | `preprocess` `green_median`'s `offset` (reflectance: 0.04) |
 | `GREEN_FILTER_SCOPE` | `StatWindow` | `preprocess` `green_median`'s `scope` (`"stat_window"`) |
 | `STAT_ORD` | 736694 | `shared__statistics_end`: `"none"` (the default), a date `"2017-12-31"` or an ordinal |

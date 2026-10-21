@@ -68,7 +68,7 @@ void check(const Registry& registry, const Config& config);
 // `config` in its own terms, as one form for every way of writing it: every
 // shared value and every stage's and step's own parameters spelled out (the
 // defaults filling what it leaves out), and a whole number given for a real
-// value as that real. Refuses what check() refuses. Two configurations that
+// value as that real (each of a range's). Refuses what check() refuses. Two configurations that
 // differ only in the defaults they leave out, or in a real written as a
 // whole number, are equal here, and so are their digests.
 Config canonical(const Registry& registry, const Config& config);

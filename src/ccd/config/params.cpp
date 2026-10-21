@@ -139,6 +139,28 @@ void assign(std::int64_t& member, const Value& value, const Bounds& bounds,
     member = i;
 }
 
+void assign(Interval& member, const Value& value, const Bounds& bounds, const std::string& at)
+{
+    std::vector<double> ends;
+    if (const auto* reals = std::get_if<std::vector<double>>(&value))
+        ends = *reals;
+    else if (const auto* wholes = std::get_if<std::vector<std::int64_t>>(&value))
+        ends.assign(wholes->begin(), wholes->end());
+    if (ends.size() != 2)
+        throw std::invalid_argument(at + " is a pair of numbers, [min, max]");
+    for (const double v : ends)
+        check_bounds(v, bounds, at);
+    member = {ends[0], ends[1]};
+}
+
+void assign(Inclusive& member, const Value& value, const Bounds&, const std::string& at)
+{
+    const auto* ends = std::get_if<std::vector<bool>>(&value);
+    if (!ends || ends->size() != 2)
+        throw std::invalid_argument(at + " is a pair of flags, [min, max]");
+    member = {(*ends)[0], (*ends)[1]};
+}
+
 void check_band_list(const BandList& list, index_t bands, const std::string& where)
 {
     std::set<index_t> seen;

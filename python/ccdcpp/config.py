@@ -33,7 +33,7 @@ The preprocessing (``ccdcpp.Preprocess``, ``ProcedureChain`` and the step classe
 ``ccdcpp.steps()`` lists the step types) is edited with ``replace()`` too::
 
     cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)  # one step
-    cfg.replace(preprocess__thermal_range__min=-80.0)      # every thermal_range step
+    cfg.replace(preprocess__thermal_range__celsius=[-80.0, 70.7])   # every thermal_range step
     cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(steps=(...), thermal_transform=True))
 
 Presets are TOML files (``ccdcpp/configs/<name>.toml``, or any path): a ``[shared]`` table, one
@@ -299,8 +299,7 @@ class Config:
             if isinstance(v, float):
                 return repr(v)
             if isinstance(v, list):
-                return "[" + ", ".join(text(b) if isinstance(b, str) else str(int(b))
-                                       for b in v) + "]"
+                return "[" + ", ".join(text(b) for b in v) + "]"
             return str(v)
 
         shared = self._tree["shared"]

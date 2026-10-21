@@ -60,8 +60,8 @@ bool is_index(const py::handle& v)
 ccd::config::Value value_from_python(const py::handle& v, const std::string& where)
 {
     static const char* const MIXED =
-        " is a list of strs (band roles, QA code names) or of ints (band rows, QA codes), "
-        "not a mix";
+        " is a list of strs (band roles, QA code names), of ints (band rows, QA codes), of "
+        "numbers (a range) or of bools (a range's ends), not a mix";
     // A numpy array or scalar: its list or its Python value.
     if (py::hasattr(v, "ndim") && py::hasattr(v, "tolist"))
         return value_from_python(v.attr("tolist")(), where);
@@ -77,28 +77,38 @@ ccd::config::Value value_from_python(const py::handle& v, const std::string& whe
     if (py::isinstance<py::list>(v) || py::isinstance<py::tuple>(v))
     {
         const py::sequence items = py::reinterpret_borrow<py::sequence>(v);
-        if (py::len(items) > 0 && py::isinstance<py::str>(items[0]))
+        const auto all = [&](auto is)
         {
-            std::vector<std::string> roles;
             for (const py::handle& b : items)
-            {
-                if (!py::isinstance<py::str>(b))
-                    throw py::value_error(where + MIXED);
-                roles.push_back(b.cast<std::string>());
-            }
-            return ccd::config::roles(std::move(roles));
-        }
-        std::vector<std::int64_t> bands;
-        for (const py::handle& b : items)
+                if (!is(b))
+                    return false;
+            return true;
+        };
+        const auto is_str = [](const py::handle& b) { return py::isinstance<py::str>(b); };
+        const auto is_flag = [](const py::handle& b) { return py::isinstance<py::bool_>(b); };
+        const auto is_real = [](const py::handle& b)
+        { return is_index(b) || py::isinstance<py::float_>(b); };
+        if (py::len(items) > 0 && all(is_str))
+            return ccd::config::roles(items.cast<std::vector<std::string>>());
+        if (py::len(items) > 0 && all(is_flag))
+            return ccd::config::flags(items.cast<std::vector<bool>>());
+        if (all(is_index))
         {
-            if (!is_index(b))
-                throw py::value_error(where + MIXED);
-            bands.push_back(index_of(b, where));
+            std::vector<std::int64_t> wholes;
+            for (const py::handle& b : items)
+                wholes.push_back(index_of(b, where));
+            return ccd::config::Value(std::move(wholes));
         }
-        return ccd::config::Value(std::move(bands));
+        if (all(is_real))
+        {
+            std::vector<double> reals;
+            for (const py::handle& b : items)
+                reals.push_back(b.cast<double>());
+            return ccd::config::reals(std::move(reals));
+        }
+        throw py::value_error(where + MIXED);
     }
-    throw py::value_error(where + " is a bool, an int, a float, a str or a list of strs or "
-                          "ints, not " +
+    throw py::value_error(where + " is a bool, an int, a float, a str or a list of them, not " +
                           std::string(py::str(py::type::of(v).attr("__name__"))));
 }
 

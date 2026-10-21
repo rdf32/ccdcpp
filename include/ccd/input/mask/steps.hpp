@@ -75,7 +75,8 @@ struct AddQa
 };
 
 // thermal_range: keep only the observations whose thermal row lies within
-// (min, max), in degrees Celsius, on every input: resolved to the row's unit
+// `celsius`, (min, max) in degrees Celsius (an end `inclusive` keeps a value
+// equal to it), on every input: resolved to the row's unit
 // after the input's transform, and in a procedure that does not transform
 // its thermal row taken back through the transform (stored_range()), so the
 // stored row is tested as its transform would be (docs/units.md). An input
@@ -84,10 +85,8 @@ struct ThermalRange
 {
     struct Params
     {
-        double min = MIN_CELSIUS;
-        double max = MAX_CELSIUS;
-        bool min_inclusive = false;
-        bool max_inclusive = false;
+        config::Interval celsius = {MIN_CELSIUS, MAX_CELSIUS};
+        config::Inclusive inclusive = {false, false};
     };
     static const std::vector<config::Field<Params>>& schema();
     static std::optional<Step> make(const Params& params, const Input& input,
@@ -95,18 +94,17 @@ struct ThermalRange
 };
 
 // band_range: keep only the observations on which every one of `bands`
-// lies within (min, max), in reflectance, the bands tested in order: roles,
-// rows, or "reflective" (the default), every row whose role is not thermal
-// or other, in row order. An empty list is refused.
+// lies within `reflectance`, (min, max) in reflectance (an end `inclusive`
+// keeps a value equal to it), the bands tested in order: roles, rows, or
+// "reflective" (the default), every row whose role is not thermal or other,
+// in row order. An empty list is refused.
 struct BandRange
 {
     struct Params
     {
         BandList bands = {0, 1, 2, 3, 4, 5};
-        double min = 0.0;
-        double max = 10000.0;
-        bool min_inclusive = false;
-        bool max_inclusive = false;
+        config::Interval reflectance = {0.0, 10000.0};
+        config::Inclusive inclusive = {false, false};
     };
     static const std::vector<config::Field<Params>>& schema();
     static void validate(const Params& params);

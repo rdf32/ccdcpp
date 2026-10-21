@@ -204,11 +204,9 @@ inline ccd::config::Config c2_config()
     using ccd::config::real;
     ccd::config::Config c = with_shared(pyccd(), "lasso.alpha", real(1.0));
     c = with_shared(c, "lasso.coef_floor", real(1.0));
-    c = with_steps(c, "band_range", "min", real(7273.0));
-    c = with_steps(c, "band_range", "max", real(43636.0));
+    c = with_steps(c, "band_range", "reflectance", ccd::config::reals({7273.0, 43636.0}));
     // Degrees Celsius: 1e8 x 100 x thermal_at_100c 1 / 10000 is 1e6.
-    c = with_steps(c, "thermal_range", "min", real(-1.0e8));
-    c = with_steps(c, "thermal_range", "max", real(1.0e8));
+    c = with_steps(c, "thermal_range", "celsius", ccd::config::reals({-1.0e8, 1.0e8}));
     return with_steps(c, "green_median", "offset", real(400.0));
 }
 

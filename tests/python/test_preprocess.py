@@ -69,8 +69,8 @@ def written_default_explicit() -> Preprocess:
     """pyccd's chain with every value spelled out, in physical terms."""
     sat = ("blue", "green", "red", "nir", "swir1", "swir2")
     keep = KeepQa(("clear", "water"))
-    thermal = ThermalRange(min=-93.2, max=70.7, inclusive=(False, False))
-    band = BandRange(bands=sat, min=0.0, max=1.0, inclusive=(False, False))
+    thermal = ThermalRange(celsius=(-93.2, 70.7), inclusive=(False, False))
+    band = BandRange(bands=sat, reflectance=(0.0, 1.0), inclusive=(False, False))
     common = (keep, thermal, band, OnePerDate())
     return Preprocess(
         standard=ProcedureChain(steps=common, thermal_transform=True),
@@ -174,9 +174,9 @@ class Plans(unittest.TestCase):
                      "  4  GreenMedian band 1, drop x >= median(dates <= 736694) + 400, "
                      "scope StatWindow"):
             self.assertIn(line, text.splitlines())
-        inclusive = CCDC.replace(preprocess__standard__band_range__min_inclusive=True,
+        inclusive = CCDC.replace(preprocess__standard__band_range__inclusive=[True, False],
                                  preprocess__standard__band_range__bands=["blue", "green"],
-                                 preprocess__standard__band_range__max=1.0)
+                                 preprocess__standard__band_range__reflectance=[0.0, 1.0])
         step = ccdcpp.plan_of(inclusive, ccdcpp.presets.landsat_c1_physical()).standard.chain[2]
         self.assertEqual(repr(step), "<Step BandRange bands [0, 1], 0 <= x < 1>")
 
@@ -351,11 +351,11 @@ class Replace(unittest.TestCase):
         cfg = CCDC.replace(preprocess__insufficient_clear__green_median__offset=0.05)
         self.assertEqual(cfg.preprocess("insufficient_clear")["steps"][4]["offset"], 0.05)
         self.assertEqual(cfg.preprocess("snow"), CCDC.preprocess("snow"))
-        every = CCDC.replace(preprocess__thermal_range__min=-80.0)
+        every = CCDC.replace(preprocess__thermal_range__celsius=[-80.0, 70.7])
         for procedure in ccdcpp.PROCEDURES:
             steps = [s for s in every.preprocess(procedure)["steps"]
                      if s["step"] == "thermal_range"]
-            self.assertEqual([s["min"] for s in steps], [-80.0] * len(steps))
+            self.assertEqual([s["celsius"] for s in steps], [[-80.0, 70.7]] * len(steps))
             self.assertEqual(len(steps), 2 if procedure == "snow" else 1)
         flag = CCDC.replace(preprocess__snow__thermal_transform=True)
         self.assertTrue(flag.preprocess("snow")["thermal_transform"])
@@ -368,10 +368,10 @@ class Replace(unittest.TestCase):
         whole = CCDC.replace(preprocess=Preprocess(snow=ProcedureChain(steps=(OnePerDate(),))))
         self.assertEqual(whole.preprocess("snow"), as_dict.preprocess("snow"))
         self.assertEqual(whole.preprocess("standard"), CCDC.preprocess("standard"))
-        # An int given for a real is a real.
+        # An int given for a real is a real, and so are a range's.
         self.assertEqual(
-            CCDC.replace(preprocess__band_range__max=1).preprocess("snow")["steps"][2]["max"],
-            1.0)
+            CCDC.replace(preprocess__band_range__reflectance=[0, 1]).preprocess("snow")["steps"][2]
+            ["reflectance"], [0.0, 1.0])
 
     def test_refusals_in_replace(self):
         with self.assertRaisesRegex(ValueError, "2 'one_per_date' steps"):
@@ -471,9 +471,11 @@ class Validation(unittest.TestCase):
         with self.assertRaises(TypeError):
             Preprocess(standard=(KeepQa(),))  # pyright: ignore[reportArgumentType]  # not a chain, refused
         self.assertEqual(KeepQa().to_dict(), {"step": "keep_qa"})
-        self.assertEqual(ThermalRange(min=-80.0, inclusive=(True, False)).to_dict(),
-                         {"step": "thermal_range", "min": -80.0, "min_inclusive": True,
-                          "max_inclusive": False})
+        self.assertEqual(ThermalRange(celsius=(-80.0, 70.7), inclusive=(True, False)).to_dict(),
+                         {"step": "thermal_range", "celsius": [-80.0, 70.7],
+                          "inclusive": [True, False]})
+        with self.assertRaises(ValueError):
+            BandRange(reflectance=(0.0,))  # pyright: ignore[reportArgumentType]  # one end, refused
 
     def test_steps_are_listed(self):
         # The library's steps; an extension may register more.
@@ -481,7 +483,7 @@ class Validation(unittest.TestCase):
         self.assertLessEqual({"keep_qa", "add_qa", "thermal_range", "band_range",
                               "green_median", "one_per_date"}, set(steps))
         units = {p["name"]: p["unit"] for p in steps["thermal_range"]}
-        self.assertEqual(units["min"], "celsius")
+        self.assertEqual(units["celsius"], "celsius")
         self.assertEqual({p["name"]: p["unit"] for p in steps["keep_qa"]}["codes"], "qa_codes")
         (max_date,) = [p for p in steps["green_median"] if p["name"] == "max_date"]
         self.assertEqual((max_date["source"], max_date["from"]), ("shared", "statistics_end"))

@@ -25,9 +25,9 @@ QaSet set_of(const std::vector<std::int64_t>& codes)
     return set;
 }
 
-Range range_of(double min, bool min_inclusive, double max, bool max_inclusive)
+Range range_of(const config::Interval& ends, const config::Inclusive& inclusive)
 {
-    return Range{Bound{min, min_inclusive}, Bound{max, max_inclusive}};
+    return Range{Bound{ends[0], inclusive[0]}, Bound{ends[1], inclusive[1]}};
 }
 
 } // namespace
@@ -65,14 +65,11 @@ std::optional<Step> AddQa::make(const Params& params, const Input&, const config
 const std::vector<Field<ThermalRange::Params>>& ThermalRange::schema()
 {
     static const std::vector<Field<Params>> s = {
-        {"min", &Params::min, Unit::Celsius, config::any(),
-         "the lower bound of the thermal row", Source::Own, nullptr, config::real(-93.2)},
-        {"max", &Params::max, Unit::Celsius, config::any(),
-         "the upper bound of the thermal row", Source::Own, nullptr, config::real(70.7)},
-        {"min_inclusive", &Params::min_inclusive, Unit::None, config::any(),
-         "whether a value equal to min is kept"},
-        {"max_inclusive", &Params::max_inclusive, Unit::None, config::any(),
-         "whether a value equal to max is kept"},
+        {"celsius", &Params::celsius, Unit::Celsius, config::any(),
+         "the range of the thermal row, [min, max]", Source::Own, nullptr,
+         config::reals({-93.2, 70.7})},
+        {"inclusive", &Params::inclusive, Unit::None, config::any(),
+         "whether a value equal to each end is kept, [min, max]"},
     };
     return s;
 }
@@ -83,8 +80,7 @@ std::optional<Step> ThermalRange::make(const Params& params, const Input& input,
     const index_t thermal = input.index("thermal");
     if (thermal == NO_BAND)
         return std::nullopt;
-    const Range range =
-        range_of(params.min, params.min_inclusive, params.max, params.max_inclusive);
+    const Range range = range_of(params.celsius, params.inclusive);
     // A procedure that does not transform its thermal row tests the stored row
     // against the bounds taken back through the transform.
     const std::optional<Affine> transform = thermal_transform(input);
@@ -99,14 +95,10 @@ const std::vector<Field<BandRange::Params>>& BandRange::schema()
         {"bands", &Params::bands, Unit::Bands, config::any(),
          "the bands tested, in order: roles, rows, or \"reflective\" (every row but "
          "thermal and other)", Source::Own, nullptr, Value(std::string(config::REFLECTIVE))},
-        {"min", &Params::min, Unit::Reflectance, config::any(),
-         "the lower bound of every band", Source::Own, nullptr, config::real(0.0)},
-        {"max", &Params::max, Unit::Reflectance, config::any(),
-         "the upper bound of every band", Source::Own, nullptr, config::real(1.0)},
-        {"min_inclusive", &Params::min_inclusive, Unit::None, config::any(),
-         "whether a value equal to min is kept"},
-        {"max_inclusive", &Params::max_inclusive, Unit::None, config::any(),
-         "whether a value equal to max is kept"},
+        {"reflectance", &Params::reflectance, Unit::Reflectance, config::any(),
+         "the range of every band, [min, max]", Source::Own, nullptr, config::reals({0.0, 1.0})},
+        {"inclusive", &Params::inclusive, Unit::None, config::any(),
+         "whether a value equal to each end is kept, [min, max]"},
     };
     return s;
 }
@@ -121,7 +113,7 @@ void BandRange::validate(const Params& params)
 std::optional<Step> BandRange::make(const Params& params, const Input&, const config::StepContext&)
 {
     return Step::band_range(
-        params.bands, range_of(params.min, params.min_inclusive, params.max, params.max_inclusive));
+        params.bands, range_of(params.reflectance, params.inclusive));
 }
 
 const std::vector<Field<GreenMedian::Params>>& GreenMedian::schema()

@@ -113,9 +113,15 @@ double number(const ccd::config::Values& values, const char* name)
     return std::get<double>(values.at(name));
 }
 
-bool flag(const ccd::config::Values& values, const char* name)
+// End `end` (0: min, 1: max) of the range `name`, and whether it is kept.
+double end_of(const ccd::config::Values& values, const char* name, std::size_t end)
 {
-    return std::get<bool>(values.at(name));
+    return std::get<std::vector<double>>(values.at(name)).at(end);
+}
+
+bool inclusive(const ccd::config::Values& values, std::size_t end)
+{
+    return std::get<std::vector<bool>>(values.at("inclusive")).at(end);
 }
 
 // The values the reference chains read: the configuration's bounds, offset
@@ -169,10 +175,10 @@ Bounds bounds_of(const Options& options)
     const auto celsius = [tu](double c) { return c * 100.0 * tu / 10000.0; };
     return {
         band_rows(band.at("bands"), options.input),
-        {{number(band, "min") * u, flag(band, "min_inclusive")},
-         {number(band, "max") * u, flag(band, "max_inclusive")}},
-        {{celsius(number(thermal, "min")), flag(thermal, "min_inclusive")},
-         {celsius(number(thermal, "max")), flag(thermal, "max_inclusive")}},
+        {{end_of(band, "reflectance", 0) * u, inclusive(band, 0)},
+         {end_of(band, "reflectance", 1) * u, inclusive(band, 1)}},
+        {{celsius(end_of(thermal, "celsius", 0)), inclusive(thermal, 0)},
+         {celsius(end_of(thermal, "celsius", 1)), inclusive(thermal, 1)}},
         number(green, "offset") * u,
         *ccd::green_filter_scope(std::get<std::string>(green.at("scope"))),
         std::get<std::int64_t>(options.config.shared.at("statistics_end")),
@@ -352,14 +358,13 @@ std::vector<Options> variations(const Options& base)
     {
         for (unsigned flags = 0; flags < 16; ++flags)
         {
-            using ccd::config::flag;
             Options h = base;
             ccd::config::Config& c = h.config;
             c = golden::with_steps(c, "green_median", "scope", ccd::config::Value(std::string(scope)));
-            c = golden::with_steps(c, "band_range", "min_inclusive", flag(flags & 1u));
-            c = golden::with_steps(c, "band_range", "max_inclusive", flag(flags & 2u));
-            c = golden::with_steps(c, "thermal_range", "min_inclusive", flag(flags & 4u));
-            c = golden::with_steps(c, "thermal_range", "max_inclusive", flag(flags & 8u));
+            c = golden::with_steps(c, "band_range", "inclusive",
+                                   ccd::config::flags({(flags & 1u) != 0, (flags & 2u) != 0}));
+            c = golden::with_steps(c, "thermal_range", "inclusive",
+                                   ccd::config::flags({(flags & 4u) != 0, (flags & 8u) != 0}));
             out.push_back(h);
         }
     }
@@ -923,13 +928,11 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
     using ccd::config::flag;
     using ccd::config::names;
     using ccd::config::real;
-    const ccd::config::Values thermal = {{"min", real(-93.2)}, {"max", real(70.7)},
-                                         {"min_inclusive", flag(false)},
-                                         {"max_inclusive", flag(false)}};
+    const ccd::config::Values thermal = {{"celsius", ccd::config::reals({-93.2, 70.7})},
+                                         {"inclusive", ccd::config::flags({false, false})}};
     const ccd::config::Values band = {{"bands", ccd::config::Value(std::string("reflective"))},
-                                      {"min", real(0.0)}, {"max", real(1.0)},
-                                      {"min_inclusive", flag(false)},
-                                      {"max_inclusive", flag(false)}};
+                                      {"reflectance", ccd::config::reals({0.0, 1.0})},
+                                      {"inclusive", ccd::config::flags({false, false})}};
     const auto chain = [&](bool transform, std::vector<ccd::config::StepConfig> after)
     {
         ccd::config::ProcedureConfig procedure{transform,

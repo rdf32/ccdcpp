@@ -578,8 +578,8 @@ Before a procedure fits a pixel it builds the processing mask, the observations 
 |------|--------|
 | `keep_qa` (`KeepQa(codes)`) | keep only observations whose QA code is in `codes` (names: `ccdcpp.QA_CODE_NAMES`, or ints) |
 | `add_qa` (`AddQa(codes)`) | also keep every observation whose code is in `codes`; must be followed by `one_per_date` |
-| `thermal_range` (`ThermalRange(min, max, inclusive)`) | keep only observations whose thermal value is in the range, degrees Celsius; skipped without a thermal row |
-| `band_range` (`BandRange(bands, min, max, inclusive)`) | keep only observations on which every band (roles, tested in order, or `"reflective"`, the default: every row whose role is not thermal or other) is in the range, reflectance; an empty list is refused |
+| `thermal_range` (`ThermalRange(celsius, inclusive)`) | keep only observations whose thermal value is in the range `celsius = [min, max]`, degrees Celsius (an end `inclusive = [min, max]` keeps a value equal to it); skipped without a thermal row |
+| `band_range` (`BandRange(bands, reflectance, inclusive)`) | keep only observations on which every band (roles, tested in order, or `"reflective"`, the default: every row whose role is not thermal or other) is in the range `reflectance = [min, max]`, reflectance (`inclusive` as above); an empty list is refused |
 | `green_median` (`GreenMedian(offset, scope)`) | drop observations at or above the median green over the kept observations dated up to the shared `statistics_end`, plus `offset` (reflectance), at the dates `scope` names |
 | `one_per_date` (`OnePerDate()`) | keep the first kept observation of each date |
 

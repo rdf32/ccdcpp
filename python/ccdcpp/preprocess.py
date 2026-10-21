@@ -51,14 +51,27 @@ def _codes(value: str | int | Iterable[str | int], where: str) -> tuple[str | in
     return tuple(c if isinstance(c, str) else int(c) for c in codes)
 
 
-def _pair(value: Iterable[bool] | None, name: str) -> tuple[bool, bool] | None:
+def _flags(value: Iterable[bool] | None, name: str) -> tuple[bool, bool] | None:
     if value is None:
         return None
     pair = tuple(value)
     if len(pair) != 2 or not all(isinstance(v, bool) or type(v).__name__ == "bool_"
                                  for v in pair):
-        raise ValueError(f"{name} is {value!r}; it must be two bools (min, max)")
+        raise ValueError(f"{name} is {value!r}; it must be two bools [min, max]")
     return (bool(pair[0]), bool(pair[1]))
+
+
+def _ends(value: Iterable[float] | None, name: str) -> tuple[float, float] | None:
+    if value is None:
+        return None
+    pair = tuple(value)
+    if len(pair) != 2 or any(isinstance(v, (bool, str)) for v in pair):
+        raise ValueError(f"{name} is {value!r}; it must be two numbers [min, max]")
+    return (float(pair[0]), float(pair[1]))
+
+
+def _list(pair: tuple[Any, Any] | None) -> list[Any] | None:
+    return None if pair is None else list(pair)
 
 
 def _given(step: str, **params: Any) -> dict[str, Any]:
@@ -67,13 +80,6 @@ def _given(step: str, **params: Any) -> dict[str, Any]:
     out = {"step": step}
     out.update({k: v for k, v in params.items() if v is not None})
     return out
-
-
-def _range(step: str, min: float | None, max: float | None,
-           inclusive: tuple[bool, bool] | None) -> dict[str, Any]:
-    flags = {} if inclusive is None else {"min_inclusive": inclusive[0],
-                                         "max_inclusive": inclusive[1]}
-    return dict(_given(step, min=min, max=max), **flags)
 
 
 @dataclass(frozen=True)
@@ -108,35 +114,34 @@ class AddQa:
 
 @dataclass(frozen=True)
 class ThermalRange:
-    """thermal_range: keep only the observations whose thermal row lies in ``(min, max)``,
-    degrees Celsius; an inclusive end also keeps a value equal to it. None: pyccd's -93.2 and
-    70.7, exclusive. A procedure with ``thermal_transform`` tests the transformed row; one
-    without it tests the row as the input holds it against the bounds taken back through the
-    input's transform, so the range is in degrees Celsius on every input. An input without a
-    ``"thermal"`` row skips the step."""
+    """thermal_range: keep only the observations whose thermal row lies in ``celsius``,
+    ``(min, max)`` in degrees Celsius; an end ``inclusive`` also keeps a value equal to it
+    (``inclusive=(False, True)``). None: pyccd's -93.2 and 70.7, exclusive. A procedure with
+    ``thermal_transform`` tests the transformed row; one without it tests the row as the input
+    holds it against the bounds taken back through the input's transform, so the range is in
+    degrees Celsius on every input. An input without a ``"thermal"`` row skips the step."""
 
-    min: float | None = None
-    max: float | None = None
+    celsius: tuple[float, float] | None = None
     inclusive: tuple[bool, bool] | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "inclusive", _pair(self.inclusive, "inclusive"))
+        object.__setattr__(self, "celsius", _ends(self.celsius, "ThermalRange: celsius"))
+        object.__setattr__(self, "inclusive", _flags(self.inclusive, "ThermalRange: inclusive"))
 
     def to_dict(self) -> dict[str, Any]:
-        return _range("thermal_range", self.min, self.max, self.inclusive)
+        return _given("thermal_range", celsius=_list(self.celsius), inclusive=_list(self.inclusive))
 
 
 @dataclass(frozen=True)
 class BandRange:
     """band_range: keep only the observations on which every band of ``bands`` lies in
-    ``(min, max)``, reflectance; an inclusive end also keeps a value equal to it. ``bands`` is
-    roles (or rows), tested in order, or ``"reflective"``: every row whose role is not thermal
-    or other, in row order. An empty list is refused. None: ``"reflective"``, 0 and 1,
-    exclusive."""
+    ``reflectance``, ``(min, max)`` in reflectance; an end ``inclusive`` also keeps a value
+    equal to it. ``bands`` is roles (or rows), tested in order, or ``"reflective"``: every row
+    whose role is not thermal or other, in row order. An empty list is refused. None:
+    ``"reflective"``, 0 and 1, exclusive."""
 
     bands: str | tuple[str | int, ...] | None = None
-    min: float | None = None
-    max: float | None = None
+    reflectance: tuple[float, float] | None = None
     inclusive: tuple[bool, bool] | None = None
 
     def __post_init__(self) -> None:
@@ -146,13 +151,13 @@ class BandRange:
                 raise ValueError(f"BandRange: bands is empty; name the bands tested, or "
                                  f"{REFLECTIVE!r}")
             object.__setattr__(self, "bands", bands)
-        object.__setattr__(self, "inclusive", _pair(self.inclusive, "inclusive"))
+        object.__setattr__(self, "reflectance", _ends(self.reflectance, "BandRange: reflectance"))
+        object.__setattr__(self, "inclusive", _flags(self.inclusive, "BandRange: inclusive"))
 
     def to_dict(self) -> dict[str, Any]:
-        out = _range("band_range", self.min, self.max, self.inclusive)
-        if self.bands is not None:
-            out["bands"] = self.bands if self.bands == REFLECTIVE else list(self.bands)
-        return out
+        bands = self.bands if self.bands is None or self.bands == REFLECTIVE else list(self.bands)
+        return _given("band_range", bands=bands, reflectance=_list(self.reflectance),
+                      inclusive=_list(self.inclusive))
 
 
 @dataclass(frozen=True)

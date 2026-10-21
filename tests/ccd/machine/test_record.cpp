@@ -483,6 +483,16 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
                             v.push_back(0);
                             return v;
                         }
+                        else if constexpr (std::is_same_v<T, std::vector<double>>)
+                        {
+                            v[0] += 0.5;
+                            return ccd::config::reals(v);
+                        }
+                        else if constexpr (std::is_same_v<T, std::vector<bool>>)
+                        {
+                            v[0] = !v[0];
+                            return ccd::config::flags(v);
+                        }
                         else
                             return ccd::config::integer(v + 1);
                     },
