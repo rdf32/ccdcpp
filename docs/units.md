@@ -1,8 +1,29 @@
 # Input units
 
-The input says only how to read the data. The configuration says what to do with it, in
-physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
-exactly as today.
+| | Example |
+|---|---|
+| The input says only how to read the data. | `presets.landsat_c1_physical().input()`: reflectance 0..1 (`reflectance_scale` 1) and thermal in degrees Celsius / 100 (`thermal_at_100c` 1), with the identity thermal transform. |
+| The configuration says what to do with it, in physical units. | `ccdc`'s `thermal_range` keeps -93.2 to 70.7 °C, whatever the input. |
+| The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | On `ccdcpp.Input()` that range is `-9320 < x < 7070` and `band_range` `0 < x < 10000`; on the physical-unit input `-0.932 < x < 0.707` and `0 < x < 1`. |
+
+```python
+import ccdcpp
+from ccdcpp import presets
+
+physical = presets.landsat_c1_physical().input()
+print(physical.reflectance_scale, physical.thermal_at_100c, physical.thermal_scale, physical.thermal_offset)
+print(ccdcpp.config("ccdc").preprocess("standard")["steps"][1])
+for encoding in (ccdcpp.Input(), physical):
+    standard = ccdcpp.plan_of("ccdc", encoding).standard
+    print(standard.chain[1], standard.chain[2])
+```
+
+```text
+1.0 1.0 1.0 0.0
+{'step': 'thermal_range', 'min': -93.2, 'max': 70.7, 'min_inclusive': False, 'max_inclusive': False}
+<Step ThermalRange band 6, -9320 < x < 7070> <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000>
+<Step ThermalRange band 6, -0.932 < x < 0.707> <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 1>
+```
 
 ## The boundary
 
@@ -33,7 +54,19 @@ transform (10, -27315) to Celsius x 100, `thermal_at_100c` 10000), "ccdc" resolv
 | `green_median` offset +0.04 | +400 | difference: `r * 10000` |
 
 `ccdcpp.plan_of(config, encoding)` shows the resolved preprocessing and `Config.resolve(encoding)`
-every resolved value.
+every resolved value:
+
+```python
+r = ccdcpp.config("ccdc").resolve(ccdcpp.Input())
+green = ccdcpp.plan_of("ccdc", ccdcpp.Input()).insufficient_clear.chain[3]
+print(r["stages"]["model"]["params"]["alpha"], r["stages"]["model"]["params"]["coef_floor"])
+print(green)
+```
+
+```text
+1.0 1.0
+<Step GreenMedian band 1, drop x >= median(every date) + 400, scope StatWindow>
+```
 
 ## The encoding
 
@@ -67,8 +100,7 @@ the reflective rows and in the thermal row, as stored. Which products store one 
 | HLS v2.0 | none (no saturation value or QA) | HLS v2.0 User Guide |
 | Sentinel-2 L2A | 65535, in the raw DN, before `BOA_ADD_OFFSET` and the quantification | L2A product format |
 
-A shipped profile declares a code only when its stored encoding is the product's own: today
-only `presets.landsat_c1_dn()`, 20000 and 20000. The codes do not survive conversion to
+A shipped profile declares a code only when its stored encoding is the product's own: only `presets.landsat_c1_dn()`, 20000 and 20000. The codes do not survive conversion to
 reflectance: once the data is scaled (and offset), the code is a value like any other, so a
 profile of converted data, `landsat_c1_physical()` and the reflectance profiles of the other
 products, declares none. An input in a product's stored encoding (Collection-2 ARD DN, say)

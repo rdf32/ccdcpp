@@ -38,9 +38,9 @@ The procedure choice (the `pyccd` mode's, with its parameters):
 | else | InsufficientClear | `ccd::fit_whole_series`, curve_qa 44 |
 
 The whole-series fit has no loop, so it is a function, not a machine. With fewer than the
-`lasso` edge fit's `min_observations` (12) kept observations it returns no segment, with the
+`lasso` edge fit's `min_observations` (the shared value, 12) kept observations it returns no segment, with the
 processing mask. Otherwise it returns one segment over the whole series, every band fitted with
-the edge fit's `coefficients` (4).
+the edge fit's `coefficients` (the shared `coefficient_min`, 4).
 
 ## 2. The Standard machine
 
@@ -191,13 +191,15 @@ OpenMP thread.
 The machine's phases and routes are fixed; what a phase decides is a **stage**, decided by the
 **strategy** the run's configuration names for it (`include/ccd/strategies/stages.hpp`). A
 strategy returns its decision and the machine routes on it; a strategy never steers the machine.
-The run builds its strategies once per call, through the registry
-(`include/ccd/config/registry.hpp`, `ccd::strategies::core_registry()`), from a configuration of
-one `{strategy, parameters}` per stage, and hands them to the machine in `Context::strategies`.
-Each strategy declares its parameters once, as a schema (`include/ccd/config/params.hpp`), which
-checks a configuration's values (unknown names, types, ranges) when the strategy is built. A
-parameter is a flag, a whole number, a real, a name or a band list (indices into the spectral
-rows, `config::bands({1, 4})`).
+The run's `ccd::Algorithm` builds its strategies once per input, through the registry
+(`include/ccd/config/registry.hpp`, `ccd::strategies::library_registry()`), from a configuration
+of shared values and one `{strategy, parameters}` per stage resolved against the input, and the
+run hands them to the machine in `Context::strategies`. Each strategy declares its parameters
+once, as a schema (`include/ccd/config/params.hpp`), which checks a configuration's values
+(unknown names, types, ranges) when the `Algorithm` is built, and says where each value comes
+from: the stage's own, a shared value, or the chi-squared quantile of a shared probability. A
+parameter is a flag, a whole number, a real, a name or a band list (roles, `config::roles({"green",
+"swir1"})`, or rows, `config::bands({1, 4})`).
 
 | Stage | Decides | Strategies |
 |---|---|---|
@@ -386,6 +388,7 @@ strategy uses it.
 while (state.phase != Phase::Done)
 {
     const Phase next = Machine::step(context, state);
+    // with an observer (CCD_OBSERVE): context.observe.observer->event(pixel, the transition)
     LOG_DEBUG(Machine::name << ": " << to_string(state.phase) << " -> "
               << to_string(next) << " | " << summary(state));
     state.phase = next;
@@ -396,8 +399,9 @@ while (state.phase != Phase::Done)
 is reset, drive, take the result. A machine supplies its types, its `step`, a name, and
 `to_string(Phase)` and `summary(State)` for the trace.
 
-The trace is one DEBUG line per transition through the library's logger, so the log level is
-its only switch; below DEBUG (the default) it compiles to nothing. A build with
+An observer (`RunSpec::observer`, [diagnostics.md](diagnostics.md)) is told each transition with
+the cursor as the step left it. The log trace is one DEBUG line per transition through the
+library's logger, so the log level is its only switch; below DEBUG (the default) it compiles to nothing. A build with
 `-DMAX_LOG_LEVEL=0` prints, for each pixel, lines such as:
 
 ```
@@ -467,7 +471,7 @@ leaves the machine implicit:
 - results travel back up as tuples, so each function is a fragment its caller reassembles.
 
 In ccdcpp each of these is a named thing: a transition returns its next phase; the record has
-`extension.trained` and `segments`; `Cadence` holds the per-pixel values and the options are
+`extension.trained` and `segments`; `Cadence` holds the per-pixel values and the configuration is
 const; `MaskedSeries` keeps the mask and the kept observations in step and owns the coordinate
 rule; the result is taken from the record once the machine is done.
 
@@ -509,7 +513,7 @@ Another change-detection procedure, one that replaces Standard's change test, sa
 initialization, is a configuration of the same machine: its strategies for the stages it
 changes (an extension's, `CCD_EXTENSIONS`), registered by name, and the routes of section 3's
 "The routes other strategies take". It needs no machine or detector of its own; a run
-names it in `RunSpec::config`, and its suspension is kept only while it takes routes a resume
+names it in `RunSpec::algorithm`, and its suspension is kept only while it takes routes a resume
 continues (`State::resumable`).
 
 A segment reports each band's fit as a `BandFit` (`ChangeModel::bands`): intercept,

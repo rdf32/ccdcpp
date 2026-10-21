@@ -7,33 +7,48 @@ run's output changes: an observed run's results are the unobserved run's, bit fo
 
 ## From Python
 
+`detect(..., trace=True)` returns `"trace"`, one dict per event, ready for `pandas.DataFrame`.
+The example is the README's [quick-start pixel](../README.md#one-pixel):
+
 ```python
 import pandas as pd
 import ccdcpp
 
 out = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2(), trace=True)
 trace = pd.DataFrame(out["trace"])
-print(trace[["kind", "phase", "next", "window_start", "window_stop", "day", "outcome"]].head())
-#          kind       phase        next  window_start  window_stop     day     outcome
-# 0  transition     Prepare  Initialize             0           12       0
-# 1  transition  Initialize      Extend             0           12       0
-# 2        test                                     0            0  724929   no change
-# 3  transition      Extend      Extend             0           13       0
-# ...
+print(trace[["kind", "phase", "next", "window_start", "window_stop"]].head(3).to_string())
 
 # Where the change tests fired, and their statistics (one per peek observation):
-trace[trace.kind == "test"].query("outcome == 'change'")[["day", "values"]]
+change = trace[(trace.kind == "test") & (trace.outcome == "change")]
+print(change.day.tolist(), [round(v, 1) for v in change["values"].iloc[0]])
 
 # The segments, as the run wrote them:
-trace[trace.kind == "segment"][["day", "day_to", "outcome", "observations"]]
+print(trace[trace.kind == "segment"][["day", "day_to", "observations"]].to_string())
+print(out["models"] == ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2())["models"])
 ```
 
-For a cube, name the pixels:
+```text
+         kind       phase        next  window_start  window_stop
+0  transition     Prepare  Initialize             0           12
+1  transition  Initialize  Initialize             0           13
+2  transition  Initialize  Initialize             0           14
+[734664] [132.2, 95.0, 69.5, 71.1, 63.7, 53.6]
+        day  day_to  observations
+449  730136  734648           239
+682  734664  737256           131
+True
+```
+
+For a cube, name the pixels; `"traces"` holds each one's events:
 
 ```python
-out = ccdcpp.detect_cube(dates, stack, qas, encoding=..., threads=8,
-                         trace_pixels=[(120, 37), (400, 12)])
-pd.DataFrame(out["traces"][(120, 37)])
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=ccdcpp.presets.landsat_c2(), threads=4,
+                          trace_pixels=[(1, 2), (2, 3)])
+print(sorted(cols["traces"]), pd.DataFrame(cols["traces"][(2, 3)]).kind.iloc[-1])
+```
+
+```text
+[(1, 2), (2, 3)] exit
 ```
 
 Each event is a dict:
@@ -49,25 +64,39 @@ Each event is a dict:
 
 The whole-series pixels (insufficient clear, permanent snow) take no machine and report
 nothing. A resumed pixel reports from its Prepare on, then from where the stored run stopped.
-`detect` observes its one pixel whatever `RunSpec::observe` holds.
 
 ## From C++
 
+An observer is `RunSpec::observer`; `ccd::TextObserver` prints each event as one line.
+`RunSpec::observe` names a cube's observed pixels by flat index (`row * W + col`; empty, the
+default, observes every pixel); `detect` observes its one pixel whatever it holds.
+
 ```cpp
+#include <iostream>
+
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/run/run.hpp"
 
-ccd::RunSpec spec;
-spec.encoding = input;             // ccd::Input, the data's encoding
-spec.observer = std::make_shared<ccd::TextObserver>(std::cerr);
-ccd::detect(spec, dates, spectral, qas);
-// pixel 0: transition Prepare -> Initialize window (0, 12) prev_break 0 n 302
-// pixel 0: transition Initialize -> Extend window (0, 12) prev_break 0 n 302
-// pixel 0: test 724929 no change [0.689656, 3.20607, 0.835624, 2.40568, 0.562177, 1.86732]
-// ...
+void observed(const ccd::Input& input, ccd::ArrayView<const std::int64_t, 1> dates,
+              ccd::ArrayView<const double, 2> spectral, ccd::ArrayView<const std::uint8_t, 1> qas,
+              ccd::ArrayView<const double, 4> cube, ccd::ArrayView<const std::uint8_t, 3> cube_qa)
+{
+    ccd::RunSpec spec;
+    spec.encoding = input;             // ccd::Input, the data's encoding
+    spec.observer = std::make_shared<ccd::TextObserver>(std::cerr);
+    ccd::detect(spec, dates, spectral, qas);
 
-spec.observe = {120 * W + 37};     // a cube run: only these pixels (row * W + col)
-ccd::detect_cube(spec, dates, cube, qas, 8);
+    const ccd::index_t W = cube.shape()[1];
+    spec.observe = {1 * W + 2};        // a cube run: only pixel (1, 2)
+    ccd::detect_cube(spec, dates, cube, cube_qa, 8);
+}
+```
+
+Its lines read like these:
+
+```text
+pixel 0: transition Prepare -> Initialize window (0, 12) prev_break 0 n 392
+pixel 0: transition Initialize -> Initialize window (0, 13) prev_break 0 n 392
 ```
 
 An `Observer` implements one call, `event(pixel, const ObserverEvent&)`; in a cube run it is

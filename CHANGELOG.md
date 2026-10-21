@@ -1,254 +1,107 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 - Unreleased
 
-1.0: the input says only how to read the data; the configuration says what to do with it, in
-physical units; the run translates once (0–1 reflectance × 10000 = the 0–10000 DN check, exactly
-as before). One state machine runs the CCDC phases, and each of its decisions is a **stage**
-decided by a named **strategy** with parameters; the "ccdc" configuration is pyccd's algorithm,
-each core strategy and preprocessing step at its defaults. Every output is bit-identical to
-0.10.0 (the same segments, coefficients, RMSEs and magnitudes) for a run with its 0.10.0 options
-moved to the input and the configuration, its `STAT_ORD` included: the "ccdc" configuration has
-no statistics cutoff, where 0.10.0's Landsat default was 2017-12-31. A 0.10.0 resume record is
-refused, so the first run after upgrading is a full one. `docs/migration-1.0.md` maps every
-removed name to its replacement; `docs/config.md` describes the configuration.
+The input says only how to read the data; the configuration says what to do with it, in
+physical units; the run translates once (0–1 reflectance × 10000 = the 0–10000 DN check, as in
+0.10.0). Two calls, `detect` and `detect_cube`, take the data's encoding (`encoding=`) and a
+configuration (`config=`, the `ccdc` preset by default) in Python and C++. One state machine runs
+the CCDC phases, and each of its decisions is a stage decided by a named strategy. Outputs are
+0.10.0's bit for bit for the same input, configuration and statistics cutoff, except for two
+deliberate changes of defaults: `ccdc` has no statistics cutoff, and the PermanentSnow and
+InsufficientClear chains test no thermal range. 0.10.0 resume records are refused: rerun once
+with `record=True`. [docs/migration-1.0.md](docs/migration-1.0.md) maps every 0.10.0 name to
+its replacement.
 
 ### Changed
 
-- **"ccdc" tests the thermal range in the Standard procedure only**: the PermanentSnow and
-  InsufficientClear chains have no `thermal_range` step, where pyccd tests their untransformed
-  thermal band against the Celsius bounds; Collection-1 DN outputs are unchanged, and inputs in
-  other units keep the clear and water observations that test dropped there.
-- **The "ccdc" configuration has no statistics cutoff** (`shared.statistics_end` is
-  `NO_STATISTICS_END`): the procedure choice, the cadence, the variogram and the green median read
-  the whole series. 0.10.0 and pyccd stop them at 2017-12-31 (ordinal 736694), so a series with
-  observations after 2017 can give other outputs; `config("ccdc").replace(shared__statistics_end=736694)`
-  runs pyccd's cutoff, bit for bit as 0.10.0. A resumed run still freezes the statistics at the
-  first run's series end.
-- **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and says only how to read the
-  data: the QA codes (`qa_fill`, ...), the QA table that decodes raw QA (`qa_table`, which
-  replaces every `qa_table=` argument and `RunSpec::qa_table`; a `QaTable` is immutable and
-  digests its codes once), a role per row (`roles`, replacing `NUM_BANDS` and the `*_IDX`
-  fields), the reflectance encoding (`reflectance_scale` and `reflectance_offset`: reflectance r
-  is held as `r * reflectance_scale + reflectance_offset`; Collection-1 DN 10000 and 0,
-  reflectance 1 and 0), the thermal transform (`thermal_scale`, `thermal_offset`) with
-  `thermal_at_100c` (the value 100 °C has after it: 10000 for Celsius x 100, 1 for Celsius / 100)
-  and the saturation codes `saturation_code` and `thermal_saturation_code` (the values a saturated
-  observation holds in the reflective rows and the thermal row, in the stored encoding, before
-  any transform; `None`, the default, or as `presets.landsat_c1_dn()` declares, 20000 and
-  20000).
-  The Python `Input` is immutable: `Input(**fields)` by keyword, `replace(**fields)` for a
-  changed copy, equal and hashed by value. `CLEAR_OBSERVATION_THRESHOLD`, which nothing read,
-  is gone. Every algorithm field of 0.10.0 (`MEOW_SIZE`, `PEEK_SIZE`, ...,
-  `TMASK_BANDS`, `DETECTION_BANDS`, `STAT_ORD`) and `LassoOptions`' four are values of the
-  configuration: `shared` values read by every stage that needs them (`detection_bands` by
-  role, `change_probability`, `outlier_probability`, `alpha`, `coef_floor`, `max_iter`,
-  `tolerance`, the coefficient rule, `min_observations`, `statistics_end`), or `stage__parameter`
-  parameters. `MEOW_SIZE` is the shared `min_observations`, the fewest observations a curve is
-  fitted on, which the start search reads as its `meow_size` and the edge fit as its
-  `min_observations`. The change
-  and outlier thresholds are the chi-squared quantiles of the probabilities for the
-  detection-band count. `LassoOptions` remains the solver's own options type, inside the
-  `lasso` strategies.
-- **The configuration is in physical units** and means the same on every input: reflectance
-  levels (the preprocessing's reflectance bounds) resolve as `r * reflectance_scale +
-  reflectance_offset`, reflectance differences (`alpha`, `coef_floor`, the green median's
-  offset) as `r * reflectance_scale`, degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, bands are named by role and QA codes by name, all when the run resolves the
-  configuration against its input, once per input (`ccd::Algorithm`, which caches the
-  resolutions of the 16 inputs used last).
-- **The preprocessing chain is part of the configuration**: a `preprocess` section holds, per
-  procedure (`standard`, `snow`, `insufficient_clear`), whether it applies the input's thermal
-  transform and its steps (`keep_qa`, `add_qa`, `thermal_range` in degrees Celsius,
-  `band_range` in reflectance, `green_median` with its offset and scope, `dedupe`). The input's
-  `REFL_*`, `THERM_*`, `MEDIAN_GREEN_FILTER` and `GREEN_FILTER_SCOPE` are those steps'
-  parameters, and `SATURATION_BANDS` is `band_range`'s `bands`: roles, or `"reflective"` (the
-  "ccdc" value), every row whose role is not thermal or other, in row order. `preprocess=`, `RunSpec::plan`, `default_plan()` and `validate_plan()` are gone;
-  `plan_of()` (C++ and Python) returns the resolved plan for inspection.
-- **Profiles describe the data only**: a `SensorProfile` holds band names and roles, `units`
-  (`scale`, `offset`), `thermal` (`scale`, `offset`, `at_100c`), `saturation_code`, `thermal_saturation_code` and the QA
-  table builder; `CELSIUS_HUNDREDTHS` is `CELSIUS_OVER_100` (thermal in degrees Celsius / 100). `profile.input()` replaces `profile.options()` and carries the QA
-  table (`profile.qa_table()` is gone); `config()`, `alpha`, `coef_floor`, `detection`,
-  `tmask`, `cadence`, `stat_ord`, `green_filter_scope`, `preprocess` and the bounds of `Units`
-  and `Thermal` are gone. The default configuration is "ccdc", with or without a profile; a
-  denser cadence or another cutoff is a configuration.
-- **The resume digest** is of the input (its QA table included) and the resolved configuration
-  (its preprocessing included), so a 0.10.0 record is refused ("the resume record was made
-  with another input or configuration") before any pixel runs; rerun the detection once with
-  `record=True` to store new records. The header's `options_digest` is `digest`
-  (`ResumeHeader::digest`, `resume_header["digest"]`). `RESULTS_VERSION` stays 2.
-- **Checks.** `validate()` checks the input; the configuration's parameter schemas check the
-  algorithm when it is compiled (`ccd::Algorithm`, `ccdcpp.Config`), with `std::invalid_argument` (`ValueError` in Python) naming
-  stage, strategy and parameter: `PEEK_SIZE is 1; it must be at least 2` is `change_test 'chi2'
-  parameter 'peek_size' is 1; it must be at least 2`, `COEFFICIENT_MAX is 9; the harmonic basis
-  has at most 8` is `model 'lasso' parameter 'coefficient_max' is 9; the harmonic basis has at most 8`,
-  `TMASK_BANDS is empty` is `window_screen 'tmask' parameter 'bands' is empty`, and a band list
-  past the input is `window_screen 'tmask' parameter 'bands' holds band 12; the input has 10
-  bands`. A `MEOW_SIZE` of 0, a NaN change or outlier threshold, and negative or NaN Lasso
-  constants (`alpha`, `tolerance`, `coef_floor`) ran in 0.10.0 and are refused
-  (`model 'lasso' parameter 'alpha' is -1; it must be at least 0`).
-- **The C++ entry points are `ccd::detect` and `ccd::detect_cube`** (`include/ccd/run/run.hpp`),
-  the Python calls' names, replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube`
-  and `resume_cube` overloads. A call runs one `ccd::RunSpec` `{encoding, algorithm, record,
-  masks, observer, observe}`; `masks` (default false, as Python's) keeps each pixel's processing
-  mask, which `keep_masks` kept by default; `algorithm` is a compiled configuration (`ccd::Algorithm`,
-  `include/ccd/run/algorithm.hpp`: checked when built, resolved and built once per input), the
-  "ccdc" preset's (`Algorithm::preset("ccdc")`) by default. The values and QA are views of any
-  supported element type (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`), dispatched
-  once per call; a resume is an argument (`PixelResume`, `CubeResumeFrom`). `detect` returns
-  a `PixelOutput` (result, record, status, header), `detect_cube` a `CubeOutput` (`CubeResult`'s
-  fields, the cube's shape and, with `masks`, every pixel's processing mask in one (H, W, T)
-  array that each pixel writes its mask into, `CubeOutput::masks`).
-  Underneath, a `ccd::Run` is built once per call and a `ccd::Worker` per thread; `Run::pixel`
-  is the per-pixel pipeline as named steps. Gone from `ccd.hpp`: `Recorded` and `Resumed` (both
-  `PixelOutput`), `DetectScratch` (`Worker`), `options_digest()` (the header's `digest` is the
-  resolution's), and the debugging helpers `Clock`, `elapsed_ms` and `print_change_model(s)`;
-  `ccd.hpp` no longer includes `<iostream>`, `<chrono>`, `<string>` or `<vector>`.
-- **Python: two calls.** `ccdcpp.detect(dates, spectral, qas, *, encoding, config="ccdc",
-  record=False, resume=None, band_names=None, trace=False)` and `ccdcpp.detect_cube(..., *,
-  encoding, config="ccdc", threads=0, record=False, resume=None, band_names=None,
-  trace_pixels=None, masks=False)`, which returns the columns 0.10.0's `detect_cube_columns`
-  returned, names and dtypes unchanged (with `masks=True` also `processing_mask`, every pixel's
-  mask in one `(H, W, T)` uint8 array); `ccdcpp.to_pixels(out)` reads them per pixel.
-  `encoding=` (named so as not to shadow Python's `input()`) is a `ccdcpp.Input` or a
-  `SensorProfile`; `config=` a `ccdcpp.Config` or a preset's name.
-  `resume=` is an earlier call's output made with `record=True` (replacing `resume_record=`),
-  refused unless the input and configuration match. `profile=`, `hoptions=`, `qa_table=`,
-  `preprocess=`, `ccdcpp.LassoOptions`, `loptions`, `ccdcpp.CADENCE_FIELDS`,
-  `detect_cube_columns`, `resume`, `resume_cube_columns` and the per-pixel-dict `detect_cube`
-  are gone. A `ccdcpp.Config` is checked and compiled when it is built.
-
-  ```python
-  cfg = ccdcpp.config("ccdc").replace(refit__factor=2.0, shared__change_probability=0.995)
-  out = ccdcpp.detect_cube(dates, cube, qa, encoding=ccdcpp.presets.landsat_c2(), config=cfg,
-                           threads=8)
-  ```
-- **The Python package is typed** (PEP 561, `py.typed`): every function and method carries
-  parameter and return types, and `ccdcpp.pyi` and `qa_tables.pyi` type the compiled extension
-  (`tests/python/test_stub.py` checks that they name what the extension has). The results of
-  `detect`, `detect_cube` and `to_pixels` are `TypedDict`s in `ccdcpp.results` (`PixelResult`,
-  `CubeColumns`, `Pixel`, ...); at run time they stay plain dicts.
-- **The pixel's data is `ccd::PixelSeries`** (`include/ccd/input/pixel_series.hpp`, replacing
-  `HarmonicWorkspace`): the pixel's dates, values and QA codes as views, and the run's input and
-  resolved shared values by reference. `harmonic_terms()` (`regression/harmonic_basis.hpp`) is
-  the one computation of the model's harmonic terms, which `HarmonicBasis` fills its columns
-  from.
-- **Peek statistics have names**: a `PeekResult` holds the change test's per-observation
-  statistics by name (`ChangeTest::statistics()`; chi2's `change_magnitude`), and the `floored`
-  outlier rule's `statistic` parameter names the one it reads; the registry refuses a
-  configuration whose change test does not provide it. `Capability::PeekStatistic` is gone.
-- **The source layout** (headers under `include/ccd/`, sources under `src/ccd/`, tests under
-  `tests/ccd/` mirror each other): `core/` (types, array views, band lists, constants, maths,
-  the logger), `input/` (the QA table, the processing mask, `harmonic.hpp` with the options and
-  the pixel series, QA statistics, the masked series, and `input/mask/` with the filters and
-  the preprocessing plan), `regression/`, `config/`, `strategies/` (one directory per stage),
-  `machine/` (the driver, the Standard machine, its kernels, the shared fit types, the
-  per-pixel procedure), `results/` (the resume record, diagnostics) and `run/`.
-  `#include "ccd/..."` paths change accordingly (e.g. `ccd/types.hpp` is `ccd/core/types.hpp`,
-  `ccd/procedure/standard.hpp` is `ccd/machine/standard.hpp`, `ccd/record.hpp` is
-  `ccd/results/record.hpp`); `ccd/ccd.hpp` includes every header. Tests under
-  `tests/ccd/procedure/` are under `tests/ccd/machine/`.
-- **The Standard machine asks the run's strategies** for every decision it made itself.
-  `standard::Context` carries the `ccd::Strategies`; `Context`, `Procedure` and `Detector` hold
-  no Lasso workspace or solver (each strategy holds its own, per thread, in a `ccd::Scratch`).
-  `select_procedure()`, `standard::measure_cadence()` and `standard::coefficient_count()` are
-  gone (the `mode` stage, the change test's `prepare()`, the fits' `CoefficientRule`);
-  `standard::initialize_criteria()` takes the stability fit's rule; `standard::Cadence` is the
-  change test's peek plan; `peek_residuals` and `change_magnitude` are shared kernels
-  (`ccd::peek_residuals`, `ccd::change_magnitude`, `machine/kernels.hpp`). A record stores no
-  suspension for a run that takes a route a resume cannot continue (shortened peeks,
-  `Undecided`, `EndSeries`, a forced or restored search, drops before a change, no fit, a
-  mode's mask steps or cap): a resume reruns that pixel.
+- **No statistics cutoff by default.** `ccdc`'s `shared.statistics_end` is `NO_STATISTICS_END`:
+  the QA statistics, the cadence, the variogram and the green median read the whole series.
+  0.10.0 and pyccd stopped them at 2017-12-31 (ordinal 736694), LCMAP's 2018 production
+  baseline; `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` is that run, bit for
+  bit. On the Atlanta cell (h024v013, 250,000 pixels) 57.1% of the pixels differ, 6.5% in their
+  segment count.
+- **The thermal range is tested in the Standard procedure only.** pyccd's PermanentSnow and
+  InsufficientClear filters test the untransformed thermal band against the Celsius bounds;
+  `ccdc`'s `snow` and `insufficient_clear` chains have no `thermal_range` step. Collection-1 DN
+  outputs are unchanged; on reflectance inputs snow and insufficient-clear pixels can change,
+  and a physical-unit run segments as the DN run does.
+- **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and holds the encoding only: QA
+  codes and `qa_table`, `roles`, `reflectance_scale`/`reflectance_offset`,
+  `thermal_scale`/`thermal_offset` with `thermal_at_100c`, `saturation_code` and
+  `thermal_saturation_code`. Immutable in Python (`Input(**fields)`, `replace()`).
+- **The algorithm is a configuration** (`config::Config`, `ccdcpp.Config`): `shared` values,
+  13 stages each with a strategy and its parameters, and a preprocessing chain per procedure, in
+  physical units (reflectance, degrees Celsius, probabilities, bands by role, QA codes by name).
+  Every 0.10.0 algorithm field and `LassoOptions`' constants are values of it; thresholds are
+  derived from probabilities. It is checked and compiled when built (`ccd::Algorithm`) and
+  resolved once per input.
+- **Python: two calls.** `detect(dates, spectral, qas, *, encoding, config="ccdc", record=False,
+  resume=None, band_names=None, trace=False)` and `detect_cube(..., *, encoding, config="ccdc",
+  threads=0, record=False, resume=None, band_names=None, trace_pixels=None, masks=False)`, which
+  returns 0.10.0's `detect_cube_columns` columns, names and dtypes unchanged; `resume=` is an
+  earlier call's output.
+- **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{encoding,
+  algorithm, record, masks, observer, observe}` on views of float64, float32 or uint16 values,
+  replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
+  overloads. `RunSpec::masks` is off by default (0.10.0's `keep_masks` was on).
+- **Profiles describe the data only**: `SensorProfile(name, band_names, roles, units, thermal,
+  saturation_code, thermal_saturation_code, qa_table_builder, qa_table_options)`, with
+  `Units(scale, offset)` and `Thermal(scale, offset, at_100c)`; `profile.input()` replaces
+  `options()` and `qa_table()`. `CELSIUS_HUNDREDTHS` is `CELSIUS_OVER_100`.
+- **Error messages** name the stage, strategy and parameter (`change_test 'chi2' parameter
+  'peek_size' is 1; it must be at least 2`), or `shared` for a shared value.
+- **Resume**: the header's digest (`digest`, was `options_digest`) covers the input and the
+  resolved configuration, so a 0.10.0 record is refused. `RESULTS_VERSION` stays 2.
+- **The source layout**: `include/ccd/` and `src/ccd/` in `core/`, `input/`, `regression/`,
+  `config/`, `strategies/`, `machine/`, `results/` and `run/`; `ccd/ccd.hpp` includes every
+  header. `HarmonicWorkspace` is `PixelSeries`.
 
 ### Added
 
-- **Stages and strategies** (`include/ccd/strategies/stages.hpp`, one directory per stage under
-  `strategies/`; `docs/ccdc-state-machine.md`). Thirteen stages, each an interface with its
-  core strategy, pyccd's decision at its defaults:
-  - `mode` (`ccd::ModeRule`, `pyccd`): the pixel's `PixelMode`
-    (`include/ccd/machine/pixel_procedure.hpp`): its procedure, mask steps after the
-    procedure's chain (`preprocess::apply_steps()`) and a cap on its segments' coefficients.
-  - `noise_floor` (`ccd::NoiseFloor`, `variogram`).
-  - `start_search` (`ccd::StartSearch`, `pyccd`): where the start-window search begins and
-    ends; `begin()` returns its `SearchPlan` (the last day it reads, what it does exhausted:
-    `Exhaustion::End`, `Restore` the window screen's drops, or `Force` the start `forced()`
-    names; whether a resume may continue it).
-  - `window_screen` (`ccd::WindowScreen`, `tmask`), `stability_fit` (a `ccd::Model`, `lasso`)
-    and `stability_rule` (`ccd::StabilityRule`, `pyccd`): Initialize's outlier screen, fit and
-    stability check.
-  - `lookback` (`ccd::Lookback`, `pyccd`): `judge()` returns a `LookbackJudgement` (Change,
-    Drop or Include).
-  - `model` (`ccd::MonitoringModel` making a `ccd::Model`, `include/ccd/strategies/model.hpp`;
-    `lasso`, pyccd's Lasso with its own solver): the model Extend fits, tests each peek against
-    and writes each segment from; `fit()` returns whether the window could be fitted (a model
-    that cannot ends the series, `Exit::NoFit`), `extend()` refits a window grown at its end.
-  - `refit` (`ccd::RefitSchedule`, `span-factor`).
-  - `change_test` (`ccd::ChangeTest`, `chi2`): `prepare()` returns the pixel's `PeekPlan` (the
-    peek; `full`, otherwise the peek is shortened at the series end; `min_window`, a smaller
-    window grows untested; `reference`, the peek its threshold is for); `test()` returns
-    `TestOutcome::Change`, `NoChange` or `Undecided` (ends the series) and writes a
-    `ccd::PeekResult`; `break_at()` and `magnitude()` give the break and magnitudes. The
-    stability rule and Lookback are prepared with its `PeekPlan`; their `peek` parameter is 0
-    for its peek or N for a peek of N.
-  - `outlier` (`ccd::OutlierRule`, `floored`): `Keep`, `Drop` or `EndSeries`.
-  - `segment_fit` (`ccd::SegmentFit`, `model-fit`): a segment's coefficients, under the mode's
-    cap; `unfitted()` is a forced start's segment when the series ends before Extend fits it.
-  - `edge_fit` (`ccd::EdgeFit`, `lasso`): the Start, End and whole-series fits, and whether the
-    Start and End segments are written (`start_due()`, `end_due()`).
+- Stages and strategies (`include/ccd/strategies/`, [docs/ccdc-state-machine.md](docs/ccdc-state-machine.md#stages-and-strategies)):
+  `mode`, `noise_floor`, `start_search`, `window_screen`, `stability_fit`, `stability_rule`,
+  `lookback`, `model`, `refit`, `change_test`, `outlier`, `segment_fit`, `edge_fit`, each with
+  its pyccd strategy; a registry of strategies, steps and presets with parameter schemas;
+  strategy extensions through CMake's `CCD_EXTENSIONS`.
+- Configurations from Python ([docs/config.md](docs/config.md)): `ccdcpp.config()` (a preset,
+  a TOML file with `extends`, a dict), `Config.replace(shared__name=, stage__param=,
+  stage="strategy", preprocess__...=)`, `resolve()`, `hash()`, `to_toml()`;
+  `ccdcpp.strategies()`, `shared_values()`, `steps()`, `plan_of()`; `python/ccdcpp/configs/ccdc.toml`.
+- `detect_cube(masks=True)`: every pixel's processing mask in one `(H, W, T)` uint8 array;
+  `ccdcpp.to_pixels()` reads the columns per pixel.
+- Diagnostics ([docs/diagnostics.md](docs/diagnostics.md)): `ccd::Observer`,
+  `ccd::TextObserver`, `detect(trace=True)` and `detect_cube(trace_pixels=)`, compiled out with
+  `CCD_OBSERVE=OFF`.
+- `Input.saturation_code` and `thermal_saturation_code`, declared by `landsat_c1_dn()` (20000);
+  [docs/units.md](docs/units.md) lists which products store one.
+- Types: `py.typed`, `ccdcpp.pyi`, `qa_tables.pyi`, and the results as `TypedDict`s in
+  `ccdcpp.results`.
+- [docs/benchmarks.md](docs/benchmarks.md) and the bench tools (`tools/bench/`), with peak
+  memory beside every time; per pixel 1.0 runs as fast as 0.10.0.
 
-  The model and stability fit give their coefficient counts as a `CoefficientRule`
-  (`include/ccd/strategies/coefficients.hpp`). Strategies declare what they provide and need
-  (`ccd::Capabilities`, `include/ccd/strategies/capabilities.hpp`, among them
-  `PredictionCovariance`, and the names of the per-observation statistics a change test provides
-  and an outlier rule reads); the registry refuses a configuration missing a stage, or whose
-  strategy needs what no earlier stage provides, naming both.
+### Removed
 
-  ```cpp
-  ccd::PeekPlan prepare(...) const override   // a test of shortened peeks, from 12 observations
-  {
-      return ccd::PeekPlan{18, /*full=*/false, /*min_window=*/12};
-  }
-  ```
-- **The configuration** (`include/ccd/config/registry.hpp`, `params.hpp`, `shared.hpp`,
-  `preprocess.hpp`; `docs/config.md`): `config::Config` (`shared` values, a `StageConfig`,
-  strategy and parameters, per stage, and the `preprocess` section), `config::Registry` (the
-  strategies by stage and the preprocessing step types by name, `add_step()`, their parameter
-  schemas, `schemas()`/`step_schemas()`/`config::ParameterInfo` with units, bounds, sources,
-  defaults and meaning, presets: `add_preset()`, `preset()`, `presets()`, and `resolve()`
-  against an input) and `config::digest()`. Each strategy and step declares its parameters
-  (`config::Field`, `Unit` among them `Reflectance`, `Celsius`, `Bands` and `QaCodes`, `Bounds`,
-  and a `Source`: its own, a shared value, or the chi-squared quantile of one).
-  `ccd::strategies::library_registry()` holds the core strategies and steps, the "ccdc" preset
-  and those of the extensions built in; a step beyond the built-in kinds is a
-  `preprocess::CustomStep`.
-- **The configuration from Python**: `ccdcpp.Config` (immutable, compiled when built;
-  `stages()`, `strategy()`, `params()`, `shared()`, `preprocess()`, `replace(shared__name=,
-  stage__param=, stage="strategy", preprocess__...=)`, `check(encoding)`, `resolve(encoding)`,
-  `hash()`, `to_dict()`, `to_toml()`), `ccdcpp.config(source)` (a preset's name, built once; a
-  TOML file with `extends`; a dict; `ccdcpp/configs/ccdc.toml`), `ccdcpp.strategies()`,
-  `ccdcpp.shared_values()` and `ccdcpp.steps()`, and the step classes `KeepQa`, `AddQa`,
-  `ThermalRange`, `BandRange`, `GreenMedian`, `Dedupe`, `ProcedureChain` and `Preprocess`.
-- **Strategy extensions**: CMake's `CCD_EXTENSIONS` lists extension directories built into the
-  library, each an `extension.cmake` adding its sources, include directories and registration
-  functions, which register its strategies and presets in `library_registry()`.
-- **Diagnostics** (`include/ccd/results/diagnostics.hpp`, `docs/diagnostics.md`): a
-  `ccd::Observer` is told each step of the observed pixels (`RunSpec::observer`,
-  `RunSpec::observe`): every phase transition with the cursor, every Extend change test with its
-  outcome and statistics, every observation a test drops, every segment written, and the
-  pixel's exit. `ccd::TextObserver` prints them. In Python, `detect(trace=True)` returns
-  `"trace"` and `detect_cube(trace_pixels=[(row, col), ...])` returns `"traces"`, one
-  dict per event, ready for `pandas.DataFrame`. The hooks compile out with CMake's
-  `CCD_OBSERVE=OFF` (ON by default); a pixel without an observer costs a pointer test per hook.
-- `docs/benchmarks.md`: the measured speed and memory against PyCCD, the Atlanta cell's thread
-  scaling, 0.10.0 against 0.9.0 and the annual update, with how to repeat each.
-  `tools/bench/bench_pyccd.py` times PyCCD and ccdcpp on the same pixels (and, with `--only`,
-  each one's memory in its own process); `tools/bench/patch_pyccd.py` makes a copy of PyCCD
-  with ccdcpp's corrections, on which every pixel has the same segments; `bench_cell.py` also
-  prints the peak memory after reading the cell. The README's speed claim is the measured one.
+- Python: `HarmonicOptions`, `LassoOptions`, the `hoptions`/`loptions` arguments, `profile=`,
+  `qa_table=`, `preprocess=`, `resume_record=`, `detect_cube_columns`, `resume`,
+  `resume_cube_columns`, the per-pixel-dict `detect_cube`, `default_plan`, `validate_plan`,
+  `Transform`, `DEFAULT_TRANSFORM`, `CADENCE_FIELDS`, `GREEN_FILTER_SCOPES`,
+  `OUTLIER_PROBABILITY`, `QA_CODE_FIELDS`, `NO_STAT_CUTOFF` (`NO_STATISTICS_END`), and the
+  profiles' algorithm fields (`detection`, `tmask`, `saturation`, `alpha`, `coef_floor`,
+  `cadence`, `stat_ord`, `change_threshold`, `outlier_threshold`, `green_filter_scope`,
+  `preprocess`).
+- C++: `HarmonicOptions`, `LassoOptions` as a call argument, `CLEAR_OBSERVATION_THRESHOLD`,
+  `QA_IDX`, `Recorded`, `Resumed`, `CubeResult` (`CubeOutput`), `DetectScratch` (`Worker`),
+  `options_digest()`, `default_plan()`, `PreprocessPlanPtr`, `select_procedure()`,
+  `standard::measure_cadence()`, `standard::coefficient_count()`, `Clock`, `elapsed_ms` and
+  `print_change_model(s)`.
 
 ### Fixed
 
-- A build without OpenMP compiles: the run includes `<omp.h>` only under `_OPENMP` and runs
-  the cube on one thread otherwise (`CubeOutput::threads` is 1).
+- Values 0.10.0 ran are refused when the configuration is built: `NUM_OBS_FACTOR` 0,
+  `MEOW_SIZE` 0 (`min_observations`), a negative or NaN Lasso constant (`alpha`, `coef_floor`,
+  `tolerance`), a NaN change or outlier probability.
+- A build without OpenMP compiles and runs a cube on one thread.
 
 ## 0.10.0 - 2026-10-17
 
