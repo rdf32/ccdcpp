@@ -40,7 +40,7 @@ The procedure choice (the `pyccd` mode's, with its parameters):
 The whole-series fit has no loop, so it is a function, not a machine. With fewer than the
 `lasso` edge_segments' `min_observations` (the shared value, 12) kept observations it returns no segment, with the
 processing mask. Otherwise it returns one segment over the whole series, every band fitted with
-edge_segments' `coefficients` (the shared `coefficients.min`, 4).
+edge_segments' `coefficients.min` (the shared value, 4).
 
 ## 2. The Standard machine
 

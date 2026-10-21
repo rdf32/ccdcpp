@@ -58,7 +58,7 @@ constexpr std::int64_t NO_STATISTICS_END = std::numeric_limits<std::int64_t>::ma
 //                                       (NO_STATISTICS_END) for none
 //   coefficients.min, .mid, .max, .per  the coefficient rule of model and
 //                        none           stability_fit (CoefficientRule);
-//                                       edge_segments' coefficients is min
+//                                       edge_segments reads min
 //   lasso.alpha, .coef_floor            the Lasso of model, stability_fit
 //                        reflectance    and edge_segments (LassoOptions)
 //   lasso.max_iter, .tolerance  none
