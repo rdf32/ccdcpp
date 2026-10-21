@@ -71,13 +71,9 @@ inline bool operator!=(const Config& a, const Config& b)
     return !(a == b);
 }
 
-// A digest of a set of values, of the stages, of the preprocessing and of a
-// configuration: equal for equal ones (every value by name, every stage,
-// strategy name and parameter, every procedure, step name and parameter), on
-// any platform.
-std::uint64_t digest(const Values& values);
-std::uint64_t digest(const ConfigTree& stages);
-std::uint64_t digest(const PreprocessConfig& preprocess);
+// A digest of a configuration: equal for equal ones (every shared value by
+// name, every stage, strategy name and parameter, every procedure, step name
+// and parameter), on any platform.
 std::uint64_t digest(const Config& config);
 
 } // namespace config

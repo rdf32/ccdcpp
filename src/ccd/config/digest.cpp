@@ -100,27 +100,6 @@ void hash(detail::Fnv& h, const PreprocessConfig& preprocess)
 
 } // namespace
 
-std::uint64_t digest(const Values& values)
-{
-    detail::Fnv h;
-    hash(h, values);
-    return h.value();
-}
-
-std::uint64_t digest(const ConfigTree& stages)
-{
-    detail::Fnv h;
-    hash(h, stages);
-    return h.value();
-}
-
-std::uint64_t digest(const PreprocessConfig& preprocess)
-{
-    detail::Fnv h;
-    hash(h, preprocess);
-    return h.value();
-}
-
 std::uint64_t digest(const Config& config)
 {
     detail::Fnv h;
