@@ -25,7 +25,7 @@ struct LassoReference
     std::vector<scalar_t> residuals;
 };
 
-// scikit-learn's fit of each band: test_lasso.py's columns.
+// scikit-learn's fit of each band: make_regression_reference.py's columns.
 std::vector<LassoReference> load_reference(const std::string& filename)
 {
     std::vector<LassoReference> refs;

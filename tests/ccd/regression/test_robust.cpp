@@ -24,7 +24,7 @@ struct RobustReference
     std::vector<scalar_t> residuals;
 };
 
-// scikit-learn's fit of each band: test_robust.py's columns.
+// scikit-learn's fit of each band: make_regression_reference.py's columns.
 std::vector<RobustReference> load_reference(const std::string& filename)
 {
     std::vector<RobustReference> refs;
