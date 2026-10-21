@@ -9,7 +9,7 @@
 // green_median's offset in reflectance, multiplied by reflectance_scale;
 // thermal_range's bounds in degrees Celsius, converted to the thermal row's
 // unit -- when a run resolves it. The Input defaults are Collection-1 DN, and
-// the regression tests in test_standard.cpp pin those.
+// the regression tests in test_pyccd_reference.cpp pin those.
 //
 // This file pins the OTHER end: that dividing every band of the input by
 // 10,000, with reflectance_scale 1 and the identity thermal transform, gives
@@ -44,8 +44,8 @@
 // and Collection2DnResolvesReflectanceZeroToOne, the input with an
 // offset: reflectance levels take it, differences do not.
 //
-// Input is the same pyccd reference pixel test_standard.cpp uses, so a failure
-// here and a failure there point at the same 443 observations.
+// Input is the same pyccd reference pixel test_pyccd_reference.cpp uses, so a
+// failure here and a failure there point at the same 443 observations.
 //
 //------------------------------------------------------------------------------
 // What the equivalence test does NOT guard, measured rather than assumed
@@ -76,7 +76,7 @@
 // setting it to 0.0 -- which would drop every observation at or above the
 // median green -- changes nothing through detect(). Its guard therefore has to
 // fit the InsufficientClear procedure directly (ccd::fit_whole_series), the way
-// test_clear.cpp does. That is
+// test_pyccd_reference.cpp does. That is
 // GreenMedianFilterIsAUnitConstant, and without it this file would have looked
 // like it covered every value while missing one.
 //
@@ -151,7 +151,7 @@ ccd::FitResult run(
 
 //------------------------------------------------------------------------------
 // Fit the InsufficientClear procedure directly (ccd::fit_whole_series), as
-// test_clear.cpp does.
+// test_pyccd_reference.cpp does.
 //
 // Needed because the green filter is unreachable through detect() on this
 // pixel: "ccdc" runs the green median filter only in the InsufficientClear

@@ -355,7 +355,7 @@ targets it). The tests that failed on Linux pass there.
   golden fixture 177 of 621 pixels (13 with a segment boundary or count
   moved), the bands fixture 137 of 400, the transitions fixture
   `lookback_far_peek_decides` (its first segment's fit), `expected_hls_l30.json`
-  3 of 5 pixels, all 144 check.sh dumps; `CCD.DetectStandard` compares
+  3 of 5 pixels, all 144 check.sh dumps; `PyccdReference.StandardMatchesPyccd` compares
   segments 0 and 1, which grow through 24 observations, with pyccd's shapes
   only, and segments 2-4 still with pyccd's fits.
 - Near the previous break Lookback peeks down to the break and never below
@@ -406,7 +406,7 @@ targets it). The tests that failed on Linux pass there.
   400, the transitions fixture 7 of 17 (one of them `dense_series_end`,
   renamed from `reentry_after_series_end`, whose mask also keeps the 4
   observations the re-entry dropped), the four real-data `expected_*.json` (11 of 19 pixels), all 144
-  check.sh dumps; `CCD.DetectStandardHalfDayMedianGap` now ends one
+  check.sh dumps; `PyccdReference.HalfDayMedianGapMatchesPyccd` now ends one
   observation before pyccd's reference (738727, 959 against pyccd's 738751,
   960), every fit still pyccd's.
 - The early exits return the processing mask, as pyccd does: a Standard pixel

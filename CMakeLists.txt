@@ -357,13 +357,11 @@ if(CCD_BUILD_TESTS)
     ccd_add_gtest(test_lasso SOURCES tests/ccd/regression/test_lasso.cpp)
     ccd_add_gtest(test_robust SOURCES tests/ccd/regression/test_robust.cpp)
 
-    # The three procedures on the pyccd reference pixel against pyccd.
-    ccd_add_gtest(test_clear SOURCES tests/ccd/machine/test_clear.cpp)
-    ccd_add_gtest(test_snow SOURCES tests/ccd/machine/test_snow.cpp)
-    ccd_add_gtest(test_standard INTERNAL SOURCES tests/ccd/machine/test_standard.cpp
-                 )
+    # The three procedures on the pyccd reference pixel, and the Atlanta
+    # pixel, against pyccd. See tests/ccd/machine/test_pyccd_reference.cpp.
+    ccd_add_gtest(test_pyccd_reference INTERNAL SOURCES tests/ccd/machine/test_pyccd_reference.cpp)
 
-    # The unit-convention guard. Shares test_standard's input file.
+    # The unit-convention guard, on the pyccd reference pixel.
     ccd_add_gtest(test_units SOURCES tests/ccd/machine/test_units.cpp)
 
     # The observation filters on hand-built series: the range bounds and
