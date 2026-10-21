@@ -176,6 +176,101 @@ std::string band_text(index_t band, index_t bands)
            std::to_string(bands);
 }
 
+// Step i of `chain` names bands below `bands` and has what its kind needs.
+void check_step(
+    const char* procedure,
+    const Chain& chain,
+    index_t i,
+    index_t bands
+)
+{
+    const Step& step = chain[i];
+    const std::string where = step_text(i, step.kind);
+
+    switch (step.kind)
+    {
+        case StepKind::KeepQa:
+        case StepKind::Dedupe:
+            break;
+
+        case StepKind::AddQa:
+            if (i + 1 >= chain.size() ||
+                chain[i + 1].kind != StepKind::Dedupe)
+            {
+                reject(procedure, where,
+                    "must be followed by a Dedupe step: an added "
+                    "observation can share a date with a kept one");
+            }
+            break;
+
+        case StepKind::ThermalRange:
+            if (step.band >= bands)
+                reject(procedure, where, band_text(step.band, bands));
+            break;
+
+        case StepKind::BandRange:
+            for (const index_t band : step.bands)
+            {
+                if (band >= bands)
+                    reject(procedure, where, band_text(band, bands));
+            }
+            break;
+
+        case StepKind::GreenMedian:
+            if (step.band == NO_BAND)
+                reject(procedure, where, "needs a band; it is NO_BAND");
+            if (step.band >= bands)
+                reject(procedure, where, band_text(step.band, bands));
+            break;
+
+        case StepKind::Custom:
+            if (!step.custom)
+                reject(procedure, where, "has no rule");
+            try
+            {
+                step.custom->validate(bands);
+            }
+            catch (const std::invalid_argument& e)
+            {
+                reject(procedure, where, e.what());
+            }
+            break;
+
+        default:
+            reject(procedure, where, "is not a step kind");
+    }
+}
+
+// The plan's transform, if any, is of a band below `bands` that no BandRange
+// step of its chain tests.
+void check_transform(
+    const char* procedure,
+    const ProcedurePlan& plan,
+    index_t bands
+)
+{
+    if (!plan.transform)
+        return;
+
+    const Chain& chain = plan.chain;
+    const index_t band = plan.transform->band;
+
+    if (band >= bands)
+        reject(procedure, "transform", band_text(band, bands));
+
+    for (index_t i = 0; i < chain.size(); ++i)
+    {
+        const Step& step = chain[i];
+        if (step.kind == StepKind::BandRange && step.bands.contains(band))
+        {
+            reject(procedure, "transform",
+                "band " + std::to_string(band) + " is also tested by " +
+                step_text(i, step.kind) +
+                "; a transformed band has its own range");
+        }
+    }
+}
+
 void validate_procedure(
     const char* procedure,
     const ProcedurePlan& plan,
@@ -192,83 +287,9 @@ void validate_procedure(
     }
 
     for (index_t i = 0; i < chain.size(); ++i)
-    {
-        const Step& step = chain[i];
-        const std::string where = step_text(i, step.kind);
+        check_step(procedure, chain, i, bands);
 
-        switch (step.kind)
-        {
-            case StepKind::KeepQa:
-            case StepKind::Dedupe:
-                break;
-
-            case StepKind::AddQa:
-                if (i + 1 >= chain.size() ||
-                    chain[i + 1].kind != StepKind::Dedupe)
-                {
-                    reject(procedure, where,
-                        "must be followed by a Dedupe step: an added "
-                        "observation can share a date with a kept one");
-                }
-                break;
-
-            case StepKind::ThermalRange:
-                if (step.band >= bands)
-                    reject(procedure, where, band_text(step.band, bands));
-                break;
-
-            case StepKind::BandRange:
-                for (const index_t band : step.bands)
-                {
-                    if (band >= bands)
-                        reject(procedure, where, band_text(band, bands));
-                }
-                break;
-
-            case StepKind::GreenMedian:
-                if (step.band == NO_BAND)
-                    reject(procedure, where, "needs a band; it is NO_BAND");
-                if (step.band >= bands)
-                    reject(procedure, where, band_text(step.band, bands));
-                break;
-
-            case StepKind::Custom:
-                if (!step.custom)
-                    reject(procedure, where, "has no rule");
-                try
-                {
-                    step.custom->validate(bands);
-                }
-                catch (const std::invalid_argument& e)
-                {
-                    reject(procedure, where, e.what());
-                }
-                break;
-
-            default:
-                reject(procedure, where, "is not a step kind");
-        }
-    }
-
-    if (plan.transform)
-    {
-        const index_t band = plan.transform->band;
-
-        if (band >= bands)
-            reject(procedure, "transform", band_text(band, bands));
-
-        for (index_t i = 0; i < chain.size(); ++i)
-        {
-            const Step& step = chain[i];
-            if (step.kind == StepKind::BandRange && step.bands.contains(band))
-            {
-                reject(procedure, "transform",
-                    "band " + std::to_string(band) + " is also tested by " +
-                    step_text(i, step.kind) +
-                    "; a transformed band has its own range");
-            }
-        }
-    }
+    check_transform(procedure, plan, bands);
 }
 
 } // namespace
