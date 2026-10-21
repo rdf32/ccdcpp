@@ -182,7 +182,7 @@ its replacement.
 - The tests' CSV inputs and references are in `tests/ccd/data`, read in place
   (`CCD_TEST_DATA_DIR`), with the scripts that write the pyccd and scikit-learn references
   (`make_procedure_reference.py`, `make_regression_reference.py`; they were
-  `tests/ccd/{machine,regression}/test_*.py`). The headers the C++ tests share are in
+  `tests/ccd/{procedure,regression}/test_*.py`). The headers the C++ tests share are in
   `tests/ccd/support`: one pixel type (`series.hpp`) and one CSV reader, the dumps
   (`dump.hpp`), the units (`units.hpp`), the fixture checks (`fixture.hpp`) and the golden
   cubes (`synthetic.hpp`, `GOLDEN_CUBES`). The Python tests share their start-up
@@ -198,12 +198,12 @@ its replacement.
   `ALongerVariogramLagNeedsALargerStep`, `ALargerRefitFactorBreaksSoonerOnDrift`,
   `ALargerRefitMinObsBreaksLaterOnDrift`, `ALargerSeasonalDivisorCountsASmallerStep`,
   `FewerSeasonalResidualsCountASmallerStep`, `AHigherChangeProbabilityRaisesALongPeeksThreshold`
-  and `AHigherChangeProbabilityNeedsALargerStep`; `CcdcPlan.Shape`,
+  and `AHigherChangeProbabilityNeedsALargerStep`; `DefaultPlan.Shape`,
   `CcdcPlan.StepsInOrderAndTheTransformOnStandardOnly`; `QaTables.Definitions`,
   `QaTables.EachTableDecodesAsItsProductDefines`; `LassoSolver.MultiBandRegression` and
   `RobustSolver.MultiBandRegression`, `LassoSolver.MatchesSklearnReference` and
   `RobustSolver.MatchesPyccdReference`; `Bounds.InRange`, `Bounds.InRangeKeepsEachEndAsItsFlagSays`.
-- `Microbench.ApplyCcdcChain` is `tools/bench/bench_preprocess`, built with the tests and not
+- `Microbench.ApplyDefaultChain` is `tools/bench/bench_preprocess`, built with the tests and not
   run by ctest.
 
 ## 0.10.0 - 2026-10-17
