@@ -178,7 +178,7 @@ add_library(
     src/ccd/input/input.cpp
     src/ccd/input/qa_statistics.cpp
 
-    src/ccd/input/mask/preprocess.cpp
+    src/ccd/input/mask/chain.cpp
     src/ccd/input/mask/steps.cpp
 
     src/ccd/input/masked_series.cpp

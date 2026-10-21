@@ -11,7 +11,7 @@
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/input/input.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 
 namespace ccd
 {

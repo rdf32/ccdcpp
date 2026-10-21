@@ -28,7 +28,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/pmask.hpp"
 

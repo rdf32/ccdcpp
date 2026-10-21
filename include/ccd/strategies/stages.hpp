@@ -12,7 +12,7 @@
 #include "ccd/core/types.hpp"
 
 #include "ccd/core/window.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/procedure.hpp"
 #include "ccd/input/qa_statistics.hpp"

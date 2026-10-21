@@ -9,7 +9,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/config/registry.hpp"
 #include "ccd/input/input.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 #include "../machine/standard.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/results/record.hpp"

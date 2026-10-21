@@ -1,4 +1,4 @@
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 
 #include <cassert>
 #include <cmath>

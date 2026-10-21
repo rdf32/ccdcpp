@@ -19,7 +19,7 @@
 
 #include "ccd/input/input.hpp"
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 #include "ccd/input/mask/steps.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/input/pixel_series.hpp"

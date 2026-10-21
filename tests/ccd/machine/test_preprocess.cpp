@@ -1,6 +1,6 @@
 //==============================================================================
 //
-// The preprocessing plan (preprocess/preprocess.hpp).
+// The preprocessing plan (input/mask/chain.hpp).
 //
 //   CcdcPlan.*        the "ccdc" preprocessing resolved against an input
 //                     (plan_of()) against the chains written out by hand from
@@ -47,7 +47,7 @@
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 
 #include "../golden/golden.hpp"
 #include "../golden/synthetic.hpp"

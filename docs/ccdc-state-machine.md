@@ -25,7 +25,7 @@ detector it reuses from pixel to pixel. The steps of one pixel:
 3. choose the pixel's procedure: the run's `mode` stage (`ModeRule::choose`,
    `include/ccd/strategies/stages.hpp`);
 4. apply that procedure's transform to the pixel's private copy and run its filter chain to
-   build the processing mask (`include/ccd/input/mask/preprocess.hpp`);
+   build the processing mask (`include/ccd/input/mask/chain.hpp`);
 5. fit the mask with the run's change detector, `standard::Detector::fit`
    (`src/ccd/machine/standard.hpp`).
 

@@ -14,7 +14,7 @@
 #include "ccd/config/preprocess.hpp"
 #include "ccd/config/shared.hpp"
 #include "ccd/input/input.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 #include "ccd/strategies/stages.hpp"
 
 namespace ccd

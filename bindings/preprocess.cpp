@@ -13,7 +13,7 @@
 
 #include "ccd/core/constants.hpp"
 #include "ccd/input/input.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 
 #include "config.hpp"
 
@@ -21,7 +21,7 @@ namespace py = pybind11;
 namespace pp = ccd::preprocess;
 
 //------------------------------------------------------------------------------
-// Preprocessing plans: ccd::preprocess (input/mask/preprocess.hpp) as Python
+// Preprocessing plans: ccd::preprocess (input/mask/chain.hpp) as Python
 // classes, for inspection.
 //
 // A plan is a configuration's preprocess section resolved against an input:

@@ -44,7 +44,7 @@
 #include "ccd/ccd.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 #include "ccd/machine/machine.hpp"    // internal (src/)
 #include "ccd/input/procedure.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)

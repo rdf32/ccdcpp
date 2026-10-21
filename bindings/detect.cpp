@@ -17,7 +17,7 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/results/segment.hpp"
-#include "ccd/input/mask/preprocess.hpp"
+#include "ccd/input/mask/chain.hpp"
 
 #include "ccd/results/diagnostics.hpp"
 #include "config.hpp"
