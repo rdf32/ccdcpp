@@ -97,17 +97,8 @@ void require_rank(const py::array& a, py::ssize_t rank, const char* message)
 }
 
 // The three arrays, accepted, rank-checked and viewed.
-template<typename Spectral, typename Qa>
-struct Taken
-{
-    py::array dates_array, spectral_array, qas_array;
-    ccd::ArrayView<const std::int64_t, 1> dates;
-    Spectral spectral;
-    Qa qas;
-};
-
 template<typename Spectral, typename Qa, std::size_t Rank>
-Taken<Spectral, Qa> take(
+Arrays<Spectral, Qa> take(
     const py::object& dates_obj,
     const py::object& spectral_obj,
     const py::object& qas_obj,
@@ -150,13 +141,12 @@ PixelArrays pixel_arrays(
     bool with_table
 )
 {
-    auto t = take<ccd::PixelSpectral, ccd::PixelQa, 1>(
+    auto taken = take<ccd::PixelSpectral, ccd::PixelQa, 1>(
         dates, spectral, qas, with_table, "dates must have shape (time)",
         "spectral must have shape (bands,time)", "qas must have shape (time)");
 
-    const auto B = static_cast<ccd::index_t>(t.spectral_array.shape(0));
-    return PixelArrays{std::move(t.dates_array), std::move(t.spectral_array),
-                       std::move(t.qas_array), t.dates, t.spectral, t.qas, B};
+    const auto B = static_cast<ccd::index_t>(taken.spectral_array.shape(0));
+    return PixelArrays{std::move(taken), B};
 }
 
 CubeArrays cube_arrays(
@@ -166,14 +156,13 @@ CubeArrays cube_arrays(
     bool with_table
 )
 {
-    auto t = take<ccd::CubeSpectral, ccd::CubeQa, 3>(
+    auto taken = take<ccd::CubeSpectral, ccd::CubeQa, 3>(
         dates, spectral, qas, with_table, "dates must have shape (timesteps)",
         "spectral must have shape (height,width,bands,timesteps)",
         "qas must have shape (height,width,timesteps)");
 
-    const auto extent = [&t](py::ssize_t d)
-    { return static_cast<ccd::index_t>(t.spectral_array.shape(d)); };
+    const auto extent = [&taken](py::ssize_t d)
+    { return static_cast<ccd::index_t>(taken.spectral_array.shape(d)); };
     const ccd::index_t H = extent(0), W = extent(1), B = extent(2), T = extent(3);
-    return CubeArrays{std::move(t.dates_array), std::move(t.spectral_array),
-                      std::move(t.qas_array), t.dates, t.spectral, t.qas, H, W, B, T};
+    return CubeArrays{std::move(taken), H, W, B, T};
 }

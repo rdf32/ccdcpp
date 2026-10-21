@@ -26,17 +26,22 @@
 
 namespace py = pybind11;
 
-// One pixel's: dates (T), spectral (B, T), qas (T).
-struct PixelArrays
+// A call's views, and the buffers they read, kept alive.
+template<typename Spectral, typename Qa>
+struct Arrays
 {
-    py::array dates_array;      // the buffers the views read, kept alive
+    py::array dates_array;
     py::array spectral_array;
     py::array qas_array;
 
     ccd::ArrayView<const std::int64_t, 1> dates;
-    ccd::PixelSpectral spectral;
-    ccd::PixelQa qas;
+    Spectral spectral;
+    Qa qas;
+};
 
+// One pixel's: dates (T), spectral (B, T), qas (T).
+struct PixelArrays : Arrays<ccd::PixelSpectral, ccd::PixelQa>
+{
     ccd::index_t B = 0;
 };
 
@@ -48,16 +53,8 @@ PixelArrays pixel_arrays(
 );
 
 // A cube's: dates (T), spectral (H, W, B, T), qas (H, W, T).
-struct CubeArrays
+struct CubeArrays : Arrays<ccd::CubeSpectral, ccd::CubeQa>
 {
-    py::array dates_array;
-    py::array spectral_array;
-    py::array qas_array;
-
-    ccd::ArrayView<const std::int64_t, 1> dates;
-    ccd::CubeSpectral spectral;
-    ccd::CubeQa qas;
-
     ccd::index_t H = 0;
     ccd::index_t W = 0;
     ccd::index_t B = 0;
