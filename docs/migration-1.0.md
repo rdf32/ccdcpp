@@ -273,7 +273,7 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `GREEN_FILTER_SCOPE` | `StatWindow` | `preprocess` `green_median`'s `scope` (`"stat_window"`) |
 | `STAT_ORD` | 736694 | `shared__statistics_end`: `"none"` (the default), a date `"2017-12-31"` or an ordinal |
 | `DETECTION_BANDS` | [1, 2, 3, 4, 5] | `shared__detection_bands` (roles: green, red, nir, swir1, swir2) |
-| `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_segments`' `min_observations`) |
+| `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s and `edge_segments`' `min_observations`) |
 | `PEEK_SIZE` | 6 | `change_test__peek_size` (`stability_rule__peek` and `lookback__peek` are `"change_test"`: the change test's peek) |
 | `DAY_DELTA` | 365 | `start_search__day_delta` |
 | `CLEAR_PCT_THRESHOLD` | 0.25 | `mode__clear_pct_threshold` |
@@ -293,8 +293,8 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `LassoOptions.max_iter`, `LassoOptions.tolerance` | 1000, 1e-4 | `shared__lasso__max_iter`, `shared__lasso__tolerance` |
 | `LassoOptions.fit_intercept`, `unbiased_rmse`, `warm_start` | true, true, false | fixed |
 
-A stage cannot set a value it reads from `shared`: `replace(start_search__meow_size=16)` is
-refused, naming `shared__min_observations`.
+A stage cannot set a value it reads from `shared`: `replace(start_search__min_observations=16)`
+is refused, naming `shared__min_observations`.
 
 ### Profiles
 
@@ -413,7 +413,7 @@ it, or start from `ccdcpp.config("ccdc").to_toml()`:
 | `ThermalRange(min, max, inclusive)`, `BandRange(bands, min, max, inclusive)`, `ProcedureChain(steps, thermal_transform)`, `Dedupe()` | `ThermalRange(celsius, inclusive)`, `BandRange(bands, reflectance, inclusive)`, `ProcedureChain(steps, thermal)`, `OnePerDate()` |
 | the dict `{"shared": ..., "stages": {stage: {"strategy": ..., "params": {...}}}, "preprocess": ...}`, and `resolve()`'s `["stages"][stage]["params"]` | the file's layout: `{"shared": ..., stage: {"strategy": ..., parameter: ...}, "preprocess": ...}`; `resolve(h)[stage][parameter]` |
 | C++ `Registry::check(config)`, `resolve(config, input)`, `build(tree)` | `config::check(registry, config)`, `config::resolve(registry, config, input)`, `config::build_strategies(registry, tree)` (`ccd/config/resolve.hpp`) |
-| a strategy parameter read from a shared value: `model`'s `alpha`, `coef_floor`, `max_iter`, `tolerance`, `coefficient_min`, `coefficient_mid`, `coefficient_max`, `num_obs_factor` (and `stability_fit`'s), `edge_segments`' `alpha`, ..., `coefficients` | named for the shared value: `lasso.alpha`, `lasso.coef_floor`, `lasso.max_iter`, `lasso.tolerance`, `coefficients.min`, `.mid`, `.max`, `.per` (`resolve(h)["model"]["lasso.alpha"]`); C++ `Params` members `lasso_alpha`, ..., `coefficients_min`, ... |
+| a strategy parameter read from a shared value: `model`'s `alpha`, `coef_floor`, `max_iter`, `tolerance`, `coefficient_min`, `coefficient_mid`, `coefficient_max`, `num_obs_factor` (and `stability_fit`'s), `edge_segments`' `alpha`, ..., `coefficients`, `start_search`'s `meow_size`, `green_median`'s `max_date` | named for the shared value: `min_observations`, `statistics_end`, `lasso.alpha`, `lasso.coef_floor`, `lasso.max_iter`, `lasso.tolerance`, `coefficients.min`, `.mid`, `.max`, `.per` (`resolve(h)["model"]["lasso.alpha"]`); C++ `Params` members `lasso_alpha`, ..., `coefficients_min`, ... |
 | C++ `Shared::alpha`, `coefficient_min`, ...; `StepContext::thermal_transform` | `Shared::lasso.alpha` (a `LassoOptions`), `Shared::coefficients.min` (a `CoefficientRule`); `StepContext::thermal` (`config::Thermal`) |
 
 ```toml
@@ -468,7 +468,7 @@ stage that reads them, and a role against the input when the configuration is re
 | `TMASK_BANDS is empty` | `window_screen 'tmask' parameter 'bands' is empty` |
 | a band past the input in `TMASK_BANDS` | `window_screen 'tmask' parameter 'bands' holds band 12; the input has 7 bands` |
 | a detection band the input lacks | `shared value 'detection_bands' holds 'coastal', which the input does not have; its rows are blue, green, red, nir, swir1, swir2, thermal` |
-| (none: one field held it) | `start_search 'pyccd' parameter 'meow_size' is the shared value 'min_observations'; set shared 'min_observations' instead` |
+| (none: one field held it) | `start_search 'pyccd' parameter 'min_observations' is the shared value 'min_observations'; set shared 'min_observations' instead` |
 
 ```python
 for bad in (dict(change_test__peek_size=1), dict(shared__coefficients__max=9),

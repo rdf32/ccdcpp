@@ -45,7 +45,7 @@ edge_segments' `coefficients` (the shared `coefficients.min`, 4).
 ## 2. The Standard machine
 
 ```
-                              ┌─ size <= meow_size ───────────────────────► Done  [TooFewObservations]
+                              ┌─ size <= min_observations ────────────────► Done  [TooFewObservations]
                               ├─ a NaN in the variogram ──────────────────► Done  [VariogramNaN]
    Prepare ───────────────────┼─ no room for a start window ──────────────► EndCatch [NoRoomToInitialize]
                               ▼
@@ -74,13 +74,13 @@ edge_segments' `coefficients` (the shared `coefficients.min`, 4).
        │                  │ series end: segment, change probability 0 ───────────────► EndCatch [SeriesEnd]
        │                  │ Change: segment, change probability 1
        │                  ▼
-       └─── room ──── Restart: prev_break = window.stop, window = (stop, stop + meow_size)
+       └─── room ──── Restart: prev_break = window.stop, window = (stop, stop + min_observations)
                           │ no room
                           ▼
                       EndCatch [NoRoomToInitialize] ── the End segment, if prev_break + peek < size ──► Done
 ```
 
-`meow_size` (the shared `min_observations`) and `day_delta` here are the `pyccd` start search's parameters
+`min_observations` (the shared value, pyccd's `meow_size`) and `day_delta` here are the `pyccd` start search's parameters
 (the `start_search` stage, section 3): the machine asks the run's start search where a candidate
 is, whether it has room and whether the search is exhausted.
 
@@ -205,7 +205,7 @@ parameter is a flag, a whole number, a real, a name or a band list (roles, `conf
 |---|---|---|
 | `mode` | the pixel's procedure from its QA statistics: change detection (Standard), or one curve over the whole series (PermanentSnow, InsufficientClear); with what it asks of a Standard pixel's detection (`PixelMode`: the green median filter before it, a cap on its segments' coefficients) | `pyccd`: Standard at `clear_pct_threshold` clear, else PermanentSnow at `snow_pct_threshold` snow, else InsufficientClear |
 | `noise` | each band's noise floor from the statistics window, which every test scales by (a NaN ends the pixel) | `variogram`: the first-order variogram at the first lag whose most common separation exceeds `min_lag_days` |
-| `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, a search's plan (`begin()`: the last day it sees, what it does exhausted, end the segment loop, end it with the window screen's drops given back, or force a start, `forced()`, and whether a resume may continue it), when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `meow_size` observations needing `meow_size` more after them, spanning `day_delta` days; a search sees the whole series, and an exhausted one ends the loop |
+| `start_search` | where the search for a stable start begins (`first()`), whether a series has too few observations, whether there is room to start, a search's plan (`begin()`: the last day it sees, what it does exhausted, end the segment loop, end it with the window screen's drops given back, or force a start, `forced()`, and whether a resume may continue it), when no candidate is left, whether a candidate spans too few days, and whether one the window screen shortened is still a candidate | `pyccd`: candidates of `min_observations` observations needing `min_observations` more after them, spanning `day_delta` days; a search sees the whole series, and an exhausted one ends the loop |
 | `window_screen` | the outliers of a candidate start window, which Initialize drops before fitting it | `tmask`: pyccd's Tmask, a robust annual-harmonic fit of `bands` (pyccd: green and swir1), an observation an outlier above `t_const` variograms |
 | `stability_fit` | the fit of a candidate start window's detection bands, which the stability rule judges and Lookback tests against (a `Model`), and its coefficients (`coefficients()`) | `lasso`: the monitoring model's Lasso, `coefficients.min` coefficients |
 | `stability_rule` | whether that candidate is stable, against a threshold it derives per pixel (`prepare()`, from the change test's `PeekPlan`) | `pyccd`: over the detection bands, the sum of squares of (\|slope × span\| + \|first residual\| + \|last residual\|) / max(variogram, RMSE) below `change_threshold`, adjusted for the peek as chi2's is (with `peek` N, for a peek of N, unadjusted) |
@@ -225,7 +225,7 @@ read, or derives it from one:
 
 | pyccd's constant | Where the configuration holds it |
 |---|---|
-| the start window, 12 observations | shared `min_observations`: `start_search`'s `meow_size`, `edge_segments`' `min_observations` |
+| the start window, 12 observations | shared `min_observations`: `start_search`'s and `edge_segments`' `min_observations` |
 | the change probability, 0.99 | shared `change_probability`: `change_probability` of `change_test`, `stability_rule` and `lookback` |
 | the change threshold, chi2(5) at 0.99 | derived from it: `change_threshold` of `change_test`, `stability_rule` and `lookback` |
 | the outlier threshold, chi2(5) at 1 - 1e-6 | derived from shared `outlier_probability`: `outlier`'s `threshold`, `lookback`'s `outlier_threshold` |
@@ -314,8 +314,8 @@ config::Config config = strategies::library_registry().preset("ccdc");
 //   statistics_end "none", the coefficient rule coefficients.min, .mid, .max
 //   and .per 4/6/8/3, and the Lasso's lasso.alpha and lasso.coef_floor 1e-4 (reflectance),
 //   lasso.max_iter 1000 and lasso.tolerance 1e-4; the stages that read them hold no copy.
-// config.stages["start_search"] is {"pyccd", {{"day_delta", 365}}}: its meow_size is the
-//   shared min_observations.
+// config.stages["start_search"] is {"pyccd", {{"day_delta", 365}}}: its min_observations is
+//   the shared value.
 // config.stages["window_screen"] is {"tmask", {{"bands", {"green", "swir1"}}, {"t_const", 4.89}}}
 // config.stages["refit"] is {"span-factor", {{"min_obs", 24}, {"factor", 1.33}}}
 // config.stages["outlier"] is {"floored", {{"statistic", "change_magnitude"}}}: its

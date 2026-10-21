@@ -835,7 +835,7 @@ Per pixel, a run decodes the QA, computes the QA statistics, chooses the pixel's
 The Standard procedure is a small state machine: a per-pixel record, one transition function per phase, each making one decision and returning the next phase, and one loop that steps it. Bracketed names are why the machine stopped:
 
 ```
-                              ┌─ size <= meow_size ───────────────────────► Done  [TooFewObservations]
+                              ┌─ size <= min_observations ────────────────► Done  [TooFewObservations]
                               ├─ a NaN in the variogram ──────────────────► Done  [VariogramNaN]
    Prepare ───────────────────┼─ no room for a start window ──────────────► EndCatch [NoRoomToInitialize]
                               ▼
@@ -864,13 +864,13 @@ The Standard procedure is a small state machine: a per-pixel record, one transit
        │                  │ series end: segment, change probability 0 ───────────────► EndCatch [SeriesEnd]
        │                  │ Change: segment, change probability 1
        │                  ▼
-       └─── room ──── Restart: prev_break = window.stop, window = (stop, stop + meow_size)
+       └─── room ──── Restart: prev_break = window.stop, window = (stop, stop + min_observations)
                           │ no room
                           ▼
                       EndCatch [NoRoomToInitialize] ── the End segment, if prev_break + peek < size ──► Done
 ```
 
-`meow_size` is the start window, the shared `min_observations`. The phases and routes are fixed; what a phase decides is a stage, decided by the strategy the configuration names for it ([Configurations and presets](#configurations-and-presets)). Because the record holds everything that survives from one step to the next, a run can stop at a size guard and continue on a longer series ([Resuming a run](#resuming-a-run)), and an observer can report each step ([Diagnostics](#diagnostics)).
+The start window is the shared `min_observations` (pyccd's `meow_size`). The phases and routes are fixed; what a phase decides is a stage, decided by the strategy the configuration names for it ([Configurations and presets](#configurations-and-presets)). Because the record holds everything that survives from one step to the next, a run can stop at a size guard and continue on a longer series ([Resuming a run](#resuming-a-run)), and an observer can report each step ([Diagnostics](#diagnostics)).
 
 - [CCDC as a state machine](docs/ccdc-state-machine.md): the phases, guards and routes, the record, the stages and strategies, resuming, and why the code is shaped this way.
 - [Floating-point sums](docs/floating-point-sums.md): why the order of the Lasso solver's sums is part of the output, and how they are made fast.

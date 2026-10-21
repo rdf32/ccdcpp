@@ -376,9 +376,10 @@ class Replace(unittest.TestCase):
     def test_refusals_in_replace(self):
         with self.assertRaisesRegex(ValueError, "2 'one_per_date' steps"):
             CCDC.replace(preprocess__snow__one_per_date__x=1)
-        with self.assertRaisesRegex(ValueError, "step 4 'green_median' parameter 'max_date' is "
-                                                "the shared value 'statistics_end'"):
-            CCDC.replace(preprocess__green_median__max_date=1)
+        with self.assertRaisesRegex(ValueError, "step 4 'green_median' parameter "
+                                                "'statistics_end' is the shared value "
+                                                "'statistics_end'"):
+            CCDC.replace(preprocess__green_median__statistics_end=1)
         with self.assertRaisesRegex(ValueError, "has no parameter 'width'"):
             CCDC.replace(preprocess__band_range__width=1)
         with self.assertRaisesRegex(ValueError, "no procedure 'cloudy'"):
@@ -426,9 +427,9 @@ class Validation(unittest.TestCase):
             tree["preprocess"]["snow"]["steps"][0]["codes"] = ["clear", "cirrus"]
             return ccdcpp.Config(tree)
 
-        def with_max_date() -> ccdcpp.Config:
+        def with_statistics_end() -> ccdcpp.Config:
             tree = CCDC.to_dict()
-            tree["preprocess"]["insufficient_clear"]["steps"][4]["max_date"] = 1
+            tree["preprocess"]["insufficient_clear"]["steps"][4]["statistics_end"] = 1
             return ccdcpp.Config(tree)
 
         cases = {
@@ -438,7 +439,8 @@ class Validation(unittest.TestCase):
             "at most 8": lambda: CCDC.replace(preprocess__snow=[OnePerDate()] * 9),
             "no 'snow' procedure": without_snow,
             "'cirrus', which is not a QA code name": with_codes,
-            "green_median.* 'max_date' is the shared value 'statistics_end'": with_max_date,
+            "green_median.* 'statistics_end' is the shared value 'statistics_end'":
+                with_statistics_end,
         }
         for message, build in cases.items():
             with self.subTest(message=message):
@@ -489,8 +491,8 @@ class Validation(unittest.TestCase):
         units = {p["name"]: p["unit"] for p in steps["thermal_range"]}
         self.assertEqual(units["celsius"], "celsius")
         self.assertEqual({p["name"]: p["unit"] for p in steps["keep_qa"]}["codes"], "qa_codes")
-        (max_date,) = [p for p in steps["green_median"] if p["name"] == "max_date"]
-        self.assertEqual((max_date["source"], max_date["from"]), ("shared", "statistics_end"))
+        (end,) = [p for p in steps["green_median"] if p["name"] == "statistics_end"]
+        self.assertEqual((end["source"], end["from"]), ("shared", "statistics_end"))
 
 
 if __name__ == "__main__":

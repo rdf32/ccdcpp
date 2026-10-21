@@ -21,12 +21,12 @@ bool enough_time(
     return (last_date - first_date) >= day_delta;
 }
 
-// Whether a window holds at least meow_size observations.
+// Whether a window holds at least min_observations observations.
 bool enough_samples(
     ArrayView<const std::int64_t, 1> dates_window,
-    index_t meow_size
+    index_t min_observations
 ) {
-    return dates_window.size() >= meow_size;
+    return dates_window.size() >= min_observations;
 }
 
 } // namespace
@@ -35,7 +35,7 @@ const std::vector<config::Field<PyccdSearch::Params>>& PyccdSearch::schema()
 {
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
-        {"meow_size", &Params::meow_size, Unit::Observations, config::at_least(1),
+        {"min_observations", &Params::min_observations, Unit::Observations, config::at_least(1),
          "observations a candidate start window holds, and needs after it",
          config::Source::Shared, "min_observations"},
         {"day_delta", &Params::day_delta, Unit::Days, config::any(),
@@ -46,25 +46,25 @@ const std::vector<config::Field<PyccdSearch::Params>>& PyccdSearch::schema()
 
 bool PyccdSearch::too_few(index_t observations) const
 {
-    return observations <= p_.meow_size;
+    return observations <= p_.min_observations;
 }
 
 Window PyccdSearch::first(index_t at) const
 {
-    return Window(at, at + p_.meow_size);
+    return Window(at, at + p_.min_observations);
 }
 
 bool PyccdSearch::room(const Window& window, index_t observations) const
 {
-    // window.stop <= observations - meow_size, written without the
-    // subtraction: index_t is unsigned, and observations < meow_size would
-    // wrap it to a huge bound.
-    return window.stop + p_.meow_size <= observations;
+    // window.stop <= observations - min_observations, written without the
+    // subtraction: index_t is unsigned, and observations < min_observations
+    // would wrap it to a huge bound.
+    return window.stop + p_.min_observations <= observations;
 }
 
 bool PyccdSearch::exhausted(const Window& window, index_t observations) const
 {
-    return !(window.stop + p_.meow_size < observations);
+    return !(window.stop + p_.min_observations < observations);
 }
 
 Window PyccdSearch::forced(ArrayView<const std::int64_t, 1>, index_t, std::int64_t) const
@@ -79,7 +79,7 @@ bool PyccdSearch::short_span(ArrayView<const std::int64_t, 1> dates) const
 
 bool PyccdSearch::usable(ArrayView<const std::int64_t, 1> dates) const
 {
-    return enough_time(dates, p_.day_delta) && enough_samples(dates, p_.meow_size);
+    return enough_time(dates, p_.day_delta) && enough_samples(dates, p_.min_observations);
 }
 
 } // namespace strategies

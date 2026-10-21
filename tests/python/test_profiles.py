@@ -947,7 +947,7 @@ class Profiles(unittest.TestCase):
         self.assertEqual(cfg.params("change_test")["peek_reference_days"], 5.0)
         self.assertEqual(cfg.shared()["min_observations"], 18)
         stages = cfg.resolve(h)
-        self.assertEqual(stages["start_search"]["meow_size"], 18)
+        self.assertEqual(stages["start_search"]["min_observations"], 18)
         self.assertEqual(stages["edge_segments"]["min_observations"], 18)
         self.assertEqual(cfg.shared()["statistics_end"], "none")
         self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], "none")

@@ -122,7 +122,7 @@ struct GreenMedian
     {
         double offset = 400.0;
         std::string scope = "stat_window";
-        std::int64_t max_date = std::numeric_limits<std::int64_t>::max();
+        std::int64_t statistics_end = std::numeric_limits<std::int64_t>::max();
     };
     static const std::vector<config::Field<Params>>& schema();
     static void validate(const Params& params);

@@ -109,7 +109,7 @@ class Presets(unittest.TestCase):
         self.assertEqual(clear[1]["celsius"], [-9320.0, 7070.0])
         self.assertEqual(clear[2]["reflectance"], [0.0, 10000.0])
         self.assertEqual(clear[4], {"step": "green_median", "offset": 400.0,
-                                    "scope": "stat_window", "max_date": "none"})
+                                    "scope": "stat_window", "statistics_end": "none"})
 
     def test_a_file_extends_a_preset(self):
         path = os.path.join(_ROOT, "variant.toml")

@@ -231,7 +231,7 @@ struct Record
 
 TEST(StandardRouting, RoomToInitializeIsAMeowWindowAfterTheCursor)
 {
-    Record r(40);   // meow_size 12
+    Record r(40);   // min_observations 12
     r.at(16, 28, 16);
     EXPECT_TRUE(ccd::standard::room_to_initialize(r.context, r.state));   // 28 + 12 == 40
     r.at(17, 29, 17);
@@ -443,7 +443,7 @@ InitializeOutcome outcome_of(index_t n, Setup setup)
 
 TEST(StandardInitialize, NoCandidateLeftIsExhausted)
 {
-    // window.stop + meow_size < size is strict: 28 + 12 == 40 fails.
+    // window.stop + min_observations < size is strict: 28 + 12 == 40 fails.
     const auto setup = [](Record& r)
     {
         in_initialize(r, 16, 28, 16);

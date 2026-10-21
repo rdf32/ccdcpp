@@ -459,7 +459,7 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
             for (const auto& [name, value] : chain.steps[i].params)
             {
-                if (name == "max_date")
+                if (name == "statistics_end")
                     continue;   // the shared statistics_end's, moved above
                 const bool roles = name == "bands";
                 const ccd::config::Value moved = std::visit(

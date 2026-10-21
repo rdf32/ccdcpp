@@ -11,19 +11,20 @@ namespace strategies
 {
 
 //------------------------------------------------------------------------------
-// start_search "pyccd": pyccd's search. A candidate is meow_size
-// observations from where the search is; it needs meow_size more after it
-// to begin (room: window.stop + meow_size <= n) and to go on (exhausted
-// unless window.stop + meow_size < n), and a candidate spanning fewer than
-// day_delta days grows. A shortened candidate is usable when it still spans
-// day_delta days and holds meow_size observations. A search sees the whole
-// series, and an exhausted one ends the segment loop.
+// start_search "pyccd": pyccd's search. A candidate is min_observations
+// (the shared value; pyccd's meow_size) observations from where the search
+// is; it needs min_observations more after it to begin (room: window.stop +
+// min_observations <= n) and to go on (exhausted unless window.stop +
+// min_observations < n), and a candidate spanning fewer than day_delta days
+// grows. A shortened candidate is usable when it still spans day_delta days
+// and holds min_observations observations. A search sees the whole series,
+// and an exhausted one ends the segment loop.
 //------------------------------------------------------------------------------
 struct PyccdSearch final : StartSearch
 {
     struct Params
     {
-        index_t meow_size = 12;
+        index_t min_observations = 12;
         std::int64_t day_delta = 365;
     };
 
@@ -43,7 +44,7 @@ struct PyccdSearch final : StartSearch
                   std::int64_t last_day) const override;
     bool short_span(ArrayView<const std::int64_t, 1> dates) const override;
     bool usable(ArrayView<const std::int64_t, 1> dates) const override;
-    index_t min_window() const override { return p_.meow_size; }
+    index_t min_window() const override { return p_.min_observations; }
 
 private:
     Params p_;

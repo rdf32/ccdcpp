@@ -123,7 +123,7 @@ const std::vector<Field<GreenMedian::Params>>& GreenMedian::schema()
          config::real(0.04)},
         {"scope", &Params::scope, Unit::None, config::any(),
          "which observations it drops: all, stat_window or off"},
-        {"max_date", &Params::max_date, Unit::None, config::any(),
+        {"statistics_end", &Params::statistics_end, Unit::None, config::any(),
          "the last date of the observations the median is taken over", Source::Shared,
          "statistics_end", std::nullopt, config::Keyword{"none", config::NO_STATISTICS_END}},
     };
@@ -139,7 +139,7 @@ void GreenMedian::validate(const Params& params)
 
 std::optional<Step> GreenMedian::make(const Params& params, const Input& input, const config::StepContext&)
 {
-    return Step::green_median(input.index("green"), params.offset, params.max_date,
+    return Step::green_median(input.index("green"), params.offset, params.statistics_end,
                               *green_filter_scope(params.scope));
 }
 

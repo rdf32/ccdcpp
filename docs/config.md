@@ -99,7 +99,7 @@ for bad in (lambda: cfg.replace(refit__fctor=2.0),
             lambda: cfg.replace(refit__factor=0.0),
             lambda: cfg.replace(shared__lasso__alpha=-1.0),
             lambda: cfg.replace(shared__coefficients__min=7),
-            lambda: cfg.replace(start_search__meow_size=16),
+            lambda: cfg.replace(start_search__min_observations=16),
             lambda: cfg.replace(window_screen__bands=["green", "coastal"]).check(ccdcpp.Input())):
     try:
         bad()
@@ -112,7 +112,7 @@ refit 'span-factor' has no parameter 'fctor'; it has min_obs, factor
 refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
 shared lasso parameter 'alpha' is -1; it must be at least 0
 shared coefficients min, mid, max are 7, 6, 8; they must not decrease
-start_search 'pyccd' parameter 'meow_size' is the shared value 'min_observations'; set shared 'min_observations' instead
+start_search 'pyccd' parameter 'min_observations' is the shared value 'min_observations'; set shared 'min_observations' instead
 window_screen 'tmask' parameter 'bands' holds 'coastal', which the input does not have; its rows are blue, green, red, nir, swir1, swir2, thermal
 ```
 
@@ -153,7 +153,7 @@ table per stage (`{"strategy": ..., <parameter>: ...}`) and `"preprocess"`.
 | `lasso.alpha`, `lasso.coef_floor` | 1e-4, 1e-4 | reflectance (difference) | the Lasso of `model`, `stability_fit`, `edge_segments` |
 | `lasso.max_iter`, `lasso.tolerance` | 1000, 1e-4 | none | the same three |
 | `coefficients.min`, `.mid`, `.max`, `.per` | 4, 6, 8, 3 | none | `model`, `stability_fit` (the coefficient rule); `edge_segments`' `coefficients` (`coefficients.min`) |
-| `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_segments`' `min_observations`; more than `coefficients.min` |
+| `min_observations` | 12 | observations | `start_search`'s and `edge_segments`' `min_observations`; more than `coefficients.min` |
 | `statistics_end` | `"none"` | date | the QA statistics, the cadence, the variogram, `green_median`'s date |
 
 `statistics_end` is `"none"` (the whole series), a date `"YYYY-MM-DD"` or an ordinal day

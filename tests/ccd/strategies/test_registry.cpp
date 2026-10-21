@@ -17,7 +17,7 @@
 //   * the lasso monitoring model fits, predicts and scores as the shared
 //     kernels do, bit for bit, with the solver options it was configured with;
 //   * the pyccd start search's decisions are pyccd's comparisons with
-//     meow_size (the shared min_observations) and day_delta;
+//     min_observations (the shared value) and day_delta;
 //   * a band list parameter takes indices 0 to CCD_MAX_BANDS - 1, and the
 //     tmask window screen is tmask() of its bands and t_const;
 //   * the pyccd stability rule is pyccd's check of the stability fit, against
@@ -269,7 +269,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
         {"stability_rule", {"pyccd", {{"change_probability", real(0x1.fae147ae147aep-1)},
                                       {"change_threshold", real(0x1.e2c2be7b52448p+3)},
                                       {"peek", ccd::config::Value(std::string("change_test"))}}}},
-        {"start_search", {"pyccd", {{"day_delta", integer(365)}, {"meow_size", integer(12)}}}},
+        {"start_search", {"pyccd", {{"day_delta", integer(365)}, {"min_observations", integer(12)}}}},
         {"window_screen", {"tmask", {{"bands", ccd::config::Value(List{1, 4})},
                                      {"t_const", real(0x1.38f5c28f5c28fp+2)}}}},
     };
@@ -359,7 +359,7 @@ TEST(Registry, NamedValuesAndDates)
     // The resolved values give the name back; the green median reads it too.
     const ccd::config::Resolved resolved = golden::resolved(golden::ccdc());
     EXPECT_EQ(resolved.stages.at("lookback").params.at("peek"), Value(std::string("change_test")));
-    EXPECT_EQ(resolved.preprocess.at("insufficient_clear").steps.at(4).params.at("max_date"),
+    EXPECT_EQ(resolved.preprocess.at("insufficient_clear").steps.at(4).params.at("statistics_end"),
               Value(std::string("none")));
     EXPECT_EQ(golden::parameter<std::int64_t>(
                   golden::resolved(golden::with(golden::ccdc(), "lookback", "peek",
@@ -1013,7 +1013,7 @@ TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
     EXPECT_FALSE(search.room(w, 24));
     EXPECT_TRUE(search.exhausted(w, 25));
     EXPECT_FALSE(search.exhausted(w, 26));
-    // Fewer observations than meow_size: no room, exhausted (no unsigned wrap).
+    // Fewer observations than min_observations: no room, exhausted (no unsigned wrap).
     EXPECT_FALSE(search.room(ccd::Window(0, 10), 5));
     EXPECT_TRUE(search.exhausted(ccd::Window(0, 10), 5));
 
@@ -1037,9 +1037,9 @@ TEST(StartSearch, PyccdIsMeowSizeAndDayDelta)
     // The start search's window is the shared min_observations, and so is
     // the whole-series curve's least: a stage sets neither.
     ccd::config::Config own = golden::ccdc();
-    own.stages["start_search"].params["meow_size"] = ccd::config::integer(10);
+    own.stages["start_search"].params["min_observations"] = ccd::config::integer(10);
     expect_refused([&] { golden::strategies_of(own); },
-                   "start_search 'pyccd' parameter 'meow_size' is the shared value "
+                   "start_search 'pyccd' parameter 'min_observations' is the shared value "
                    "'min_observations'; set shared 'min_observations' instead");
 }
 
@@ -1151,7 +1151,7 @@ TEST(EdgeSegments, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     EXPECT_EQ(edges.strategy, "lasso");
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients.min")), 6);
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("min_observations")), 15);
-    EXPECT_EQ(golden::parameter<std::int64_t>(tree, "start_search", "meow_size"), 15);
+    EXPECT_EQ(golden::parameter<std::int64_t>(tree, "start_search", "min_observations"), 15);
     EXPECT_EQ(std::get<double>(edges.params.at("lasso.alpha")), 0.5);
     EXPECT_EQ(tree.at("segment_report").strategy, "model-fit");
     EXPECT_EQ(tree.at("mode").strategy, "pyccd");
@@ -1404,11 +1404,11 @@ TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
         "it is all, stat_window or off");
 
     ccd::config::Config dated = golden::ccdc();
-    dated.preprocess.at("insufficient_clear").steps.at(4).params["max_date"] =
+    dated.preprocess.at("insufficient_clear").steps.at(4).params["statistics_end"] =
         ccd::config::integer(736694);
     expect_refused([&] { build(dated); },
-                   "preprocess insufficient_clear step 4 'green_median' parameter 'max_date' is "
-                   "the shared value 'statistics_end'; set shared 'statistics_end' instead");
+                   "preprocess insufficient_clear step 4 'green_median' parameter 'statistics_end' "
+                   "is the shared value 'statistics_end'; set shared 'statistics_end' instead");
 
     ccd::config::Config typo = golden::ccdc();
     typo.preprocess.at("standard").steps.at(2).params["maximum"] = ccd::config::real(1.0);
