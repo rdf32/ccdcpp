@@ -392,7 +392,7 @@ ccdcpp runs one fixed machine, the CCDC phases and routes, whose decisions are m
 |---|---|
 | The input says only how to read the data. | `ccdcpp.Input()` is Collection-1 DN: reflectance x 10000 (`reflectance_scale` 10000), thermal Kelvin x 10 (`thermal_scale` 10, `thermal_offset` -27315). |
 | The configuration says what to do with it, in physical units. | `ccdc`'s `band_range` keeps reflectance in (0, 1), its `thermal_range` -93.2 to 70.7 °C, its `lasso.alpha` is 1e-4 reflectance. |
-| The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | `plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000` on DN, and on `presets.landsat_c1_physical()` `0 < x < 1`. |
+| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check. | `plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000` on DN, and on `presets.landsat_c1_physical()` `0 < x < 1`. |
 
 ```python
 dn = ccdcpp.Input()

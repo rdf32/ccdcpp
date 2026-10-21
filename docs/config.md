@@ -21,7 +21,7 @@ The examples use `dates`, `spectral`, `qas`, `cube` and `cube_qa` from the READM
 |---|---|
 | The input says only how to read the data. | `presets.landsat_c2().input()` holds reflectance 0..1 (`reflectance_scale` 1), thermal in degrees Celsius / 100, and the decoder of `QA_PIXEL`. |
 | The configuration says what to do with it, in physical units. | `ccdc`'s `green_median` drops observations 0.04 reflectance above the median green; its `lasso.alpha` is 1e-4 reflectance. |
-| The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | On `ccdcpp.Input()` the `green_median` offset resolves to 400 DN, `lasso.alpha` to 1.0 and `band_range` to `0 < x < 10000`. |
+| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check. | On `ccdcpp.Input()` the `green_median` offset resolves to 400 DN, `lasso.alpha` to 1.0 and `band_range` to `0 < x < 10000`. |
 
 ```python
 import ccdcpp

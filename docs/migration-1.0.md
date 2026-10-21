@@ -6,7 +6,7 @@
 |---|---|
 | The input says only how to read the data. | `HarmonicOptions` is gone; `ccdcpp.Input()` says only how to read the data: `reflectance_scale` 10000, the thermal transform (10, -27315), the QA codes. |
 | The configuration says what to do with it, in physical units. | `HarmonicOptions.REFL_MAX = 10000` is `band_range`'s `reflectance = [0.0, 1.0]` in `ccdcpp.config("ccdc")`. |
-| The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | `ccdcpp.plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000`, 0.10.0's `REFL_MIN < x < REFL_MAX`. |
+| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check, as in 0.10.0. | `ccdcpp.plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000`, 0.10.0's `REFL_MIN < x < REFL_MAX`. |
 
 What to do:
 

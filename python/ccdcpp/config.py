@@ -233,10 +233,7 @@ class Config:
     every stage's and step's parameters spelled out, a whole number given for a real as the
     real, so equal configurations compare and hash equal.
 
-    The input says only how to read the data. The configuration says what to do with it, in
-    physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
-    exactly as today.
-
+    What the input says and what the configuration says: ``ccdcpp.Input``'s documentation.
     docs/units.md states the boundary: a configuration is in the physical domain
     (reflectance levels and differences, degrees Celsius), and a run converts it once into
     the input's storage encoding (on Collection-1 DN, band_range 0–1 is 0–10000, -93.2–70.7

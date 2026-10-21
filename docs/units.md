@@ -4,7 +4,7 @@
 |---|---|
 | The input says only how to read the data. | `presets.landsat_c1_physical().input()`: reflectance 0..1 (`reflectance_scale` 1) and thermal in degrees Celsius / 100 (`thermal_at_100c` 1), with the identity thermal transform. |
 | The configuration says what to do with it, in physical units. | `ccdc`'s `thermal_range` keeps -93.2 to 70.7 °C, whatever the input. |
-| The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | On `ccdcpp.Input()` that range is `-9320 < x < 7070` and `band_range` `0 < x < 10000`; on the physical-unit input `-0.932 < x < 0.707` and `0 < x < 1`. |
+| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check. | On `ccdcpp.Input()` that range is `-9320 < x < 7070` and `band_range` `0 < x < 10000`; on the physical-unit input `-0.932 < x < 0.707` and `0 < x < 1`. |
 
 ```python
 import ccdcpp

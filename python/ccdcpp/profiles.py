@@ -121,9 +121,8 @@ _INPUT_THERMAL = Thermal(scale=Input().thermal_scale, offset=Input().thermal_off
 class SensorProfile:
     """One sensor's data: band names and roles, units and QA.
 
-    The input says only how to read the data. The configuration says what
-    to do with it, in physical units. The run translates once: 0–1
-    reflectance × 10000 = the 0–10000 DN check, exactly as today.
+    A profile says only how to read the data, as its ``ccdcpp.Input`` does
+    (see its documentation); the configuration says what to do with it.
 
     Example: ``ccdcpp.detect(dates, spectral, qas,
     input=ccdcpp.presets.landsat_c2())``
