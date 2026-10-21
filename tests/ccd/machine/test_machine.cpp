@@ -133,7 +133,7 @@ struct Record
         strategies.change_test->prepare(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(reference, {2}),
             shared.detection_bands.size(),
-            state.extension.test.get(strategies.change_test,
+            state.extend.test.get(strategies.change_test,
                                      [](const ccd::ChangeTest& c) { return c.make_scratch(); }));
         // The stability rule's threshold, change_threshold (a peek of the
         // change test's peek_size), whatever peek the record has.
@@ -762,7 +762,7 @@ TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
     Record r(80);
     setup(r);
     EXPECT_EQ(r.step(), Phase::Extend);
-    const ccd::standard::Extension& e = r.state.extension;
+    const ccd::standard::ExtendState& e = r.state.extend;
     EXPECT_TRUE(e.trained);
     EXPECT_EQ(e.fit_window.start, 0u);
     EXPECT_EQ(e.fit_window.stop, 24u);
@@ -781,9 +781,9 @@ TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
     Record r(80);
     in_extend(r, 0, 20);
     r.step();
-    EXPECT_EQ(r.state.extension.fit_window.stop, 20u);
+    EXPECT_EQ(r.state.extend.fit_window.stop, 20u);
     r.step();
-    EXPECT_EQ(r.state.extension.fit_window.stop, 21u);
+    EXPECT_EQ(r.state.extend.fit_window.stop, 21u);
 
     // At 24 observations it refits; from 25 on, only once the window spans
     // 1.33 times the last fit: (0, 25) spans 384 days < 1.33 * 368.
@@ -791,7 +791,7 @@ TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
     in_extend(t, 0, 24);
     t.step();
     t.step();
-    EXPECT_EQ(t.state.extension.fit_window.stop, 24u);
+    EXPECT_EQ(t.state.extend.fit_window.stop, 24u);
     EXPECT_EQ(t.state.cursor.window.stop, 26u);
 }
 
@@ -804,7 +804,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     in_extend(r, 0, 24);
     r.step();
     // The magnitudes the test wrote are change_magnitude() of those RMSEs.
-    const ccd::standard::Extension& e = r.state.extension;
+    const ccd::standard::ExtendState& e = r.state.extend;
     const auto& bands = r.shared.detection_bands;
     const auto magnitude_with = [&](const std::vector<double>& rmse)
     {
@@ -840,7 +840,7 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     in_extend(r, 0, 24);
     r.step();
 
-    const ccd::standard::Extension& e = r.state.extension;
+    const ccd::standard::ExtendState& e = r.state.extend;
     EXPECT_EQ(e.fit_window.stop, 24u);
     const auto& bands = r.shared.detection_bands;
     const auto closest = reference::find_closest_doy(
@@ -880,7 +880,7 @@ TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
     EXPECT_EQ(s.observation_count, 24u);
     EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(r.strategies.model->coefficients().count(24)));
     EXPECT_EQ(s.bands.size(), 7u);
-    EXPECT_FALSE(r.state.extension.trained);   // the next segment starts untrained
+    EXPECT_FALSE(r.state.extend.trained);   // the next segment starts untrained
     EXPECT_EQ(r.state.cursor.window.stop, 24u);
 }
 
@@ -1051,7 +1051,7 @@ TEST(StandardHooks, AWindowBelowTheTestsMinimumGrowsUntested)
     Record r(80);
     with_hooks(r, 0, 24, [](HookTest& t) { t.min = 30; });
     EXPECT_EQ(ccd::standard::extend_step(r.context, r.state), ccd::standard::ExtendOutcome::Grown);
-    EXPECT_FALSE(r.state.extension.trained);
+    EXPECT_FALSE(r.state.extend.trained);
     EXPECT_EQ(r.state.cursor.window.start, 0u);
     EXPECT_EQ(r.state.cursor.window.stop, 25u);
 
@@ -1145,7 +1145,7 @@ TEST(StandardHooks, AModelThatCannotFitEndsTheSeriesWithoutTheCurve)
     EXPECT_EQ(r.step(), Phase::Done);
     EXPECT_EQ(r.state.exit, Exit::NoFit);
     EXPECT_TRUE(r.state.segments.empty());
-    EXPECT_FALSE(r.state.extension.trained);
+    EXPECT_FALSE(r.state.extend.trained);
 }
 
 // pyccd's start search, but an exhausted search forces a start of the 10

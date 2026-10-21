@@ -115,7 +115,7 @@ const char* to_string(LookbackOutcome outcome);
 
 // What Extend carries from one peek test to the next, within one segment.
 // The buffers keep their capacity across segments and pixels.
-struct Extension
+struct ExtendState
 {
     // Whether `model`'s fits are this segment's: false until the segment's first
     // refit, and again once its segment is written (pyccd's `models is None`).
@@ -231,14 +231,14 @@ struct State
     bool resumable = true;
 
     // Extend's carried state.
-    Extension extension;
+    ExtendState extend;
 
     // Where the segment loop stopped (set with every Exit).
     Suspended suspended;
 
     // Starts a pixel: Prepare, no exit, the series of `pixel` that
     // `mask` keeps, the cursor at 0, no segments and none carried, the
-    // cadence and Initialize's criteria cleared, no extension trained, no
+    // cadence and Initialize's criteria cleared, Extend untrained, no
     // suspension.
     void reset(const PixelSeries& pixel, ProcessingMask mask);
 
@@ -353,7 +353,7 @@ Phase start_catch(const Context& context, State& state);
 // One Extend step, one peek test after the window. Pre: peek_fits(). A
 // window smaller than the change test's min_window() grows untested (NoFit
 // when no observation is left). Otherwise refits the model over the window
-// when the extension is not trained or the refit schedule is due (NoFit
+// when Extend is not trained or the refit schedule is due (NoFit
 // when it cannot be fitted); the peek is the next `peek` observations,
 // fewer at the series end (SeriesEnd when none is left); then, in order:
 //

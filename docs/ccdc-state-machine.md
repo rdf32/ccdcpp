@@ -138,7 +138,7 @@ Initialize fits the stability fit's `coefficient_min` coefficients, Extend's fit
 monitoring model's rule (`CoefficientRule`, `include/ccd/strategies/coefficients.hpp`:
 `coefficient_min`, `_mid` or `_max` by window length), and both peek bases are `coefficient_max`
 wide: a model predicts with zeros above its own count. Extend's fits are the monitoring model's
-(the `model` stage, below), which the extension holds.
+(the `model` stage, below), which `extend` holds.
 
 The routing between phases is a set of named predicates and routers, so a guard has one place:
 `room_to_initialize`, `peek_fits`, `start_catch_due`, `after_stable_start`, `after_lookback`
@@ -175,7 +175,7 @@ input (`strategies::library_registry().resolve(config, input).strategies`), as `
 | `variogram` (`Variogram`, `include/ccd/machine/fit.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
 | `init_model`, `stability`, `lookback` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's and the lookback's per-pixel scratch, each a `PerThread` of its strategy | Standard's |
-| `extension` (`Extension`) | what Extend carries from one peek test to the next | Standard's |
+| `extend` (`ExtendState`) | what Extend carries from one peek test to the next | Standard's |
 
 `MaskedSeries` is the only writer of the mask. Its two drops, `drop` (Lookback, Extend) and
 `drop_outliers_if` (Initialize's tentative Tmask removal), move the caller's window with the
@@ -287,7 +287,7 @@ configuration in which a strategy needs what no earlier stage's strategy provide
 
 A stage whose strategy keeps state from one call to the next (the model's fits; the test's
 per-pixel threshold and seasonal order) makes one per thread (`make_model()`, `make_scratch()`),
-which the extension keeps in a `PerThread` (`include/ccd/strategies/per_thread.hpp`) and makes
+which the State keeps in a `PerThread` (`include/ccd/strategies/per_thread.hpp`) and makes
 again only when the run's strategy is another.
 
 The monitoring model's contract is `ccd::Model` (`include/ccd/strategies/model.hpp`): one
@@ -471,7 +471,7 @@ leaves the machine implicit:
 - results travel back up as tuples, so each function is a fragment its caller reassembles.
 
 In ccdcpp each of these is a named thing: a transition returns its next phase; the record has
-`extension.trained` and `segments`; `Cadence` holds the per-pixel values and the configuration is
+`extend.trained` and `segments`; `Cadence` holds the per-pixel values and the configuration is
 const; `MaskedSeries` keeps the mask and the kept observations in step and owns the coordinate
 rule; the result is taken from the record once the machine is done.
 

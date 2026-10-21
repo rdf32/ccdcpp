@@ -83,20 +83,20 @@ ObserverEvent day_event(ObserverEvent::Kind kind, std::int64_t day, std::string 
 }
 #endif
 
-// The extension's change-test buffers, of the run's change-test strategy.
-Scratch& test_scratch(const Context& context, Extension& extension)
+// Extend's change-test buffers, of the run's change-test strategy.
+Scratch& test_scratch(const Context& context, ExtendState& extend)
 {
-    return extension.test.get(context.strategies.change_test,
+    return extend.test.get(context.strategies.change_test,
                               [](const ChangeTest& c) { return c.make_scratch(); });
 }
 
 // Extend's last peek, as its tests read it.
 Peek peek_of(const Context& context, const State& state)
 {
-    const Extension& extension = state.extension;
-    return Peek{*extension.model, state.series.dates(), state.series.spectral(),
+    const ExtendState& extend = state.extend;
+    return Peek{*extend.model, state.series.dates(), state.series.spectral(),
                     state.cursor.window,
-                    extension.fit_window, extension.fits, extension.peek, extension.residuals,
+                    extend.fit_window, extend.fits, extend.peek, extend.residuals,
                     state.variogram, context.shared.detection_bands};
 }
 
@@ -175,7 +175,7 @@ void State::reset(const PixelSeries& pixel, ProcessingMask mask)
     // Prepare's derived values, set again before anything reads them.
     cadence = Cadence{};
     initialize_criteria = InitializeCriteria{};
-    extension.trained = false;
+    extend.trained = false;
     forced.reset();
     search = SearchPlan{};
     resumable = true;
@@ -363,7 +363,7 @@ Phase prepare(const Context& context, State& state)
     const index_t detection_bands = shared.detection_bands.size();
     const ChangeTest& change_test = *context.strategies.change_test;
     const PeekPlan plan = change_test.prepare(
-        stat_dates, detection_bands, test_scratch(context, state.extension));
+        stat_dates, detection_bands, test_scratch(context, state.extend));
     // A peek holds an observation at least; chi2's schema refuses fewer than
     // two (a change is consecutive observations over the threshold).
     assert(plan.peek >= 1);
@@ -442,7 +442,7 @@ Phase initialize(const Context& context, State& state)
                 case Exhaustion::Force:
                     state.cursor.window = context.strategies.start_search->forced(
                         state.series.dates(), state.cursor.prev_break, state.search.last_day);
-                    state.extension.trained = false;
+                    state.extend.trained = false;
                     state.forced = state.cursor.window;
                     state.resumable = false;
                     return peek_guard(context, state);
@@ -538,12 +538,12 @@ Phase start_catch(const Context& context, State& state)
 namespace
 {
 
-// The extension's model, of the run's monitoring-model strategy, for a
+// Extend's model, of the run's monitoring-model strategy, for a
 // refit: the refit's number is the next.
-Model& refit_model(const Context& context, Extension& extension)
+Model& refit_model(const Context& context, ExtendState& extend)
 {
-    ++extension.fits;
-    return extension.model.get(context.strategies.model,
+    ++extend.fits;
+    return extend.model.get(context.strategies.model,
                                [](const MonitoringModel& m) { return m.make_model(); });
 }
 
@@ -552,7 +552,7 @@ Model& refit_model(const Context& context, Extension& extension)
 // coefficient count, their residuals over the last test's peek.
 void complete_models(const Context& context, State& state)
 {
-    Extension& extension = state.extension;
+    ExtendState& extend = state.extend;
     const auto masked_dates = state.series.dates();
     const auto masked_spectral = state.series.spectral();
 
@@ -561,9 +561,9 @@ void complete_models(const Context& context, State& state)
         if (!context.shared.detection_bands.contains(band))
             others.push_back(band);
 
-    const Window& fit = extension.fit_window;
-    const Window& peek = extension.peek;
-    extension.model->fit(
+    const Window& fit = extend.fit_window;
+    const Window& peek = extend.peek;
+    extend.model->fit(
         masked_dates.slice(range(fit.start, fit.stop)),
         masked_spectral.slice(all(), range(fit.start, fit.stop)),
         state.coefficients.count(fit.size()),
@@ -571,17 +571,17 @@ void complete_models(const Context& context, State& state)
         others,
         KeepResiduals::No
     );
-    extension.model->peek_residuals(
+    extend.model->peek_residuals(
         masked_dates.slice(range(peek.start, peek.stop)),
         masked_spectral.slice(all(), range(peek.start, peek.stop)),
         others,
-        extension.residuals
+        extend.residuals
     );
-    extension.complete = true;
+    extend.complete = true;
 }
 
 // Writes the segment Extend has grown, from its last peek test, and ends the
-// extension. On a change (change probability 1) it breaks at the change
+// extend. On a change (change probability 1) it breaks at the change
 // test's break_at(); at the series end (0) at the first observation after
 // the window, or its last when none is left. Its coefficients are the
 // segment fit's; each band's magnitude is the change test's, or `magnitude`
@@ -595,21 +595,21 @@ void write_extended_segment(
 {
     const MaskedSeries& series = state.series;
     const Window& window = state.cursor.window;
-    Extension& extension = state.extension;
+    ExtendState& extend = state.extend;
 
-    assert(extension.trained);
+    assert(extend.trained);
 
     const auto masked_dates = series.dates();
     const index_t num_bands = series.spectral().extent(0);
 
-    if (!extension.complete)
+    if (!extend.complete)
         complete_models(context, state);
 
     ChangeModel result;
     result.start_day = masked_dates(window.start);
     result.end_day = masked_dates(window.stop - 1);
     const ChangeTest& change_test = *context.strategies.change_test;
-    const Scratch& scratch = test_scratch(context, extension);
+    const Scratch& scratch = test_scratch(context, extend);
     const Peek last = peek_of(context, state);
     result.break_day = masked_dates(change ? change_test.break_at(last, scratch)
                                            : std::min(window.stop, series.size() - 1));
@@ -617,7 +617,7 @@ void write_extended_segment(
     result.change_probability = change ? 1.0 : 0.0;
 
     const index_t num_coef = context.strategies.segment_fit->segment(
-        *extension.model, masked_dates, series.spectral(), window, extension.num_coef,
+        *extend.model, masked_dates, series.spectral(), window, extend.num_coef,
         context.max_coefficients, segment_scratch(context, state), result.bands);
     result.curve_qa = static_cast<CurveQA>(num_coef);
     for (index_t band = 0; band < num_bands; ++band)
@@ -626,7 +626,7 @@ void write_extended_segment(
 
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
     state.segments.push_back(std::move(result));
-    extension.trained = false;
+    extend.trained = false;
 }
 
 // The segment of a forced start the series ended before Extend fitted: the
@@ -646,7 +646,7 @@ void write_forced_segment(const Context& context, State& state)
     result.observation_count = window.size();
     result.change_probability = 0.0;
     const index_t num_coef = context.strategies.segment_fit->unfitted(
-        refit_model(context, state.extension), masked_dates, series.spectral(), window,
+        refit_model(context, state.extend), masked_dates, series.spectral(), window,
         state.coefficients.count(window.size()), context.max_coefficients,
         segment_scratch(context, state), result.bands);
     result.curve_qa = static_cast<CurveQA>(num_coef);
@@ -675,7 +675,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
     MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
     const Cadence& cadence = state.cadence;
-    Extension& extension = state.extension;
+    ExtendState& extend = state.extend;
 
     const BandList& detection_bands = context.shared.detection_bands;
 
@@ -693,7 +693,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
         return ExtendOutcome::Grown;
     }
 
-    if (!extension.trained)
+    if (!extend.trained)
     {
         LOG_DEBUG("initial model window extend: " << window.start << ", " << window.stop);
     }
@@ -702,12 +702,12 @@ ExtendOutcome extend_step(const Context& context, State& state)
     const auto masked_spectral = series.spectral();
 
     // Indexed by band.
-    extension.residuals.resize(masked_spectral.extent(0));
+    extend.residuals.resize(masked_spectral.extent(0));
 
-    extension.num_coef = state.coefficients.count(window.size());
+    extend.num_coef = state.coefficients.count(window.size());
 
     // The next `peek` observations, fewer at the series end.
-    const Window& peek_window = extension.peek =
+    const Window& peek_window = extend.peek =
         Window(window.stop, std::min(window.stop + cadence.peek, series.size()));
 
     // # Used for comparison against fit_span
@@ -718,38 +718,38 @@ ExtendOutcome extend_step(const Context& context, State& state)
     //--------------------------------------------------------------------------
     // The refit schedule
     //--------------------------------------------------------------------------
-    if (!extension.trained ||
-        context.strategies.refit->due(window.size(), model_span, extension.fit_window.size(),
-                                      extension.fit_span))
+    if (!extend.trained ||
+        context.strategies.refit->due(window.size(), model_span, extend.fit_window.size(),
+                                      extend.fit_span))
     {
         // A refit on the window the last one grew from extends it.
-        const bool extends = extension.trained;
-        extension.trained = true;
-        extension.fit_window = window;
-        extension.fit_span = span(masked_dates, extension.fit_window);
+        const bool extends = extend.trained;
+        extend.trained = true;
+        extend.fit_window = window;
+        extend.fit_span = span(masked_dates, extend.fit_window);
         LOG_DEBUG("Retrain models");
 
         // The detection bands: seasonal_rmse() reads their residuals; the
         // magnitude is set from the peek residuals when the segment is
         // written, which fits the other bands (complete_models()).
-        Model& model = refit_model(context, extension);
+        Model& model = refit_model(context, extend);
         const auto fit_dates =
-            masked_dates.slice(range(extension.fit_window.start, extension.fit_window.stop));
+            masked_dates.slice(range(extend.fit_window.start, extend.fit_window.stop));
         const auto fit_spectral =
-            masked_spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop));
+            masked_spectral.slice(all(), range(extend.fit_window.start, extend.fit_window.stop));
         const bool fitted = extends
-            ? model.extend(fit_dates, fit_spectral, extension.num_coef, state.coefficients.max,
+            ? model.extend(fit_dates, fit_spectral, extend.num_coef, state.coefficients.max,
                            detection_bands, KeepResiduals::Yes)
-            : model.fit(fit_dates, fit_spectral, extension.num_coef, state.coefficients.max,
+            : model.fit(fit_dates, fit_spectral, extend.num_coef, state.coefficients.max,
                         detection_bands, KeepResiduals::Yes);
         if (!fitted)
         {
-            extension.trained = false;
+            extend.trained = false;
             return ExtendOutcome::NoFit;
         }
         state.forced.reset();
     }
-    extension.complete = false;
+    extend.complete = false;
 
     // No observation left to test: the curve ends at the window.
     if (peek_window.size() == 0)
@@ -759,22 +759,22 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // The peek's residuals, comparison RMSE and magnitudes
     //--------------------------------------------------------------------------
 
-    extension.model->peek_residuals(
+    extend.model->peek_residuals(
         masked_dates.slice(range(peek_window.start, peek_window.stop)),
         masked_spectral.slice(all(), range(peek_window.start, peek_window.stop)),
         detection_bands,
-        extension.residuals
+        extend.residuals
     );
 
     const Peek peek = peek_of(context, state);
     const TestOutcome outcome = context.strategies.change_test->test(
-        peek, test_scratch(context, extension), extension.result);
+        peek, test_scratch(context, extend), extend.result);
 
     CCD_OBSERVE_EVENT(context.observe, [&] {
         ObserverEvent e = day_event(ObserverEvent::Kind::Test, masked_dates(peek_window.start),
                                     to_string(outcome));
-        if (!extension.result.statistics.empty())
-            e.values = extension.result.statistics.front().values;
+        if (!extend.result.statistics.empty())
+            e.values = extend.result.statistics.front().values;
         return e;
     }());
 
@@ -794,7 +794,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
         return ExtendOutcome::SeriesEnd;
     }
 
-    const OutlierOutcome judged = context.strategies.outlier->judge(peek, extension.result);
+    const OutlierOutcome judged = context.strategies.outlier->judge(peek, extend.result);
     //--------------------------------------------------------------------------
     // Outlier detected: drop the first peek observation, at window.stop; the
     // window keeps its coordinates
@@ -844,9 +844,9 @@ Phase extend(const Context& context, State& state)
     {
         // The change test's break may be past the peek's first observation:
         // the ones before it leave the series, after the segment is written.
-        const index_t first = state.extension.peek.start;
+        const index_t first = state.extend.peek.start;
         const index_t at = context.strategies.change_test->break_at(
-            peek_of(context, state), test_scratch(context, state.extension));
+            peek_of(context, state), test_scratch(context, state.extend));
         write_extended_segment(context, state, true);
         if (at > first)
             state.resumable = false;   // the record keeps no drops before a change
@@ -884,11 +884,11 @@ Phase extend(const Context& context, State& state)
     // the curve's stop.
     //--------------------------------------------------------------------------
     suspend(state, Exit::SeriesEnd);
-    state.suspended.fit_stop = state.extension.fit_window.stop;
+    state.suspended.fit_stop = state.extend.fit_window.stop;
     state.suspended.grow = outcome == ExtendOutcome::SeriesEnd;
 
     write_extended_segment(context, state, false);
-    state.suspended.num_coef = state.extension.num_coef;
+    state.suspended.num_coef = state.extend.num_coef;
     for (const BandFit& band : state.segments.back().bands)
         state.suspended.magnitude.push_back(band.magnitude);
 
@@ -1035,26 +1035,26 @@ void check_fits(const Context& context, const State& state, const Suspended& fro
 // then the guard that failed tested again on the longer series.
 Phase resume_series_end(const Context& context, State& state, const Suspended& from)
 {
-    Extension& extension = state.extension;
+    ExtendState& extend = state.extend;
     Window& window = state.cursor.window;
     const auto dates = state.series.dates();
     const auto spectral = state.series.spectral();
 
-    extension.trained = true;
-    extension.fit_window = Window(window.start, from.fit_stop);
-    extension.fit_span = span(dates, extension.fit_window);
+    extend.trained = true;
+    extend.fit_window = Window(window.start, from.fit_stop);
+    extend.fit_span = span(dates, extend.fit_window);
     BandList bands;
     for (index_t band = 0; band < spectral.extent(0); ++band)
         bands.push_back(band);
-    refit_model(context, extension).fit(
-        dates.slice(range(extension.fit_window.start, extension.fit_window.stop)),
-        spectral.slice(all(), range(extension.fit_window.start, extension.fit_window.stop)),
-        state.coefficients.count(extension.fit_window.size()),
+    refit_model(context, extend).fit(
+        dates.slice(range(extend.fit_window.start, extend.fit_window.stop)),
+        spectral.slice(all(), range(extend.fit_window.start, extend.fit_window.stop)),
+        state.coefficients.count(extend.fit_window.size()),
         state.coefficients.max,
         bands,
         KeepResiduals::Yes
     );
-    extension.complete = true;
+    extend.complete = true;
 
     // After a grow the last peek reached the last observation: the series
     // continues once it holds one more, and the grow is applied (testing
@@ -1069,8 +1069,8 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     }
 
     // The series still ends here: the stored run's last test, its segment.
-    extension.num_coef = from.num_coef;
-    extension.peek = Window(window.stop, reach);
+    extend.num_coef = from.num_coef;
+    extend.peek = Window(window.stop, reach);
     write_extended_segment(context, state, false, &from.magnitude);
     state.cursor.prev_break = window.stop;
     state.exit = Exit::SeriesEnd;
