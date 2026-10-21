@@ -5,11 +5,13 @@
 // back of it.
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include <pybind11/pybind11.h>
 
 #include "ccd/ccd.hpp"
+#include "ccd/results/diagnostics.hpp"
 
 namespace py = pybind11;
 
@@ -59,8 +61,24 @@ std::vector<ccd::PixelRecord> records_from_columns(
     ccd::index_t B
 );
 
+// resume=, as detect() and detect_cube() take it: the earlier call's output,
+// made with record=True or by a resume, as the run's Resume (the cube's of H
+// x W pixels); nullopt for None. TypeError or ValueError, naming what it
+// lacks, for anything else.
+std::optional<ccd::Resume> pixel_resume(const py::object& resume);
+std::optional<ccd::Resume> cube_resume(
+    const py::object& resume,
+    ccd::index_t H,
+    ccd::index_t W,
+    ccd::index_t B
+);
+
 // detect_cube()'s "failures": (row, col, message) tuples.
 py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures);
+
+// The events of one observed pixel (trace=, trace_pixels=): a dict each,
+// ready for pandas.DataFrame.
+py::list trace_rows(const std::vector<ccd::ObserverEvent>& events);
 
 // Each record column's name and numpy dtype, as record_columns() writes them.
 py::dict resume_schema();

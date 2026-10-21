@@ -742,6 +742,83 @@ py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures)
     return out;
 }
 
+//------------------------------------------------------------------------------
+// resume=: the earlier call's output.
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+// `resume` as the earlier `entry` call's output, which has `has`.
+py::dict previous_output(const py::object& resume, const char* entry, const char* has)
+{
+    if (!py::isinstance<py::dict>(resume))
+        throw py::type_error(std::string(entry) + "(): resume= is the output of an earlier " +
+                             entry + "() call, a dict");
+    const py::dict out = resume.cast<py::dict>();
+    if (!out.contains("resume") || !out.contains("resume_header"))
+        throw py::value_error(std::string(entry) + "(): resume= holds no resume record; make "
+                              "the earlier call with record=True");
+    if (!out.contains(has))
+        throw py::value_error(std::string(entry) + "(): resume= has no \"" + has +
+                              "\"; it is the output of an earlier " + entry + "() call");
+    return out;
+}
+
+} // namespace
+
+std::optional<ccd::Resume> pixel_resume(const py::object& resume)
+{
+    if (resume.is_none())
+        return std::nullopt;
+    const py::dict previous = previous_output(resume, "detect", "models");
+    return ccd::Resume{
+        header_from_python(previous["resume_header"].cast<py::dict>()),
+        {record_from_python(previous["resume"].cast<py::dict>())},
+        {models_from_python(previous["models"].cast<py::list>())}};
+}
+
+std::optional<ccd::Resume> cube_resume(const py::object& resume, index_t H, index_t W, index_t B)
+{
+    if (resume.is_none())
+        return std::nullopt;
+    const py::dict previous = previous_output(resume, "detect_cube", "row");
+    return ccd::Resume{
+        header_from_python(previous["resume_header"].cast<py::dict>()),
+        records_from_columns(previous["resume"].cast<py::dict>(), H, W, B),
+        segments_from_columns(previous, H, W, B)};
+}
+
+//------------------------------------------------------------------------------
+// Traces
+//------------------------------------------------------------------------------
+
+py::list trace_rows(const std::vector<ccd::ObserverEvent>& events)
+{
+    py::list out;
+    for (const ccd::ObserverEvent& e : events)
+    {
+        py::dict d;
+        d["kind"] = ccd::to_string(e.kind);
+        d["machine"] = e.machine;
+        d["phase"] = e.phase;
+        d["next"] = e.next;
+        d["window_start"] = e.window_start;
+        d["window_stop"] = e.window_stop;
+        d["prev_break"] = e.prev_break;
+        d["observations"] = e.observations;
+        d["day"] = e.day;
+        d["day_to"] = e.day_to;
+        d["outcome"] = e.outcome;
+        py::list values;
+        for (const ccd::scalar_t v : e.values)
+            values.append(v);
+        d["values"] = values;
+        out.append(d);
+    }
+    return out;
+}
+
 py::dict resume_schema()
 {
     py::dict d;
