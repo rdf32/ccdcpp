@@ -142,7 +142,7 @@ public:
 //   ThermalRange    band, range
 //   BandRange       bands, range
 //   GreenMedian     band, green_offset, max_date, scope
-//   OnePerDate          none
+//   OnePerDate      none
 //   Custom          custom
 //
 // The named constructors below fill exactly those.

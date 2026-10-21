@@ -24,7 +24,7 @@ const char* name(StepKind kind)
         case StepKind::ThermalRange: return "ThermalRange";
         case StepKind::BandRange:    return "BandRange";
         case StepKind::GreenMedian:  return "GreenMedian";
-        case StepKind::OnePerDate:       return "OnePerDate";
+        case StepKind::OnePerDate:   return "OnePerDate";
         case StepKind::Custom:       return "Custom";
     }
     return "unknown";
