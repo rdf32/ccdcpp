@@ -687,7 +687,8 @@ class Bounds(unittest.TestCase):
                         preprocess__thermal_range__max_inclusive=therm[1])
                     snow = ccdcpp.plan_of(cfg, base).snow.chain
                     standard = ccdcpp.plan_of(cfg, base).standard.chain
-                    for thermal, band in ((snow[5], snow[1]), (standard[1], standard[2])):
+                    for thermal, band in ((snow[1], snow[2]), (snow[6], snow[2]),
+                                          (standard[1], standard[2])):
                         self.assertEqual(thermal.inclusive, therm)
                         self.assertEqual(band.inclusive, refl)
 

@@ -60,8 +60,7 @@ def written_default() -> Preprocess:
     common = (KeepQa(), ThermalRange(), BandRange(), Dedupe())
     return Preprocess(
         standard=ProcedureChain(steps=common, thermal_transform=True),
-        snow=ProcedureChain(steps=(KeepQa(), BandRange(), Dedupe(), AddQa(), Dedupe(),
-                                   ThermalRange())),
+        snow=ProcedureChain(steps=common + (AddQa(), Dedupe(), ThermalRange())),
         insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), Dedupe())),
     )
 
@@ -75,7 +74,7 @@ def written_default_explicit() -> Preprocess:
     common = (keep, thermal, band, Dedupe())
     return Preprocess(
         standard=ProcedureChain(steps=common, thermal_transform=True),
-        snow=ProcedureChain(steps=(keep, band, Dedupe(), AddQa(("snow",)), Dedupe(), thermal)),
+        snow=ProcedureChain(steps=common + (AddQa(("snow",)), Dedupe(), thermal)),
         insufficient_clear=ProcedureChain(steps=common + (
             GreenMedian(offset=0.04, scope="stat_window"), Dedupe(),
         )),
@@ -94,7 +93,7 @@ class Plans(unittest.TestCase):
         common = [K.KeepQa, K.ThermalRange, K.BandRange, K.Dedupe]
         self.assertEqual([s.kind for s in plan.standard.chain], common)
         self.assertEqual([s.kind for s in plan.snow.chain],
-                         [K.KeepQa, K.BandRange, K.Dedupe, K.AddQa, K.Dedupe, K.ThermalRange])
+                         common + [K.AddQa, K.Dedupe, K.ThermalRange])
         self.assertEqual([s.kind for s in plan.insufficient_clear.chain],
                          common + [K.GreenMedian, K.Dedupe])
         t = plan.standard.transform
@@ -117,7 +116,7 @@ class Plans(unittest.TestCase):
         green = ccdcpp.plan_of(cfg, h).insufficient_clear.chain[4]
         self.assertEqual((green.green_offset, green.max_date, green.scope),
                          (0.05 * 10000.0, 730000, ccdcpp.GreenFilterScope.All))
-        self.assertEqual(plan.snow.chain[3].codes, [h.qa_snow])
+        self.assertEqual(plan.snow.chain[4].codes, [h.qa_snow])
 
     def test_physical_plan(self):
         phys = presets.landsat_c1_physical()
@@ -141,14 +140,14 @@ class Plans(unittest.TestCase):
         h = ccdcpp.Input(qa_clear=10, qa_water=11, qa_snow=13)
         plan = ccdcpp.plan_of(keeps_snow(), h)
         self.assertEqual(plan.standard.chain[0].codes, [10, 11, 13])
-        self.assertEqual(plan.snow.chain[3].codes, [13])
+        self.assertEqual(plan.snow.chain[4].codes, [13])
         # Ints are codes as given.
         plan = ccdcpp.plan_of(CCDC.replace(preprocess__snow__add_qa__codes=[7, 3]), h)
-        self.assertEqual(plan.snow.chain[3].codes, [3, 7])
+        self.assertEqual(plan.snow.chain[4].codes, [3, 7])
 
     def test_band_range_by_role(self):
         cfg = CCDC.replace(preprocess__band_range__bands=["swir2", "green"])
-        band = ccdcpp.plan_of(cfg, ccdcpp.Input()).snow.chain[1]
+        band = ccdcpp.plan_of(cfg, ccdcpp.Input()).snow.chain[2]
         self.assertEqual(band.bands, [5, 1])
 
     def test_equality(self):
@@ -170,8 +169,8 @@ class Plans(unittest.TestCase):
         for line in ("standard", "  transform  band 6 <- x * 10 - 27315",
                      "  0  KeepQa codes {0, 1}", "  1  ThermalRange band 6, -9320 < x < 7070",
                      "  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000", "  3  Dedupe",
-                     "snow", "  transform  none", "  3  AddQa codes {3}",
-                     "  5  ThermalRange band 6, 1799.5 < x < 3438.5", "insufficient_clear",
+                     "snow", "  transform  none", "  4  AddQa codes {3}",
+                     "  6  ThermalRange band 6, 1799.5 < x < 3438.5", "insufficient_clear",
                      "  4  GreenMedian band 1, drop x >= median(dates <= 736694) + 400, "
                      "scope StatWindow"):
             self.assertIn(line, text.splitlines())
@@ -336,13 +335,13 @@ class ThermalRangeInCelsius(unittest.TestCase):
         plan = ccdcpp.plan_of("ccdc", ccdcpp.Input())
         self.assertEqual((plan.standard.chain[1].min, plan.standard.chain[1].max),
                          (-9320.0, 7070.0))
-        # The snow chain's is its last step, after the snow observations are added back.
-        for step in (plan.snow.chain[5], plan.insufficient_clear.chain[1]):
+        # The snow chain tests it again as its last step, after the snow is added back.
+        for step in (plan.snow.chain[1], plan.snow.chain[6], plan.insufficient_clear.chain[1]):
             self.assertEqual((step.kind, step.min, step.max, step.inclusive),
                              (ccdcpp.StepKind.ThermalRange, 1799.5, 3438.5, (False, False)))
         # With the identity transform the bounds are the same in every chain.
         phys = ccdcpp.plan_of("ccdc", presets.landsat_c1_physical().input())
-        self.assertEqual({(s.min, s.max) for s in (phys.standard.chain[1], phys.snow.chain[5],
+        self.assertEqual({(s.min, s.max) for s in (phys.standard.chain[1], phys.snow.chain[6],
                                                    phys.insufficient_clear.chain[1])},
                          {(-0.932, 0.707)})
 
@@ -354,9 +353,10 @@ class Replace(unittest.TestCase):
         self.assertEqual(cfg.preprocess("snow"), CCDC.preprocess("snow"))
         every = CCDC.replace(preprocess__thermal_range__min=-80.0)
         for procedure in ccdcpp.PROCEDURES:
-            (step,) = [s for s in every.preprocess(procedure)["steps"]
-                       if s["step"] == "thermal_range"]
-            self.assertEqual(step["min"], -80.0)
+            steps = [s for s in every.preprocess(procedure)["steps"]
+                     if s["step"] == "thermal_range"]
+            self.assertEqual([s["min"] for s in steps], [-80.0] * len(steps))
+            self.assertEqual(len(steps), 2 if procedure == "snow" else 1)
         flag = CCDC.replace(preprocess__snow__thermal_transform=True)
         self.assertTrue(flag.preprocess("snow")["thermal_transform"])
         chain = CCDC.replace(preprocess__snow=[KeepQa(), Dedupe()])
@@ -370,7 +370,7 @@ class Replace(unittest.TestCase):
         self.assertEqual(whole.preprocess("standard"), CCDC.preprocess("standard"))
         # An int given for a real is a real.
         self.assertEqual(
-            CCDC.replace(preprocess__band_range__max=1).preprocess("snow")["steps"][1]["max"],
+            CCDC.replace(preprocess__band_range__max=1).preprocess("snow")["steps"][2]["max"],
             1.0)
 
     def test_refusals_in_replace(self):

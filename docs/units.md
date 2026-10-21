@@ -166,13 +166,14 @@ transform is non-decreasing; `ccd::preprocess::stored_range()`), so the stored t
 exactly the values whose transform Standard's test keeps, NaN included, for every flag. On
 Collection-1 DN -93.2 and 70.7 °C are 1799.5 and 3438.5 (179.95 and 343.85 K); with the
 identity transform (`landsat_c1_physical`, `landsat_c2`) the bounds are the transformed ones.
-The snow chain tests the range last, after it adds the snow observations back and dedupes, so
-the snow observations are tested too (pyccd tests only the clear and water ones, before it adds
-the snow back).
+The snow chain tests the range twice: on its clear and water observations before the dedupe,
+as pyccd does, so that one with an implausible thermal value does not take its date from a snow
+observation, and again after it adds the snow observations back and dedupes, so that the snow
+observations are tested too (pyccd tests only the clear and water ones).
 
 ```python
 for input in (ccdcpp.Input(), physical):
-    print(ccdcpp.plan_of("ccdc", input).snow.chain[5])
+    print(ccdcpp.plan_of("ccdc", input).snow.chain[6])
 ```
 
 ```text
@@ -191,10 +192,8 @@ synthetic Collection-1 corpus, whose thermal values range far beyond the bounds,
 pixels change (117 snow, 93 insufficient-clear, 8 without a segment), and the DN run segments
 as the physical-unit run does. On the Atlanta cell (Collection 2, 250,000 pixels) no pixel
 changes. Testing the snow observations too keeps a saturated or NaN thermal value out of a snow
-fit (one such pixel's thermal RMSE goes from 1507, or NaN, to 41); as the snow chain's last
-step it also changes 4 snow pixels of the synthetic corpus's 2,900, on both units: on 7 dates a
-clear observation with an implausible thermal value comes first, the dedupe keeps it, the
-range then drops it, and the date's snow observation goes with it. A thermal transform's `thermal_scale` is a positive number and its `thermal_offset` a
+fit (one such pixel's thermal RMSE goes from 1507, or NaN, to 41), and changes none of those
+pixels, whose snow observations' thermal values are plausible. A thermal transform's `thermal_scale` is a positive number and its `thermal_offset` a
 finite one.
 
 ## The guards

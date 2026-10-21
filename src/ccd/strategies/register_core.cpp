@@ -49,12 +49,13 @@ void register_core_strategies(config::Registry& registry)
     // statistics cutoff), each strategy's, and pyccd's preprocessing, each
     // step at its defaults (clear and water kept, the thermal range -93.2 to
     // 70.7 degrees Celsius, reflectance in (0, 1), the green median 0.04
-    // above). Standard and InsufficientClear begin with keep_qa,
-    // thermal_range, band_range and dedupe; Standard then ends, reading
-    // thermal through the input's transform; InsufficientClear runs the green
-    // median and dedupes. PermanentSnow keeps clear and water, tests the
-    // reflectance range and dedupes, adds snow back and dedupes, and then
-    // tests the thermal range, so that it covers the snow observations too.
+    // above). Every procedure's chain begins with the same four steps,
+    // keep_qa, thermal_range, band_range and dedupe; Standard then ends,
+    // reading thermal through the input's transform; PermanentSnow adds snow
+    // back, dedupes and tests the thermal range again, over the snow
+    // observations too (the first test keeps a clear observation with an
+    // implausible thermal value from taking its date in the dedupe);
+    // InsufficientClear runs the green median and dedupes.
     // Every procedure's thermal range covers every observation its fit uses,
     // in degrees Celsius: Standard tests the transformed row, the other two
     // the stored row against the bounds taken back through the transform.
@@ -79,7 +80,8 @@ void register_core_strategies(config::Registry& registry)
     };
     ccdc.preprocess["standard"] = chain(true, {"keep_qa", "thermal_range", "band_range", "dedupe"});
     ccdc.preprocess["snow"] = chain(
-        false, {"keep_qa", "band_range", "dedupe", "add_qa", "dedupe", "thermal_range"});
+        false, {"keep_qa", "thermal_range", "band_range", "dedupe", "add_qa", "dedupe",
+                "thermal_range"});
     ccdc.preprocess["insufficient_clear"] = chain(
         false, {"keep_qa", "thermal_range", "band_range", "dedupe", "green_median", "dedupe"});
     registry.add_preset("ccdc", std::move(ccdc));

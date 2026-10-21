@@ -211,13 +211,12 @@ void reference_thermal(
     }
 }
 
-// Clear and water kept, the thermal range when `thermal` (reference_thermal),
-// the reflectance range, deduped.
+// Clear and water kept, the thermal range (reference_thermal), the
+// reflectance range, deduped.
 ccd::ProcessingMask reference_common(
     const PixelView& px,
     const Options& options,
-    bool transformed,
-    bool thermal = true
+    bool transformed
 )
 {
     ccd::ProcessingMask mask(px.dates.size());
@@ -229,8 +228,7 @@ ccd::ProcessingMask reference_common(
             mask.set(i, true);
     }
 
-    if (thermal)
-        reference_thermal(px, options, transformed, mask);
+    reference_thermal(px, options, transformed, mask);
 
     ccd::filter::apply_saturation_filter(
         px.spectral,
@@ -257,8 +255,8 @@ ccd::ProcessingMask reference_snow(
     const Options& options
 )
 {
-    // The thermal range last, over the snow observations too.
-    ccd::ProcessingMask mask = reference_common(px, options, false, false);
+    // The thermal range again after the snow is back, over it too.
+    ccd::ProcessingMask mask = reference_common(px, options, false);
 
     for (index_t i = 0; i < px.qas.size(); ++i)
     {
@@ -698,8 +696,9 @@ TEST(CcdcPlan, Shape)
 
     EXPECT_EQ(kinds(plan.standard.chain), common);
 
-    EXPECT_EQ(kinds(plan.snow.chain), (std::vector<K>{K::KeepQa, K::BandRange, K::Dedupe,
-                                                      K::AddQa, K::Dedupe, K::ThermalRange}));
+    std::vector<K> snow = common;
+    snow.insert(snow.end(), {K::AddQa, K::Dedupe, K::ThermalRange});
+    EXPECT_EQ(kinds(plan.snow.chain), snow);
 
     std::vector<K> clear = common;
     clear.insert(clear.end(), {K::GreenMedian, K::Dedupe});
@@ -714,7 +713,7 @@ TEST(CcdcPlan, Shape)
 
     const pp::Step& keep = plan.standard.chain[0];
     EXPECT_EQ(keep.codes, pp::qa_set({h.qa_clear, h.qa_water}));
-    EXPECT_EQ(plan.snow.chain[3].codes, pp::qa_set({h.qa_snow}));
+    EXPECT_EQ(plan.snow.chain[4].codes, pp::qa_set({h.qa_snow}));
 
     const pp::Step& green = plan.insufficient_clear.chain[4];
     EXPECT_EQ(green.band, h.index("green"));
@@ -774,7 +773,7 @@ std::string fields(const pp::PreprocessPlan& plan)
 // The "ccdc" plan of `input` written out with the Step constructors: the
 // thermal range on the thermal row when it has one, (therm_lo, therm_hi) in
 // Standard and (stored_lo, stored_hi) in the other two (the snow chain's
-// last), the reflectance range (0, refl_hi) on its reflective rows, the green
+// again at its end), the reflectance range (0, refl_hi) on its reflective rows, the green
 // median `green` above, up to statistics_end 736694, Standard transformed by
 // `transform`.
 pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double therm_hi,
@@ -786,12 +785,11 @@ pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double th
         if (input.index("thermal") != ccd::NO_BAND)
             out.push_back(pp::Step::thermal_range(input.index("thermal"), {{lo, false}, {hi, false}}));
     };
-    const auto chain = [&](double lo, double hi, bool with_thermal = true)
+    const auto chain = [&](double lo, double hi)
     {
         pp::Chain out;
         out.push_back(pp::Step::keep_qa(pp::qa_set({input.qa_clear, input.qa_water})));
-        if (with_thermal)
-            thermal(out, lo, hi);
+        thermal(out, lo, hi);
         out.push_back(pp::Step::band_range(
             band_rows(ccd::config::Value(std::string("reflective")), input),
             {{0.0, false}, {refl_hi, false}}));
@@ -803,7 +801,7 @@ pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double th
     pp::PreprocessPlan plan;
     plan.standard.transform = transform;
     plan.standard.chain = chain(therm_lo, therm_hi);
-    plan.snow.chain = chain(0.0, 0.0, false);
+    plan.snow.chain = common;
     plan.snow.chain.push_back(pp::Step::add_qa(pp::qa_set({input.qa_snow})));
     plan.snow.chain.push_back(pp::Step::dedupe());
     thermal(plan.snow.chain, stored_lo, stored_hi);
@@ -945,12 +943,8 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
     ccd::config::Config written = golden::pyccd();
     written.preprocess = {
         {"standard", chain(true, {})},
-        {"snow", {false, {{"keep_qa", {{"codes", names({"clear", "water"})}}},
-                          {"band_range", band},
-                          {"dedupe", {}},
-                          {"add_qa", {{"codes", names({"snow"})}}},
-                          {"dedupe", {}},
-                          {"thermal_range", thermal}}}},
+        {"snow", chain(false, {{"add_qa", {{"codes", names({"snow"})}}}, {"dedupe", {}},
+                               {"thermal_range", thermal}})},
         {"insufficient_clear",
          chain(false, {{"green_median", {{"offset", real(0.04)},
                                          {"scope", ccd::config::Value(std::string("stat_window"))}}},
@@ -1146,8 +1140,8 @@ TEST(PlanValidation, BandIndexNotBelowBandCount)
 
     {
         pp::PreprocessPlan plan = plan_of(h);
-        plan.snow.chain[5] = pp::Step::thermal_range(7, r);
-        expect_rejected(plan, 7, "snow step 5 (ThermalRange): band 7");
+        plan.snow.chain[6] = pp::Step::thermal_range(7, r);
+        expect_rejected(plan, 7, "snow step 6 (ThermalRange): band 7");
     }
     {
         pp::PreprocessPlan plan = plan_of(h);
@@ -1179,7 +1173,7 @@ TEST(PlanValidation, TransformBandInBandRange)
 {
     pp::PreprocessPlan plan = plan_of(Options{});
     plan.snow.transform = pp::Affine{3, 2.0, 1.0};
-    expect_rejected(plan, 7, "snow transform: band 3 is also tested by step 1 (BandRange)");
+    expect_rejected(plan, 7, "snow transform: band 3 is also tested by step 2 (BandRange)");
 
     // The same band outside every BandRange is accepted.
     plan.snow.transform = pp::Affine{6, 2.0, 1.0};
@@ -1199,8 +1193,8 @@ TEST(PlanValidation, AddQaNotFollowedByDedupe)
     {
         // AddQa followed by another step.
         pp::PreprocessPlan plan = plan_of(options);
-        plan.snow.chain[4] = pp::Step::keep_qa(pp::qa_set({h.qa_clear}));
-        expect_rejected(plan, 7, "snow step 3 (AddQa): must be followed by a Dedupe");
+        plan.snow.chain[5] = pp::Step::keep_qa(pp::qa_set({h.qa_clear}));
+        expect_rejected(plan, 7, "snow step 4 (AddQa): must be followed by a Dedupe");
     }
 }
 
@@ -1227,7 +1221,7 @@ TEST(PlanValidation, EntryPointsReject)
 
     ccd::config::Config bad = golden::pyccd();
     auto& snow_steps = bad.preprocess.at("snow").steps;
-    snow_steps.erase(snow_steps.begin() + 4);   // the dedupe after add_qa
+    snow_steps.erase(snow_steps.begin() + 5);   // the dedupe after add_qa
 
     const PixelView px = view(c.dates, c.spectral.data(), 7, c.qas.data());
     EXPECT_THROW(run_detect(px, h, bad), std::invalid_argument);

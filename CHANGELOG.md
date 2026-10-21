@@ -30,13 +30,13 @@ its replacement.
   the bounds taken back through the input's thermal transform
   (`ccd::preprocess::stored_range()`: 1799.5 to 3438.5 on Collection-1 DN, 179.95 to 343.85 K),
   so they keep exactly the values whose transform Standard's range keeps, and the snow chain
-  tests it last, after adding the snow observations back. On Collection-1 DN they drop, besides
-  saturated (20000) and NaN values as before, the implausible temperatures 0.10.0 kept, and a
-  saturated or NaN snow observation no longer reaches a snow fit: no change on the 1,500
-  reference Collection-1 pixels, 218 of the synthetic corpus's 2,900 pixels, none of the
-  Atlanta cell's 250,000 (Collection 2). Physical-unit outputs are 0.10.0's but for 4 snow
-  pixels of that corpus. An input's `thermal_scale` must be a positive number and its
-  `thermal_offset` a finite one.
+  tests it again as its last step, after adding the snow observations back. On Collection-1
+  DN they drop, besides saturated (20000) and NaN values as before, the implausible
+  temperatures 0.10.0 kept, and a saturated or NaN snow observation no longer reaches a snow
+  fit: no change on the 1,500 reference Collection-1 pixels, 218 of the synthetic corpus's
+  2,900 pixels, none of the Atlanta cell's 250,000 (Collection 2). Physical-unit outputs are
+  0.10.0's. An input's `thermal_scale` must be a positive number and its `thermal_offset` a
+  finite one.
 - **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and says only how to read the data: QA
   codes and `qa_table`, `roles`, `reflectance_scale`/`reflectance_offset`,
   `thermal_scale`/`thermal_offset` with `thermal_at_100c`, `saturation_code` and
