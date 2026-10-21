@@ -595,6 +595,7 @@ if(CCD_BUILD_PYTHON)
             config
             bindings
             stub
+            package
             qa_tables
             profiles
             preprocess

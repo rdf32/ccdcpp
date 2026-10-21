@@ -27,25 +27,19 @@ del sys.argv[1:3]
 SCRIPT = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 
 
-def assemble(root: str) -> str:
-    """The package laid out in `root` as the wheel lays it out: python/ccdcpp (its
-    configs too) with the built extension beside it. Returns its __init__.py."""
+def use_package(tag: str = SCRIPT) -> str:
+    """Lays out the package in <module_dir>/test_package_<tag> as the wheel lays it
+    out (python/ccdcpp, its configs too, with the built extension beside it), puts
+    it first on sys.path and imports it, so `import ccdcpp` is that package. Returns
+    its __init__.py."""
+    root = os.path.join(MODULE_DIR, "test_package_" + tag)
+    shutil.rmtree(root, ignore_errors=True)
     package = os.path.join(root, "ccdcpp")
-    shutil.rmtree(package, ignore_errors=True)
     shutil.copytree(os.path.join(SOURCE_DIR, "python", "ccdcpp"), package,
                     ignore=shutil.ignore_patterns("__pycache__"))
     (extension,) = glob.glob(os.path.join(MODULE_DIR, "ccdcpp.*"))
     shutil.copy(extension, package)
-    return os.path.join(package, "__init__.py")
-
-
-def use_package(tag: str = SCRIPT) -> str:
-    """Puts the package, assembled in <module_dir>/test_package_<tag>, first on
-    sys.path and imports it, so `import ccdcpp` is that package. Returns its
-    __init__.py."""
-    root = os.path.join(MODULE_DIR, "test_package_" + tag)
-    shutil.rmtree(root, ignore_errors=True)
-    init = assemble(root)
+    init = os.path.join(package, "__init__.py")
     sys.path.insert(0, root)
     import ccdcpp
     assert ccdcpp.__file__ == init, ccdcpp.__file__

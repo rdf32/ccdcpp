@@ -7,14 +7,11 @@ nlcd table and against pyccd itself are in test_qa_references.py.
 """
 from __future__ import annotations
 
-import subprocess
-import sys
-import tempfile
 import unittest
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from _harness import assemble, use_package
+from _harness import use_package
 
 use_package()
 
@@ -163,11 +160,6 @@ class Tables(unittest.TestCase):
                 self.assertTrue(set(np.unique(codes)) <= {FILL, CLEAR, WATER, SHADOW, SNOW, CLOUD})
                 for code, values in SCHEMES[name].items():
                     np.testing.assert_array_equal(codes[values], code, err_msg=f"{code}")
-
-    def test_submodule_imports(self):
-        import ccdcpp.qa_tables as q
-        self.assertIs(q, ext.qa_tables)
-        self.assertIn("Landsat", q.__doc__ or "")
 
     def test_docstrings(self):
         def flat(text: str | None) -> str:
@@ -425,22 +417,6 @@ class Validation(unittest.TestCase):
         for name, call in self.entries(self.codes).items():
             with self.subTest(entry=name):
                 call()
-
-
-class Package(unittest.TestCase):
-    def test_package_exposes_qa_tables(self):
-        # The wheel layout, in a fresh interpreter; see test_bindings.py.
-        with tempfile.TemporaryDirectory() as root:
-            assemble(root)
-            out = subprocess.run(
-                [sys.executable, "-I", "-c",
-                 "import sys; sys.path.insert(0, sys.argv[1]); "
-                 "import ccdcpp.qa_tables as q; import ccdcpp; "
-                 "print(q is ccdcpp.qa_tables, isinstance(q.hls_fmask(), ccdcpp.QaTable))",
-                 root],
-                check=True, capture_output=True, text=True,
-            ).stdout.split()
-        self.assertEqual(out, ["True", "True"])
 
 
 if __name__ == "__main__":

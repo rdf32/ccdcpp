@@ -9,15 +9,12 @@ the repository root. ctest runs this as `python_bindings`.
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
-import tempfile
 import tomllib
 import unittest
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, TypedDict
 
-from _harness import SOURCE_DIR, assemble, use_package
+from _harness import SOURCE_DIR, use_package
 
 use_package()
 
@@ -730,26 +727,9 @@ class DateOrder(unittest.TestCase):
 
 
 class Version(unittest.TestCase):
-    def pyproject_version(self) -> str:
-        with open(os.path.join(SOURCE_DIR, "pyproject.toml"), "rb") as f:
-            return tomllib.load(f)["project"]["version"]
-
     def test_extension_matches_pyproject(self):
-        self.assertEqual(ext.__version__, self.pyproject_version())
-
-    def test_package_exposes_it(self):
-        # The wheel layout, in a fresh interpreter so the extension imported
-        # above is not the one found.
-        with tempfile.TemporaryDirectory() as root:
-            init = assemble(root)
-            out = subprocess.run(
-                [sys.executable, "-I", "-c",
-                 "import sys; sys.path.insert(0, sys.argv[1]); import ccdcpp; "
-                 "print(ccdcpp.__file__); print(ccdcpp.__version__)", root],
-                check=True, capture_output=True, text=True,
-            ).stdout.split()
-        self.assertEqual(out[0], init)
-        self.assertEqual(out[1], self.pyproject_version())
+        with open(os.path.join(SOURCE_DIR, "pyproject.toml"), "rb") as f:
+            self.assertEqual(ext.__version__, tomllib.load(f)["project"]["version"])
 
 
 if __name__ == "__main__":

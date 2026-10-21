@@ -488,26 +488,6 @@ class Runs(unittest.TestCase):
             ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(refit__factor=0.0))
 
 
-class Package(unittest.TestCase):
-    def test_it_holds_every_extension_name(self):
-        # The package wraps detect, detect_cube and plan_of; every other public name of the
-        # extension is the extension's own.
-        wrapped = {"detect", "detect_cube", "plan_of"}
-        for name in dir(ccdcpp.ccdcpp):
-            if name.startswith("_") and name != "__version__":
-                continue
-            with self.subTest(name=name):
-                if name in wrapped:
-                    self.assertIsNot(getattr(ccdcpp, name), getattr(ccdcpp.ccdcpp, name))
-                else:
-                    self.assertIs(getattr(ccdcpp, name), getattr(ccdcpp.ccdcpp, name))
-
-    def test_it_ships_its_types(self):
-        for name in ("py.typed", "ccdcpp.pyi", "qa_tables.pyi"):
-            self.assertTrue(os.path.isfile(os.path.join(os.path.dirname(ccdcpp.__file__), name)),
-                            name)
-
-
 if __name__ == "__main__":
     try:
         unittest.main()
