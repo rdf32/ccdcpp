@@ -103,9 +103,6 @@ void bind_qa_tables(py::module_& m)
         "2020-2023); no production run has used them yet."
     );
 
-    // `import ccdcpp.qa_tables` as well as `ccdcpp.qa_tables`.
-    py::module_::import("sys").attr("modules")[sub.attr("__name__")] = sub;
-
     sub.def(
         "landsat_c2_qa_pixel",
         [](const ccd::Input& o)
