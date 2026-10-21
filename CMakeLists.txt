@@ -174,7 +174,6 @@ add_library(
     src/ccd/regression/harmonic_basis.cpp
 
     src/ccd/input/mask/filter.cpp
-    src/ccd/input/pixel_series.cpp
     src/ccd/input/procedure.cpp
     src/ccd/input/input.cpp
     src/ccd/input/qa_statistics.cpp

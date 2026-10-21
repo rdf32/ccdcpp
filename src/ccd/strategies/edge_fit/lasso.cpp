@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "../../core/logger.hpp"
+#include "ccd/input/masked_series.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 
 namespace ccd

@@ -448,7 +448,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `options_digest()`, `ResumeHeader::options_digest` | `ResumeHeader::digest`, the resolution's |
 | `default_plan(h)`, `PreprocessPlanPtr`, the `preprocess` argument | `plan_of(config, input)` (`ccd/run/algorithm.hpp`), the plan the configuration resolves to |
 | `select_procedure()`, `standard::measure_cadence()` | the `mode` stage's `choose()`, the change test's `prepare()` |
-| `HarmonicWorkspace` | `PixelSeries` (`ccd/input/pixel_series.hpp`): the pixel's data, the run's input and shared values by reference |
+| `HarmonicWorkspace` | `PixelSeries` (`ccd/input/pixel_series.hpp`): the pixel's data, the run's input and shared values by reference; `MaskedData` and `apply_mask()` are in `ccd/input/masked_series.hpp`, with `MaskedSeries` |
 | `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`ccd/strategies/coefficients.hpp`) |
 | `Clock`, `elapsed_ms`, `print_change_model(s)` | none |
 | `ccd/types.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, `ccd/harmonic/...`, `ccd/preprocess/...` | `ccd/core/types.hpp`, none (the machine is internal; `ccd/machine/suspended.hpp` holds the record's `Suspended`), `ccd/results/record.hpp`, `ccd/input/...`, `ccd/input/mask/...` (`ccd/ccd.hpp` includes every public header) |

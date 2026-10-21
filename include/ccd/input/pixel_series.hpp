@@ -26,8 +26,6 @@ namespace ccd
 // by reference. It holds no copy of either and computes nothing: the masks,
 // the harmonic bases, the QA statistics and the fits are the procedures'.
 //
-// MaskedData is the masked copy of a series' dates and values (apply_mask()).
-//
 //==============================================================================
 
 class PixelSeries
@@ -120,70 +118,5 @@ private:
     const config::Shared& shared_;
 
 };
-
-struct MaskedData
-{
-    std::vector<std::int64_t> dates;
-    std::vector<scalar_t> spectral;
-
-    index_t bands;
-    index_t observations;
-
-    ArrayView<std::int64_t, 1> dates_view()
-    {
-        return ArrayView<std::int64_t,1>::contiguous(
-            dates.data(),
-            {observations}
-        );
-    }
-
-    ArrayView<scalar_t, 2> spectral_view()
-    {
-        return ArrayView<scalar_t,2>::contiguous(
-            spectral.data(),
-            {bands, observations}
-        );
-    }
-
-    //----------------------------------------------------------------------
-    // Remove the observation at masked position `index`, in place.
-    //
-    // The result is what apply_mask() gives for the mask with that
-    // observation cleared: the same values, in the same order.
-    //----------------------------------------------------------------------
-    void erase(index_t index)
-    {
-        assert(index < observations);
-
-        dates.erase(dates.begin() + index);
-
-        // Compacting forward never overwrites an unread value: the write
-        // position trails the read position.
-        index_t out = 0;
-        for (index_t b = 0; b < bands; ++b)
-        {
-            for (index_t i = 0; i < observations; ++i)
-            {
-                if (i != index)
-                    spectral[out++] = spectral[b * observations + i];
-            }
-        }
-
-        --observations;
-        spectral.resize(bands * observations);
-    }
-};
-
-MaskedData apply_mask(
-    const PixelSeries& series,
-    const ProcessingMask& mask
-);
-
-// apply_mask() into `out`, reusing its storage.
-void apply_mask(
-    const PixelSeries& series,
-    const ProcessingMask& mask,
-    MaskedData& out
-);
 
 } // namespace ccd
