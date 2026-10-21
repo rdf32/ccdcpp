@@ -177,6 +177,35 @@ its replacement.
   segment of too few observations, with a NaN or infinite RMSE (and an assertion in a debug
   build). The defaults' outputs are unchanged.
 
+### Tests
+
+- The tests' CSV inputs and references are in `tests/ccd/data`, read in place
+  (`CCD_TEST_DATA_DIR`), with the scripts that write the pyccd and scikit-learn references
+  (`make_procedure_reference.py`, `make_regression_reference.py`; they were
+  `tests/ccd/{machine,regression}/test_*.py`). The headers the C++ tests share are in
+  `tests/ccd/support`: one pixel type (`series.hpp`) and one CSV reader, the dumps
+  (`dump.hpp`), the units (`units.hpp`), the fixture checks (`fixture.hpp`) and the golden
+  cubes (`synthetic.hpp`, `GOLDEN_CUBES`). The Python tests share their start-up
+  (`tests/python/_harness.py`).
+- `test_clear`, `test_snow` and `test_standard` are one `test_pyccd_reference`; its tests are
+  `PyccdReference.InsufficientClearMatchesPyccd`, `PermanentSnowMatchesPyccd`,
+  `StandardMatchesPyccd` and `HalfDayMedianGapMatchesPyccd` (were `CCD.DetectClear`,
+  `DetectSnow`, `DetectStandard` and `DetectStandardHalfDayMedianGap`).
+- Renamed to say what they hold: `Cadence.Defaults`, `PeekReferenceDays`,
+  `VariogramMinLagDays`, `RetrainSpanFactor`, `RetrainMinObs`, `SeasonalRmseDivisor`,
+  `SeasonalRmseCount`, `ChangeProbability` and `ChangeProbabilityThroughDetect` are
+  `Cadence.DefaultsArePyccdsValues`, `ALongerPeekReferenceOutlastsAShortDisturbance`,
+  `ALongerVariogramLagNeedsALargerStep`, `ALargerRefitFactorBreaksSoonerOnDrift`,
+  `ALargerRefitMinObsBreaksLaterOnDrift`, `ALargerSeasonalDivisorCountsASmallerStep`,
+  `FewerSeasonalResidualsCountASmallerStep`, `AHigherChangeProbabilityRaisesALongPeeksThreshold`
+  and `AHigherChangeProbabilityNeedsALargerStep`; `CcdcPlan.Shape`,
+  `CcdcPlan.StepsInOrderAndTheTransformOnStandardOnly`; `QaTables.Definitions`,
+  `QaTables.EachTableDecodesAsItsProductDefines`; `LassoSolver.MultiBandRegression` and
+  `RobustSolver.MultiBandRegression`, `LassoSolver.MatchesSklearnReference` and
+  `RobustSolver.MatchesPyccdReference`; `Bounds.InRange`, `Bounds.InRangeKeepsEachEndAsItsFlagSays`.
+- `Microbench.ApplyCcdcChain` is `tools/bench/bench_preprocess`, built with the tests and not
+  run by ctest.
+
 ## 0.10.0 - 2026-10-17
 
 Speed, and outputs moved in their last bits only. The Atlanta h024v013 cell
@@ -355,7 +384,7 @@ targets it). The tests that failed on Linux pass there.
   golden fixture 177 of 621 pixels (13 with a segment boundary or count
   moved), the bands fixture 137 of 400, the transitions fixture
   `lookback_far_peek_decides` (its first segment's fit), `expected_hls_l30.json`
-  3 of 5 pixels, all 144 check.sh dumps; `PyccdReference.StandardMatchesPyccd` compares
+  3 of 5 pixels, all 144 check.sh dumps; `CCD.DetectStandard` compares
   segments 0 and 1, which grow through 24 observations, with pyccd's shapes
   only, and segments 2-4 still with pyccd's fits.
 - Near the previous break Lookback peeks down to the break and never below
@@ -406,7 +435,7 @@ targets it). The tests that failed on Linux pass there.
   400, the transitions fixture 7 of 17 (one of them `dense_series_end`,
   renamed from `reentry_after_series_end`, whose mask also keeps the 4
   observations the re-entry dropped), the four real-data `expected_*.json` (11 of 19 pixels), all 144
-  check.sh dumps; `PyccdReference.HalfDayMedianGapMatchesPyccd` now ends one
+  check.sh dumps; `CCD.DetectStandardHalfDayMedianGap` now ends one
   observation before pyccd's reference (738727, 959 against pyccd's 738751,
   960), every fit still pyccd's.
 - The early exits return the processing mask, as pyccd does: a Standard pixel
@@ -574,7 +603,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
 ### Tests
 
 - `tests/ccd/golden/test_transitions.cpp` (ctest `Transitions.*`): 17
-  characterization pixels (`characterization.hpp`) built for the Standard
+  characterization pixels (`characterisation.hpp`) built for the Standard
   procedure's transitions, guards and pyccd quirks that the golden corpus
   misses or only Python reaches: Lookback reading below the previous break
   and Lookback's `PEEK_SIZE - 1` peek each deciding an output, the re-entry
