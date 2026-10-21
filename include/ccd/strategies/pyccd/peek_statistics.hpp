@@ -7,11 +7,10 @@
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/types.hpp"
 #include "ccd/core/window.hpp"
+#include "ccd/strategies/stages.hpp"
 
 namespace ccd
 {
-
-struct Variogram;   // strategies/stages.hpp
 
 //==============================================================================
 //
@@ -48,6 +47,24 @@ scalar_t adjust_change_threshold(
     index_t df,
     scalar_t probability
 );
+
+// The peek a pyccd stability rule or lookback reads, and the peek its
+// change_threshold is for: its `peek` parameter N when not 0, for both;
+// with 0, the change test's peek (`plan.peek`), and the peek the test's own
+// threshold is for (`plan.reference`, or plan.peek when that is 0).
+struct ThresholdPeek
+{
+    index_t peek;
+    index_t reference;
+};
+
+inline ThresholdPeek threshold_peek(const PeekPlan& plan, index_t peek)
+{
+    return ThresholdPeek{
+        peek ? peek : plan.peek,
+        peek ? peek : (plan.reference ? plan.reference : plan.peek)
+    };
+}
 
 // adjust_change_threshold() remembering its last arguments and value: a
 // run's pixels mostly share a peek, so the quantile is computed again only

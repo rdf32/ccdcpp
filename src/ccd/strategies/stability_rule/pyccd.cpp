@@ -54,10 +54,9 @@ void PyccdStability::prepare(const PeekPlan& peek, index_t detection_bands,
                              Scratch& scratch) const
 {
     StabilityScratch& s = static_cast<StabilityScratch&>(scratch);
-    const index_t at = p_.peek ? p_.peek : peek.peek;
-    const index_t reference = p_.peek ? p_.peek : (peek.reference ? peek.reference : peek.peek);
-    s.change_threshold = s.thresholds(at, reference, p_.change_threshold, detection_bands,
-                                      p_.change_probability);
+    const ThresholdPeek at = threshold_peek(peek, p_.peek);
+    s.change_threshold = s.thresholds(at.peek, at.reference, p_.change_threshold,
+                                      detection_bands, p_.change_probability);
 }
 
 bool PyccdStability::stable(const Model& fit, ArrayView<const std::int64_t, 1> dates_window,

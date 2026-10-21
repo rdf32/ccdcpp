@@ -120,10 +120,10 @@ void PyccdLookback::prepare(const PeekPlan& peek, index_t detection_bands,
                             Scratch& scratch) const
 {
     LookbackScratch& s = static_cast<LookbackScratch&>(scratch);
-    s.peek = p_.peek ? p_.peek : peek.peek;
-    const index_t reference = p_.peek ? p_.peek : (peek.reference ? peek.reference : peek.peek);
-    s.change_threshold = s.thresholds(s.peek, reference, p_.change_threshold, detection_bands,
-                                      p_.change_probability);
+    const ThresholdPeek at = threshold_peek(peek, p_.peek);
+    s.peek = at.peek;
+    s.change_threshold = s.thresholds(at.peek, at.reference, p_.change_threshold,
+                                      detection_bands, p_.change_probability);
 }
 
 LookbackJudgement PyccdLookback::judge(Model& model, ArrayView<const std::int64_t, 1> masked_dates,

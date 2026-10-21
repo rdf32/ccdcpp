@@ -384,7 +384,7 @@ Each strategy holds its own code, beside its class:
 | `catch_segment`, `fit_whole_series` | the Lasso edge fit | `include/ccd/strategies/edge_fit/lasso.hpp` |
 | `adjusted_variogram` | the variogram noise floor | `include/ccd/strategies/noise_floor/variogram.hpp` |
 | `tmask` | the Tmask window screen | `include/ccd/strategies/window_screen/tmask.hpp` |
-| `adjust_peek`, `adjust_change_threshold`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse` | pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
+| `adjust_peek`, `adjust_change_threshold`, `ThresholdPeek`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse` | pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
 (`src/ccd/machine/standard.hpp`): `initialize_criteria`, `initialize_step` with
