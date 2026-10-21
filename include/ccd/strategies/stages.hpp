@@ -31,7 +31,7 @@ class Model;   // strategies/model.hpp
 //
 // The stages of the algorithm
 //
-// The machine (src/ccd/machine/standard.hpp) is the CCDC family's fixed skeleton:
+// The machine (src/ccd/machine/detector.hpp) is the CCDC family's fixed skeleton:
 // its phases and routes. What each phase decides is a stage, decided by the
 // strategy the run's configuration names for it (config/registry.hpp). A
 // strategy returns its decision; only the machine routes.

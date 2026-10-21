@@ -8,7 +8,7 @@
 
 //==============================================================================
 //
-// Where the Standard machine stopped: the part of its state a resume record
+// Where the machine stopped: the part of its state a resume record
 // holds (PixelRecord::standard, results/record.hpp). The machine itself is
 // internal to the library.
 //
@@ -17,7 +17,7 @@
 namespace ccd
 {
 
-namespace standard
+namespace machine
 {
 
 // Why the machine stopped where it did: the early exits, and what ended the
@@ -74,6 +74,6 @@ struct Suspended
     index_t final_segments = 0;
 };
 
-} // namespace standard
+} // namespace machine
 
 } // namespace ccd

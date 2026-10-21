@@ -32,7 +32,7 @@
 #include "ccd/ccd.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/procedure.hpp"
-#include "ccd/machine/standard.hpp"   // internal (src/)
+#include "ccd/machine/detector.hpp"   // internal (src/)
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/edge_segments/lasso.hpp"
 
@@ -220,7 +220,7 @@ TEST(PyccdReference, StandardMatchesPyccd)
     const golden::PixelView px = data.view();
     const ccd::PixelSeries series(px.dates, px.spectral, px.qas);
 
-    ccd::standard::Detector detector;
+    ccd::machine::Detector detector;
     const ccd::FitResult result = detector.fit(
         ccd::PixelProcedure::Standard,
         series,

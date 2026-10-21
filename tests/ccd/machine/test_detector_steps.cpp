@@ -1,6 +1,6 @@
 //==============================================================================
 //
-// The Standard machine's routing and its steps, from hand-built records.
+// The machine's routing and its steps, from hand-built records.
 //
 //   * Routing: each guard between phases (room_to_initialize, peek_fits,
 //     start_catch_due) and each routing step (after_stable_start,
@@ -33,7 +33,7 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/procedure.hpp"
-#include "ccd/machine/standard.hpp"   // internal (src/)
+#include "ccd/machine/detector.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
 #include "config.hpp"
 #include "ccd/strategies/edge_segments/lasso.hpp"
@@ -42,16 +42,16 @@
 #include "ccd/strategies/library.hpp"
 
 #include "find_closest_doy.hpp"
-#include "standard_record.hpp"
+#include "detector_record.hpp"
 
 namespace
 {
 
 using ccd::index_t;
 using ccd::scalar_t;
-using ccd::standard::Exit;
-using ccd::standard::InitializeOutcome;
-using ccd::standard::Phase;
+using ccd::machine::Exit;
+using ccd::machine::InitializeOutcome;
+using ccd::machine::Phase;
 using machine_test::Record;
 using machine_test::in_extend;
 using machine_test::kVariogram;
@@ -60,78 +60,78 @@ using machine_test::kVariogram;
 // Guards
 //------------------------------------------------------------------------------
 
-TEST(StandardRouting, RoomToInitializeIsAMeowWindowAfterTheCursor)
+TEST(MachineRouting, RoomToInitializeIsAMeowWindowAfterTheCursor)
 {
     Record r(40);   // min_observations 12
     r.at(16, 28, 16);
-    EXPECT_TRUE(ccd::standard::room_to_initialize(r.context, r.state));   // 28 + 12 == 40
+    EXPECT_TRUE(ccd::machine::room_to_initialize(r.context, r.state));   // 28 + 12 == 40
     r.at(17, 29, 17);
-    EXPECT_FALSE(ccd::standard::room_to_initialize(r.context, r.state));
+    EXPECT_FALSE(ccd::machine::room_to_initialize(r.context, r.state));
 }
 
-TEST(StandardRouting, PeekFitsIsAFullPeekAfterTheWindow)
+TEST(MachineRouting, PeekFitsIsAFullPeekAfterTheWindow)
 {
     Record r(40);
     r.at(0, 34, 0, 6);
-    EXPECT_TRUE(ccd::standard::peek_fits(r.state));    // 34 + 6 == 40
+    EXPECT_TRUE(ccd::machine::peek_fits(r.state));    // 34 + 6 == 40
     r.at(0, 35, 0, 6);
-    EXPECT_FALSE(ccd::standard::peek_fits(r.state));
+    EXPECT_FALSE(ccd::machine::peek_fits(r.state));
     r.at(0, 30, 0, 11);
-    EXPECT_FALSE(ccd::standard::peek_fits(r.state));   // the plan's peek, not peek_size
+    EXPECT_FALSE(ccd::machine::peek_fits(r.state));   // the plan's peek, not peek_size
 }
 
-TEST(StandardRouting, StartCatchIsDueOnlyBeforeTheFirstSegmentPastAPeek)
+TEST(MachineRouting, StartCatchIsDueOnlyBeforeTheFirstSegmentPastAPeek)
 {
     Record r(60);
     r.at(7, 19, 0, 6);
-    EXPECT_TRUE(ccd::standard::start_catch_due(r.context, r.state));    // 7 - 0 > 6
+    EXPECT_TRUE(ccd::machine::start_catch_due(r.context, r.state));    // 7 - 0 > 6
     r.at(6, 18, 0, 6);
-    EXPECT_FALSE(ccd::standard::start_catch_due(r.context, r.state));   // 6 - 0 == 6
+    EXPECT_FALSE(ccd::machine::start_catch_due(r.context, r.state));   // 6 - 0 == 6
 
     // A later segment never gets one, however long the gap.
     r.with_segment();
     r.at(40, 52, 20, 6);
-    EXPECT_FALSE(ccd::standard::start_catch_due(r.context, r.state));
+    EXPECT_FALSE(ccd::machine::start_catch_due(r.context, r.state));
 }
 
 //------------------------------------------------------------------------------
 // Routing steps
 //------------------------------------------------------------------------------
 
-TEST(StandardRouting, AfterAStableStartLookbackRunsOnlyAboveTheBreak)
+TEST(MachineRouting, AfterAStableStartLookbackRunsOnlyAboveTheBreak)
 {
     Record r(60);
     r.at(3, 15, 0);
-    EXPECT_EQ(ccd::standard::after_stable_start(r.context, r.state), Phase::Lookback);
+    EXPECT_EQ(ccd::machine::after_stable_start(r.context, r.state), Phase::Lookback);
 
     // At the break: straight on to the start catch and peek guards.
     r.at(0, 12, 0);
-    EXPECT_EQ(ccd::standard::after_stable_start(r.context, r.state), Phase::Extend);
+    EXPECT_EQ(ccd::machine::after_stable_start(r.context, r.state), Phase::Extend);
     EXPECT_EQ(r.state.exit, Exit::None);
 }
 
-TEST(StandardRouting, AfterLookbackTheStartCatchComesBeforeThePeekGuard)
+TEST(MachineRouting, AfterLookbackTheStartCatchComesBeforeThePeekGuard)
 {
     Record r(30);
     // Gap 8 > peek 6 and no segment, though no full peek fits (26 + 6 > 30):
     // StartCatch first.
     r.at(8, 26, 0, 6);
-    EXPECT_EQ(ccd::standard::after_lookback(r.context, r.state), Phase::StartCatch);
+    EXPECT_EQ(ccd::machine::after_lookback(r.context, r.state), Phase::StartCatch);
     EXPECT_EQ(r.state.exit, Exit::None);
 
     r.at(2, 14, 0, 6);
-    EXPECT_EQ(ccd::standard::after_lookback(r.context, r.state), Phase::Extend);
+    EXPECT_EQ(ccd::machine::after_lookback(r.context, r.state), Phase::Extend);
 
     r.at(2, 26, 0, 6);
-    EXPECT_EQ(ccd::standard::after_lookback(r.context, r.state), Phase::EndCatch);
+    EXPECT_EQ(ccd::machine::after_lookback(r.context, r.state), Phase::EndCatch);
     EXPECT_EQ(r.state.exit, Exit::PeekBeyondEnd);
 }
 
-TEST(StandardRouting, StartCatchWritesTheLeadingSegmentThenThePeekGuard)
+TEST(MachineRouting, StartCatchWritesTheLeadingSegmentThenThePeekGuard)
 {
     Record r(60);
     r.at(9, 21, 0, 6);
-    EXPECT_EQ(ccd::standard::start_catch(r.context, r.state), Phase::Extend);
+    EXPECT_EQ(ccd::machine::start_catch(r.context, r.state), Phase::Extend);
     ASSERT_EQ(r.state.segments.size(), 1u);
 
     const ccd::ChangeModel& s = r.state.segments[0];
@@ -145,33 +145,33 @@ TEST(StandardRouting, StartCatchWritesTheLeadingSegmentThenThePeekGuard)
 
     Record t(30);
     t.at(9, 26, 0, 6);
-    EXPECT_EQ(ccd::standard::start_catch(t.context, t.state), Phase::EndCatch);
+    EXPECT_EQ(ccd::machine::start_catch(t.context, t.state), Phase::EndCatch);
     EXPECT_EQ(t.state.exit, Exit::PeekBeyondEnd);
 }
 
-TEST(StandardRouting, RestartMovesTheCursorToTheBreak)
+TEST(MachineRouting, RestartMovesTheCursorToTheBreak)
 {
     Record r(60);
     r.with_segment();
     r.at(5, 30, 0);
-    EXPECT_EQ(ccd::standard::restart(r.context, r.state), Phase::Initialize);
+    EXPECT_EQ(ccd::machine::restart(r.context, r.state), Phase::Initialize);
     EXPECT_EQ(r.state.cursor.prev_break, 30u);
     EXPECT_EQ(r.state.cursor.window.start, 30u);
     EXPECT_EQ(r.state.cursor.window.stop, 42u);
     EXPECT_EQ(r.state.exit, Exit::None);
 
     r.at(5, 37, 0);
-    EXPECT_EQ(ccd::standard::restart(r.context, r.state), Phase::EndCatch);
+    EXPECT_EQ(ccd::machine::restart(r.context, r.state), Phase::EndCatch);
     EXPECT_EQ(r.state.cursor.prev_break, 37u);
     EXPECT_EQ(r.state.exit, Exit::NoRoomToInitialize);
 }
 
-TEST(StandardRouting, EndCatchWritesTheTrailingSegmentPastAPeek)
+TEST(MachineRouting, EndCatchWritesTheTrailingSegmentPastAPeek)
 {
     Record r(60);
     r.with_segment();
     r.at(40, 52, 40, 6);
-    EXPECT_EQ(ccd::standard::end_catch(r.context, r.state), Phase::Done);
+    EXPECT_EQ(ccd::machine::end_catch(r.context, r.state), Phase::Done);
     ASSERT_EQ(r.state.segments.size(), 2u);
 
     const ccd::ChangeModel& s = r.state.segments[1];
@@ -185,7 +185,7 @@ TEST(StandardRouting, EndCatchWritesTheTrailingSegmentPastAPeek)
     Record t(60);
     t.with_segment();
     t.at(54, 60, 54, 6);
-    EXPECT_EQ(ccd::standard::end_catch(t.context, t.state), Phase::Done);
+    EXPECT_EQ(ccd::machine::end_catch(t.context, t.state), Phase::Done);
     EXPECT_EQ(t.state.segments.size(), 1u);
 }
 
@@ -193,10 +193,10 @@ TEST(StandardRouting, EndCatchWritesTheTrailingSegmentPastAPeek)
 // Prepare
 //------------------------------------------------------------------------------
 
-TEST(StandardPrepare, AtMostMeowObservationsIsDoneWithTheMaskOnly)
+TEST(MachinePrepare, AtMostMeowObservationsIsDoneWithTheMaskOnly)
 {
     Record r(12);
-    EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Done);
+    EXPECT_EQ(ccd::machine::prepare(r.context, r.state), Phase::Done);
     EXPECT_EQ(r.state.exit, Exit::TooFewObservations);
 
     r.state.phase = Phase::Done;
@@ -206,12 +206,12 @@ TEST(StandardPrepare, AtMostMeowObservationsIsDoneWithTheMaskOnly)
     EXPECT_EQ(result.mask.count(), 12u);
 }
 
-TEST(StandardPrepare, ANaNVariogramIsDoneWithTheMaskOnly)
+TEST(MachinePrepare, ANaNVariogramIsDoneWithTheMaskOnly)
 {
     // One observation dated <= statistics_end: the statistics window's variogram
     // has no pair to difference, and is NaN.
     Record r(40, golden::PYCCD_STATISTICS_END);
-    EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Done);
+    EXPECT_EQ(ccd::machine::prepare(r.context, r.state), Phase::Done);
     EXPECT_EQ(r.state.exit, Exit::VariogramNaN);
 
     r.state.phase = Phase::Done;
@@ -221,10 +221,10 @@ TEST(StandardPrepare, ANaNVariogramIsDoneWithTheMaskOnly)
     EXPECT_EQ(result.mask.count(), 40u);
 }
 
-TEST(StandardPrepare, SetsThePeekPlanAndTheCursor)
+TEST(MachinePrepare, SetsThePeekPlanAndTheCursor)
 {
     Record r(40);
-    EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Initialize);
+    EXPECT_EQ(ccd::machine::prepare(r.context, r.state), Phase::Initialize);
     EXPECT_EQ(r.state.exit, Exit::None);
     EXPECT_EQ(r.state.cursor.window.start, 0u);
     EXPECT_EQ(r.state.cursor.window.stop, 12u);
@@ -241,10 +241,10 @@ TEST(StandardPrepare, SetsThePeekPlanAndTheCursor)
     EXPECT_EQ(r.state.noise.bands.size(), 7u);
 }
 
-TEST(StandardPrepare, NoRoomForAStartWindowGoesToTheEndCatch)
+TEST(MachinePrepare, NoRoomForAStartWindowGoesToTheEndCatch)
 {
     Record r(23);   // 12 + 12 > 23
-    EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::EndCatch);
+    EXPECT_EQ(ccd::machine::prepare(r.context, r.state), Phase::EndCatch);
     EXPECT_EQ(r.state.exit, Exit::NoRoomToInitialize);
 }
 
@@ -267,10 +267,10 @@ InitializeOutcome outcome_of(index_t n, Setup setup)
 {
     Record r(n);
     setup(r);
-    return ccd::standard::initialize_step(r.context, r.state);
+    return ccd::machine::initialize_step(r.context, r.state);
 }
 
-TEST(StandardInitialize, NoCandidateLeftIsExhausted)
+TEST(MachineInitialize, NoCandidateLeftIsExhausted)
 {
     // window.stop + min_observations < size is strict: 28 + 12 == 40 fails.
     const auto setup = [](Record& r)
@@ -288,7 +288,7 @@ TEST(StandardInitialize, NoCandidateLeftIsExhausted)
     EXPECT_EQ(r.state.series.size(), 40u);
 }
 
-TEST(StandardInitialize, AShortSpanGrows)
+TEST(MachineInitialize, AShortSpanGrows)
 {
     // 12 observations 16 days apart span 176 days < day_delta.
     const auto setup = [](Record& r)
@@ -306,7 +306,7 @@ TEST(StandardInitialize, AShortSpanGrows)
     EXPECT_EQ(r.state.exit, Exit::None);
 }
 
-TEST(StandardInitialize, TmaskFlaggingEverythingGrows)
+TEST(MachineInitialize, TmaskFlaggingEverythingGrows)
 {
     // A variogram of almost 0: every Tmask residual is above it.
     const auto setup = [](Record& r)
@@ -324,7 +324,7 @@ TEST(StandardInitialize, TmaskFlaggingEverythingGrows)
     EXPECT_EQ(r.state.series.size(), 60u);
 }
 
-TEST(StandardInitialize, ARejectedTmaskDropGrowsWithNothingDropped)
+TEST(MachineInitialize, ARejectedTmaskDropGrowsWithNothingDropped)
 {
     // (0, 24) spans 368 days; without its last observation it spans 352 <
     // day_delta, so dropping a Tmask outlier there is refused.
@@ -344,7 +344,7 @@ TEST(StandardInitialize, ARejectedTmaskDropGrowsWithNothingDropped)
     EXPECT_TRUE(r.state.series.mask()[23]);
 }
 
-TEST(StandardInitialize, AnAcceptedTmaskDropCommitsThenTests)
+TEST(MachineInitialize, AnAcceptedTmaskDropCommitsThenTests)
 {
     // An interior outlier: dropped from the series, the window one shorter,
     // and the shortened window is stable in the same step. At the break,
@@ -367,7 +367,7 @@ TEST(StandardInitialize, AnAcceptedTmaskDropCommitsThenTests)
     EXPECT_FALSE(r.state.stability_model->residuals(1).empty());   // a detection band
 }
 
-TEST(StandardInitialize, AnAcceptedTmaskDropThenAnUnstableWindowShifts)
+TEST(MachineInitialize, AnAcceptedTmaskDropThenAnUnstableWindowShifts)
 {
     // The same interior outlier, and a steep trend in detection bands Tmask
     // does not read: one step drops the outlier, shortening the window to
@@ -393,7 +393,7 @@ TEST(StandardInitialize, AnAcceptedTmaskDropThenAnUnstableWindowShifts)
     EXPECT_EQ(r.state.cursor.window.stop, 24u);
 }
 
-TEST(StandardInitialize, AStableWindowLeavesThroughTheRouting)
+TEST(MachineInitialize, AStableWindowLeavesThroughTheRouting)
 {
     // Above the break: Lookback next, with the window's stable fits.
     const auto setup = [](Record& r)
@@ -411,7 +411,7 @@ TEST(StandardInitialize, AStableWindowLeavesThroughTheRouting)
     EXPECT_EQ(r.state.series.size(), 80u);
 }
 
-TEST(StandardInitialize, AnUnstableWindowShifts)
+TEST(MachineInitialize, AnUnstableWindowShifts)
 {
     // A steep trend in detection bands Tmask does not read: the stability rule fails.
     const auto setup = [](Record& r)
@@ -433,7 +433,7 @@ TEST(StandardInitialize, AnUnstableWindowShifts)
 // Lookback: one observation per call, one test per guard
 //------------------------------------------------------------------------------
 
-TEST(StandardLookback, ThePeekWindowNeverReadsBelowTheBreak)
+TEST(MachineLookback, ThePeekWindowNeverReadsBelowTheBreak)
 {
     using ccd::strategies::lookback_peek;
 
@@ -469,15 +469,15 @@ void in_lookback(Record& r, index_t start, index_t stop, index_t prev_break = 0)
 // a record of its own; also the window the step leaves, which the
 // transition keeps whatever it routes to.
 template<typename Setup>
-std::pair<ccd::standard::LookbackOutcome, ccd::Window> lookback_outcome_of(index_t n, Setup setup)
+std::pair<ccd::machine::LookbackOutcome, ccd::Window> lookback_outcome_of(index_t n, Setup setup)
 {
     Record r(n);
     setup(r);
-    const auto outcome = ccd::standard::lookback_step(r.context, r.state);
+    const auto outcome = ccd::machine::lookback_step(r.context, r.state);
     return {outcome, r.state.cursor.window};
 }
 
-TEST(StandardLookback, AChangeStopsWithTheWindowWhereItIs)
+TEST(MachineLookback, AChangeStopsWithTheWindowWhereItIs)
 {
     // Every observation before position 10 is far off the models. The gap
     // to the series start is 10 > peek: the start catch is next.
@@ -486,7 +486,7 @@ TEST(StandardLookback, AChangeStopsWithTheWindowWhereItIs)
         r.edit([](index_t b, index_t i, double v) { return (i < 10 && b >= 1 && b <= 5) ? v + 3000 : v; });
         in_lookback(r, 10, 34);
     };
-    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::standard::LookbackOutcome::Change);
+    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::machine::LookbackOutcome::Change);
 
     Record r(60);
     setup(r);
@@ -495,14 +495,14 @@ TEST(StandardLookback, AChangeStopsWithTheWindowWhereItIs)
     EXPECT_EQ(r.state.series.size(), 60u);
 }
 
-TEST(StandardLookback, AnOutlierIsDroppedAndTheWindowMovesWithTheSeries)
+TEST(MachineLookback, AnOutlierIsDroppedAndTheWindowMovesWithTheSeries)
 {
     const auto setup = [](Record& r)
     {
         r.edit([](index_t b, index_t i, double v) { return (i == 9 && b >= 1 && b <= 5) ? v + 3000 : v; });
         in_lookback(r, 10, 34);
     };
-    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::standard::LookbackOutcome::Dropped);
+    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::machine::LookbackOutcome::Dropped);
 
     Record r(60);
     setup(r);
@@ -513,13 +513,13 @@ TEST(StandardLookback, AnOutlierIsDroppedAndTheWindowMovesWithTheSeries)
     EXPECT_EQ(r.state.cursor.window.stop, 33u);
 }
 
-TEST(StandardLookback, AnObservationThatFitsIsIncluded)
+TEST(MachineLookback, AnObservationThatFitsIsIncluded)
 {
     const auto setup = [](Record& r)
     {
         in_lookback(r, 10, 34);
     };
-    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::standard::LookbackOutcome::Included);
+    EXPECT_EQ(lookback_outcome_of(60, setup).first, ccd::machine::LookbackOutcome::Included);
 
     Record r(60);
     setup(r);
@@ -529,7 +529,7 @@ TEST(StandardLookback, AnObservationThatFitsIsIncluded)
     EXPECT_EQ(r.state.cursor.window.stop, 34u);
 }
 
-TEST(StandardLookback, ReachingThePreviousBreakRoutesOn)
+TEST(MachineLookback, ReachingThePreviousBreakRoutesOn)
 {
     // The include that reaches prev_break is the last Lookback step.
     const auto setup = [](Record& r)
@@ -538,7 +538,7 @@ TEST(StandardLookback, ReachingThePreviousBreakRoutesOn)
         in_lookback(r, 21, 45, 20);
     };
     const auto [outcome, window] = lookback_outcome_of(60, setup);
-    EXPECT_EQ(outcome, ccd::standard::LookbackOutcome::Included);
+    EXPECT_EQ(outcome, ccd::machine::LookbackOutcome::Included);
     EXPECT_EQ(window.start, 20u);
 
     Record r(60);
@@ -555,26 +555,26 @@ TEST(StandardLookback, ReachingThePreviousBreakRoutesOn)
 // What extend_step() reports for a record set up as `setup` leaves it, on a
 // record of its own, and the segments it leaves (it writes none).
 template<typename Setup>
-std::pair<ccd::standard::ExtendOutcome, std::size_t> extend_outcome_of(index_t n, Setup setup)
+std::pair<ccd::machine::ExtendOutcome, std::size_t> extend_outcome_of(index_t n, Setup setup)
 {
     Record r(n);
     setup(r);
-    const auto outcome = ccd::standard::extend_step(r.context, r.state);
+    const auto outcome = ccd::machine::extend_step(r.context, r.state);
     return {outcome, r.state.segments.size()};
 }
 
-TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
+TEST(MachineExtend, TheFirstTestTrainsThenAFittingPeekGrows)
 {
     const auto setup = [](Record& r)
     {
         in_extend(r, 0, 24);
     };
-    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::standard::ExtendOutcome::Grown);
+    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::machine::ExtendOutcome::Grown);
 
     Record r(80);
     setup(r);
     EXPECT_EQ(r.step(), Phase::Extend);
-    const ccd::standard::ExtendState& e = r.state.extend;
+    const ccd::machine::ExtendState& e = r.state.extend;
     EXPECT_TRUE(e.trained);
     EXPECT_EQ(e.fit_window.start, 0u);
     EXPECT_EQ(e.fit_window.stop, 24u);
@@ -587,7 +587,7 @@ TEST(StandardExtend, TheFirstTestTrainsThenAFittingPeekGrows)
     EXPECT_TRUE(r.state.segments.empty());
 }
 
-TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
+TEST(MachineExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
 {
     // Up to refit's min_obs every test refits on the window.
     Record r(80);
@@ -607,7 +607,7 @@ TEST(StandardExtend, ShortWindowsRefitEveryTestAndLongerOnesOnTheSpanFactor)
     EXPECT_EQ(t.state.cursor.window.stop, 26u);
 }
 
-TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
+TEST(MachineExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
 {
     // A window of at most model_rmse_up_to compares against the model RMSE,
     // the one it was just refitted on; a longer one against the seasonal
@@ -616,7 +616,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     in_extend(r, 0, 24);
     r.step();
     // The magnitudes the test wrote are change_magnitude() of those RMSEs.
-    const ccd::standard::ExtendState& e = r.state.extend;
+    const ccd::machine::ExtendState& e = r.state.extend;
     const auto& bands = r.shared.detection_bands;
     const auto magnitude_with = [&](const std::vector<double>& rmse)
     {
@@ -640,7 +640,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     EXPECT_EQ(*e.result.find("change_magnitude"), magnitude_with(rmse));
 }
 
-TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
+TEST(MachineExtend, TheTestsModelRmseWindowIsItsOwnParameter)
 {
     // The change test's model_rmse_up_to set apart from the refit's min_obs:
     // a 24-observation window, refitted (min_obs 24), compares against the
@@ -652,7 +652,7 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     in_extend(r, 0, 24);
     r.step();
 
-    const ccd::standard::ExtendState& e = r.state.extend;
+    const ccd::machine::ExtendState& e = r.state.extend;
     EXPECT_EQ(e.fit_window.stop, 24u);
     const auto& bands = r.shared.detection_bands;
     const auto closest = reference::find_closest_doy(
@@ -667,7 +667,7 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     EXPECT_EQ(*e.result.find("change_magnitude"), want);
 }
 
-TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
+TEST(MachineExtend, AChangeWritesTheSegmentAtTheWindow)
 {
     // The step decides; the transition writes the segment.
     const auto setup = [](Record& r)
@@ -676,7 +676,7 @@ TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
         in_extend(r, 0, 24);
     };
     const auto [outcome, segments] = extend_outcome_of(80, setup);
-    EXPECT_EQ(outcome, ccd::standard::ExtendOutcome::Change);
+    EXPECT_EQ(outcome, ccd::machine::ExtendOutcome::Change);
     EXPECT_EQ(segments, 0u);
 
     Record r(80);
@@ -696,14 +696,14 @@ TEST(StandardExtend, AChangeWritesTheSegmentAtTheWindow)
     EXPECT_EQ(r.state.cursor.window.stop, 24u);
 }
 
-TEST(StandardExtend, AnOutlierIsDroppedAndTheWindowKeepsItsCoordinates)
+TEST(MachineExtend, AnOutlierIsDroppedAndTheWindowKeepsItsCoordinates)
 {
     const auto setup = [](Record& r)
     {
         r.edit([](index_t b, index_t i, double v) { return (i == 24 && b >= 1 && b <= 5) ? v + 3000 : v; });
         in_extend(r, 0, 24);
     };
-    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::standard::ExtendOutcome::Dropped);
+    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::machine::ExtendOutcome::Dropped);
 
     Record r(80);
     setup(r);
@@ -715,7 +715,7 @@ TEST(StandardExtend, AnOutlierIsDroppedAndTheWindowKeepsItsCoordinates)
     EXPECT_TRUE(r.state.segments.empty());
 }
 
-TEST(StandardExtend, TheLastFullPeekEndsTheCurve)
+TEST(MachineExtend, TheLastFullPeekEndsTheCurve)
 {
     // (0, 74) of 80 with peek 6: the peek reaches the last observation and
     // holds no change, so the curve ends at the window, with change
@@ -725,7 +725,7 @@ TEST(StandardExtend, TheLastFullPeekEndsTheCurve)
         in_extend(r, 0, 74);
     };
     const auto [outcome, segments] = extend_outcome_of(80, setup);
-    EXPECT_EQ(outcome, ccd::standard::ExtendOutcome::SeriesEnd);
+    EXPECT_EQ(outcome, ccd::machine::ExtendOutcome::SeriesEnd);
     EXPECT_EQ(segments, 0u);
 
     Record r(80);
@@ -748,14 +748,14 @@ TEST(StandardExtend, TheLastFullPeekEndsTheCurve)
     EXPECT_EQ(r.state.segments.size(), 1u);
 }
 
-TEST(StandardExtend, TheSeriesEndAfterADropBreaksAfterTheDroppedObservation)
+TEST(MachineExtend, TheSeriesEndAfterADropBreaksAfterTheDroppedObservation)
 {
     const auto setup = [](Record& r)
     {
         r.edit([](index_t b, index_t i, double v) { return (i == 74 && b >= 1 && b <= 5) ? v + 3000 : v; });
         in_extend(r, 0, 74);
     };
-    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::standard::ExtendOutcome::Dropped);
+    EXPECT_EQ(extend_outcome_of(80, setup).first, ccd::machine::ExtendOutcome::Dropped);
 
     Record r(80);
     setup(r);

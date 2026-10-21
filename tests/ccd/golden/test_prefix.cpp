@@ -2,7 +2,7 @@
 //
 // Prefix stability: new observations never rewrite a final segment.
 //
-// The Standard machine reads the length of the series only in its size
+// The machine reads the length of the series only in its size
 // guards (enough observations, room for a start window, a full peek after
 // the window, enough observations after the last break), each a comparison
 // of the series size with a position plus a count.

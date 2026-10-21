@@ -316,7 +316,7 @@ ccd::PixelRecord record_from_python(const py::dict& d)
     r.input_fingerprint = bits_of(d, name_of<INPUT_FINGERPRINT>(), what);
     r.procedure = static_cast<ccd::PixelProcedure>(
         count_of<std::uint8_t>(d, name_of<PROCEDURE>(), what));
-    r.standard.exit = static_cast<ccd::standard::Exit>(
+    r.standard.exit = static_cast<ccd::machine::Exit>(
         count_of<std::uint8_t>(d, name_of<EXIT>(), what));
     r.standard.window = ccd::Window(
         count_of<std::uint32_t>(d, name_of<WINDOW_START>(), what),
@@ -720,7 +720,7 @@ std::vector<ccd::PixelRecord> records_from_columns(
         ccd::PixelRecord& r = out[i];
         r.input_fingerprint = f(s);
         r.procedure = static_cast<ccd::PixelProcedure>(p(s));
-        r.standard.exit = static_cast<ccd::standard::Exit>(e(s));
+        r.standard.exit = static_cast<ccd::machine::Exit>(e(s));
         if (ws(s) < 0 || we(s) < 0 || pb(s) < 0 || fs(s) < 0 || fin(s) < 0)
             throw std::invalid_argument(
                 "the resume record of pixel " + std::to_string(i) +
@@ -730,7 +730,7 @@ std::vector<ccd::PixelRecord> records_from_columns(
         r.standard.fit_stop = static_cast<index_t>(fs(s));
         r.standard.grow = g(s);
         r.standard.num_coef = nc(s);
-        if (r.standard.exit == ccd::standard::Exit::SeriesEnd)
+        if (r.standard.exit == ccd::machine::Exit::SeriesEnd)
             for (index_t b = 0; b < B; ++b)
                 r.standard.magnitude.push_back(m(s, static_cast<py::ssize_t>(b)));
         r.standard.final_segments = static_cast<index_t>(fin(s));

@@ -12,7 +12,7 @@
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/processing_mask.hpp"
-#include "../machine/standard.hpp"
+#include "../machine/detector.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/results/record.hpp"
 #include "ccd/run/run.hpp"
@@ -72,7 +72,7 @@ struct Worker
     Observe observe;
 
     // The run's change detector, with its per-pixel record.
-    standard::Detector detector;
+    machine::Detector detector;
 
     // The pixel's (B, T) as scalar_t, when it has to be converted or its
     // thermal band transformed.

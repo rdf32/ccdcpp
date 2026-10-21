@@ -24,12 +24,12 @@
 namespace ccd
 {
 
-namespace standard
+namespace machine
 {
 
 //==============================================================================
 //
-// The Standard machine
+// The machine
 //
 // pyccd's standard procedure as a per-pixel state machine. The Detector
 // steps it from Prepare to Done (step()); each call of a phase's transition
@@ -464,7 +464,7 @@ Phase step(const Context& context, State& state);
 // The change detector a run uses for every pixel of a call, whatever its
 // configuration (another procedure is other strategies). Each pixel's
 // procedure is chosen before it, by the run's mode (ModeRule); fit() then fits
-// the pixel's processing mask with the Standard machine for Standard, and with
+// the pixel's processing mask with the machine for Standard, and with
 // the run's edge_segments strategy (EdgeSegments::whole_series()) for
 // PermanentSnow and InsufficientClear.
 //
@@ -481,7 +481,7 @@ public:
     // Fits the observations of `series` that `mask` keeps (the procedure's
     // processing mask, with the mode's extra mask steps applied: Run::prepare
     // builds it with the procedure's filter chain) with the mode's
-    // procedure, under the run's `shared` values: the Standard machine,
+    // procedure, under the run's `shared` values: the machine,
     // driven from Prepare to Done with the mode's cap on the segments'
     // coefficients, or edge_segments' whole_series(). The result carries the
     // mask, after an early exit too.
@@ -535,6 +535,6 @@ private:
     State state_;
 };
 
-} // namespace standard
+} // namespace machine
 
 } // namespace ccd

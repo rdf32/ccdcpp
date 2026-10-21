@@ -1,7 +1,7 @@
 //==============================================================================
 //
-// The Standard machine on whole pixels, the per-pixel procedure choice and
-// the Standard detector's fit of each procedure.
+// The machine on whole pixels, the per-pixel procedure choice and
+// the Detector's fit of each procedure.
 //
 //   * Whole pixels stepped by hand: every self-transition is one decision,
 //     and the result is the driven machine's.
@@ -33,7 +33,7 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/procedure.hpp"
-#include "ccd/machine/standard.hpp"   // internal (src/)
+#include "ccd/machine/detector.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
 #include "config.hpp"
 #include "ccd/strategies/edge_segments/lasso.hpp"
@@ -42,15 +42,15 @@
 #include "ccd/strategies/library.hpp"
 
 #include "characterization.hpp"
-#include "standard_record.hpp"
+#include "detector_record.hpp"
 
 namespace
 {
 
 using ccd::index_t;
 using ccd::scalar_t;
-using ccd::standard::Exit;
-using ccd::standard::Phase;
+using ccd::machine::Exit;
+using ccd::machine::Phase;
 using machine_test::Record;
 using machine_test::expect_same;
 
@@ -93,7 +93,7 @@ MachineRun run_machine(const golden::Series& p)
     ccd::preprocess::apply(
         standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-    ccd::standard::Detector detector;
+    ccd::machine::Detector detector;
     MachineRun out;
     out.result = detector.fit(ccd::PixelProcedure::Standard, workspace, std::move(mask),
                               resolved.shared, resolved.strategies);
@@ -110,7 +110,7 @@ struct Stop
 
 void PrintTo(const Stop& stop, std::ostream* os)
 {
-    *os << stop.pixel << ": " << ccd::standard::to_string(stop.exit);
+    *os << stop.pixel << ": " << ccd::machine::to_string(stop.exit);
 }
 
 const Stop STOPS[] = {
@@ -147,14 +147,14 @@ TEST_P(EachWayTheMachineStops, Pixel)
     const auto& [name, exit] = GetParam();
     const golden::Series& p = golden::named(pixels, name);
     const MachineRun run = run_machine(p);
-    EXPECT_EQ(run.exit, exit) << name << ": " << ccd::standard::to_string(run.exit);
+    EXPECT_EQ(run.exit, exit) << name << ": " << ccd::machine::to_string(run.exit);
     expect_same(run.result, golden::detect(p), name);
 }
 
-INSTANTIATE_TEST_SUITE_P(StandardExit, EachWayTheMachineStops, ::testing::ValuesIn(STOPS),
+INSTANTIATE_TEST_SUITE_P(MachineExit, EachWayTheMachineStops, ::testing::ValuesIn(STOPS),
                          [](const auto& info) { return std::string(info.param.pixel); });
 
-TEST(StandardExit, TheEarlyExitsReturnTheMask)
+TEST(MachineExit, TheEarlyExitsReturnTheMask)
 {
     const auto all = golden::characterization_pixels();
     for (const char* name : {"standard_too_few", "variogram_nan"})
@@ -174,7 +174,7 @@ TEST(StandardExit, TheEarlyExitsReturnTheMask)
 // (an include, or a drop that moves the window with the series); each Extend
 // -> Extend grows by one or drops the observation at window.stop; and the
 // result equals Detector::fit()'s.
-TEST(StandardMachine, EachStepIsOneDecision)
+TEST(Machine, EachStepIsOneDecision)
 {
     const auto all = golden::characterization_pixels();
     std::size_t initialize_steps = 0, lookback_steps = 0, extend_steps = 0;
@@ -202,13 +202,13 @@ TEST(StandardMachine, EachStepIsOneDecision)
             plan.standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
         const ccd::Strategies& strategies = resolved.strategies;
-        const ccd::standard::Context context{resolved.shared, workspace, strategies};
+        const ccd::machine::Context context{resolved.shared, workspace, strategies};
 
-        ccd::standard::Detector driven;
+        ccd::machine::Detector driven;
         const ccd::FitResult want =
             driven.fit(ccd::PixelProcedure::Standard, workspace, mask, resolved.shared, strategies);
 
-        ccd::standard::State s;
+        ccd::machine::State s;
         s.bind(strategies);
         s.reset(workspace, mask);
         while (s.phase != Phase::Done)
@@ -218,7 +218,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
             const std::size_t segments = s.segments.size();
             const Phase phase = s.phase;
 
-            const Phase next = ccd::standard::step(context, s);
+            const Phase next = ccd::machine::step(context, s);
             const ccd::Window v = s.cursor.window;
 
             if (phase == Phase::Initialize && next == Phase::Initialize)
@@ -260,12 +260,12 @@ TEST(StandardMachine, EachStepIsOneDecision)
     EXPECT_GT(extend_steps, 1000u);
 }
 
-TEST(StandardMachine, OneStateServesManyPixels)
+TEST(Machine, OneStateServesManyPixels)
 {
     // A record reused across pixels gives each pixel the result a fresh one
     // does: reset() starts every pixel from Prepare with nothing carried.
     const auto all = golden::characterization_pixels();
-    ccd::standard::Detector reused;
+    ccd::machine::Detector reused;
 
     for (const auto& p : all)
     {
@@ -289,7 +289,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
         ccd::preprocess::apply(
             plan.standard.chain, workspace.dates(), workspace.spectral(), workspace.qas(), mask);
 
-        ccd::standard::Detector fresh;
+        ccd::machine::Detector fresh;
         const ccd::Strategies strategies = golden::strategies_of(p.config);
         const ccd::FitResult once = fresh.fit(ccd::PixelProcedure::Standard, workspace, mask,
                                               resolved.shared, strategies);
@@ -329,7 +329,7 @@ TEST(SelectProcedure, TheClearThenTheSnowPercentage)
               ccd::PixelProcedure::InsufficientClear);
 }
 
-TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
+TEST(Detector, FitsStandardWithTheMachineAndTheRestWholeSeries)
 {
     // Standard is the machine stepped from Prepare to Done; PermanentSnow
     // and InsufficientClear are the shared whole-series fit, whose curve_qa
@@ -339,7 +339,7 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
     for (index_t i = 0; i < 80; ++i)
         mask.set(i, true);
 
-    ccd::standard::Detector detector;
+    ccd::machine::Detector detector;
     const ccd::FitResult standard =
         detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared, r.strategies);
     r.state.reset(r.workspace, mask);

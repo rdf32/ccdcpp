@@ -1,4 +1,4 @@
-#include "standard.hpp"
+#include "detector.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -15,7 +15,7 @@
 namespace ccd
 {
 
-namespace standard
+namespace machine
 {
 
 namespace
@@ -56,7 +56,7 @@ Peek peek_of(const Context& context, const State& state)
 } // namespace
 
 //==============================================================================
-// The Standard machine
+// The machine
 //==============================================================================
 
 const char* to_string(Phase phase)
@@ -1435,6 +1435,6 @@ const Suspended& Detector::suspended() const
     return state_.resumable ? state_.suspended : none;
 }
 
-} // namespace standard
+} // namespace machine
 
 } // namespace ccd

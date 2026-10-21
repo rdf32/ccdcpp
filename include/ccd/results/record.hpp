@@ -106,9 +106,9 @@ struct PixelRecord
     // The procedure the pixel took.
     PixelProcedure procedure = PixelProcedure::Standard;
 
-    // Where the Standard machine stopped (exit None for the other
+    // Where the machine stopped (exit None for the other
     // procedures, which a resume refits whole).
-    standard::Suspended standard;
+    machine::Suspended standard;
 
     // The days of the observations the machine dropped from the processing
     // mask (Tmask, Lookback and Extend outliers), in date order.

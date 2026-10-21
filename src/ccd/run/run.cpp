@@ -234,7 +234,7 @@ PreparedPixel Run::prepare(
 PixelOutput Run::fresh(PreparedPixel& pixel, Worker& worker) const
 {
     PixelOutput out;
-    standard::Detector& detector = worker.detector;
+    machine::Detector& detector = worker.detector;
 
     // The record keeps the mask the chain built; the fit takes it.
     const ProcessingMask filtered = spec_.record ? pixel.mask : ProcessingMask();

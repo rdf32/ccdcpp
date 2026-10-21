@@ -11,7 +11,7 @@
 #include "ccd/input/processing_mask.hpp"
 #include "ccd/results/record.hpp"
 #include "ccd/results/segment.hpp"
-#include "../machine/standard.hpp"
+#include "../machine/detector.hpp"
 
 namespace ccd
 {
@@ -37,13 +37,13 @@ config::Shared capped(const config::Shared& shared, std::int64_t end);
 preprocess::PreprocessPlan capped(const preprocess::PreprocessPlan& plan, std::int64_t end);
 
 // Step 6 of a pixel (run_pixel.hpp), the record for the next resume: where
-// the Standard machine stopped and the days it dropped from `filtered` (the
+// the machine stopped and the days it dropped from `filtered` (the
 // chain's mask).
 void fill_record(
     PixelRecord& record,
     PixelProcedure procedure,
     bool plain_mask,
-    const standard::Detector& detector,
+    const machine::Detector& detector,
     const ProcessingMask& filtered,
     const FitResult& result,
     ArrayView<const std::int64_t, 1> dates

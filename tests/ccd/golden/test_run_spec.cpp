@@ -230,7 +230,7 @@ TEST(Diagnostics, AResumedRunTellsTheObserverWhereItContinues)
                 EXPECT_STREQ(e.phase, went) << s.name;
             went = e.next;
         }
-        if (went != nullptr && stored.record.standard.exit == ccd::standard::Exit::SeriesEnd)
+        if (went != nullptr && stored.record.standard.exit == ccd::machine::Exit::SeriesEnd)
             ++continued;
 #endif
     }

@@ -83,10 +83,10 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Counts& counts
 
         const auto& sus = stored.record.standard;
         if (stored.record.procedure == ccd::PixelProcedure::Standard &&
-            (sus.exit == ccd::standard::Exit::NoRoomToInitialize ||
-             sus.exit == ccd::standard::Exit::InitializeExhausted ||
-             sus.exit == ccd::standard::Exit::PeekBeyondEnd ||
-             sus.exit == ccd::standard::Exit::SeriesEnd))
+            (sus.exit == ccd::machine::Exit::NoRoomToInitialize ||
+             sus.exit == ccd::machine::Exit::InitializeExhausted ||
+             sus.exit == ccd::machine::Exit::PeekBeyondEnd ||
+             sus.exit == ccd::machine::Exit::SeriesEnd))
             ++counts.continued;
     }
 }
@@ -350,7 +350,7 @@ TEST(ResumeWithNothingNew, TheStoredOutputAgain)
             EXPECT_EQ(golden::dump(more.result),
                       golden::dump(golden::detect_at(cloudy, std::min(s.statistics_end(), T)))) << at;
 
-            if (stored.record.standard.exit == ccd::standard::Exit::SeriesEnd)
+            if (stored.record.standard.exit == ccd::machine::Exit::SeriesEnd)
                 ++seen_series_end;
         }
     }

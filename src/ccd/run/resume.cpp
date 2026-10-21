@@ -19,18 +19,18 @@ namespace ccd
 // statistics cutoff (capped()). Run::resumed() continues each pixel its record
 // lets it continue, and every run with a record stores where its machine
 // stopped (fill_record()). The machine's side is Detector::resume()
-// (machine/standard.cpp).
+// (machine/detector.cpp).
 //
 //==============================================================================
 
 namespace
 {
 
-// The exits a resume continues the Standard machine from; the others (the
+// The exits a resume continues the machine from; the others (the
 // early exits) are rerun, as are the other procedures.
-bool resumable(standard::Exit exit)
+bool resumable(machine::Exit exit)
 {
-    using standard::Exit;
+    using machine::Exit;
     return exit == Exit::NoRoomToInitialize || exit == Exit::InitializeExhausted ||
         exit == Exit::PeekBeyondEnd || exit == Exit::SeriesEnd;
 }
@@ -115,18 +115,18 @@ void fill_record(
     PixelRecord& record,
     PixelProcedure procedure,
     bool plain_mask,
-    const standard::Detector& detector,
+    const machine::Detector& detector,
     const ProcessingMask& filtered,
     const FitResult& result,
     ArrayView<const std::int64_t, 1> dates
 )
 {
-    record.standard = standard::Suspended{};
+    record.standard = machine::Suspended{};
     record.excluded_days.clear();
     // A run the record cannot continue (a mode's extra mask, or a route the
     // suspension does not keep) stores none: a resume reruns it.
     if (procedure == PixelProcedure::Standard && plain_mask &&
-        detector.suspended().exit != standard::Exit::None)
+        detector.suspended().exit != machine::Exit::None)
     {
         record.standard = detector.suspended();
         for (index_t t = 0; t < filtered.size(); ++t)
@@ -168,7 +168,7 @@ PixelOutput Run::resumed(
     const index_t carried = from.standard.final_segments;
     const bool carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
 
-    standard::Detector& detector = worker.detector;
+    machine::Detector& detector = worker.detector;
     const Strategies& strategies = resolved_->strategies;
     const ProcessingMask filtered = pixel.mask;
     out.result = continues

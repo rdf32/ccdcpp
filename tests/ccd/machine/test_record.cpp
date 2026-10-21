@@ -42,7 +42,7 @@ namespace
 {
 
 using ccd::index_t;
-using Exit = ccd::standard::Exit;
+using Exit = ccd::machine::Exit;
 
 ccd::PixelOutput recorded(const golden::Series& p)
 {
@@ -116,7 +116,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
     for (const auto& p : golden::characterization_pixels())
     {
         const ccd::PixelOutput r = recorded(p);
-        const ccd::standard::Suspended& s = r.record.standard;
+        const ccd::machine::Suspended& s = r.record.standard;
         if (r.record.procedure != ccd::PixelProcedure::Standard)
             continue;
 
@@ -144,7 +144,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
 
         // The open segment's fits are those of its models: refitted from the
         // record (the fit window, its coefficient count), bit for bit.
-        // The pixel as the Standard machine reads it: its plan's transform
+        // The pixel as the machine reads it: its plan's transform
         // applied.
         const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
         const ccd::config::Shared& shared = resolved.shared;
@@ -198,7 +198,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
     for (const auto& p : golden::characterization_pixels())
     {
         const ccd::PixelOutput r = recorded(p);
-        const ccd::standard::Suspended& s = r.record.standard;
+        const ccd::machine::Suspended& s = r.record.standard;
         if (r.record.procedure != ccd::PixelProcedure::Standard || s.final_segments == 0 ||
             r.result.models[s.final_segments - 1].change_probability != 1.0)
             continue;

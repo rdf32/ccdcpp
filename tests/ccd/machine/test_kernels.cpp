@@ -44,7 +44,7 @@
 #include "ccd/strategies/noise/variogram.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/input/masked_series.hpp"
-#include "ccd/machine/standard.hpp"   // internal (src/)
+#include "ccd/machine/detector.hpp"   // internal (src/)
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 

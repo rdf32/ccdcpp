@@ -182,7 +182,7 @@ add_library(
     src/ccd/input/mask/steps.cpp
 
     src/ccd/input/masked_series.cpp
-    src/ccd/machine/standard.cpp
+    src/ccd/machine/detector.cpp
 
     src/ccd/run/algorithm.cpp
     src/ccd/run/cube.cpp
@@ -403,16 +403,16 @@ if(CCD_BUILD_TESTS)
     )
     target_include_directories(test_residual_cap PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/extension)
 
-    # The Standard machine: its routing and steps from hand-built records,
+    # The machine: its routing and steps from hand-built records,
     # its routes under test-only strategies, and its exit reasons on whole
-    # pixels. See tests/ccd/machine/test_standard_*.cpp.
+    # pixels. See tests/ccd/machine/test_detector_*.cpp.
     ccd_add_gtest(
         test_machine
         INTERNAL
         SOURCES
-            tests/ccd/machine/test_standard_steps.cpp
-            tests/ccd/machine/test_standard_hooks.cpp
-            tests/ccd/machine/test_standard_whole_pixel.cpp
+            tests/ccd/machine/test_detector_steps.cpp
+            tests/ccd/machine/test_detector_hooks.cpp
+            tests/ccd/machine/test_detector_whole_pixel.cpp
     )
 
     # The preprocessing plan: the "ccdc" plan (plan_of()) against the

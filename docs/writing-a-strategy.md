@@ -178,7 +178,7 @@ The rules every strategy follows:
   statistics by name; a configuration whose earlier stages do not provide them is refused
   ("outlier 'residual-cap' needs ..., which model '...' does not provide").
 - **It returns, the machine routes.** An outcome outside the stage's enum is a change to the
-  machine (`src/ccd/machine/standard.cpp`), not to a strategy.
+  machine (`src/ccd/machine/detector.cpp`), not to a strategy.
 
 ## 5. Register it
 

@@ -1,6 +1,6 @@
 //==============================================================================
 //
-// The Standard machine's routes under test-only strategies, from hand-built
+// The machine's routes under test-only strategies, from hand-built
 // records: each strategy has chi2's or pyccd's decisions but for the hook it
 // sets, and the machine takes the route that hook leads to.
 //
@@ -23,7 +23,7 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/procedure.hpp"
-#include "ccd/machine/standard.hpp"   // internal (src/)
+#include "ccd/machine/detector.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
 #include "config.hpp"
 #include "ccd/strategies/edge_segments/lasso.hpp"
@@ -31,15 +31,15 @@
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/library.hpp"
 
-#include "standard_record.hpp"
+#include "detector_record.hpp"
 
 namespace
 {
 
 using ccd::index_t;
 using ccd::scalar_t;
-using ccd::standard::Exit;
-using ccd::standard::Phase;
+using ccd::machine::Exit;
+using ccd::machine::Phase;
 using machine_test::Record;
 using machine_test::expect_same;
 using machine_test::in_extend;
@@ -110,7 +110,7 @@ void with_hooks(Record& r, index_t start, index_t stop, Hooks hooks)
     r.state.peek_plan = ccd::PeekPlan{6, test->full, test->min};
 }
 
-TEST(StandardHooks, ShortenedPeeksGrowTheCurveToTheLastObservation)
+TEST(MachineHooks, ShortenedPeeksGrowTheCurveToTheLastObservation)
 {
     Record r(80);
     with_hooks(r, 0, 74, [](HookTest& t) { t.full = false; });
@@ -130,11 +130,11 @@ TEST(StandardHooks, ShortenedPeeksGrowTheCurveToTheLastObservation)
     EXPECT_EQ(r.step(), Phase::Done);      // no End segment: none left
 }
 
-TEST(StandardHooks, AWindowBelowTheTestsMinimumGrowsUntested)
+TEST(MachineHooks, AWindowBelowTheTestsMinimumGrowsUntested)
 {
     Record r(80);
     with_hooks(r, 0, 24, [](HookTest& t) { t.min = 30; });
-    EXPECT_EQ(ccd::standard::extend_step(r.context, r.state), ccd::standard::ExtendOutcome::Grown);
+    EXPECT_EQ(ccd::machine::extend_step(r.context, r.state), ccd::machine::ExtendOutcome::Grown);
     EXPECT_FALSE(r.state.extend.trained);
     EXPECT_EQ(r.state.cursor.window.start, 0u);
     EXPECT_EQ(r.state.cursor.window.stop, 25u);
@@ -147,7 +147,7 @@ TEST(StandardHooks, AWindowBelowTheTestsMinimumGrowsUntested)
     EXPECT_TRUE(end.state.segments.empty());
 }
 
-TEST(StandardHooks, AnUndecidedTestEndsTheSeries)
+TEST(MachineHooks, AnUndecidedTestEndsTheSeries)
 {
     Record r(80);
     with_hooks(r, 0, 40, [](HookTest& t) { t.undecided = true; });
@@ -158,7 +158,7 @@ TEST(StandardHooks, AnUndecidedTestEndsTheSeries)
     EXPECT_EQ(r.state.segments[0].break_day, r.dates[40]);
 }
 
-TEST(StandardHooks, ABreakIntoThePeekDropsTheObservationsBeforeIt)
+TEST(MachineHooks, ABreakIntoThePeekDropsTheObservationsBeforeIt)
 {
     Record r(80);
     with_hooks(r, 0, 40, [](HookTest& t) { t.change = true; t.skip = 2; });
@@ -186,13 +186,13 @@ struct Ending final : ccd::OutlierRule
     }
 };
 
-TEST(StandardHooks, AnOutlierRuleThatCannotTellEndsTheSeries)
+TEST(MachineHooks, AnOutlierRuleThatCannotTellEndsTheSeries)
 {
     Record r(80);
     in_extend(r, 0, 40);
     r.strategies.outlier = std::make_shared<Ending>();
-    EXPECT_EQ(ccd::standard::extend_step(r.context, r.state),
-              ccd::standard::ExtendOutcome::SeriesEnd);
+    EXPECT_EQ(ccd::machine::extend_step(r.context, r.state),
+              ccd::machine::ExtendOutcome::SeriesEnd);
 }
 
 // A monitoring model whose every fit fails.
@@ -221,7 +221,7 @@ struct Unfittable final : ccd::MonitoringModel
     ccd::CoefficientRule coefficients() const override { return {}; }
 };
 
-TEST(StandardHooks, AModelThatCannotFitEndsTheSeriesWithoutTheCurve)
+TEST(MachineHooks, AModelThatCannotFitEndsTheSeriesWithoutTheCurve)
 {
     Record r(80);
     in_extend(r, 0, 40);
@@ -266,7 +266,7 @@ struct Forcing final : ccd::StartSearch
     index_t min_window() const override { return pyccd->min_window(); }
 };
 
-TEST(StandardHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
+TEST(MachineHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
 {
     Record r(80);
     with_hooks(r, 0, 24, [](HookTest& t) { t.full = false; t.min = 30; });
@@ -274,7 +274,7 @@ TEST(StandardHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
         std::make_shared<Forcing>(r.strategies.start_search, ccd::Exhaustion::Force);
     r.at(58, 70, 58);   // exhausted: 70 + 12 >= 80
     r.state.peek_plan = ccd::PeekPlan{6, false, 30};
-    EXPECT_EQ(ccd::standard::begin_search(r.context, r.state), Phase::Initialize);
+    EXPECT_EQ(ccd::machine::begin_search(r.context, r.state), Phase::Initialize);
     r.state.phase = Phase::Initialize;
 
     EXPECT_EQ(r.step(), Phase::Extend);
@@ -298,7 +298,7 @@ TEST(StandardHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
     EXPECT_FALSE(r.state.resumable);   // a record keeps no forced start
 }
 
-TEST(StandardHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
+TEST(MachineHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
 {
     Record r(80);
     r.strategies.start_search =
@@ -307,7 +307,7 @@ TEST(StandardHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
     // A window of 13: a window screen drops only what leaves a usable window
     // of at least min_window (12) observations.
     r.at(60, 73, 60);
-    EXPECT_EQ(ccd::standard::begin_search(r.context, r.state), Phase::Initialize);
+    EXPECT_EQ(ccd::machine::begin_search(r.context, r.state), Phase::Initialize);
     r.state.series.drop(65, r.state.cursor.window);   // as a window screen's
     ASSERT_EQ(r.state.series.size(), 79u);
     ASSERT_EQ(r.state.cursor.window.size(), r.strategies.start_search->min_window());
@@ -319,7 +319,7 @@ TEST(StandardHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
     EXPECT_FALSE(r.state.resumable);
 }
 
-TEST(StandardHooks, TheModesCapRefitsTheSegmentWithFewerCoefficients)
+TEST(MachineHooks, TheModesCapRefitsTheSegmentWithFewerCoefficients)
 {
     const auto curve = [](index_t cap)
     {
@@ -341,7 +341,7 @@ TEST(StandardHooks, TheModesCapRefitsTheSegmentWithFewerCoefficients)
         EXPECT_EQ(capped.bands[b].magnitude, full.bands[b].magnitude);
 }
 
-TEST(StandardHooks, TheModesExtraMaskStepsFollowTheChain)
+TEST(MachineHooks, TheModesExtraMaskStepsFollowTheChain)
 {
     // Two observations far above the green median: the mode's extra green
     // step after the chain drops them, as the chain with that step does.
@@ -372,7 +372,7 @@ TEST(StandardHooks, TheModesExtraMaskStepsFollowTheChain)
     EXPECT_EQ(after.count(), 78u);
 }
 
-TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
+TEST(MachineHooks, ARunTheRecordCannotContinueStoresNoSuspension)
 {
     // Shortened peeks: no full-peek suspension to continue from.
     Record r(80);
@@ -380,13 +380,13 @@ TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
     for (index_t i = 0; i < 80; ++i)
         mask.set(i, true);
     auto test = std::make_shared<HookTest>(r.strategies.change_test);
-    ccd::standard::Detector plain;
+    ccd::machine::Detector plain;
     plain.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared, r.strategies);
     EXPECT_NE(plain.suspended().exit, Exit::None);
 
     test->full = false;
     r.strategies.change_test = test;
-    ccd::standard::Detector shortened;
+    ccd::machine::Detector shortened;
     shortened.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared, r.strategies);
     EXPECT_EQ(shortened.suspended().exit, Exit::None);
 
@@ -394,7 +394,7 @@ TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
     r.strategies = golden::strategies_of(r.config);
     ccd::PixelMode cap(ccd::PixelProcedure::Standard);
     cap.max_coefficients = 4;
-    ccd::standard::Detector capped;
+    ccd::machine::Detector capped;
     capped.fit(cap, r.workspace, mask, r.shared, r.strategies);
     EXPECT_EQ(capped.suspended().exit, Exit::None);
 }

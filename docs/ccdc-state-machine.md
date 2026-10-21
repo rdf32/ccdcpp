@@ -28,8 +28,8 @@ detector it reuses from pixel to pixel. The steps of one pixel:
    `include/ccd/strategies/stages.hpp`);
 4. apply that procedure's transform to the pixel's private copy and run its filter chain to
    build the processing mask (`include/ccd/input/mask/chain.hpp`);
-5. fit the mask with the run's change detector, `standard::Detector::fit`
-   (`src/ccd/machine/standard.hpp`), or, on a resume, continue the stored run from where it
+5. fit the mask with the run's change detector, `machine::Detector::fit`
+   (`src/ccd/machine/detector.hpp`), or, on a resume, continue the stored run from where it
    stopped (`Detector::resume`, section 6);
 6. with `record` (or on a resume), finish the pixel's record for the next resume: where the
    machine stopped and the days it dropped (`fill_record()`, `src/ccd/run/resume.cpp`), and the
@@ -39,7 +39,7 @@ The procedure choice (the `pyccd` mode's, with its parameters):
 
 | Guard, in order | Procedure | What fits it |
 |---|---|---|
-| clear percentage >= `clear_pct_threshold` | Standard | the Standard machine (section 2), with the run's strategies |
+| clear percentage >= `clear_pct_threshold` | Standard | the machine (section 2), with the run's strategies |
 | else snow percentage >= `snow_pct_threshold` | PermanentSnow | `ccd::fit_whole_series`, curve_qa 54 |
 | else | InsufficientClear | `ccd::fit_whole_series`, curve_qa 44 |
 
@@ -48,7 +48,7 @@ The whole-series fit has no loop, so it is a function, not a machine. With fewer
 processing mask. Otherwise it returns one segment over the whole series, every band fitted with
 edge_segments' `coefficients.min` (the shared value, 4).
 
-## 2. The Standard machine
+## 2. The machine
 
 ```
                               ┌─ size <= min_observations ────────────────► Done  [TooFewObservations]
@@ -95,8 +95,8 @@ The exit is internal; the trace and the tests read it, the result does not carry
 
 ### Phases and their guards
 
-Each row is one transition function in `src/ccd/machine/standard.cpp`, declared in
-`src/ccd/machine/standard.hpp`. The three phases that repeat themselves do one thing per
+Each row is one transition function in `src/ccd/machine/detector.cpp`, declared in
+`src/ccd/machine/detector.hpp`. The three phases that repeat themselves do one thing per
 call and say what they did as an outcome value, so the trace and the tests see every decision.
 
 | Phase | One call | Next |
@@ -111,7 +111,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 The guards inside one call, in the order they are tested:
 
-- **Initialize** (`initialize_step`, `src/ccd/machine/standard.cpp`): the start search finds
+- **Initialize** (`initialize_step`, `src/ccd/machine/detector.cpp`): the start search finds
   no candidate left (`Exhausted`) or a span too short (`ShortSpan`, grow; pyccd: under
   `day_delta`); the window screen (Tmask, `screen_window`) flags
   every observation (`AllOutliers`, grow); it flags some and the shortened window is not a
@@ -159,16 +159,16 @@ only when a full peek fits.
 A transition is a function of two arguments, `(const Context&, State&)`. What it may change is
 in the `State`. What it reads but never changes is in the `Context`.
 
-**`standard::Context`** holds the run's resolved shared values (never written below
+**`machine::Context`** holds the run's resolved shared values (never written below
 `Run::pixel`), the pixel's `PixelSeries` (views of its dates, spectral and QA),
 the run's strategies, the observer and the pixel mode's coefficient cap. It holds no solver: each strategy
 that fits holds its own. The catch segments (StartCatch, EndCatch) fit with edge_segments',
 Initialize with the stability fit's and Extend with the monitoring model's (the `edge_segments`,
 `stability_fit` and `model` stages' parameters), and Lookback reads the stability fit. A direct
-caller of `standard::Detector` takes the strategies of a configuration resolved against its
+caller of `machine::Detector` takes the strategies of a configuration resolved against its
 input (`config::resolve(strategies::library_registry(), config, input).strategies`), as `Run` does.
 
-**`standard::State`** is one pixel's record:
+**`machine::State`** is one pixel's record:
 
 | Field | What it is | Shared or Standard's |
 |---|---|---|
@@ -189,7 +189,7 @@ observations by one rule: a window bound above the dropped position moves down b
 
 The record's buffers keep their capacity across pixels: `State::reset` starts a pixel without
 freeing anything, and `State::bind` makes a strategy's objects again only when the run's
-strategy is another. `standard::Detector` owns one record, and a `Worker`
+strategy is another. `machine::Detector` owns one record, and a `Worker`
 (`src/ccd/run/run_pixel.hpp`) holds one `Detector` per OpenMP thread.
 
 ### Stages and strategies
@@ -394,13 +394,13 @@ Each strategy holds its own code, beside its class:
 | `tmask` | the Tmask window screen | `include/ccd/strategies/window_screen/tmask.hpp` |
 | `adjust_peek`, `adjust_change_threshold`, `ThresholdPeek`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse` | pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
 
-What only the Standard machine uses lives with it, in `ccd::standard`
-(`src/ccd/machine/standard.hpp`): `initialize_step` with `InitializeOutcome`, `Cursor`, the
+What only the machine uses lives with it, in `ccd::machine`
+(`src/ccd/machine/detector.hpp`): `initialize_step` with `InitializeOutcome`, `Cursor`, the
 phases, the transitions and the routing. A function moves to the shared list once a strategy uses it.
 
 ## 5. The driver and the trace
 
-`drive` (`src/ccd/machine/standard.cpp`) is the machine's only loop:
+`drive` (`src/ccd/machine/detector.cpp`) is the machine's only loop:
 
 ```cpp
 while (state.phase != Phase::Done)
@@ -412,7 +412,7 @@ while (state.phase != Phase::Done)
 }
 ```
 
-`standard::step` is a `switch` from the phase to its transition, and `standard::Detector::fit`
+`machine::step` is a `switch` from the phase to its transition, and `machine::Detector::fit`
 is reset, drive, take the result. A resume reports its Prepare through the same
 `report_transition` before it puts the cursor back.
 
@@ -442,14 +442,14 @@ longer series make the same decisions up to the first size guard that failed in 
 one (`PrefixStability.*`, `tests/ccd/golden/test_prefix.cpp`). Every segment written before
 that guard is final.
 
-That guard is where the record stops: `standard::Suspended` (`include/ccd/machine/suspended.hpp`) is captured by
+That guard is where the record stops: `machine::Suspended` (`include/ccd/machine/suspended.hpp`) is captured by
 every route into EndCatch and by the early exits, before anything after the guard writes. It
 holds the exit, the cursor, the fit window's end, a pending grow, the last peek test's
 coefficient count and magnitudes, and the final segment count. `ccd::detect()` with `RunSpec::record`
 returns it inside a `PixelRecord`, with the pixel's input fingerprint and the days the machine dropped
 (`include/ccd/results/record.hpp`).
 
-`standard::Detector::resume()` continues from it on the longer series:
+`machine::Detector::resume()` continues from it on the longer series:
 
 1. Prepare runs as for any run, on the series as the filters leave it, with the statistics
    cutoffs capped at the first run's series end, so its peek plan and variogram are the stored
@@ -498,11 +498,11 @@ rule; the result is taken from the record once the machine is done.
 
 A test builds a `State` by hand (a short synthetic series, a chosen cursor, models from
 `fit_bands`), calls one transition or one step function, and checks the outcome, the next phase
-and the record. `tests/ccd/machine/test_standard_steps.cpp` does that for every row of the
-guard lists above (`StandardInitialize.*`, `StandardLookback.*`, `StandardExtend.*`) and for
-the routing (`StandardRouting.*`, `StandardPrepare.*`), `test_standard_whole_pixel.cpp` for
-every `Exit` (`StandardExit/EachWayTheMachineStops.*`, one test per pixel).
-`StandardMachine.EachStepIsOneDecision` steps whole pixels by hand and checks that every
+and the record. `tests/ccd/machine/test_detector_steps.cpp` does that for every row of the
+guard lists above (`MachineInitialize.*`, `MachineLookback.*`, `MachineExtend.*`) and for
+the routing (`MachineRouting.*`, `MachinePrepare.*`), `test_detector_whole_pixel.cpp` for
+every `Exit` (`MachineExit/EachWayTheMachineStops.*`, one test per pixel).
+`Machine.EachStepIsOneDecision` steps whole pixels by hand and checks that every
 self-transition changes the window by one decision. The outputs themselves are pinned byte for
 byte by the golden fixtures (`tests/ccd/golden/`), including the transitions fixture, built from
 pixels that take the transitions the random corpus misses. `PrefixStability.*`
@@ -538,8 +538,8 @@ continues (`State::resumable`).
 
 A segment reports each band's fit as a `BandFit` (`ChangeModel::bands`): intercept,
 coefficients, RMSE, magnitude and the solver's iteration count (0 for a fit in closed form), so
-a detector that fits by ordinary least squares writes the same record. Inside the Standard
-machine Extend's fits are the monitoring model's (`ccd::Model`), whose in-window residuals the
+a detector that fits by ordinary least squares writes the same record. Inside the machine,
+Extend's fits are the monitoring model's (`ccd::Model`), whose in-window residuals the
 seasonal RMSE reads and whose `band_fit()` gives each band's when a segment is written.
 
 ### A later batch on the CPU

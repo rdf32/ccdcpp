@@ -27,7 +27,7 @@ to add a strategy. Paths are relative to the repository root.
                                             Run::prepare              decode the QA, the mode stage,
                                                 │                     the values, the preprocessing chain
                                                 ▼
-                                            standard::Detector::fit   the machine, or the whole-series
+                                            machine::Detector::fit    the machine, or the whole-series
                                                 │                     curve (edge_segments)
                                                 ▼
  dicts / columns (results.py) ◄──────────── PixelOutput / CubeOutput  segments, masks, records
@@ -56,7 +56,7 @@ to add a strategy. Paths are relative to the repository root.
 5. **Prepare a pixel.** `Run::prepare` (`src/ccd/run/run.cpp`): decode the QA, compute the QA
    statistics up to `statistics_end`, ask the `mode` stage for the pixel's `PixelMode`, apply
    its procedure's transform, and run its procedure's chain into the processing mask.
-6. **Fit.** `standard::Detector::fit` (`src/ccd/machine/standard.hpp`) runs the machine for a
+6. **Fit.** `machine::Detector::fit` (`src/ccd/machine/detector.hpp`) runs the machine for a
    Standard pixel, or `edge_segments`' `whole_series()` for a PermanentSnow or
    InsufficientClear one. A resume continues the stored run instead (`Run::resumed`,
    `src/ccd/run/resume.cpp`, and `Detector::resume`).
@@ -67,7 +67,7 @@ to add a strategy. Paths are relative to the repository root.
 
 ## The machine
 
-One machine for every method (`src/ccd/machine/standard.cpp`). Its phases and routes are
+One machine for every method (`src/ccd/machine/detector.cpp`). Its phases and routes are
 fixed; each phase asks stages for decisions and routes on what they return. A strategy never
 steers the machine: it returns a value from a closed set (`TestOutcome`, `OutlierOutcome`,
 `LookbackVerdict`, `Exhaustion`, ...), and a new outcome is a change to the machine.
@@ -83,7 +83,7 @@ steers the machine: it returns a value from a closed set (`TestOutcome`, `Outlie
 | EndCatch | the End segment after the last segment | `edge_segments` |
 
 The phase diagram, its guards and the exit reasons are in
-[ccdc-state-machine.md](ccdc-state-machine.md#2-the-standard-machine).
+[ccdc-state-machine.md](ccdc-state-machine.md#2-the-machine).
 
 ## The stages
 
@@ -195,7 +195,7 @@ include/ccd/                 the public headers (src/ccd/ mirrors them)
   machine/                   Suspended: where a stopped machine resumes
   results/                   segments, records, the observer
   run/                       Algorithm, RunSpec, detect, detect_cube
-src/ccd/machine/             the machine (standard.hpp, standard.cpp; internal)
+src/ccd/machine/             the machine (ccd::machine: detector.hpp, detector.cpp; internal)
 src/ccd/run/                 Run and Worker (run_pixel.hpp; internal), the cube loop, resume
 bindings/                    the Python module: config, input, QA tables, preprocess, detect,
                              results

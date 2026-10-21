@@ -1,8 +1,8 @@
 #pragma once
 
-// The hand-built record test_machine's sources (test_standard_steps.cpp,
-// test_standard_hooks.cpp, test_standard_whole_pixel.cpp) step the Standard
-// machine on, a record in Extend, and two fit results compared field for
+// The hand-built record test_machine's sources (test_detector_steps.cpp,
+// test_detector_hooks.cpp, test_detector_whole_pixel.cpp) step the machine
+// on, a record in Extend, and two fit results compared field for
 // field. Not part of the library.
 
 #include <cmath>
@@ -16,7 +16,7 @@
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/pixel_series.hpp"
-#include "ccd/machine/standard.hpp"   // internal (src/)
+#include "ccd/machine/detector.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "config.hpp"
@@ -26,7 +26,7 @@ namespace machine_test
 
 using ccd::index_t;
 using ccd::scalar_t;
-using ccd::standard::Phase;
+using ccd::machine::Phase;
 
 //------------------------------------------------------------------------------
 // A hand-built record
@@ -50,8 +50,8 @@ struct Record
     ccd::LassoWorkspace lasso{0};
     ccd::LassoSolver solver;
     ccd::Strategies strategies;
-    ccd::standard::Context context;
-    ccd::standard::State state;
+    ccd::machine::Context context;
+    ccd::machine::State state;
 
     explicit Record(index_t n, std::int64_t first_day = 730120)
         : dates(make_dates(n, first_day)),
@@ -85,7 +85,7 @@ struct Record
     // The record at a cursor, with a peek plan, past Prepare.
     void at(index_t start, index_t stop, index_t prev_break, index_t peek = 6)
     {
-        state.cursor = ccd::standard::Cursor{ccd::Window(start, stop), prev_break};
+        state.cursor = ccd::machine::Cursor{ccd::Window(start, stop), prev_break};
         state.peek_plan = ccd::PeekPlan{peek, true, 0};   // chi2: full peeks only
         state.stability_coefficients = strategies.stability_fit->coefficients();
         state.coefficients = strategies.model->coefficients();
@@ -161,7 +161,7 @@ struct Record
     Phase step()
     {
         state.bind(strategies);
-        const Phase next = ccd::standard::step(context, state);
+        const Phase next = ccd::machine::step(context, state);
         state.phase = next;
         return next;
     }

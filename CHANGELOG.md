@@ -71,8 +71,10 @@ its replacement.
   default outputs changed.
 - **The source layout**: `include/ccd/` and `src/ccd/` in `core/`, `input/`, `regression/`,
   `config/`, `strategies/`, `machine/`, `results/` and `run/`; `ccd/ccd.hpp` includes every
-  public header. The run (`Run`, `Worker`) and the Standard machine (`machine/standard.hpp`)
-  are internal, under `src/ccd/`. Each strategy's functions are in its own header (the Lasso
+  public header. The run (`Run`, `Worker`) and the machine (`ccd::machine`,
+  `machine/detector.hpp`; it was `ccd::standard`) are internal, under `src/ccd/`; the
+  record's part of it is `machine::Suspended` and `machine::Exit`
+  (`ccd/machine/suspended.hpp`). Each strategy's functions are in its own header (the Lasso
   fits in `strategies/model/lasso.hpp`, the catch and whole-series fits in
   `strategies/edge_segments/lasso.hpp`, `adjusted_variogram()` and `tmask()` with their strategies),
   pyccd's peek statistics in `strategies/pyccd/peek_statistics.hpp`, the segments in
@@ -194,13 +196,16 @@ its replacement.
   `python_profiles_qa_options`, `python_profiles_band_order` and `python_profiles_sensors`.
   The package's own tests are `test_package.py` (`python_package`), the tests of the
   docstrings' prose `test_docs.py` (`python_docs`).
-- `test_machine` is built from `tests/ccd/machine/test_standard_steps.cpp`,
-  `test_standard_hooks.cpp` and `test_standard_whole_pixel.cpp`, `test_preprocess` from
+- `test_machine` is built from `tests/ccd/machine/test_detector_steps.cpp`,
+  `test_detector_hooks.cpp` and `test_detector_whole_pixel.cpp`, `test_preprocess` from
   `test_preprocess.cpp` and `test_preprocess_validation.cpp`, `test_resume` from
   `tests/ccd/golden/test_resume.cpp` and `test_run_spec.cpp`.
+- The machine's tests are `MachineRouting.*`, `MachinePrepare.*`, `MachineInitialize.*`,
+  `MachineLookback.*`, `MachineExtend.*`, `MachineHooks.*`, `MachineExit.*`, `Machine.*` and
+  `Detector.*` (were `StandardRouting.*` and so on, `StandardMachine.*`, `StandardDetector.*`).
 - One test per pixel or case, named for it: `Transitions.PathsAsDocumented` is
   `Transitions/PathsAsDocumented.Pixel/<pixel>`, `StandardExit.EachWayTheMachineStops`
-  `StandardExit/EachWayTheMachineStops.Pixel/<pixel>`, and `ResumeRefuses.WhatItCannotContinue`
+  `MachineExit/EachWayTheMachineStops.Pixel/<pixel>`, and `ResumeRefuses.WhatItCannotContinue`
   `ResumeRefuses/WhatItCannotContinue.Case/<case>` with `ResumeAccepts.ExactlyTheFinalSegments`.
 - `test_clear`, `test_snow` and `test_standard` are one `test_pyccd_reference`; its tests are
   `PyccdReference.InsufficientClearMatchesPyccd`, `PermanentSnowMatchesPyccd`,
