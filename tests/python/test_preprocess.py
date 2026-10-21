@@ -3,8 +3,7 @@
 usage: python test_preprocess.py <module_dir> <source_dir> [unittest args]
 
 <module_dir> holds the built extension; <source_dir> is the repository root.
-The package, the corpus cube and the comparison helpers are test_profiles'
-(imported from beside this file, its package assembled by _harness.use_package()).
+The package is assembled as the wheel lays it out (_harness.use_package()).
 ctest runs this as `python_preprocess`.
 """
 from __future__ import annotations
@@ -12,21 +11,19 @@ from __future__ import annotations
 import os
 import tomllib
 import unittest
-from collections.abc import Mapping
-from typing import Any
 
-from _harness import MODULE_DIR, SOURCE_DIR
+from _harness import MODULE_DIR, SOURCE_DIR, use_package
 
-import test_profiles as tp  # its package, corpus and helpers
+use_package()
 
-import numpy as np
-from numpy.typing import NDArray
+import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
-import ccdcpp
-from ccdcpp import presets
-from ccdcpp.results import PixelResult
+import ccdcpp  # noqa: E402
+from ccdcpp import presets  # noqa: E402
+from ccdcpp.results import PixelResult  # noqa: E402
 
-from ccdcpp import (
+from ccdcpp import (  # noqa: E402
     AddQa,
     BandRange,
     OnePerDate,
@@ -37,14 +34,12 @@ from ccdcpp import (
     ThermalRange,
 )
 
-DATES, CUBE_DN, CUBE_PHYS, CODES = tp.DATES, tp.CUBE_DN, tp.CUBE_PHYS, tp.CODES
-SNOW = tp.SNOW
-assert_same, every_entry, without = tp.assert_same, tp.every_entry, tp.without
+from _compare import assert_same  # noqa: E402
+from _corpus import (CODES, CUBE_DN, DATES, PYCCD, SNOW, TEN_BAND_CONFIG,  # noqa: E402
+                     every_entry, reference_pixel, strip_band_names, ten_band_inputs,
+                     ten_band_profile, without)
+
 CCDC = ccdcpp.config("ccdc")
-
-
-def strip(outs: Mapping[str, Any]) -> dict[str, Any]:
-    return tp.strip_band_names(outs)
 
 
 def keeps_snow(base: ccdcpp.Config = CCDC) -> ccdcpp.Config:
@@ -152,9 +147,9 @@ class Plans(unittest.TestCase):
 
     def test_equality(self):
         h = ccdcpp.Input()
-        plan = ccdcpp.plan_of(tp.PYCCD, h)
-        self.assertEqual(plan, ccdcpp.plan_of(tp.PYCCD, h))
-        self.assertNotEqual(plan, ccdcpp.plan_of(keeps_snow(tp.PYCCD), h))
+        plan = ccdcpp.plan_of(PYCCD, h)
+        self.assertEqual(plan, ccdcpp.plan_of(PYCCD, h))
+        self.assertNotEqual(plan, ccdcpp.plan_of(keeps_snow(PYCCD), h))
         self.assertNotEqual(plan, ccdcpp.plan_of("ccdc", h))   # the green median's date
         chain = plan.standard.chain
         self.assertEqual(len(chain), 4)
@@ -163,7 +158,7 @@ class Plans(unittest.TestCase):
             chain[4]
 
     def test_describe(self):
-        plan = ccdcpp.plan_of(tp.PYCCD, ccdcpp.Input())
+        plan = ccdcpp.plan_of(PYCCD, ccdcpp.Input())
         text = plan.describe()
         self.assertEqual(text, repr(plan))
         for line in ("standard", "  transform  band 6 <- x * 10 - 27315",
@@ -208,51 +203,52 @@ class WrittenChains(unittest.TestCase):
     def test_written_default_output(self):
         for written in (written_default(), written_default_explicit()):
             with self.subTest(written=written):
-                cfg = tp.PYCCD.replace(preprocess=written)
+                cfg = PYCCD.replace(preprocess=written)
                 assert_same(self, every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
                                               config=cfg),
                             every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
-                                        config=tp.PYCCD))
+                                        config=PYCCD))
 
     def test_ten_band_default(self):
-        profile = tp.ten_band_profile()
-        dates, cube, scl = tp.ten_band_inputs()
+        profile = ten_band_profile()
+        dates, cube, scl = ten_band_inputs()
         common = (KeepQa(), BandRange(), OnePerDate())
         written = Preprocess(
             standard=ProcedureChain(steps=common, thermal="celsius"),
             snow=ProcedureChain(steps=common + (AddQa(), OnePerDate())),
             insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), OnePerDate())),
         )
-        cfg = tp.TEN_BAND_CONFIG.replace(preprocess=written)
+        cfg = TEN_BAND_CONFIG.replace(preprocess=written)
         self.assertEqual(ccdcpp.plan_of(cfg, profile),
-                         ccdcpp.plan_of(tp.TEN_BAND_CONFIG, profile))
+                         ccdcpp.plan_of(TEN_BAND_CONFIG, profile))
         assert_same(self,
                     without(ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
                                                config=cfg), "threads"),
                     without(ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
-                                               config=tp.TEN_BAND_CONFIG), "threads"))
+                                               config=TEN_BAND_CONFIG), "threads"))
 
 
 class CustomChains(unittest.TestCase):
     def test_standard_keeps_snow(self):
-        dates, ref, qa = tp.reference_pixel()
+        dates, ref, qa = reference_pixel()
         h = ccdcpp.Input()
-        base = ccdcpp.detect(dates, ref, qa, input=h, config=tp.PYCCD)
-        snowy = ccdcpp.detect(dates, ref, qa, input=h, config=keeps_snow(tp.PYCCD))
+        base = ccdcpp.detect(dates, ref, qa, input=h, config=PYCCD)
+        snowy = ccdcpp.detect(dates, ref, qa, input=h, config=keeps_snow(PYCCD))
         self.assertNotIn(54, [m["curve_qa"] for m in snowy["models"]])
         self.assertEqual(snow_kept(base, qa), 0)
         self.assertGreater(snow_kept(snowy, qa), 0)
         self.assertNotEqual(repr(base), repr(snowy))
         # The same chain on a profile's input.
         assert_same(self, without(ccdcpp.detect(dates, ref, qa, input=presets.landsat_c1_dn(),
-                                                config=keeps_snow(tp.PYCCD)), "band_names"),
+                                                config=keeps_snow(PYCCD)), "band_names"),
                     snowy)
 
     def test_cube_entry_point(self):
         h = ccdcpp.Input()
         plain = every_entry(DATES, CUBE_DN, CODES, input=h, config=keeps_snow())
-        assert_same(self, strip(every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(),
-                                            config=keeps_snow())), plain)
+        assert_same(self, strip_band_names(every_entry(DATES, CUBE_DN, CODES,
+                                                       input=presets.landsat_c1_dn(),
+                                                       config=keeps_snow())), plain)
         self.assertNotEqual(repr(plain), repr(every_entry(DATES, CUBE_DN, CODES, input=h)))
 
     def test_codes_follow_the_run_input(self):

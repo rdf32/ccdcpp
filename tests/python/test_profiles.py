@@ -11,7 +11,6 @@ from __future__ import annotations
 import copy
 import dataclasses
 import inspect
-import os
 import pickle
 import pydoc
 import unittest
@@ -20,7 +19,7 @@ from datetime import date
 from typing import Any
 from unittest import mock
 
-from _harness import SOURCE_DIR, use_package  # noqa: E402
+from _harness import use_package
 
 use_package()
 
@@ -33,9 +32,11 @@ from ccdcpp import ccdcpp as ext  # noqa: E402
 from ccdcpp import presets  # noqa: E402
 from ccdcpp.results import Model, PixelResult  # noqa: E402
 
-START = 724276  # 1984-01-01
-SCALE = 10000.0
-FILL, CLEAR, WATER, SHADOW, SNOW, CLOUD = 255, 0, 1, 2, 3, 4
+from _compare import assert_same  # noqa: E402
+from _corpus import (CLEAR, CLOUD, CODES, CUBE_DN, CUBE_PHYS, DATES, FILL,  # noqa: E402
+                     PYCCD, SHADOW, SNOW, TEN_BAND_CONFIG, WATER, Series, every_entry,
+                     strip_band_names, ten_band_inputs, ten_band_profile, without)
+
 
 #: One raw QA_PIXEL value per class (Landsat Collection 2).
 C2_RAW = {FILL: 1, CLEAR: 21824, WATER: 21952, SHADOW: 23888, SNOW: 30048, CLOUD: 22280}
@@ -48,41 +49,11 @@ FMASK_RAW = {FILL: 255, CLEAR: 0, WATER: 32, SHADOW: 8, SNOW: 16, CLOUD: 2}
 LANDSAT_PRESETS = (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2)
 
 
-Series = tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8]]
-
-
 def fields(obj: object) -> dict[str, Any]:
     return {
         name: getattr(obj, name) for name in dir(obj)
         if not name.startswith("_") and not callable(getattr(obj, name))
     }
-
-
-def assert_same(test: unittest.TestCase, a: Any, b: Any, where: str = "out") -> None:
-    """Exact, structural equality of entry point outputs."""
-    if isinstance(a, dict):
-        test.assertEqual(list(a), list(b), where)
-        for k in a:
-            assert_same(test, a[k], b[k], f"{where}[{k!r}]")
-    elif isinstance(a, (list, tuple)):
-        test.assertEqual(type(a), type(b), where)
-        test.assertEqual(len(a), len(b), where)
-        for i, (x, y) in enumerate(zip(a, b)):
-            assert_same(test, x, y, f"{where}[{i}]")
-    elif isinstance(a, np.ndarray):
-        test.assertEqual((a.dtype, a.shape), (b.dtype, b.shape), where)
-        test.assertEqual(a.tobytes(), b.tobytes(), where)
-    elif isinstance(a, float):
-        test.assertEqual(a.hex(), b.hex(), where)
-    else:
-        test.assertEqual(a, b, where)
-
-
-def without(out: Mapping[str, Any], *keys: str) -> dict[str, Any]:
-    kept = dict(out)
-    for k in keys:
-        kept.pop(k)
-    return kept
 
 
 def qa_table_of(input: ccdcpp.Input) -> ccdcpp.QaTable:
@@ -95,59 +66,6 @@ def doc_of(obj: object) -> str:
     """The docstring of an object that has one."""
     assert obj.__doc__ is not None, obj
     return obj.__doc__
-
-
-def reference_pixel() -> Series:
-    """pyccd's reference pixel: (dates, spectral (7, T) DN, qas)."""
-    path = os.path.join(SOURCE_DIR, "tests", "ccd", "data", "test_3657_3610_observations.csv")
-    data = np.loadtxt(path, delimiter=",", dtype=np.int64)
-    return (data[:, 0].copy(), np.ascontiguousarray(data[:, 1:8].T, dtype=np.float64),
-            data[:, 8].astype(np.uint8))
-
-
-def corpus_cube(H: int = 2, W: int = 3, seed: int = 11) -> Series:
-    """A (H, W, 7, T) DN cube on the reference pixel's dates: the reference
-    pixel itself, a snow-dominated pixel (PermanentSnow), a cloud-dominated
-    one (InsufficientClear), and clear pixels with a break (Standard).
-
-    Returns (dates, spectral, codes), codes free of FILL-only rows and of
-    code 8, so each has a QA_PIXEL input."""
-    dates, ref, ref_qa = reference_pixel()
-    T = dates.size
-    rng = np.random.default_rng(seed)
-    phase = 2 * np.pi * (dates - START) / 365.25
-    spectral = np.empty((H, W, 7, T))
-    codes = np.empty((H, W, T), dtype=np.uint8)
-    for p in range(H * W):
-        r, c = divmod(p, W)
-        if p == 0:
-            spectral[r, c], codes[r, c] = ref, ref_qa
-            continue
-        base = 600 + 300 * np.arange(7, dtype=float)[:, None]
-        season = (150 + 20 * p) * np.sin(phase + p)[None, :]
-        level = np.where(np.arange(T) > T // 2 + 7 * p, 900.0, 0.0)[None, :]
-        s = base + season + level + rng.normal(0, 40, (7, T))
-        s[6] = 2900 + 80 * np.sin(phase) + rng.normal(0, 10, T)
-        spectral[r, c] = np.round(s)
-        probs = {1: [0.02, 0.05, 0.01, 0.05, 0.85, 0.02],
-                 2: [0.02, 0.17, 0.03, 0.05, 0.02, 0.71]}.get(
-                     p, [0.04, 0.74, 0.06, 0.05, 0.03, 0.08])
-        codes[r, c] = rng.choice(
-            np.array([FILL, CLEAR, WATER, SHADOW, SNOW, CLOUD], dtype=np.uint8), size=T, p=probs)
-    codes[codes == 8] = SHADOW
-    return dates, spectral, codes
-
-
-def to_physical(spectral: NDArray[np.float64]) -> NDArray[np.float64]:
-    """DN -> the physical preset's units: reflectance, degrees Celsius / 100."""
-    s = spectral.copy()
-    s[..., :6, :] = s[..., :6, :] / SCALE
-    s[..., 6, :] = (s[..., 6, :] * 10.0 - 27315.0) / SCALE
-    return s
-
-
-#: The "ccdc" preset with pyccd's statistics cutoff, 2017-12-31: what the Landsat profiles run.
-PYCCD = ccdcpp.config("ccdc").replace(shared__statistics_end=736694)
 
 
 def explicit_physical() -> tuple[ccdcpp.Input, ccdcpp.Config]:
@@ -195,30 +113,6 @@ def option_params(cfg: ccdcpp.Config, name: str,
     return {(stage, param): stages[stage][param]
             for stage, param in pairs
             if stage in stages and param in stages[stage]}
-
-
-DATES, CUBE_DN, CODES = corpus_cube()
-CUBE_PHYS = to_physical(CUBE_DN)
-
-
-def every_entry(dates: NDArray[np.int64], spectral: NDArray[Any], qas: NDArray[Any],
-                threads: int = 8, **kw: Any) -> dict[str, Any]:
-    """{entry: output} for detect on every pixel and detect_cube (its columns,
-    without the thread count)."""
-    H, W = spectral.shape[:2]
-    return {
-        "detect": [ccdcpp.detect(dates, spectral[r, c], qas[r, c], **kw)
-                   for r in range(H) for c in range(W)],
-        "detect_cube": without(
-            ccdcpp.detect_cube(dates, spectral, qas, threads=threads, **kw), "threads"),
-    }
-
-
-def strip_band_names(outs: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "detect": [without(o, "band_names") for o in outs["detect"]],
-        "detect_cube": without(outs["detect_cube"], "band_names"),
-    }
 
 
 def band_range_rows(input: ccdcpp.Input | ccdcpp.SensorProfile,
@@ -958,53 +852,6 @@ class DetectionCount(unittest.TestCase):
                          outlier_threshold(ccdcpp.config("ccdc")).hex())
         self.assertEqual(ccdcpp.chi2_quantile(0.99, 5).hex(),
                          change_threshold(ccdcpp.config("ccdc")).hex())
-
-
-#------------------------------------------------------------------------------
-# A ten-band, thermal-less, non-Landsat profile, defined here and not shipped:
-# a Sentinel-2-like layout in reflectance with SCL QA.
-#------------------------------------------------------------------------------
-
-def ten_band_profile() -> ccdcpp.SensorProfile:
-    return ccdcpp.SensorProfile(
-        name="test_ten_band",
-        band_names=("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"),
-        roles=("blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad",
-               "nir", "swir1", "swir2"),
-        units=ccdcpp.REFLECTANCE,
-        qa_table_builder="sentinel2_scl",
-    )
-
-
-#: The configuration the ten-band tests run: six detection bands by role, a
-#: 10-day reference cadence.
-TEN_BAND_CONFIG = ccdcpp.config("ccdc").replace(
-    change_test__peek_reference_days=10.0,
-    shared__detection_bands=["green", "red", "red_edge_2", "nir", "swir1", "swir2"],
-)
-
-
-#: Raw SCL values: 4 vegetation, 5 bare (clear); 6 water; 8, 9 cloud; 3 shadow;
-#: 0 no data.
-SCL_VALUES = np.array([4, 5, 6, 8, 9, 3, 0], dtype=np.uint8)
-
-
-def ten_band_inputs(H: int = 2, W: int = 2, seed: int = 5) -> Series:
-    """(dates, spectral (H, W, 10, T) reflectance, raw SCL (H, W, T)): a 5-day
-    series from 2018, after the Landsat statistics_end, with a break per pixel."""
-    rng = np.random.default_rng(seed)
-    dates = (736695 + 5 * np.arange(4 * 73)).astype(np.int64)
-    T = dates.size
-    phase = 2 * np.pi * (dates - dates[0]) / 365.25
-    spectral = np.empty((H, W, 10, T))
-    for p in range(H * W):
-        r, c = divmod(p, W)
-        base = (0.04 + 0.03 * np.arange(10))[:, None]
-        season = (0.02 + 0.005 * p) * np.sin(phase + p)[None, :]
-        level = np.where(np.arange(T) > T // 2 + 9 * p, 0.08, 0.0)[None, :]
-        spectral[r, c] = base + season + level + rng.normal(0, 0.004, (10, T))
-    scl = rng.choice(SCL_VALUES, size=(H, W, T), p=[0.5, 0.2, 0.05, 0.1, 0.05, 0.05, 0.05])
-    return dates, spectral, scl
 
 
 class TenBand(unittest.TestCase):

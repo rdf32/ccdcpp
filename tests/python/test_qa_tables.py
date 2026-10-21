@@ -21,9 +21,9 @@ from numpy.typing import NDArray  # noqa: E402
 # The extension module, which ccdcpp/ccdcpp.pyi types.
 from ccdcpp import ccdcpp as ext  # noqa: E402
 
-START = 724276  # 1984-01-01
+from _compare import assert_same  # noqa: E402
+from _corpus import CLEAR, CLOUD, FILL, SHADOW, SNOW, START, WATER  # noqa: E402
 
-FILL, CLEAR, WATER, SHADOW, SNOW, CLOUD = 255, 0, 1, 2, 3, 4
 
 #: Raw values per class, per product: several per class, with flag
 #: combinations that exercise the precedence. Every one decodes to its class.
@@ -128,23 +128,6 @@ def options() -> ext.Input:
 def with_table(table: ext.QaTable | None) -> ext.Input:
     """The default input decoding its raw QA through `table` (None: codes)."""
     return ext.Input(qa_table=table)
-
-
-def assert_same(test: unittest.TestCase, a: Any, b: Any, where: str = "out") -> None:
-    """Exact, structural equality of entry point outputs."""
-    if isinstance(a, dict):
-        test.assertEqual(set(a), set(b), where)
-        for k in a:
-            assert_same(test, a[k], b[k], f"{where}[{k!r}]")
-    elif isinstance(a, (list, tuple)):
-        test.assertEqual(len(a), len(b), where)
-        for i, (x, y) in enumerate(zip(a, b)):
-            assert_same(test, x, y, f"{where}[{i}]")
-    elif isinstance(a, np.ndarray):
-        test.assertEqual(a.dtype, b.dtype, where)
-        np.testing.assert_array_equal(a, b, err_msg=where)
-    else:
-        test.assertEqual(a, b, where)
 
 
 class Tables(unittest.TestCase):
