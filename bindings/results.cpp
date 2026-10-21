@@ -336,30 +336,9 @@ ccd::PixelRecord record_from_python(const py::dict& d)
 //------------------------------------------------------------------------------
 // detect_cube's columns
 //
-// One numpy array per field, one ROW PER (PIXEL, SEGMENT), instead of a tree
-// of Python objects. For a 500x500 cell with T=987, a dict per pixel would be
-// ~250,000 py::dicts for pixels, ~350,000 more for segments, ~2,500,000 for
-// bands, 2.5 million py::tuples of 7 floats and 250,000 length-987 uint8
-// numpy arrays for the processing masks, about 247 MB of allocations whose
-// only purpose is to be thrown away. Feeding a columnar writer (parquet,
-// arrow) from that means walking every one of those objects in Python. The
-// columns are written into preallocated buffers, so the path from C++ to a
-// parquet file contains no per-row Python object at all. ccdcpp.to_pixels()
-// turns them into per-pixel dicts.
-//
-// The processing mask is absent unless asked for (masks=True): it is the
-// single largest allocation, T bytes per pixel, and the change-detection
-// schema this feeds has no column for it. Asked for, it is one more array,
-// one contiguous uint8 array over the cube's pixels (not per segment): the
-// run's CubeOutput::masks, which each pixel wrote its mask into, handed over
-// without a copy:
-//
-//   processing_mask       uint8 [H, W, T]  [r, c]: pixel (r, c)'s mask, 1
-//                                          where the observation is kept;
-//                                          zeros for a failed pixel
-//
-// Two passes: count segments, allocate, fill. Counting is cheap (it is a
-// vector size per pixel) and it is the only way to allocate exactly once.
+// One numpy array per field, one row per (pixel, segment), written into
+// buffers allocated once: segments are counted first, then filled.
+// ccdcpp.to_pixels() turns them into per-pixel dicts.
 //
 // Returned dict:
 //
@@ -378,24 +357,25 @@ ccd::PixelRecord record_from_python(const py::dict& d)
 //   threads               int              what actually ran
 //   pixels_total          int              H * W
 //   pixels_with_segments  int              pixels that produced >= 1 row
+//   processing_mask       uint8 [H, W, T]  with masks=True only: [r, c] is
+//                                          pixel (r, c)'s mask, 1 where the
+//                                          observation is kept; zeros for a
+//                                          failed pixel. The run's
+//                                          CubeOutput::masks, not copied.
 //
-// The last two exist because a pixel can produce ZERO segments and that is
-// neither an error nor a failure -- it is simply absent from every array. A
-// pixel whose observations are all fill, all NaN, all zero, or all cloud
-// returns no models and no address, and `failures` stays empty. Measured: of a
-// 4x4 cube with three pixels made degenerate three different ways, 13 pixels
-// appear in the output and 0 failures are reported. So a caller reconciling
-// against an archive that guarantees every pixel is present -- which the
-// legacy change-detection parquet does -- must compare these two numbers, and
-// nothing else in this dict would have told it.
+// A pixel can produce zero segments, which is neither an error nor a
+// failure: one whose observations are all fill, NaN, zero or cloud is in no
+// array, and `failures` stays empty. A caller that needs every pixel
+// present compares pixels_total with pixels_with_segments.
 //
 // Band order is the input's row order, B = Input.bands() rows; under the
 // default layout that is blue, green, red, nir, swir1, swir2, thermal.
-// Coefficient order is HarmonicBasis's column order -- slope, cos1, sin1,
-// cos2, sin2, cos3, sin3 -- and the intercept is NOT among them, which is why it is a separate array. Coefficients above the model's
-// own count are zero, not absent; zero is also a legitimate fitted value
-// under L1, so a caller that needs to know which coefficients were fitted
-// must derive the count from curve_qa and must not test values against zero.
+// Coefficient order is HarmonicBasis's column order (slope, cos1, sin1,
+// cos2, sin2, cos3, sin3); the intercept is not among them, hence its own
+// array. Coefficients above the model's own count are zero, not absent;
+// zero is also a fitted value under L1, so a caller that needs to know which
+// coefficients were fitted derives the count from curve_qa rather than
+// testing values against zero.
 //------------------------------------------------------------------------------
 
 py::dict segment_columns(
