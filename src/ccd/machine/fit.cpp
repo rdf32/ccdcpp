@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <unordered_map>
 #include <boost/math/distributions/chi_squared.hpp>
 
 #include "ccd/core/maths.hpp"
@@ -152,6 +153,41 @@ std::vector<scalar_t> calculate_variogram(
     return variogram;
 }
 
+namespace
+{
+
+// The most common of dates(i + lag) - dates(i), the smallest on a tie.
+std::int64_t majority_separation(
+    ArrayView<const std::int64_t, 1> dates,
+    index_t lag
+)
+{
+    const index_t count = dates.size();
+    std::unordered_map<std::int64_t, index_t> histogram;
+
+    std::int64_t majority_value = 0;
+    index_t majority_count = 0;
+
+    for (index_t i = 0; i + lag < count; ++i)
+    {
+        const std::int64_t delta =
+            dates(i + lag) - dates(i);
+
+        const index_t freq =
+            ++histogram[delta];
+
+        if (freq > majority_count || (freq == majority_count && delta < majority_value))
+        {
+            majority_count = freq;
+            majority_value = delta;
+        }
+    }
+
+    return majority_value;
+}
+
+} // namespace
+
 //------------------------------------------------------------------------------
 // Modified variogram.
 //
@@ -170,6 +206,7 @@ std::vector<scalar_t> adjusted_variogram(
 
     const index_t bands = spectral.extent(0);
     const index_t count = spectral.extent(1);
+    assert(dates.size() == count);
 
     if (count < 2) {
         return variogram;
@@ -179,31 +216,9 @@ std::vector<scalar_t> adjusted_variogram(
     //----------------------------------------------------------------------
     for (index_t lag = 1; lag < count; ++lag)
     {
-        std::unordered_map<std::int64_t, index_t> histogram;
+        const std::int64_t majority_value = majority_separation(dates, lag);
 
-        std::int64_t majority_value = 0;
-        index_t majority_count = 0;
-
-        for (index_t i = 0; i + lag < count; ++i)
-        {
-            const std::int64_t delta =
-                dates(i + lag) - dates(i);
-
-            const index_t freq =
-                ++histogram[delta];
-
-            if (freq > majority_count || (freq == majority_count && delta < majority_value))
-            {
-                majority_count = freq;
-                majority_value = delta;
-            }
-        }
-
-        LOG_DEBUG(
-            "lag = " << lag 
-            << ", majority = " << majority_value 
-            << ", count = " << majority_count
-        );
+        LOG_DEBUG("lag = " << lag << ", majority = " << majority_value);
 
         if (majority_value <= min_lag_days) {
             continue;
