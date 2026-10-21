@@ -58,7 +58,7 @@ std::string dump(const ccd::FitResult& r)
 }
 
 // A cube pixel's dump, its mask as the cube holds it.
-std::string dump(const ccd::CubeOutput& cube, const ccd::PixelResult& px)
+std::string dump(const ccd::CubeOutput& cube, const ccd::CubePixel& px)
 {
     std::string out;
     golden::dump_pixel(out, "pixel", cube, px);

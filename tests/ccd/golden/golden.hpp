@@ -109,7 +109,7 @@ inline void dump_pixel(
     std::string& out,
     const std::string& label,
     const ccd::CubeOutput& cube,
-    const ccd::PixelResult& pixel
+    const ccd::CubePixel& pixel
 )
 {
     append(out, "P %s %zu\n", label.c_str(), pixel.result.models.size());

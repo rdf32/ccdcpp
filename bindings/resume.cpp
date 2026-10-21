@@ -192,7 +192,7 @@ py::dict record_columns(
 )
 {
     const std::size_t N = static_cast<std::size_t>(H) * static_cast<std::size_t>(W);
-    std::vector<const ccd::PixelResult*> at(N, nullptr);
+    std::vector<const ccd::CubePixel*> at(N, nullptr);
     std::size_t days = 0;
     for (const auto& px : cube.pixels)
     {

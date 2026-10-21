@@ -238,7 +238,7 @@ int main(int argc, char** argv)
                 if (bench) continue;
 
                 std::sort(cube.pixels.begin(), cube.pixels.end(),
-                    [](const ccd::PixelResult& a, const ccd::PixelResult& b) {
+                    [](const ccd::CubePixel& a, const ccd::CubePixel& b) {
                         return a.row != b.row ? a.row < b.row : a.col < b.col; });
                 std::string cs;
                 for (const auto& p : cube.pixels)

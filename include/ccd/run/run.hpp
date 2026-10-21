@@ -81,7 +81,8 @@ struct RunSpec
     std::vector<index_t> observe;
 };
 
-struct PixelResult
+// One pixel of a CubeOutput: its place in the cube and its output.
+struct CubePixel
 {
     index_t row;
     index_t col;
@@ -132,7 +133,7 @@ struct CubeFailure
 //
 // With RunSpec::masks, `masks` holds every pixel's processing mask as one
 // (H, W, T) array, row-major: each pixel's T bytes are written into it as the
-// pixel finishes, and its PixelResult::result.mask stays empty, so the masks
+// pixel finishes, and its CubePixel::result.mask stays empty, so the masks
 // take T bytes per pixel once. A failed pixel's are zeros. Without
 // RunSpec::masks `masks` is empty.
 //
@@ -140,7 +141,7 @@ struct CubeFailure
 
 struct CubeOutput
 {
-    std::vector<PixelResult> pixels;
+    std::vector<CubePixel> pixels;
     std::vector<CubeFailure> failures;
     int threads = 0;
 

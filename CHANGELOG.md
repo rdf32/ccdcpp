@@ -105,7 +105,7 @@ its replacement.
   `cadence`, `stat_ord`, `change_threshold`, `outlier_threshold`, `green_filter_scope`,
   `preprocess`).
 - C++: `HarmonicOptions`, `LassoOptions` as a call argument, `CLEAR_OBSERVATION_THRESHOLD`,
-  `QA_IDX`, `Recorded`, `Resumed`, `CubeResult` (`CubeOutput`), `CubeResumeFrom` (`Resume`, which
+  `QA_IDX`, `Recorded`, `Resumed`, `CubeResult` (`CubeOutput`), `PixelResult` (`CubePixel`), `CubeResumeFrom` (`Resume`, which
   `detect` takes too), `DetectScratch` (the run's per-thread buffers are internal),
   `Quality` (`QaStatistics` and `qa_statistics()`, `ccd/input/qa_statistics.hpp`; the `mode`
   stage's `choose()` takes a `QaStatistics`),

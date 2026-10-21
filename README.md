@@ -155,7 +155,7 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(qas.data(), {H, W, T}),
         /*threads=*/8);
 
-    for (const ccd::PixelResult& p : r.pixels)
+    for (const ccd::CubePixel& p : r.pixels)
         std::cout << p.row << "," << p.col << ": " << p.result.models.size() << " segments\n";
     for (const ccd::CubeFailure& f : r.failures)
         std::cerr << f.row << "," << f.col << ": " << f.message << "\n";
@@ -801,7 +801,7 @@ CubeOutput detect_cube(const RunSpec& spec, ArrayView<const std::int64_t, 1> dat
 | `masks` | `false` | also return each pixel's processing mask: `detect`'s `result.mask`, `detect_cube`'s `CubeOutput::masks` |
 | `observer`, `observe` | none, every pixel | where the observed pixels report each step ([docs/diagnostics.md](docs/diagnostics.md)) |
 
-The values are views of any strides: `PixelSpectral` is a `(B, T)` view of `double`, `float` or `std::uint16_t`, `PixelQa` a `(T)` view of `std::uint8_t` codes or `std::uint16_t` raw QA, and `CubeSpectral`, `CubeQa` the `(H, W, B, T)` and `(H, W, T)` cube forms. `detect` returns a `ccd::PixelOutput`: `result` (a `FitResult`: `models`, and `mask` with `RunSpec::masks`), and with `RunSpec::record` or a resume, `record`, `status` and `header`. `detect_cube` returns a `ccd::CubeOutput`: `pixels` in raster order (each with `row`, `col`, `result`, `record`, `status`), `failures`, `threads`, `header`, the cube's `height`, `width` and `timesteps`, and with `RunSpec::masks` every pixel's mask in one (H, W, T) array, `masks`, read per pixel by `mask(row, col)`.
+The values are views of any strides: `PixelSpectral` is a `(B, T)` view of `double`, `float` or `std::uint16_t`, `PixelQa` a `(T)` view of `std::uint8_t` codes or `std::uint16_t` raw QA, and `CubeSpectral`, `CubeQa` the `(H, W, B, T)` and `(H, W, T)` cube forms. `detect` returns a `ccd::PixelOutput`: `result` (a `FitResult`: `models`, and `mask` with `RunSpec::masks`), and with `RunSpec::record` or a resume, `record`, `status` and `header`. `detect_cube` returns a `ccd::CubeOutput`: `pixels` in raster order (each a `ccd::CubePixel`: `row`, `col`, `result`, `record`, `status`), `failures`, `threads`, `header`, the cube's `height`, `width` and `timesteps`, and with `RunSpec::masks` every pixel's mask in one (H, W, T) array, `masks`, read per pixel by `mask(row, col)`.
 
 **A configuration** is a `ccd::config::Config` (`include/ccd/config/registry.hpp`): `shared` values, `stages` (a strategy and its parameters per stage) and `preprocess` (a chain per procedure), a value you edit. A `ccd::Algorithm` (`include/ccd/run/algorithm.hpp`) compiles one: checked when it is built, immutable, shared by every call and thread, and resolved and built once per input it meets. `ccd::plan_of(config, input)` is the preprocessing plan it runs on an input.
 

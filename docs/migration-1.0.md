@@ -444,7 +444,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `detect_cube(spec, d, s, q, threads)` |
 | `keep_masks = true` (the default) | `RunSpec::masks = false` (the default): ask for the masks; they are `CubeOutput::masks`, one (H, W, T) array, `mask(row, col)` per pixel, and `detect`'s `result.mask` |
 | `resume_cube(..., from, ...)`, `CubeResumeFrom{header, pixels, segments}` | `detect_cube(spec, d, s, q, threads, &from)`, `Resume{header, records, segments}` |
-| `Recorded`, `Resumed`; `CubeResult`; `DetectScratch` | `PixelOutput`; `CubeOutput`; none (the run's per-thread buffers are internal) |
+| `Recorded`, `Resumed`; `CubeResult`; `PixelResult`; `DetectScratch` | `PixelOutput`; `CubeOutput`; `CubePixel` (one pixel of a `CubeOutput`); none (the run's per-thread buffers are internal) |
 | `options_digest()`, `ResumeHeader::options_digest` | `ResumeHeader::digest`, the resolution's |
 | `default_plan(h)`, `PreprocessPlanPtr`, the `preprocess` argument | `plan_of(config, input)` (`ccd/run/algorithm.hpp`), the plan the configuration resolves to |
 | `select_procedure()`, `standard::measure_cadence()` | the `mode` stage's `choose()`, the change test's `prepare()` |

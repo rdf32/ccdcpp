@@ -272,7 +272,7 @@ std::string run_corpus()
                 std::sort(
                     cube.pixels.begin(),
                     cube.pixels.end(),
-                    [](const ccd::PixelResult& a, const ccd::PixelResult& b)
+                    [](const ccd::CubePixel& a, const ccd::CubePixel& b)
                     {
                         return a.row != b.row ? a.row < b.row : a.col < b.col;
                     });
@@ -382,7 +382,7 @@ std::string cube_dump(ccd::CubeOutput cube)
     std::sort(
         cube.pixels.begin(),
         cube.pixels.end(),
-        [](const ccd::PixelResult& a, const ccd::PixelResult& b)
+        [](const ccd::CubePixel& a, const ccd::CubePixel& b)
         {
             return a.row != b.row ? a.row < b.row : a.col < b.col;
         });

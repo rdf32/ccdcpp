@@ -614,7 +614,7 @@ CubeOutput cube_loop(
         static_cast<std::int64_t>(H) *
         static_cast<std::int64_t>(W);
 
-    std::vector<PixelResult> by_pixel(static_cast<std::size_t>(npixels));
+    std::vector<CubePixel> by_pixel(static_cast<std::size_t>(npixels));
     std::vector<std::uint8_t> succeeded(static_cast<std::size_t>(npixels), 0);
     std::vector<std::vector<CubeFailure>> thread_failures(requested);
 
@@ -693,7 +693,7 @@ CubeOutput cube_loop(
                     outcome.result.mask = ProcessingMask();
                 }
 
-                by_pixel[at] = PixelResult{row, col, std::move(outcome.result),
+                by_pixel[at] = CubePixel{row, col, std::move(outcome.result),
                                            std::move(outcome.record), outcome.status};
 
                 succeeded[at] = 1;
@@ -738,7 +738,7 @@ CubeOutput cube_loop(
             merged.pixels.push_back(std::move(by_pixel[pixel]));
     }
 
-    by_pixel = std::vector<PixelResult>();
+    by_pixel = std::vector<CubePixel>();
 
     std::size_t total_failed = 0;
     for (const auto& v : thread_failures)
