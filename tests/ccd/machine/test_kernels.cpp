@@ -74,12 +74,8 @@ struct MaskedPixel
                 const ccd::config::Config& config)
         : pixel(golden::read_csv(path, true)), options(options_)
     {
-        const index_t T = pixel.dates.size();
-        const ccd::PixelSeries workspace(
-            ccd::ArrayView<const std::int64_t, 1>::contiguous(pixel.dates.data(), {T}),
-            ccd::ArrayView<const double, 2>::contiguous(pixel.spectral.data(), {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(pixel.qas.data(), {T})
-        );
+        const golden::PixelView px = pixel.view();
+        const ccd::PixelSeries workspace(px.dates, px.spectral, px.qas);
         series.reset(workspace, golden::chain_mask(workspace, options, "standard", config));
     }
 };

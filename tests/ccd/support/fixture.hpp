@@ -2,14 +2,16 @@
 
 //==============================================================================
 //
-// A dump's comparison with its committed fixture, the check of test_golden.cpp,
-// test_bands.cpp and test_transitions.cpp. A fixture's first line names the
-// platform that wrote it (platform(), dump.hpp): exact equality is only claimed
-// there, so on another platform a mismatch is reported as a skip that says so,
-// not as a failure.
+// The checks of the fixture tests (test_golden.cpp, test_bands.cpp,
+// test_transitions.cpp): a dump against its committed fixture, and
+// detect_cube() against detect(). A fixture's first line names the platform
+// that wrote it (platform(), dump.hpp): exact equality is only claimed there,
+// so on another platform a mismatch is reported as a skip that says so, not
+// as a failure.
 //
 //==============================================================================
 
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -20,6 +22,7 @@
 #include <gtest/gtest.h>
 
 #include "dump.hpp"
+#include "series.hpp"
 
 namespace golden
 {
@@ -96,6 +99,53 @@ inline void expect_matches_fixture(const std::string& dump, const char* path, co
         }
     }
     FAIL() << differing << " of " << actual_px.size() << " pixels differ from the fixture";
+}
+
+// detect_cube() under `spec` on the cube `c`, (H, W) pixels, with 1 and 4
+// threads, gives `single`: detect()'s dump of each pixel in raster order,
+// labelled label(row, col). The cube is in raster order, and holds each
+// pixel's mask in CubeOutput::masks. `what` names the cube in a failure.
+template<typename Label>
+void expect_cube_equals_detect(
+    const ccd::RunSpec& spec,
+    const FlatCube& c,
+    std::size_t H,
+    std::size_t W,
+    const std::string& single,
+    Label label,
+    const std::string& what
+)
+{
+    const std::size_t T = c.T;
+    for (int threads : {1, 4})
+    {
+        const ccd::CubeOutput cube = ccd::detect_cube(
+            spec,
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
+            ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, c.B, T}),
+            ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {H, W, T}),
+            threads);
+
+        EXPECT_TRUE(cube.failures.empty());
+        ASSERT_EQ(cube.pixels.size(), H * W);
+
+        std::string from_cube;
+        for (std::size_t i = 0; i < cube.pixels.size(); ++i)
+        {
+            const ccd::CubePixel& px = cube.pixels[i];
+            EXPECT_EQ(px.row * W + px.col, i)
+                << "detect_cube(threads=" << threads << ") is not in raster order";
+            EXPECT_EQ(px.result.mask.size(), 0u)
+                << "a cube pixel holds its mask outside CubeOutput::masks";
+            dump_pixel(from_cube, label(px.row, px.col), cube, px);
+        }
+        EXPECT_EQ(cube.masks.size(), H * W * T);
+        EXPECT_EQ((std::array<std::size_t, 3>{cube.height, cube.width, cube.timesteps}),
+                  (std::array<std::size_t, 3>{H, W, T}));
+
+        EXPECT_TRUE(from_cube == single)
+            << "detect_cube(threads=" << threads << ") differs from detect() on " << what;
+    }
 }
 
 } // namespace golden

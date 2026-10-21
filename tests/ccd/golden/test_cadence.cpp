@@ -37,6 +37,7 @@
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 
 #include "dump.hpp"
+#include "series.hpp"
 #include "units.hpp"
 #include "config.hpp"
 #include "synthetic.hpp"
@@ -60,16 +61,9 @@ struct Step
     double offset;
 };
 
-struct Pixel
-{
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;   // (7, T)
-    std::vector<std::uint8_t> qas;  // (T)
-};
-
 constexpr std::size_t T = 500;
 
-Pixel make_pixel(
+golden::Series make_pixel(
     double amplitude,
     double drift,
     const std::vector<Step>& steps,
@@ -79,7 +73,7 @@ Pixel make_pixel(
     constexpr double TWO_PI = 6.283185307179586;
 
     golden::Rng rng(1);
-    Pixel p;
+    golden::Series p;
     p.dates.resize(T);
     p.spectral.resize(7 * T);
     p.qas.assign(T, 0);
@@ -108,13 +102,9 @@ Pixel make_pixel(
     return p;
 }
 
-ccd::FitResult run(const Pixel& p, const ccd::config::Config& config)
+ccd::FitResult run(const golden::Series& p, const ccd::config::Config& config)
 {
-    return ccd::detect(
-        golden::spec_of(ccd::Input{}, config),
-        ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
-        ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
+    return golden::detect(golden::spec_of(p.h, config), p.view());
 }
 
 // Segments that end in a detected change.
@@ -148,26 +138,19 @@ ccd::config::Config spelled_out(ccd::config::Config c)
     return c;
 }
 
-std::string dump_cube(
-    golden::Cube c,
+// Every pixel's detect() dump, the cube in the physical-unit input's units
+// when `physical`.
+std::string dump_pixels(
+    const golden::Cube& c,
     const ccd::Input& h,
     const ccd::config::Config& config,
     bool physical
 )
 {
+    const golden::FlatCube f = physical ? golden::to_physical(golden::flat(c)) : golden::flat(c);
     std::string out;
-    for (std::size_t p = 0; p < c.H * c.W; ++p)
-    {
-        double* block = c.spectral.data() + p * 7 * c.T;
-        if (physical)
-            golden::to_physical(block, c.T);
-
-        golden::dump_pixel(out, std::to_string(p), ccd::detect(
-            golden::spec_of(h, config),
-            ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
-            ccd::ArrayView<const double, 2>::contiguous(block, {7, c.T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * c.T, {c.T})).result);
-    }
+    for (std::size_t p = 0; p < f.N; ++p)
+        golden::dump_pixel(out, std::to_string(p), golden::detect(golden::spec_of(h, config), f.view(p)));
     return out;
 }
 
@@ -208,12 +191,12 @@ TEST(Cadence, DefaultsSpelledOutEqualDefault)
         const auto cube = golden::make_cube(c.seed, c.regime, c.H, c.W);
 
         EXPECT_EQ(
-            dump_cube(cube, ccd::Input{}, spelled_out(golden::pyccd()), false),
-            dump_cube(cube, ccd::Input{}, golden::pyccd(), false));
+            dump_pixels(cube, ccd::Input{}, spelled_out(golden::pyccd()), false),
+            dump_pixels(cube, ccd::Input{}, golden::pyccd(), false));
 
         EXPECT_EQ(
-            dump_cube(cube, golden::physical_input(), spelled_out(golden::pyccd()), true),
-            dump_cube(cube, golden::physical_input(), golden::pyccd(), true));
+            dump_pixels(cube, golden::physical_input(), spelled_out(golden::pyccd()), true),
+            dump_pixels(cube, golden::physical_input(), golden::pyccd(), true));
     }
 }
 

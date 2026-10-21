@@ -140,21 +140,13 @@ ccd::LassoOptions physical_solver()
 
 ccd::FitResult run(
     const golden::Series& obs,
-    std::vector<ccd::scalar_t> spectral,
+    const std::vector<ccd::scalar_t>& spectral,
     const ccd::Input& h,
     const ccd::config::Config& config = golden::pyccd()
 )
 {
-    auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
-        obs.dates.data(), {obs.size()});
-
-    auto spec = ccd::ArrayView<ccd::scalar_t, 2>::contiguous(
-        spectral.data(), {7, obs.size()});
-
-    auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
-        obs.qas.data(), {obs.size()});
-
-    return ccd::detect(golden::spec_of(h, config), dates, spec, qas).result;
+    return golden::detect(golden::spec_of(h, config),
+                          golden::view_of(obs.dates.data(), spectral.data(), 7, obs.qas.data(), obs.size()));
 }
 
 //------------------------------------------------------------------------------
@@ -191,17 +183,10 @@ ccd::FitResult run_insufficient_clear(
     const ccd::LassoOptions& lo
 )
 {
-    auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
-        obs.dates.data(), {obs.size()});
-
-    auto spec = ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
-        spectral.data(), {7, obs.size()});
-
-    auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
-        obs.qas.data(), {obs.size()});
-
+    const golden::PixelView px =
+        golden::view_of(obs.dates.data(), spectral.data(), 7, obs.qas.data(), obs.size());
     const ccd::config::Shared shared = golden::shared_of(config, h);
-    ccd::PixelSeries series(dates, spec, qas);
+    ccd::PixelSeries series(px.dates, px.spectral, px.qas);
     const ccd::config::ConfigTree tree = golden::resolved().stages;
 
     ccd::LassoSolver solver(lo);
@@ -372,10 +357,9 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     const auto filter_mask = [&obs](const std::vector<ccd::scalar_t>& spectral,
                                     const ccd::Input& h, const ccd::config::Config& config) {
         const ccd::config::Shared shared = golden::shared_of(config, h);
-        const ccd::PixelSeries workspace(
-            ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.size()}),
-            ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.size()}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.size()}));
+        const golden::PixelView px =
+            golden::view_of(obs.dates.data(), spectral.data(), 7, obs.qas.data(), obs.size());
+        const ccd::PixelSeries workspace(px.dates, px.spectral, px.qas);
         return golden::chain_mask(workspace, h, "standard", config);
     };
 

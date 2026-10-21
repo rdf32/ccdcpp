@@ -150,14 +150,7 @@ std::uint16_t encode(const Scheme& s, std::uint8_t code, std::size_t i)
 std::string dump(const ccd::CubeOutput& cube)
 {
     EXPECT_TRUE(cube.failures.empty());
-
-    std::string out;
-    for (const auto& px : cube.pixels)
-        golden::dump_pixel(
-            out,
-            std::to_string(px.row) + "," + std::to_string(px.col),
-            cube, px);
-    return out;
+    return golden::dump_cube(cube);
 }
 
 template<typename Qa>

@@ -46,6 +46,7 @@
 #include "ccd/ccd.hpp"
 
 #include "dump.hpp"
+#include "series.hpp"
 #include "fixture.hpp"
 #include "units.hpp"
 #include "synthetic.hpp"
@@ -60,30 +61,11 @@ namespace
 {
 
 using namespace golden::bands;
+using golden::FlatCube;
 
 //------------------------------------------------------------------------------
 // Helpers
 //------------------------------------------------------------------------------
-
-// detect() on a private copy of one (B, T) block.
-ccd::FitResult run_detect(
-    const std::vector<std::int64_t>& dates,
-    const double* spectral,
-    std::size_t B,
-    const std::uint8_t* qas,
-    const ccd::Input& h,
-    const ccd::config::Config& config
-)
-{
-    const std::size_t T = dates.size();
-    std::vector<double> block(spectral, spectral + B * T);
-
-    return ccd::detect(
-        golden::spec_of(h, config),
-        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
-        ccd::ArrayView<const double, 2>::contiguous(block.data(), {B, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas, {T})).result;
-}
 
 // `result` with each model's bands replaced by bands[rows[0]], bands[rows[1]],
 // ... -- a subset, a reordering, or both.
@@ -102,41 +84,10 @@ ccd::FitResult select_bands(
     return out;
 }
 
-// A cube as flat arrays, B rows per pixel.
-struct Series
-{
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;   // (N, B, T)
-    std::vector<std::uint8_t> qas;  // (N, T)
-    std::size_t N = 0;
-    std::size_t B = 0;
-    std::size_t T = 0;
-
-    const double* pixel(std::size_t p) const { return spectral.data() + p * B * T; }
-    const std::uint8_t* qa(std::size_t p) const { return qas.data() + p * T; }
-};
-
-Series from_cube(const golden::Cube& c)
-{
-    return {c.dates, c.spectral, c.qas, c.H * c.W, 7, c.T};
-}
-
-Series from_cube(const golden::BandCube& c)
-{
-    return {c.dates, c.spectral, c.qas, c.H * c.W, c.B, c.T};
-}
-
-Series to_physical(Series s)
-{
-    for (std::size_t p = 0; p < s.N; ++p)
-        golden::to_physical(s.spectral.data() + p * s.B * s.T, s.T);
-    return s;
-}
-
 // The rows `rows` of every pixel, in that order.
-Series take_rows(const Series& s, const std::vector<ccd::index_t>& rows)
+FlatCube take_rows(const FlatCube& s, const std::vector<ccd::index_t>& rows)
 {
-    Series out{s.dates, {}, s.qas, s.N, rows.size(), s.T};
+    FlatCube out{s.dates, {}, s.qas, s.N, rows.size(), s.T};
     out.spectral.reserve(s.N * rows.size() * s.T);
     for (std::size_t p = 0; p < s.N; ++p)
         for (const auto r : rows)
@@ -148,10 +99,10 @@ Series take_rows(const Series& s, const std::vector<ccd::index_t>& rows)
 }
 
 // `s` with `k` rows of independent noise appended to every pixel.
-Series with_inert_rows(const Series& s, std::size_t k, std::uint64_t seed)
+FlatCube with_inert_rows(const FlatCube& s, std::size_t k, std::uint64_t seed)
 {
     golden::Rng rng(seed);
-    Series out{s.dates, {}, s.qas, s.N, s.B + k, s.T};
+    FlatCube out{s.dates, {}, s.qas, s.N, s.B + k, s.T};
     out.spectral.reserve(s.N * out.B * s.T);
     for (std::size_t p = 0; p < s.N; ++p)
     {
@@ -165,7 +116,7 @@ Series with_inert_rows(const Series& s, std::size_t k, std::uint64_t seed)
 // Every pixel's detect() dump, with each result passed through `map` first.
 template<typename Map>
 std::string dump_series(
-    const Series& s,
+    const FlatCube& s,
     const ccd::Input& h,
     const ccd::config::Config& config,
     Map map
@@ -177,13 +128,13 @@ std::string dump_series(
         golden::dump_pixel(
             out,
             std::to_string(p),
-            map(run_detect(s.dates, s.pixel(p), s.B, s.qa(p), h, config)));
+            map(golden::detect(golden::spec_of(h, config), s.view(p))));
     }
     return out;
 }
 
 std::string dump_series(
-    const Series& s,
+    const FlatCube& s,
     const ccd::Input& h,
     const ccd::config::Config& config
 )
@@ -192,11 +143,11 @@ std::string dump_series(
 }
 
 // The Landsat corpus of test_golden.cpp.
-std::vector<Series> landsat_corpus()
+std::vector<FlatCube> landsat_corpus()
 {
-    std::vector<Series> out;
+    std::vector<FlatCube> out;
     for (const auto& spec : golden::GOLDEN_CUBES)
-        out.push_back(from_cube(golden::make_cube(spec.seed, spec.regime, spec.H, spec.W)));
+        out.push_back(golden::flat(golden::make_cube(spec.seed, spec.regime, spec.H, spec.W)));
     return out;
 }
 
@@ -228,15 +179,19 @@ TEST(Bands, BitIdenticalToFixture)
 
         for (const auto& spec : CUBES)
         {
-            const golden::BandCube c = golden::make_band_cube(
-                100 * (pi + 1) + spec.seed, spec.regime, spec.H, spec.W, profile.specs);
-            const Series s = from_cube(c);
+            const FlatCube s = golden::flat(golden::make_band_cube(
+                100 * (pi + 1) + spec.seed, spec.regime, spec.H, spec.W, profile.specs));
+            const ccd::RunSpec run = golden::spec_of(profile.h, config);
+            const auto label = [&](std::size_t row, std::size_t col)
+            {
+                return std::string(profile.name) + ":" + spec.name + ":" +
+                    std::to_string(row) + "," + std::to_string(col);
+            };
 
             std::string single;
             for (std::size_t p = 0; p < s.N; ++p)
             {
-                const ccd::FitResult r =
-                    run_detect(s.dates, s.pixel(p), B, s.qa(p), profile.h, config);
+                const ccd::FitResult r = golden::detect(run, s.view(p));
 
                 for (const auto& m : r.models)
                 {
@@ -252,37 +207,11 @@ TEST(Bands, BitIdenticalToFixture)
                     }
                 }
 
-                golden::dump_pixel(
-                    single,
-                    std::string(profile.name) + ":" + spec.name + ":" +
-                        std::to_string(p / c.W) + "," + std::to_string(p % c.W),
-                    r);
+                golden::dump_pixel(single, label(p / spec.W, p % spec.W), r);
             }
 
-            for (int threads : {1, 4})
-            {
-                ccd::CubeOutput cube = ccd::detect_cube(
-                    golden::spec_of(profile.h, config),
-                    ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {c.T}),
-                    ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {c.H, c.W, B, c.T}),
-                    ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, c.T}),
-                    threads);
-
-                EXPECT_TRUE(cube.failures.empty());
-                ASSERT_EQ(cube.pixels.size(), s.N);
-
-                std::string from_cube_dump;
-                for (const auto& px : cube.pixels)
-                    golden::dump_pixel(
-                        from_cube_dump,
-                        std::string(profile.name) + ":" + spec.name + ":" +
-                            std::to_string(px.row) + "," + std::to_string(px.col),
-                        cube, px);
-
-                EXPECT_TRUE(from_cube_dump == single)
-                    << "detect_cube(threads=" << threads << ") differs from detect() on "
-                    << profile.name << ":" << spec.name;
-            }
+            golden::expect_cube_equals_detect(run, s, spec.H, spec.W, single, label,
+                                              std::string(profile.name) + ":" + spec.name);
 
             dump += single;
         }
@@ -334,7 +263,7 @@ TEST(Bands, GenericLayoutEqualsDefault)
             dump_series(s, landsat_layout(ccd::Input{}), by_rows()),
             dump_series(s, ccd::Input{}, golden::pyccd()));
 
-        const Series phys = to_physical(s);
+        const FlatCube phys = golden::to_physical(s);
         EXPECT_EQ(
             dump_series(phys, landsat_layout(golden::physical_input()), by_rows()),
             dump_series(phys, golden::physical_input(), golden::pyccd()));
@@ -380,7 +309,7 @@ ccd::Input permute_layout(
 }
 
 void expect_permutation_invariant(
-    const Series& s,
+    const FlatCube& s,
     const ccd::Input& h,
     const ccd::config::Config& config,
     const std::vector<ccd::index_t>& perm
@@ -392,7 +321,7 @@ void expect_permutation_invariant(
     for (ccd::index_t r = 0; r < perm.size(); ++r)
         inv[perm[r]] = r;
 
-    const Series permuted = take_rows(s, perm);
+    const FlatCube permuted = take_rows(s, perm);
     const ccd::Input hp = permute_layout(h, perm);
 
     // The same configuration: its bands, by role, are the permuted rows.
@@ -413,7 +342,7 @@ TEST(Bands, PermutationInvariantSevenBands)
     {
         expect_permutation_invariant(s, ccd::Input{}, golden::pyccd(), perm);
         expect_permutation_invariant(
-            to_physical(s), golden::physical_input(), golden::pyccd(), perm);
+            golden::to_physical(s), golden::physical_input(), golden::pyccd(), perm);
     }
 }
 
@@ -428,7 +357,7 @@ TEST(Bands, PermutationInvariantTenBands)
 
         for (const auto& spec : CUBES)
         {
-            const Series s = from_cube(golden::make_band_cube(
+            const FlatCube s = golden::flat(golden::make_band_cube(
                 500 + spec.seed, spec.regime, spec.H, spec.W, profile.specs));
             expect_permutation_invariant(s, profile.h, profile.config, perm);
         }
@@ -454,14 +383,14 @@ TEST(Bands, InertBandsChangeNothingElse)
 
         for (const auto& s : landsat_corpus())
         {
-            const Series wide = with_inert_rows(s, k, 900 + k);
+            const FlatCube wide = with_inert_rows(s, k, 900 + k);
 
             EXPECT_EQ(
                 dump_series(wide, h, golden::pyccd(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
                 dump_series(s, ccd::Input{}, golden::pyccd()));
 
-            const Series phys = to_physical(s);
+            const FlatCube phys = golden::to_physical(s);
             EXPECT_EQ(
                 dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::pyccd(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
@@ -473,7 +402,7 @@ TEST(Bands, InertBandsChangeNothingElse)
     const Profile l30 = profiles()[1];
     for (const auto& spec : CUBES)
     {
-        const Series s = from_cube(golden::make_band_cube(
+        const FlatCube s = golden::flat(golden::make_band_cube(
             700 + spec.seed, spec.regime, spec.H, spec.W, l30.specs));
 
         ccd::Input h = l30.h;
@@ -544,7 +473,7 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
             for (std::size_t t = 0; t < s.T; ++t)
                 ASSERT_TRUE(std::isfinite(s.pixel(p)[6 * s.T + t]));
 
-        const Series stripped = take_rows(s, optical);
+        const FlatCube stripped = take_rows(s, optical);
         const std::string absent =
             dump_series(stripped, no_thermal(ccd::Input{}), golden::pyccd());
 
@@ -555,7 +484,7 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
         default_bounds_differ = default_bounds_differ ||
             absent != dump_series(s, ccd::Input{}, golden::pyccd(), optical_only);
 
-        const Series phys = to_physical(s);
+        const FlatCube phys = golden::to_physical(s);
         EXPECT_EQ(
             dump_series(take_rows(phys, optical), no_thermal(golden::physical_input()),
                 golden::pyccd()),
@@ -563,8 +492,8 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
         for (std::size_t p = 0; p < s.N; ++p)
         {
-            for (const auto& m : run_detect(stripped.dates, stripped.pixel(p), 6,
-                     stripped.qa(p), no_thermal(ccd::Input{}), golden::pyccd()).models)
+            for (const auto& m : golden::detect(golden::spec_of(no_thermal(ccd::Input{}), golden::pyccd()),
+                                                stripped.view(p)).models)
             {
                 if (m.curve_qa == ccd::CurveQA::PersistentSnow) ++coverage.snow;
                 else if (m.curve_qa == ccd::CurveQA::InsufficientClear) ++coverage.insufficient;

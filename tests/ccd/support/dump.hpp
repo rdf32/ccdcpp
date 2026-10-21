@@ -16,6 +16,7 @@
 //
 //==============================================================================
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <string>
@@ -115,6 +116,39 @@ inline void dump_pixel(
         dump_mask(out, pixel.result.mask);
     else
         dump_mask(out, cube.mask(pixel.row, pixel.col));
+}
+
+// One result's dump, for comparing two runs.
+inline std::string dump(const ccd::FitResult& result)
+{
+    std::string out;
+    dump_pixel(out, "pixel", result);
+    return out;
+}
+
+// One cube pixel's dump, its mask as the cube holds it.
+inline std::string dump(const ccd::CubeOutput& cube, const ccd::CubePixel& pixel)
+{
+    std::string out;
+    dump_pixel(out, "pixel", cube, pixel);
+    return out;
+}
+
+// Every pixel of `cube` in raster order, each labelled "row,col".
+inline std::string dump_cube(ccd::CubeOutput cube)
+{
+    std::sort(
+        cube.pixels.begin(),
+        cube.pixels.end(),
+        [](const ccd::CubePixel& a, const ccd::CubePixel& b)
+        {
+            return a.row != b.row ? a.row < b.row : a.col < b.col;
+        });
+
+    std::string out;
+    for (const auto& px : cube.pixels)
+        dump_pixel(out, std::to_string(px.row) + "," + std::to_string(px.col), cube, px);
+    return out;
 }
 
 //------------------------------------------------------------------------------

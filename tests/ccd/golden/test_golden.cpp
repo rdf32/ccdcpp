@@ -64,26 +64,6 @@
 namespace
 {
 
-ccd::FitResult run_detect(
-    const std::vector<std::int64_t>& dates,
-    const double* spectral,
-    const std::uint8_t* qas,
-    const ccd::Input& h,
-    const ccd::config::Config& config
-)
-{
-    const std::size_t T = dates.size();
-
-    // A private copy: the reference output is the one a fresh buffer gives.
-    std::vector<double> block(spectral, spectral + 7 * T);
-
-    return ccd::detect(
-        golden::spec_of(h, config),
-        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
-        ccd::ArrayView<double, 2>::contiguous(block.data(), {7, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas, {T})).result;
-}
-
 struct Options
 {
     const char* name;
@@ -119,40 +99,28 @@ std::string run_corpus()
     //--------------------------------------------------------------------------
     {
         const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
-        const std::size_t T = p.dates.size();
+        golden::dump_pixel(dump, "pyccd:dn", golden::detect(p));
 
-        golden::dump_pixel(dump, "pyccd:dn",
-            run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::Input{}, golden::pyccd()));
-
-        std::vector<double> phys = p.spectral;
-        golden::to_physical(phys.data(), T);
-        golden::dump_pixel(dump, "pyccd:phys",
-            run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_input(), golden::pyccd()));
+        golden::Series phys = golden::to_physical(p);
+        phys.h = golden::physical_input();
+        golden::dump_pixel(dump, "pyccd:phys", golden::detect(phys));
     }
     {
         // The reference pixel with saturation-band values on the bounds and a
         // NaN: the reflectance filter's default exclusive ends drop all five.
         golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
-        const std::size_t T = p.dates.size();
-        golden::put_bound_values(p.spectral.data(), p.qas.data(), T);
+        golden::put_bound_values(p.spectral.data(), p.qas.data(), p.size());
+        golden::dump_pixel(dump, "bounds:dn", golden::detect(p));
 
-        golden::dump_pixel(dump, "bounds:dn",
-            run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                ccd::Input{}, golden::pyccd()));
-
-        std::vector<double> phys = p.spectral;
-        golden::to_physical(phys.data(), T);
-        golden::dump_pixel(dump, "bounds:phys",
-            run_detect(p.dates, phys.data(), p.qas.data(),
-                golden::physical_input(), golden::pyccd()));
+        golden::Series phys = golden::to_physical(p);
+        phys.h = golden::physical_input();
+        golden::dump_pixel(dump, "bounds:phys", golden::detect(phys));
     }
     {
-        const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true);
-        golden::dump_pixel(dump, "c2:c2",
-            run_detect(p.dates, p.spectral.data(), p.qas.data(),
-                golden::c2_input(), golden::c2_config()));
+        golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true);
+        p.h = golden::c2_input();
+        p.config = golden::c2_config();
+        golden::dump_pixel(dump, "c2:c2", golden::detect(p));
     }
 
     //--------------------------------------------------------------------------
@@ -160,73 +128,24 @@ std::string run_corpus()
     //--------------------------------------------------------------------------
     for (const auto& spec : golden::GOLDEN_CUBES)
     {
-        const golden::Cube base =
-            golden::make_cube(spec.seed, spec.regime, spec.H, spec.W);
+        const golden::FlatCube base =
+            golden::flat(golden::make_cube(spec.seed, spec.regime, spec.H, spec.W));
 
         for (const auto& o : option_sets())
         {
-            golden::Cube c = base;
-            const std::size_t T = c.T;
-            const std::size_t N = c.H * c.W;
-
-            if (o.physical)
-                for (std::size_t p = 0; p < N; ++p)
-                    golden::to_physical(c.spectral.data() + p * 7 * T, T);
+            const golden::FlatCube c = o.physical ? golden::to_physical(base) : base;
+            const ccd::RunSpec run = golden::spec_of(o.h, o.config);
+            const auto label = [&](std::size_t row, std::size_t col)
+            {
+                return pixel_label(spec.name, o.name, row, col);
+            };
 
             std::string single;
-            for (std::size_t p = 0; p < N; ++p)
-            {
-                golden::dump_pixel(
-                    single,
-                    pixel_label(spec.name, o.name, p / c.W, p % c.W),
-                    run_detect(c.dates, c.spectral.data() + p * 7 * T,
-                        c.qas.data() + p * T, o.h, o.config));
-            }
+            for (std::size_t p = 0; p < c.N; ++p)
+                golden::dump_pixel(single, label(p / spec.W, p % spec.W), golden::detect(run, c.view(p)));
 
-            for (int threads : {1, 4})
-            {
-                std::vector<double> cube_spectral = c.spectral;
-
-                ccd::CubeOutput cube = ccd::detect_cube(
-                    golden::spec_of(o.h, o.config),
-                    ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
-                    ccd::ArrayView<double, 4>::contiguous(cube_spectral.data(), {c.H, c.W, 7, T}),
-                    ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {c.H, c.W, T}),
-                    threads);
-
-                EXPECT_TRUE(cube.failures.empty());
-                EXPECT_EQ(cube.pixels.size(), N);
-
-                for (std::size_t i = 0; i < cube.pixels.size(); ++i)
-                {
-                    EXPECT_EQ(cube.pixels[i].row * c.W + cube.pixels[i].col, i)
-                        << "detect_cube(threads=" << threads << ") is not in raster order";
-                    EXPECT_EQ(cube.pixels[i].result.mask.size(), 0u)
-                        << "a cube pixel holds its mask outside CubeOutput::masks";
-                }
-                EXPECT_EQ(cube.masks.size(), N * T);
-                EXPECT_EQ((std::array<std::size_t, 3>{cube.height, cube.width, cube.timesteps}),
-                          (std::array<std::size_t, 3>{c.H, c.W, T}));
-
-                std::sort(
-                    cube.pixels.begin(),
-                    cube.pixels.end(),
-                    [](const ccd::CubePixel& a, const ccd::CubePixel& b)
-                    {
-                        return a.row != b.row ? a.row < b.row : a.col < b.col;
-                    });
-
-                std::string from_cube;
-                for (const auto& px : cube.pixels)
-                    golden::dump_pixel(
-                        from_cube,
-                        pixel_label(spec.name, o.name, px.row, px.col),
-                        cube, px);
-
-                EXPECT_TRUE(from_cube == single)
-                    << "detect_cube(threads=" << threads << ") differs from detect() on "
-                    << spec.name << ":" << o.name;
-            }
+            golden::expect_cube_equals_detect(run, c, spec.H, spec.W, single, label,
+                                              std::string(spec.name) + ":" + o.name);
 
             dump += single;
         }
@@ -248,30 +167,6 @@ TEST(Golden, BitIdenticalToFixture)
 // the input.
 //------------------------------------------------------------------------------
 
-namespace
-{
-
-std::string cube_dump(ccd::CubeOutput cube)
-{
-    std::sort(
-        cube.pixels.begin(),
-        cube.pixels.end(),
-        [](const ccd::CubePixel& a, const ccd::CubePixel& b)
-        {
-            return a.row != b.row ? a.row < b.row : a.col < b.col;
-        });
-
-    std::string out;
-    for (const auto& px : cube.pixels)
-        golden::dump_pixel(
-            out,
-            std::to_string(px.row) + "," + std::to_string(px.col),
-            cube, px);
-    return out;
-}
-
-} // namespace
-
 TEST(Golden, CubeDtypesAndLayouts)
 {
     golden::Cube c = golden::make_cube(21, golden::Regime::Cadence16, 4, 6);
@@ -291,7 +186,7 @@ TEST(Golden, CubeDtypesAndLayouts)
     const ccd::config::Config config = golden::pyccd();
 
 
-    const std::string reference = cube_dump(ccd::detect_cube(
+    const std::string reference = golden::dump_cube(ccd::detect_cube(
         golden::spec_of(h, config),
         dates,
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
@@ -299,7 +194,7 @@ TEST(Golden, CubeDtypesAndLayouts)
         2));
 
     EXPECT_EQ(c.spectral, original) << "detect_cube wrote to its input";
-    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+    EXPECT_EQ(reference, golden::dump_cube(ccd::detect_cube(
         golden::spec_of(h, config),
         dates,
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {H, W, 7, T}),
@@ -307,7 +202,7 @@ TEST(Golden, CubeDtypesAndLayouts)
         2))) << "a second call on the same buffer differs";
 
     std::vector<float> f32(c.spectral.begin(), c.spectral.end());
-    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+    EXPECT_EQ(reference, golden::dump_cube(ccd::detect_cube(
         golden::spec_of(h, config),
         dates,
         ccd::ArrayView<const float, 4>::contiguous(f32.data(), {H, W, 7, T}),
@@ -317,7 +212,7 @@ TEST(Golden, CubeDtypesAndLayouts)
     std::vector<std::uint16_t> u16(c.spectral.size());
     for (std::size_t i = 0; i < u16.size(); ++i)
         u16[i] = static_cast<std::uint16_t>(c.spectral[i]);
-    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+    EXPECT_EQ(reference, golden::dump_cube(ccd::detect_cube(
         golden::spec_of(h, config),
         dates,
         ccd::ArrayView<const std::uint16_t, 4>::contiguous(u16.data(), {H, W, 7, T}),
@@ -330,7 +225,7 @@ TEST(Golden, CubeDtypesAndLayouts)
         for (std::size_t b = 0; b < 7; ++b)
             for (std::size_t t = 0; t < T; ++t)
                 hwtb[(p * T + t) * 7 + b] = c.spectral[(p * 7 + b) * T + t];
-    EXPECT_EQ(reference, cube_dump(ccd::detect_cube(
+    EXPECT_EQ(reference, golden::dump_cube(ccd::detect_cube(
         golden::spec_of(h, config),
         dates,
         ccd::ArrayView<const double, 4>::strided(hwtb.data(), {H, W, 7, T}, {W * T * 7, T * 7, 1, 7}),
@@ -341,24 +236,9 @@ TEST(Golden, CubeDtypesAndLayouts)
 TEST(Golden, DetectDoesNotWriteItsInput)
 {
     const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
-    const std::size_t T = p.dates.size();
+    const golden::Series buffer = p;
 
-    std::vector<double> buffer = p.spectral;
-    const auto view = ccd::ArrayView<const double, 2>::contiguous(buffer.data(), {7, T});
-    const auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T});
-    const auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T});
-
-    std::string first, second;
-    golden::dump_pixel(first, "", ccd::detect(
-        golden::spec_of(ccd::Input{}),
-        dates,
-        view,
-        qas).result);
-    EXPECT_EQ(buffer, p.spectral);
-    golden::dump_pixel(second, "", ccd::detect(
-        golden::spec_of(ccd::Input{}),
-        dates,
-        view,
-        qas).result);
-    EXPECT_EQ(first, second);
+    const std::string first = golden::dump(golden::detect(buffer));
+    EXPECT_EQ(buffer.spectral, p.spectral);
+    EXPECT_EQ(first, golden::dump(golden::detect(buffer)));
 }

@@ -53,13 +53,6 @@ ccd::PixelOutput recorded(const golden::Series& p)
         p.qa_view());
 }
 
-std::string dump(const ccd::FitResult& r)
-{
-    std::string out;
-    golden::dump_pixel(out, "pixel", r);
-    return out;
-}
-
 // The dates of the observations a mask keeps, in order: masked coordinates.
 std::vector<std::int64_t> kept_dates(const golden::Series& p, const ccd::ProcessingMask& mask)
 {
@@ -79,7 +72,7 @@ std::vector<std::int64_t> kept_dates(const golden::Series& p, const ccd::Process
 TEST(Record, TheResultIsDetects)
 {
     for (const auto& p : golden::characterization_pixels())
-        EXPECT_EQ(dump(recorded(p).result), dump(golden::detect(p))) << p.name;
+        EXPECT_EQ(golden::dump(recorded(p).result), golden::dump(golden::detect(p))) << p.name;
 }
 
 TEST(Record, TheHeaderNamesTheRun)

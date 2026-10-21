@@ -63,31 +63,7 @@ using ccd::scalar_t;
 
 constexpr scalar_t NaN = std::numeric_limits<scalar_t>::quiet_NaN();
 
-//------------------------------------------------------------------------------
-// One pixel's views.
-//------------------------------------------------------------------------------
-
-struct PixelView
-{
-    ccd::ArrayView<const std::int64_t, 1> dates;
-    ccd::ArrayView<const scalar_t, 2> spectral;
-    ccd::ArrayView<const std::uint8_t, 1> qas;
-};
-
-PixelView view(
-    const std::vector<std::int64_t>& dates,
-    const double* spectral,
-    index_t B,
-    const std::uint8_t* qas
-)
-{
-    const index_t T = dates.size();
-    return {
-        ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
-        ccd::ArrayView<const scalar_t, 2>::contiguous(spectral, {B, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas, {T}),
-    };
-}
+using golden::PixelView;
 
 // An input and the configuration whose preprocessing it runs.
 struct Options
@@ -378,68 +354,53 @@ std::string variation_label(const Options& h)
 // Fixture inputs
 //------------------------------------------------------------------------------
 
-// A cube as flat arrays, B rows per pixel.
-struct Series
+// A fixture's pixels, and the options its fixture runs them under.
+struct FixtureInput
 {
     std::string name;
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;   // (N, B, T)
-    std::vector<std::uint8_t> qas;  // (N, T)
-    std::size_t N = 0;
-    std::size_t B = 0;
-    std::size_t T = 0;
+    golden::FlatCube cube;
     Options h;
 
     PixelView pixel(std::size_t p) const
     {
-        return view(dates, spectral.data() + p * B * T, B, qas.data() + p * T);
+        return cube.view(p);
     }
 };
 
-Series from_cube(const char* name, const golden::Cube& c, const Options& h)
+// `s` in the physical-unit input's units, under its options.
+FixtureInput to_physical(FixtureInput s)
 {
-    return {name, c.dates, c.spectral, c.qas, c.H * c.W, 7, c.T, h};
-}
-
-Series to_physical(Series s)
-{
-    for (std::size_t p = 0; p < s.N; ++p)
-        golden::to_physical(s.spectral.data() + p * s.B * s.T, s.T);
+    s.cube = golden::to_physical(s.cube);
     s.name += ":phys";
     s.h = physical_options();
     return s;
 }
 
-Series from_pixel(const std::string& name, const golden::Series& p, const Options& h)
-{
-    return {name, p.dates, p.spectral, p.qas, 1, 7, p.dates.size(), h};
-}
-
 // Every fixture input with the options its fixture runs it under.
-std::vector<Series> fixture_inputs()
+std::vector<FixtureInput> fixture_inputs()
 {
-    std::vector<Series> out;
+    std::vector<FixtureInput> out;
 
     {
         const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
-        out.push_back(from_pixel("pyccd", p, Options{}));
+        out.push_back({"pyccd", golden::flat(p), Options{}});
         out.push_back(to_physical(out.back()));
 
         golden::Series bounds = p;
         golden::put_bound_values(bounds.spectral.data(), bounds.qas.data(), bounds.dates.size());
-        out.push_back(from_pixel("bounds", bounds, Options{}));
+        out.push_back({"bounds", golden::flat(bounds), Options{}});
         out.push_back(to_physical(out.back()));
 
-        out.push_back(from_pixel("c2", golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true),
-                                 Options{golden::c2_input(), golden::c2_config()}));
+        out.push_back({"c2", golden::flat(golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true)),
+                       Options{golden::c2_input(), golden::c2_config()}});
     }
 
     for (const auto& spec : golden::GOLDEN_CUBES)
     {
-        out.push_back(from_cube(
+        out.push_back({
             spec.name,
-            golden::make_cube(spec.seed, spec.regime, spec.H, spec.W),
-            Options{}));
+            golden::flat(golden::make_cube(spec.seed, spec.regime, spec.H, spec.W)),
+            Options{}});
         out.push_back(to_physical(out.back()));
     }
 
@@ -453,7 +414,7 @@ std::vector<Series> fixture_inputs()
                 profiles[pi].specs);
             out.push_back({
                 std::string(profiles[pi].name) + ":" + spec.name,
-                c.dates, c.spectral, c.qas, c.H * c.W, c.B, c.T,
+                golden::flat(c),
                 {profiles[pi].h, profiles[pi].config}});
         }
     }
@@ -504,30 +465,31 @@ scalar_t draw_value(golden::Rng& rng, scalar_t lo, scalar_t hi)
 }
 
 // A random (7, T) series in `unit`, Landsat layout.
-Series random_series(golden::Rng& rng, const Unit& unit)
+FixtureInput random_series(golden::Rng& rng, const Unit& unit)
 {
     const std::size_t T = 1 + rng.below(200);
 
-    Series s;
+    FixtureInput s;
     s.name = unit.name;
-    s.N = 1;
-    s.B = 7;
-    s.T = T;
-    s.dates.resize(T);
-    s.spectral.resize(7 * T);
-    s.qas.resize(T);
+    golden::FlatCube& c = s.cube;
+    c.N = 1;
+    c.B = 7;
+    c.T = T;
+    c.dates.resize(T);
+    c.spectral.resize(7 * T);
+    c.qas.resize(T);
 
     std::int64_t date = 730000 + static_cast<std::int64_t>(rng.below(100));
     for (std::size_t t = 0; t < T; ++t)
     {
         if (t > 0 && rng.uniform() >= 0.15)
             date += 1 + static_cast<std::int64_t>(rng.below(32));
-        s.dates[t] = date;
+        c.dates[t] = date;
     }
 
     const std::uint8_t codes[] = {0, 0, 0, 1, 2, 3, 3, 4, 255, 8};
     for (std::size_t t = 0; t < T; ++t)
-        s.qas[t] = codes[rng.below(sizeof(codes))];
+        c.qas[t] = codes[rng.below(sizeof(codes))];
 
     // Green (band 1) mostly mid-range with spikes, so the median filter has
     // something to drop.
@@ -550,7 +512,7 @@ Series random_series(golden::Rng& rng, const Unit& unit)
                 v = rng.uniform(unit.refl_lo, unit.refl_hi);
             else
                 v = draw_value(rng, unit.refl_lo, unit.refl_hi);
-            s.spectral[b * T + t] = v;
+            c.spectral[b * T + t] = v;
         }
     }
 
@@ -563,9 +525,9 @@ Series random_series(golden::Rng& rng, const Unit& unit)
     std::int64_t statistics_end = 0;
     switch (rng.below(4))
     {
-        case 0: statistics_end = s.dates.front() - 1; break;
-        case 1: statistics_end = s.dates.back() + 1; break;
-        default: statistics_end = s.dates[rng.below(T)]; break;
+        case 0: statistics_end = c.dates.front() - 1; break;
+        case 1: statistics_end = c.dates.back() + 1; break;
+        default: statistics_end = c.dates[rng.below(T)]; break;
     }
     s.h.config = golden::with_shared(s.h.config, "statistics_end", ccd::config::integer(statistics_end));
 
@@ -578,31 +540,6 @@ Series random_series(golden::Rng& rng, const Unit& unit)
                                         ccd::config::roles({"swir2", "blue"}));
 
     return s;
-}
-
-std::string dump(const ccd::FitResult& r)
-{
-    std::string out;
-    golden::dump_pixel(out, "px", r);
-    return out;
-}
-
-// A cube pixel's dump, its mask as the cube holds it.
-std::string dump(const ccd::CubeOutput& cube, const ccd::CubePixel& px)
-{
-    std::string out;
-    golden::dump_pixel(out, "px", cube, px);
-    return out;
-}
-
-// detect() under `config`.
-ccd::FitResult run_detect(
-    const PixelView& px,
-    const ccd::Input& h,
-    const ccd::config::Config& config = golden::pyccd()
-)
-{
-    return ccd::detect(golden::spec_of(h, config), px.dates, px.spectral, px.qas).result;
 }
 
 } // namespace
@@ -785,10 +722,10 @@ TEST(CcdcPlan, IsWrittenOutStepByStep)
 TEST(CcdcPlan, MatchesReferenceOnFixtureInputs)
 {
     Tally tally;
-    for (const Series& s : fixture_inputs())
+    for (const FixtureInput& s : fixture_inputs())
     {
         const auto vars = variations(s.h);
-        for (std::size_t p = 0; p < s.N; ++p)
+        for (std::size_t p = 0; p < s.cube.N; ++p)
         {
             const PixelView px = s.pixel(p);
             check_pixel(px, s.h, s.name + ":" + std::to_string(p), tally);
@@ -814,7 +751,7 @@ TEST(CcdcPlan, MatchesReferenceOnRandomSeries)
     {
         for (int n = 0; n < 400; ++n)
         {
-            const Series s = random_series(rng, unit);
+            const FixtureInput s = random_series(rng, unit);
             const PixelView px = s.pixel(0);
             for (const auto& h : variations(s.h))
             {
@@ -835,7 +772,7 @@ TEST(CcdcPlan, MatchesReferenceOnRandomSeries)
 TEST(CcdcPlan, ApplyResetsTheMask)
 {
     const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
-    const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
+    const PixelView px = p.view();
     const pp::PreprocessPlan plan = plan_of(Options{});
 
     ccd::ProcessingMask fresh;
@@ -897,8 +834,10 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
 
     for (std::size_t p = 0; p < c.H * c.W; ++p)
     {
-        const PixelView px = view(c.dates, c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T);
-        EXPECT_EQ(dump(run_detect(px, h)), dump(run_detect(px, h, written))) << "pixel " << p;
+        const PixelView px = golden::view_of(c.dates.data(), c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T, T);
+        EXPECT_EQ(golden::dump(golden::detect(golden::spec_of(h), px)),
+                  golden::dump(golden::detect(golden::spec_of(h, written), px)))
+            << "pixel " << p;
     }
 
     auto cube = [&](const ccd::config::Config& config)
@@ -911,7 +850,7 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
             2);
         std::string out;
         for (const auto& px : r.pixels)
-            out += dump(r, px);
+            out += golden::dump(r, px);
         return out;
     };
 
@@ -923,14 +862,14 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
 TEST(CustomPlan, StandardKeepsSnow)
 {
     const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
-    const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
+    const PixelView px = p.view();
     const ccd::Input h;
 
     const ccd::config::Config snowy_config = golden::with_step(
         golden::pyccd(), "standard", 0, "codes", ccd::config::names({"clear", "water", "snow"}));
 
-    const ccd::FitResult base = run_detect(px, h);
-    const ccd::FitResult snowy = run_detect(px, h, snowy_config);
+    const ccd::FitResult base = golden::detect(golden::spec_of(h), px);
+    const ccd::FitResult snowy = golden::detect(golden::spec_of(h, snowy_config), px);
 
     // Both are Standard fits.
     ASSERT_FALSE(base.models.empty());
@@ -948,7 +887,7 @@ TEST(CustomPlan, StandardKeepsSnow)
 
     EXPECT_EQ(snow_kept(base.mask), 0u);
     EXPECT_GT(snow_kept(snowy.mask), 0u);
-    EXPECT_NE(dump(base), dump(snowy));
+    EXPECT_NE(golden::dump(base), golden::dump(snowy));
 }
 
 // The thermal transform on every procedure. That is the "ccdc" chains run
@@ -1006,14 +945,15 @@ TEST(CustomPlan, TransformOnEveryProcedure)
 
     for (std::size_t p = 0; p < N; ++p)
     {
-        const PixelView raw = view(c.dates, c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T);
-        const PixelView pre = view(c.dates, converted.data() + p * 7 * T, 7, c.qas.data() + p * T);
+        const PixelView raw = golden::view_of(c.dates.data(), c.spectral.data() + p * 7 * T, 7, c.qas.data() + p * T, T);
+        const PixelView pre = golden::view_of(c.dates.data(), converted.data() + p * 7 * T, 7, c.qas.data() + p * T, T);
 
-        const ccd::FitResult with_plan = run_detect(raw, h, everywhere);
-        EXPECT_EQ(dump(with_plan), dump(run_detect(pre, identity))) << "pixel " << p;
+        const ccd::FitResult with_plan = golden::detect(golden::spec_of(h, everywhere), raw);
+        EXPECT_EQ(golden::dump(with_plan), golden::dump(golden::detect(golden::spec_of(identity), pre)))
+            << "pixel " << p;
         // The default keeps the same observations; it fits thermal as stored.
-        EXPECT_EQ(with_plan.mask.data(), run_detect(raw, h).mask.data()) << "pixel " << p;
-        per_pixel += dump(with_plan);
+        EXPECT_EQ(with_plan.mask.data(), golden::detect(golden::spec_of(h), raw).mask.data()) << "pixel " << p;
+        per_pixel += golden::dump(with_plan);
 
         if (!with_plan.models.empty() &&
             with_plan.models.front().curve_qa >= ccd::CurveQA::InsufficientClear)
@@ -1036,7 +976,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
         4);
     std::string from_cube;
     for (const auto& px : cube.pixels)
-        from_cube += dump(cube, px);
+        from_cube += golden::dump(cube, px);
     EXPECT_EQ(from_cube, per_pixel);
 }
 
@@ -1162,8 +1102,8 @@ TEST(PlanValidation, EntryPointsReject)
     auto& snow_steps = bad.preprocess.at("snow").steps;
     snow_steps.erase(snow_steps.begin() + 5);   // the one_per_date after add_qa
 
-    const PixelView px = view(c.dates, c.spectral.data(), 7, c.qas.data());
-    EXPECT_THROW(run_detect(px, h, bad), std::invalid_argument);
+    const PixelView px = golden::view_of(c.dates.data(), c.spectral.data(), 7, c.qas.data(), T);
+    EXPECT_THROW(golden::detect(golden::spec_of(h, bad), px), std::invalid_argument);
 
     EXPECT_THROW(
         ccd::detect_cube(
@@ -1185,7 +1125,7 @@ TEST(PlanValidation, EntryPointsReject)
 TEST(Microbench, ApplyCcdcChain)
 {
     const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
-    const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
+    const PixelView px = p.view();
     const Options h;
     const pp::PreprocessPlan plan = plan_of(h);
 

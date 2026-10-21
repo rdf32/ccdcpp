@@ -49,21 +49,6 @@ namespace
 
 using golden::Series;
 
-std::string dump(const ccd::FitResult& r)
-{
-    std::string out;
-    golden::dump_pixel(out, "pixel", r);
-    return out;
-}
-
-// A cube pixel's dump, its mask as the cube holds it.
-std::string dump(const ccd::CubeOutput& cube, const ccd::CubePixel& px)
-{
-    std::string out;
-    golden::dump_pixel(out, "pixel", cube, px);
-    return out;
-}
-
 ccd::PixelOutput resume_on(const Series& whole, const ccd::PixelOutput& stored)
 {
     return ccd::detect(
@@ -116,7 +101,7 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Counts& counts
         ++counts.splits;
 
         EXPECT_EQ(resumed.status, ccd::ResumeStatus::Resumed) << at;
-        EXPECT_EQ(dump(resumed.result), dump(full.result)) << at;
+        EXPECT_EQ(golden::dump(resumed.result), golden::dump(full.result)) << at;
         expect_same_record(resumed.record, full.record, at);
         EXPECT_EQ(resumed.header.statistics_end, T) << at;
         EXPECT_EQ(resumed.header.series_end, s.dates.back()) << at;
@@ -204,9 +189,9 @@ TEST(ResumeEqualsTheFullRun, AChainOfResumes)
             const ccd::PixelOutput middle = golden::recorded_at(s.prefix(b + 1), capped);
             const ccd::PixelOutput full = golden::recorded_at(s, capped);
 
-            EXPECT_EQ(dump(second.result), dump(middle.result)) << at;
+            EXPECT_EQ(golden::dump(second.result), golden::dump(middle.result)) << at;
             expect_same_record(second.record, middle.record, at);
-            EXPECT_EQ(dump(third.result), dump(full.result)) << at;
+            EXPECT_EQ(golden::dump(third.result), golden::dump(full.result)) << at;
             expect_same_record(third.record, full.record, at);
             EXPECT_EQ(third.header.statistics_end, T1) << at;
             ++chains;
@@ -282,7 +267,7 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
                 s.spectral_view(),
                 s.qa_view()).result;
 
-            EXPECT_EQ(dump(resumed.result), dump(full)) << at;
+            EXPECT_EQ(golden::dump(resumed.result), golden::dump(full)) << at;
             ++cuts;
         }
     }
@@ -315,7 +300,7 @@ TEST(ResumeOfChangedInput, AReprocessedObservationIsRerun)
         const ccd::PixelOutput full = golden::recorded_at(changed, std::min(s.statistics_end(), T));
 
         EXPECT_EQ(resumed.status, ccd::ResumeStatus::RerunInputChanged) << name;
-        EXPECT_EQ(dump(resumed.result), dump(full.result)) << name;
+        EXPECT_EQ(golden::dump(resumed.result), golden::dump(full.result)) << name;
         expect_same_record(resumed.record, full.record, name);
     }
 }
@@ -354,7 +339,7 @@ TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
     const ccd::PixelOutput full = golden::recorded_at(filled, std::min(s.statistics_end(), T));
 
     EXPECT_EQ(resumed.status, ccd::ResumeStatus::Resumed);
-    EXPECT_EQ(dump(resumed.result), dump(full.result));
+    EXPECT_EQ(golden::dump(resumed.result), golden::dump(full.result));
     expect_same_record(resumed.record, full.record, "filled");
 }
 
@@ -381,14 +366,14 @@ TEST(ResumeWithNothingNew, TheStoredOutputAgain)
             const std::string at = s.name + " cut after " + std::to_string(T);
 
             const ccd::PixelOutput again = resume_on(cut, stored);
-            EXPECT_EQ(dump(again.result), dump(golden::detect_at(cut, std::min(s.statistics_end(), T)))) << at;
+            EXPECT_EQ(golden::dump(again.result), golden::dump(golden::detect_at(cut, std::min(s.statistics_end(), T)))) << at;
 
             Series cloudy = s.prefix(std::min(s.size(), last + 1 + 10));
             for (std::size_t t = last + 1; t < cloudy.size(); ++t)
                 cloudy.qas[t] = s.h.qa_cloud;
             const ccd::PixelOutput more = resume_on(cloudy, stored);
-            EXPECT_EQ(dump(more.result),
-                      dump(golden::detect_at(cloudy, std::min(s.statistics_end(), T)))) << at;
+            EXPECT_EQ(golden::dump(more.result),
+                      golden::dump(golden::detect_at(cloudy, std::min(s.statistics_end(), T)))) << at;
 
             if (stored.record.standard.exit == ccd::standard::Exit::SeriesEnd)
                 ++seen_series_end;
@@ -564,7 +549,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
                 expect_same_record(stored.pixels[p].record, alone.record, at + " stored");
 
                 const ccd::PixelOutput one = resume_on(s, alone);
-                EXPECT_EQ(dump(resumed, resumed.pixels[p]), dump(one.result)) << at;
+                EXPECT_EQ(golden::dump(resumed, resumed.pixels[p]), golden::dump(one.result)) << at;
                 expect_same_record(resumed.pixels[p].record, one.record, at);
                 EXPECT_EQ(resumed.pixels[p].status, one.status) << at;
             }
@@ -656,7 +641,7 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
         const ccd::PixelOutput b =
             ccd::detect(left_out, s.date_view(), s.spectral_view(), s.qa_view());
 
-        EXPECT_EQ(dump(a.result), dump(b.result)) << s.name;
+        EXPECT_EQ(golden::dump(a.result), golden::dump(b.result)) << s.name;
         EXPECT_EQ(a.header.digest, b.header.digest) << s.name;
     }
 
@@ -717,7 +702,7 @@ TEST(Diagnostics, AnObserverSeesTheRunAndChangesNothing)
         spec.observer = recording;
         const ccd::PixelOutput observed =
             ccd::detect(spec, s.date_view(), s.spectral_view(), s.qa_view());
-        EXPECT_EQ(dump(plain.result), dump(observed.result)) << s.name;
+        EXPECT_EQ(golden::dump(plain.result), golden::dump(observed.result)) << s.name;
 
 #if CCD_OBSERVE
         const auto& ev = recording->events;
@@ -801,7 +786,7 @@ TEST(Diagnostics, AResumedRunTellsTheObserverWhereItContinues)
         const ccd::PixelOutput resumed = ccd::detect(
             spec, s.date_view(), s.spectral_view(), s.qa_view(),
             ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
-        EXPECT_EQ(dump(resumed.result), dump(resume_on(s, stored).result)) << s.name;
+        EXPECT_EQ(golden::dump(resumed.result), golden::dump(resume_on(s, stored).result)) << s.name;
 
 #if CCD_OBSERVE
         const char* went = nullptr;
