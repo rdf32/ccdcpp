@@ -5,7 +5,7 @@ rows of the ``spectral`` array, says which role each one plays, and gives the
 units and the QA decoding. Its ``input()`` is the ``ccdcpp.Input`` of the
 data, roles included, so a configuration that names bands by role holds for
 any band order. ``ccdcpp.detect`` and ``ccdcpp.detect_cube`` take one as
-``encoding=``; the configuration (``config=``, "ccdc" by default) is the same
+``input=``; the configuration (``config=``, "ccdc" by default) is the same
 for every profile.
 
 A new sensor is one constructor call; ``ccdcpp.presets`` writes its profiles
@@ -102,7 +102,7 @@ CELSIUS_OVER_100 = Thermal(scale=1.0, offset=0.0, at_100c=1.0)
 QaTableOptions = Mapping[str, object] | tuple[tuple[str, object], ...]
 
 #: The keyword arguments each ``ccdcpp.qa_tables`` builder takes beyond
-#: ``encoding``, as its binding declares them: builder -> {name: (type,
+#: ``input``, as its binding declares them: builder -> {name: (type,
 #: default)}. ``SensorProfile.qa_table_options`` is checked against it.
 QA_TABLE_OPTIONS: Mapping[str, Mapping[str, tuple[type, object]]] = MappingProxyType({
     "landsat_c2_qa_pixel": MappingProxyType({}),
@@ -125,7 +125,7 @@ class SensorProfile:
     reflectance × 10000 = the 0–10000 DN check, exactly as today.
 
     Example: ``ccdcpp.detect(dates, spectral, qas,
-    encoding=ccdcpp.presets.landsat_c2())``
+    input=ccdcpp.presets.landsat_c2())``
 
     name
         A label for the profile, for messages and provenance.
@@ -150,7 +150,7 @@ class SensorProfile:
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
     qa_table_options
-        Keyword arguments of ``qa_table_builder`` beyond the encoding, as a
+        Keyword arguments of ``qa_table_builder`` beyond the input, as a
         mapping or ``(name, value)`` pairs; empty (the default) for none.
         ``{"exclude_high_aerosol": True}`` makes ``hls_fmask`` decode high
         aerosol as cloud. Each name and the type of its value are those

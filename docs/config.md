@@ -46,7 +46,7 @@ print(cfg.resolve(ccdcpp.Input())["stages"]["model"]["params"]["alpha"], plan.st
 ```
 
 The input is a `ccdcpp.Input`, or a `SensorProfile` that builds one ([units.md](units.md) has the
-encoding and the boundary between the data and the configuration). A run resolves its
+Input's fields and the boundary between the data and the configuration). A run resolves its
 configuration against its input once:
 
 - a reflectance level (unit `reflectance`: `band_range`'s bounds) as
@@ -57,7 +57,7 @@ configuration against its input once:
 - a probability to its chi-squared quantile for the detection-band count;
 - roles to rows and QA code names to the input's codes.
 
-`cfg.resolve(encoding)` shows every resolved value, `ccdcpp.plan_of(cfg, encoding)` the
+`cfg.resolve(input)` shows every resolved value, `ccdcpp.plan_of(cfg, input)` the
 preprocessing plan.
 
 ## From Python
@@ -76,8 +76,8 @@ cfg2 = cfg.replace(shared__change_probability=0.95, refit__factor=2.0)
 cfg3 = cfg.replace(refit="span-factor")
 
 # Run with it: detect and detect_cube take config= (a Config or a preset's name).
-pixel = ccdcpp.detect(dates, spectral, qas, encoding=presets.landsat_c2(), config=cfg2)
-cols = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=presets.landsat_c2(), config=cfg2,
+pixel = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), config=cfg2)
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), config=cfg2,
                           threads=4)
 print(len(pixel["models"]), cols["pixels_with_segments"], cfg3 == cfg)
 ```
@@ -91,7 +91,7 @@ print(len(pixel["models"]), cols["pixels_with_segments"], cfg3 == cfg)
 Mistakes are refused by name with `ValueError`, before any pixel runs. A parameter outside its
 own bounds names its stage, strategy and parameter, or `shared` for a shared value; a
 combination a strategy refuses names the first stage that reads it; a role is checked against
-the input when the configuration is resolved (`check(encoding)`, or the run):
+the input when the configuration is resolved (`check(input)`, or the run):
 
 ```python
 for bad in (lambda: cfg.replace(refit__fctor=2.0),
@@ -239,9 +239,9 @@ PixelOutput run_variant(ArrayView<const std::int64_t, 1> dates,
     config.shared["change_probability"] = config::real(0.95);
     config.stages["refit"].params["factor"] = config::real(2.0);
 
-    RunSpec spec;                        // spec.encoding is Collection-1 DN, spec.algorithm "ccdc"
+    RunSpec spec;                        // spec.input is Collection-1 DN, spec.algorithm "ccdc"
     spec.algorithm = std::make_shared<const Algorithm>(config);   // checked here
-    preprocess::PreprocessPlan plan = plan_of(config, spec.encoding);   // for inspection
+    preprocess::PreprocessPlan plan = plan_of(config, spec.input);   // for inspection
     return detect(spec, dates, spectral, qas);
 }
 ```
@@ -281,7 +281,7 @@ your own registered and named.
 | a new preprocessing step | a C++ step type, registered by name (`Registry::add_step()`, `include/ccd/input/mask/steps.hpp`); its `make()` is handed each step's context (`config::StepContext`: the procedure, whether it applies the thermal transform, the position) |
 
 ```python
-sweep = {f: ccdcpp.detect_cube(dates, cube, cube_qa, encoding=presets.landsat_c2(), threads=4,
+sweep = {f: ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4,
                                config=cfg.replace(refit__factor=f))["pixels_with_segments"]
          for f in (1.2, 1.33, 1.5, 2.0)}
 print(sweep)

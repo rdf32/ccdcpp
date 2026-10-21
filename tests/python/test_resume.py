@@ -141,10 +141,10 @@ class OnePixel(unittest.TestCase):
                 n = upto(dates, cut)
                 where = f"seed {seed} cut {cut}"
                 stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                                       encoding=ccdcpp.Input(), record=True)
+                                       input=ccdcpp.Input(), record=True)
                 self.assertEqual(header_of(stored)["series_end"], dates[n - 1])
-                again = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.Input(), resume=stored)
-                full = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.Input(),
+                again = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(), resume=stored)
+                full = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
                                      config=capped(dates[n - 1]), record=True)
 
                 self.assertEqual(status_of(again), "resumed", where)
@@ -157,11 +157,11 @@ class OnePixel(unittest.TestCase):
         dates, spectral, qas = pixel(3)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                               encoding=ccdcpp.Input(), record=True)
+                               input=ccdcpp.Input(), record=True)
         changed = spectral.copy()
         changed[3, int(np.flatnonzero(qas[:n] == 0)[50])] += 1.0
-        again = ccdcpp.detect(dates, changed, qas, encoding=ccdcpp.Input(), resume=stored)
-        full = ccdcpp.detect(dates, changed, qas, encoding=ccdcpp.Input(),
+        again = ccdcpp.detect(dates, changed, qas, input=ccdcpp.Input(), resume=stored)
+        full = ccdcpp.detect(dates, changed, qas, input=ccdcpp.Input(),
                              config=capped(dates[n - 1]))
         self.assertEqual(status_of(again), "rerun_input_changed")
         assert_same_models(self, again["models"], full["models"], "changed")
@@ -170,14 +170,14 @@ class OnePixel(unittest.TestCase):
         dates, spectral, qas = pixel(1)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                               encoding=ccdcpp.Input(), record=True)
+                               input=ccdcpp.Input(), record=True)
 
         def call(h: ccdcpp.Input | None = None, header: Mapping[str, Any] | None = None,
                  until: int | None = None,
                  config: Mapping[str, Any] | None = None) -> PixelResult:
             m = dates.size if until is None else until
             return ccdcpp.detect(dates[:m], spectral[:, :m], qas[:m],
-                                 encoding=h or ccdcpp.Input(), config=config,
+                                 input=h or ccdcpp.Input(), config=config,
                                  resume=dict(stored,
                                              resume_header=header or header_of(stored)))
 
@@ -208,13 +208,13 @@ class OnePixel(unittest.TestCase):
                 if key == "magnitude":
                     bad["exit"] = 6   # SeriesEnd
                 with self.assertRaises(ValueError):
-                    ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.Input(),
+                    ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
                                   resume=dict(stored, resume=bad))
 
         # An output without a record.
-        plain = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], encoding=ccdcpp.Input())
+        plain = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], input=ccdcpp.Input())
         with self.assertRaisesRegex(ValueError, "record=True"):
-            ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.Input(), resume=plain)
+            ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(), resume=plain)
 
 
 def cube(seeds: Sequence[int], rows: int, cols: int) -> Series:
@@ -256,13 +256,13 @@ class Cube(unittest.TestCase):
             for threads in (1, 3):
                 where = f"cut {cut} threads {threads}"
                 stored = ccdcpp.detect_cube(
-                    dates[:n], spectral[..., :n], qas[..., :n], encoding=ccdcpp.Input(),
+                    dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
                     threads=threads, record=True)
                 self.assertEqual(records_of(stored)["row"].size, 12)
-                again = ccdcpp.detect_cube(dates, spectral, qas, encoding=ccdcpp.Input(),
+                again = ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(),
                                            threads=threads, resume=stored)
                 full = ccdcpp.detect_cube(
-                    dates, spectral, qas, encoding=ccdcpp.Input(), threads=threads, record=True,
+                    dates, spectral, qas, input=ccdcpp.Input(), threads=threads, record=True,
                     config=capped(dates[n - 1]))
 
                 a, b = segment_columns(again), segment_columns(full)
@@ -279,13 +279,13 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(20, 32), 3, 4)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], encoding=ccdcpp.Input(),
+            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
             threads=2, record=True)
         again = ccdcpp.detect_cube(
-            dates, spectral, qas, encoding=ccdcpp.Input(), threads=2,
+            dates, spectral, qas, input=ccdcpp.Input(), threads=2,
             resume={**nlcd_blanked(stored), "resume": records_of(stored),
                     "resume_header": header_of(stored)})
-        full = ccdcpp.detect_cube(dates, spectral, qas, encoding=ccdcpp.Input(), threads=2,
+        full = ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(), threads=2,
                                   config=capped(dates[n - 1]))
         a, b = nlcd_blanked(again), nlcd_blanked(full)
         for key in SEGMENT_COLUMNS:
@@ -295,11 +295,11 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(40, 46), 2, 3)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], encoding=ccdcpp.Input(),
+            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
             threads=1, record=True)
         changed = spectral.copy()
         changed[1, 2, 2, int(np.flatnonzero(qas[1, 2, :n] == 0)[30])] += 5.0
-        again = ccdcpp.detect_cube(dates, changed, qas, encoding=ccdcpp.Input(), threads=1,
+        again = ccdcpp.detect_cube(dates, changed, qas, input=ccdcpp.Input(), threads=1,
                                    resume=stored)
         self.assertEqual(counts_of(again), {"resumed": 5, "rerun_input_changed": 1, "failed": 0})
         self.assertEqual(int(statuses_of(again)[1 * 3 + 2]), 1)
@@ -308,7 +308,7 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(50, 56), 2, 3)
         n = upto(dates, CUT_2019)
         stored = ccdcpp.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], encoding=ccdcpp.Input(),
+            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
             threads=1, record=True)
         segments = segment_columns(stored)
         records = columns(records_of(stored))
@@ -316,7 +316,7 @@ class Cube(unittest.TestCase):
         def call(resume: Mapping[str, Any] | None = None,
                  segs: Mapping[str, Any] | None = None) -> CubeColumns:
             return ccdcpp.detect_cube(
-                dates, spectral, qas, encoding=ccdcpp.Input(), threads=1,
+                dates, spectral, qas, input=ccdcpp.Input(), threads=1,
                 resume={**(segs or segments), "resume": resume or records,
                         "resume_header": header_of(stored)})
 
@@ -351,7 +351,7 @@ class Cube(unittest.TestCase):
 
     def test_the_schema_names_the_columns(self):
         dates, spectral, qas = cube(range(2), 1, 2)
-        out = ccdcpp.detect_cube(dates, spectral, qas, encoding=ccdcpp.Input(),
+        out = ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(),
                                  threads=1, record=True)
         schema = ccdcpp.resume_schema()
         records = columns(records_of(out))

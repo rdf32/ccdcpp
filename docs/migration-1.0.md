@@ -4,13 +4,13 @@
 
 | | Example |
 |---|---|
-| The input says only how to read the data. | `HarmonicOptions` is gone; `ccdcpp.Input()` holds the encoding only: `reflectance_scale` 10000, the thermal transform (10, -27315), the QA codes. |
+| The input says only how to read the data. | `HarmonicOptions` is gone; `ccdcpp.Input()` says only how to read the data: `reflectance_scale` 10000, the thermal transform (10, -27315), the QA codes. |
 | The configuration says what to do with it, in physical units. | `HarmonicOptions.REFL_MAX = 10000` is `band_range`'s `max = 1.0` (reflectance) in `ccdcpp.config("ccdc")`. |
 | The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | `ccdcpp.plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000`, 0.10.0's `REFL_MIN < x < REFL_MAX`. |
 
 What to do:
 
-1. Pass the data's encoding as `encoding=` (a `ccdcpp.Input` or a sensor profile) and the
+1. Pass how to read the data as `input=` (a `ccdcpp.Input` or a sensor profile) and the
    algorithm as `config=` (a `ccdcpp.Config` or a preset's name); `hoptions`, `loptions`,
    `profile=`, `qa_table=` and `preprocess=` are gone.
 2. Move every algorithm field you set on `HarmonicOptions` or `LassoOptions` to the
@@ -60,10 +60,10 @@ print([m["break_day"] for m in out["models"]], out["models"][0]["bands"][3]["rms
 
 ```python
 pyccd = ccdcpp.config("ccdc").replace(shared__statistics_end=736694)
-same = ccdcpp.detect(dates, dn, codes, encoding=ccdcpp.Input(), config=pyccd)
+same = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=pyccd)
 print([m["break_day"] for m in same["models"]], same["models"][0]["bands"][3]["rmse"])
 
-whole = ccdcpp.detect(dates, dn, codes, encoding=ccdcpp.Input())    # "ccdc": the whole series
+whole = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input())    # "ccdc": the whole series
 print([m["break_day"] for m in whole["models"]])
 ```
 
@@ -109,9 +109,9 @@ resumed ['format', 'options_digest', 'results_version', 'series_end', 'statistic
 ```
 
 ```python
-first = ccdcpp.detect(dates[:2400], dn[:, :2400], codes[:2400], encoding=ccdcpp.Input(),
+first = ccdcpp.detect(dates[:2400], dn[:, :2400], codes[:2400], input=ccdcpp.Input(),
                       config=pyccd, record=True)
-more = ccdcpp.detect(dates, dn, codes, encoding=ccdcpp.Input(), config=pyccd, resume=first)
+more = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=pyccd, resume=first)
 print(more["status"], sorted(first["resume_header"]))
 ```
 
@@ -125,17 +125,17 @@ resumed ['digest', 'format', 'results_version', 'series_end', 'statistics_end']
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `detect(d, s, q, h, lo)` | `detect(d, s, q, encoding=h, config=cfg)` |
-| `detect(..., profile=p)` | `detect(..., encoding=p)` |
-| `detect_cube_columns(d, s, q, h, lo, threads)` | `detect_cube(d, s, q, encoding=h, threads=threads)`: the same columns, names and dtypes |
+| `detect(d, s, q, h, lo)` | `detect(d, s, q, input=h, config=cfg)` |
+| `detect(..., profile=p)` | `detect(..., input=p)` |
+| `detect_cube_columns(d, s, q, h, lo, threads)` | `detect_cube(d, s, q, input=h, threads=threads)`: the same columns, names and dtypes |
 | `detect_cube(d, s, q, h, lo, threads)` (a dict per pixel) | `ccdcpp.to_pixels(detect_cube(..., masks=True))` |
 | `keep_masks` (the dicts held each pixel's mask) | `detect_cube(..., masks=True)`: `"processing_mask"`, `(H, W, T)` uint8; `to_pixels` gives each pixel its row |
 | `resume_record=True` | `record=True` |
-| `resume(d, s, q, h, lo, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, encoding=h, resume=out)`, `out` the earlier `detect(..., record=True)` |
+| `resume(d, s, q, h, lo, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, input=h, resume=out)`, `out` the earlier `detect(..., record=True)` |
 | `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)` |
 | `qa_table=t` | the input's `qa_table`: `h.replace(qa_table=t)` (a profile's `input()` carries its table) |
 | `preprocess=plan` | the configuration's `preprocess` section ([below](#preprocessing)) |
-| `ccdcpp.default_plan(h)` | `ccdcpp.plan_of(config, encoding)` |
+| `ccdcpp.default_plan(h)` | `ccdcpp.plan_of(config, input)` |
 | `ccdcpp.validate_plan(plan, bands)` | the configuration is checked when it is built and resolved |
 | `resume_header["options_digest"]` | `resume_header["digest"]` |
 
@@ -156,7 +156,7 @@ print(len(cols["row"]), cols["coefficients"].dtype, rows[5]["models"][0]["bands"
 ```
 
 ```python
-cols = ccdcpp.detect_cube(dates, cube, cube_codes, encoding=ccdcpp.Input(), config=pyccd,
+cols = ccdcpp.detect_cube(dates, cube, cube_codes, input=ccdcpp.Input(), config=pyccd,
                           threads=4, masks=True)
 rows = ccdcpp.to_pixels(cols)
 print(len(cols["row"]), cols["coefficients"].dtype, rows[5]["models"][0]["bands"][3]["rmse"])
@@ -202,7 +202,7 @@ cfg = ccdcpp.config("ccdc").replace(
     shared__min_observations=16,             # the start window and a whole-series curve's least
     window_screen__bands=["green", "red", "swir1"],
     shared__max_iter=500)
-out = ccdcpp.detect(dates, dn, codes, encoding=ccdcpp.Input(), config=cfg)
+out = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=cfg)
 print(len(out["models"]), out["models"][-1]["bands"][3]["rmse"])
 ```
 
@@ -235,7 +235,7 @@ print(out["models"][0]["bands"][3]["rmse"])
 h = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0, thermal_at_100c=1.0)
 physical = dn / 10000.0
 physical[6] = (dn[6] * 10 - 27315) / 10000.0
-out = ccdcpp.detect(dates, physical, codes, encoding=h, config=pyccd)
+out = ccdcpp.detect(dates, physical, codes, input=h, config=pyccd)
 print(out["models"][0]["bands"][3]["rmse"], h == presets.landsat_c1_physical().input())
 ```
 
@@ -323,7 +323,7 @@ print(out["band_names"], h.STAT_ORD, lo.alpha)
 ```
 
 ```python
-out = ccdcpp.detect(dates, dn, codes, encoding=presets.landsat_c1_dn(), config=pyccd)
+out = ccdcpp.detect(dates, dn, codes, input=presets.landsat_c1_dn(), config=pyccd)
 h = presets.landsat_c1_dn().input()
 print(out["band_names"], h.saturation_code, pyccd.resolve(h)["shared"]["alpha"])
 ```
@@ -378,7 +378,7 @@ The snow chain no longer tests the thermal range ([change (b)](#what-changes-in-
 | `ccdcpp.OUTLIER_PROBABILITY` | `ccdcpp.config("ccdc").shared()["outlier_probability"]` |
 | `ccdcpp.QA_CODE_FIELDS` | `ccdcpp.QA_CODE_NAMES` (the names a configuration's `codes` take) |
 | `ccdcpp.GREEN_FILTER_SCOPES` | the names `green_median`'s `scope` takes: `"all"`, `"stat_window"`, `"off"` |
-| `qa_tables.<builder>(options)` | `qa_tables.<builder>(encoding)`, an `Input` |
+| `qa_tables.<builder>(options)` | `qa_tables.<builder>(input)`, an `Input` |
 
 ## Newly refused values
 
@@ -430,9 +430,9 @@ window_screen 'tmask' parameter 'bands' is empty
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `HarmonicOptions` (`ccd/harmonic/harmonic.hpp`) | `ccd::Input` (`ccd/input/input.hpp`, the encoding) and `config::Config` (`ccd/config/registry.hpp`, the algorithm) |
+| `HarmonicOptions` (`ccd/harmonic/harmonic.hpp`) | `ccd::Input` (`ccd/input/input.hpp`, how to read the data) and `config::Config` (`ccd/config/registry.hpp`, the algorithm) |
 | `LassoOptions` in a call | the shared `alpha`, `coef_floor`, `max_iter`, `tolerance` (`LassoOptions` remains the solver's own options type, inside the `lasso` strategies) |
-| `detect(d, s, q, h, l, table, plan)` (8 overloads) | `detect(spec, d, s, q).result`; `spec.encoding` holds its `qa_table`, the configuration its preprocessing |
+| `detect(d, s, q, h, l, table, plan)` (8 overloads) | `detect(spec, d, s, q).result`; `spec.input` holds its `qa_table`, the configuration its preprocessing |
 | `detect_recorded(...)` | `detect` with `RunSpec::record = true` |
 | `resume(d, s, q, h, l, header, record, segments)` | `detect(spec, d, s, q, PixelResume{header, record, segments})` |
 | `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `detect_cube(spec, d, s, q, threads)` |
@@ -447,7 +447,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `Clock`, `elapsed_ms`, `print_change_model(s)` | none |
 | `ccd/types.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, `ccd/harmonic/...`, `ccd/preprocess/...` | `ccd/core/types.hpp`, `ccd/machine/standard.hpp`, `ccd/results/record.hpp`, `ccd/input/...`, `ccd/input/mask/...` (`ccd/ccd.hpp` includes every header) |
 
-`RunSpec` is `{encoding, algorithm, record, masks, observer, observe}`; `algorithm` is a
+`RunSpec` is `{input, algorithm, record, masks, observer, observe}`; `algorithm` is a
 compiled configuration (`ccd::Algorithm`, `run/algorithm.hpp`), the `ccdc` preset's
 (`Algorithm::preset("ccdc")`) unless set. The values and QA are views of any supported element
 type (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`).
@@ -469,7 +469,7 @@ ccd::config::Config config = ccd::strategies::library_registry().preset("ccdc");
 config.shared["statistics_end"] = ccd::config::integer(736694);    // 0.10.0's cutoff
 config.shared["change_probability"] = ccd::config::real(0.995);
 config.stages["refit"].params["factor"] = ccd::config::real(2.0);
-ccd::RunSpec spec;                                                   // spec.encoding: Collection-1 DN
+ccd::RunSpec spec;                                                   // spec.input: Collection-1 DN
 spec.algorithm = std::make_shared<const ccd::Algorithm>(config);
 spec.masks = true;                                                   // 0.10.0 kept them
 ccd::FitResult r = ccd::detect(spec, dates, spectral, qas).result;

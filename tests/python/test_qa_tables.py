@@ -294,7 +294,7 @@ class DecodedEqualsCodes(unittest.TestCase):
         cls.dates, cls.spectral, cls.codes = synthetic()
         h = options()
         cls.columns = ccdcpp.detect_cube(
-            cls.dates, cls.spectral, cls.codes, encoding=h, threads=1)
+            cls.dates, cls.spectral, cls.codes, input=h, threads=1)
         assert cls.columns["failures"] == []
         assert len(cls.columns["row"]) > cls.codes.shape[0] * cls.codes.shape[1]
         # PermanentSnow, InsufficientClear and Standard all ran.
@@ -319,7 +319,7 @@ class DecodedEqualsCodes(unittest.TestCase):
                     with self.subTest(name=name, qas=kind, threads=threads):
                         before = raw.copy()
                         out = ccdcpp.detect_cube(
-                            self.dates, self.spectral, raw, encoding=h, threads=threads)
+                            self.dates, self.spectral, raw, input=h, threads=threads)
                         out.pop("threads")
                         expected = dict(self.columns)
                         expected.pop("threads")
@@ -336,23 +336,23 @@ class DecodedEqualsCodes(unittest.TestCase):
                 for c in range(W):
                     with self.subTest(name=name, pixel=(r, c)):
                         expected = ccdcpp.detect(
-                            self.dates, self.spectral[r, c], self.codes[r, c], encoding=h)
+                            self.dates, self.spectral[r, c], self.codes[r, c], input=h)
                         assert_same(self, ccdcpp.detect(
-                            self.dates, self.spectral[r, c], raw[r, c], encoding=decoding),
+                            self.dates, self.spectral[r, c], raw[r, c], input=decoding),
                             expected)
                         if name in NARROW:
                             assert_same(self, ccdcpp.detect(
                                 self.dates, self.spectral[r, c], raw[r, c].astype(np.uint8),
-                                encoding=decoding), expected)
+                                input=decoding), expected)
 
     def test_uint16_spectral(self):
         h = options()
         spectral = np.clip(self.spectral, 0, 65535).astype(np.uint16)
         reference = ccdcpp.detect_cube(
-            self.dates, spectral, self.codes, encoding=h, threads=2)
+            self.dates, spectral, self.codes, input=h, threads=2)
         out = ccdcpp.detect_cube(
             self.dates, spectral, encode("landsat_c2_qa_pixel", self.codes),
-            encoding=with_table(ccdcpp.qa_tables.landsat_c2_qa_pixel()), threads=2)
+            input=with_table(ccdcpp.qa_tables.landsat_c2_qa_pixel()), threads=2)
         assert_same(self, out, reference)
 
     def test_uint8_codes_through_an_identity_table(self):
@@ -360,7 +360,7 @@ class DecodedEqualsCodes(unittest.TestCase):
         identity[:256] = np.arange(256, dtype=np.uint8)
         out = ccdcpp.detect_cube(
             self.dates, self.spectral, self.codes,
-            encoding=with_table(ccdcpp.QaTable(identity)), threads=2)
+            input=with_table(ccdcpp.QaTable(identity)), threads=2)
         out.pop("threads")
         expected = dict(self.columns)
         expected.pop("threads")
@@ -377,8 +377,8 @@ class Validation(unittest.TestCase):
                 table: ccdcpp.QaTable | None = None) -> dict[str, Callable[[], object]]:
         d, s, h = self.dates, self.spectral, with_table(table)
         return {
-            "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], encoding=h),
-            "detect_cube": lambda: ccdcpp.detect_cube(d, s, qas, encoding=h, threads=1),
+            "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], input=h),
+            "detect_cube": lambda: ccdcpp.detect_cube(d, s, qas, input=h, threads=1),
         }
 
     def test_uint16_without_a_table(self):

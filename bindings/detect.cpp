@@ -328,7 +328,7 @@ static py::dict detect_wrapper(
         static_cast<const ccd::scalar_t*>(spectral_buf.ptr), {bands, timesteps});
 
     ccd::RunSpec spec;
-    spec.encoding = input;
+    spec.input = input;
     spec.algorithm = algorithm_from_python(config);
     spec.record = record;
     spec.masks = true;   // detect returns the processing mask
@@ -697,7 +697,7 @@ static py::dict detect_cube_wrapper(
     const CubeInput views = check_cube(dates, spectral, qas, input);
 
     ccd::RunSpec spec;
-    spec.encoding = input;
+    spec.input = input;
     spec.algorithm = algorithm_from_python(config);
     spec.masks = masks;
     spec.record = record;
@@ -783,7 +783,7 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::kw_only(),
-        py::arg("encoding"),
+        py::arg("input"),
         py::arg("config") = py::none(),
         py::arg("record") = false,
         py::arg("resume") = py::none(),
@@ -797,7 +797,7 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::kw_only(),
-        py::arg("encoding"),
+        py::arg("input"),
         py::arg("config") = py::none(),
         py::arg("threads") = 0,
         py::arg("record") = false,

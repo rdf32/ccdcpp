@@ -45,7 +45,7 @@ for _ in range(reps):
     # A fresh float64 input per call, as a caller's buffer would be.
     s = src.copy() if (reps > 1 and dtype == "f64") else src
     t0 = time.perf_counter()
-    r = ccdcpp.detect_cube(dates, s, qas, encoding=h, threads=threads)
+    r = ccdcpp.detect_cube(dates, s, qas, input=h, threads=threads)
     best = min(best, time.perf_counter() - t0)
     del r, s
 

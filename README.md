@@ -2,14 +2,14 @@
 
 ccdcpp is a C++17 implementation of the Continuous Change Detection and Classification (CCDC) algorithm, with Python bindings through pybind11. It reproduces the USGS LCMAP PyCCD algorithm and its outputs, doing what PyCCD's code intends where the code does otherwise (every such difference is listed under [Differences from pyccd](#differences-from-pyccd)), and runs one pixel about 200 times faster than PyCCD in about half the process memory. A run takes one pixel or a whole image cube, in parallel with OpenMP, and can be continued when new observations arrive instead of rerun.
 
-A run is two things: an **encoding**, which says how to read the data (`ccdcpp.Input`, or a sensor profile that builds one), and a **configuration**, which says what to do with it, in physical units (`ccdcpp.Config`; the `ccdc` preset by default). Upgrading from 0.10? See [docs/migration-1.0.md](docs/migration-1.0.md).
+A run is two things: an **input**, which says how to read the data (`ccdcpp.Input`, or a sensor profile that builds one), and a **configuration**, which says what to do with it, in physical units (`ccdcpp.Config`; the `ccdc` preset by default). Upgrading from 0.10? See [docs/migration-1.0.md](docs/migration-1.0.md).
 
 ## Contents
 
 - [Features](#features)
 - [Quick start](#quick-start): [Python](#one-pixel), [a cube](#a-cube), [C++](#from-c)
 - [The two calls](#the-two-calls)
-- [Encodings and profiles](#encodings-and-profiles): [the input](#the-input), [band layout](#band-layout), [QA](#qa-input), [sensor profiles](#sensor-profiles), [presets](#presets), [adding a sensor](#adding-a-sensor)
+- [Inputs and profiles](#inputs-and-profiles): [the input](#the-input), [band layout](#band-layout), [QA](#qa-input), [sensor profiles](#sensor-profiles), [presets](#presets), [adding a sensor](#adding-a-sensor)
 - [Configurations and presets](#configurations-and-presets): [the rule](#the-rule), [changing a configuration](#changing-a-configuration), [shared values](#shared-values), [stages](#stages-and-strategies), [TOML presets](#toml-presets), [cadence](#cadence-parameters), [preprocessing](#preprocessing)
 - [Resuming a run](#resuming-a-run)
 - [Diagnostics](#diagnostics)
@@ -25,7 +25,7 @@ A run is two things: an **encoding**, which says how to read the data (`ccdcpp.I
 - **PyCCD's algorithm as it intends**, every difference from its code listed and checked against Zhu's MATLAB reference ([Differences from pyccd](#differences-from-pyccd)).
 - **Fast**: about 200 times PyCCD's speed per pixel in about half its process memory; a 500 x 500 Landsat cell over 40 years in 23 s on 18 threads ([Performance](#performance)).
 - **Two calls**: `detect` for a pixel, `detect_cube` for an image cube in parallel, returning columns (OpenMP, the GIL released), reading float64, float32 or uint16 cubes in any layout without copying them.
-- **Encodings and sensor profiles**: band roles, units and QA decoding of an input in one object, with presets for Landsat Collection 1 and 2, HLS v2.0 and Sentinel-2 L2A (`ccdcpp.presets`).
+- **Inputs and sensor profiles**: band roles, units and QA decoding of an input in one object, with presets for Landsat Collection 1 and 2, HLS v2.0 and Sentinel-2 L2A (`ccdcpp.presets`).
 - **Raw QA input**: Landsat `QA_PIXEL` and `pixel_qa`, HLS `Fmask` and Sentinel-2 `SCL` decoded through lookup tables per pixel.
 - **One configuration for every input**: the algorithm in physical units (reflectance, degrees Celsius, probabilities, bands by role), its decisions as stages decided by named strategies, its preprocessing as a chain of steps; immutable values, TOML presets, part of a run's record ([Configurations and presets](#configurations-and-presets)).
 - **Resume**: a stored run continued on new observations, equal bit for bit to a full rerun, at about a third of its time ([Resuming a run](#resuming-a-run)).
@@ -47,7 +47,7 @@ pip install .
 
 ## One pixel
 
-`detect` runs one pixel. The arrays are `dates` (T,), proleptic Gregorian ordinals in non-decreasing order, `spectral` (bands, T) and `qas` (T,). The encoding says what the rows are and in which units; here the sensor profile `presets.landsat_c2()`, Landsat Collection 2 surface reflectance with its thermal band in degrees Celsius / 100 and the raw `QA_PIXEL` band. The pixel is synthetic: twenty years at a 16-day cadence with an annual cycle, noise, 15% of observations cloudy and a land-cover change in June 2012.
+`detect` runs one pixel. The arrays are `dates` (T,), proleptic Gregorian ordinals in non-decreasing order, `spectral` (bands, T) and `qas` (T,). The input says what the rows are and in which units; here the sensor profile `presets.landsat_c2()`, Landsat Collection 2 surface reflectance with its thermal band in degrees Celsius / 100 and the raw `QA_PIXEL` band. The pixel is synthetic: twenty years at a 16-day cadence with an annual cycle, noise, 15% of observations cloudy and a land-cover change in June 2012.
 
 ```python
 from datetime import date
@@ -71,7 +71,7 @@ spectral[6] = 0.20 + 0.10 * season
 qas = np.full(T, 21824, dtype=np.uint16)   # QA_PIXEL clear
 qas[rng.random(T) < 0.15] = 22280          # QA_PIXEL cloud
 
-out = ccdcpp.detect(dates, spectral, qas, encoding=presets.landsat_c2())
+out = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2())
 
 for m in out["models"]:
     print(date.fromordinal(m["start_day"]), date.fromordinal(m["end_day"]),
@@ -101,7 +101,7 @@ H, W = 3, 4
 cube = np.ascontiguousarray(np.broadcast_to(spectral, (H, W, 7, T)) + rng.normal(0, 0.002, (H, W, 7, T)))
 cube_qa = np.ascontiguousarray(np.broadcast_to(qas, (H, W, T)))
 
-cols = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=presets.landsat_c2(), threads=4)
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4)
 
 print(cols["pixels_total"], cols["pixels_with_segments"], len(cols["row"]), cols["failures"])
 print(cols["coefficients"].shape)
@@ -116,7 +116,7 @@ print(sorted(k for k in cols if not k.startswith("pixels")))
 
 ## From C++
 
-The same two calls are `ccd::detect` and `ccd::detect_cube` (`include/ccd/run/run.hpp`). What a call runs is a `ccd::RunSpec`: the encoding (`ccd::Input`), the compiled configuration (`ccd::Algorithm`, the `ccdc` preset unless you give one), and whether to return resume records and processing masks. The arrays are `ccd::ArrayView`s over your memory. Link the CMake target `ccd_core`.
+The same two calls are `ccd::detect` and `ccd::detect_cube` (`include/ccd/run/run.hpp`). What a call runs is a `ccd::RunSpec`: the input (`ccd::Input`), the compiled configuration (`ccd::Algorithm`, the `ccdc` preset unless you give one), and whether to return resume records and processing masks. The arrays are `ccd::ArrayView`s over your memory. Link the CMake target `ccd_core`.
 
 ```cpp
 #include <cstdint>
@@ -167,16 +167,16 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
 # The two calls
 
 ```text
-ccdcpp.detect(dates, spectral, qas, *, encoding, config="ccdc", record=False, resume=None,
+ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=None,
               band_names=None, trace=False)
-ccdcpp.detect_cube(dates, spectral, qas, *, encoding, config="ccdc", threads=0, record=False,
+ccdcpp.detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record=False,
                    resume=None, band_names=None, trace_pixels=None, masks=False)
 ccdcpp.to_pixels(cols)
 ```
 
 | Argument | What it is |
 |---|---|
-| `encoding=` | how to read the data: a `ccdcpp.Input`, or a `ccdcpp.SensorProfile` whose `input()` is used ([Encodings and profiles](#encodings-and-profiles)) |
+| `input=` | how to read the data: a `ccdcpp.Input`, or a `ccdcpp.SensorProfile` whose `input()` is used ([Inputs and profiles](#inputs-and-profiles)) |
 | `config=` | what to do with it: a `ccdcpp.Config` or a preset's name, `"ccdc"` by default ([Configurations and presets](#configurations-and-presets)) |
 | `record=` | also return the run's resume record (`"resume"`, `"resume_header"`) |
 | `resume=` | an earlier call's output made with `record=True`: continue that run on this longer series ([Resuming a run](#resuming-a-run)) |
@@ -198,11 +198,11 @@ Input arrays are never modified. `detect_cube` reads the spectral cube in any la
 `detect` returns a dict: `models` (one dict per segment), `processing_mask` and `num_bands`, plus `band_names` with a profile. `detect_cube` returns columns, one entry per segment (`row`, `col`, `start_day`, `end_day`, `break_day`, `curve_qa`, `observation_count`, `change_probability`, `intercept` `[n, B]`, `coefficients` `[n, B, 7]`, `rmse` `[n, B]`, `magnitude` `[n, B]`) with `num_bands`, `failures`, `threads`, `pixels_total` and `pixels_with_segments`. A pixel with no segment has no row. A pixel that raises does not stop the cube: it is listed in `failures` with its row, column and message. With `masks=True`, `to_pixels` gives each pixel its mask:
 
 ```python
-cols = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=presets.landsat_c2(), threads=4, masks=True)
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4, masks=True)
 pixels = ccdcpp.to_pixels(cols)
 p = pixels[6]
 single = ccdcpp.detect(dates, cube[p["row"], p["col"]], cube_qa[p["row"], p["col"]],
-                       encoding=presets.landsat_c2())
+                       input=presets.landsat_c2())
 print(cols["processing_mask"].shape, len(pixels), p["row"], p["col"])
 print(p["models"] == single["models"], np.array_equal(p["processing_mask"], single["processing_mask"]))
 ```
@@ -214,7 +214,7 @@ True True
 
 **Types.** The package is typed (PEP 561, `py.typed`): every function carries parameter and return types, and `ccdcpp.pyi` and `qa_tables.pyi` type the compiled extension, so pyright, mypy and editors check calls against them. The results are `TypedDict`s in `ccdcpp.results`: `detect` returns a `PixelResult`, `detect_cube` a `CubeColumns` and `to_pixels` a list of `Pixel`; at run time they are plain dicts.
 
-# Encodings and profiles
+# Inputs and profiles
 
 ## The input
 
@@ -274,7 +274,7 @@ The configuration names the codes it keeps (`keep_qa`'s `codes`, `["clear", "wat
 ```python
 c2 = presets.landsat_c2()
 h = c2.input().replace(qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel(c2.input()))
-explicit = ccdcpp.detect(dates, spectral, qas, encoding=h)
+explicit = ccdcpp.detect(dates, spectral, qas, input=h)
 print(explicit["models"] == out["models"])
 ```
 
@@ -284,10 +284,10 @@ True
 
 | Builder | Product | Validated for production |
 |---------|---------|--------------------------|
-| `landsat_c2_qa_pixel(encoding)` | Landsat Collection 2 `QA_PIXEL` (uint16) | yes |
-| `landsat_c1_pixel_qa(encoding)` | Landsat Collection 1 `pixel_qa` (uint16) | yes |
-| `hls_fmask(encoding, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | decode checked on real data: all 43 values present (38 in L30, 43 in S30) match the HLS v2.0 User Guide (T16SGC, 2020–2023) |
-| `sentinel2_scl(encoding)` | Sentinel-2 L2A `SCL` (uint8) | decode checked on real data: every class present (0, 2–11) matches SentiWiki (T16SGC, 2020–2023) |
+| `landsat_c2_qa_pixel(input)` | Landsat Collection 2 `QA_PIXEL` (uint16) | yes |
+| `landsat_c1_pixel_qa(input)` | Landsat Collection 1 `pixel_qa` (uint16) | yes |
+| `hls_fmask(input, exclude_high_aerosol=False)` | HLS v2.0 `Fmask` (uint8) | decode checked on real data: all 43 values present (38 in L30, 43 in S30) match the HLS v2.0 User Guide (T16SGC, 2020–2023) |
+| `sentinel2_scl(input)` | Sentinel-2 L2A `SCL` (uint8) | decode checked on real data: every class present (0, 2–11) matches SentiWiki (T16SGC, 2020–2023) |
 
 Each builder writes the `qa_*` codes of the `Input` it is given, so build the table from the input the run uses. Each decodes most-excluding first: fill, then cloud, then shadow, then snow, then water, then clear.
 
@@ -300,7 +300,7 @@ For any other product, `ccdcpp.QaTable(codes)` takes a `(65536,)` uint8 array wh
 
 ## Sensor profiles
 
-A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the units (`Units(scale, offset)`), the thermal transform (`Thermal(scale, offset, at_100c)`), the stored saturation codes and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `encoding=` takes one wherever it takes a `ccdcpp.Input`.
+A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: the band names, the role each band plays, the units (`Units(scale, offset)`), the thermal transform (`Thermal(scale, offset, at_100c)`), the stored saturation codes and the QA table builder. It holds no algorithm value: the configuration is the same for every profile. `input=` takes one wherever it takes a `ccdcpp.Input`.
 
 - `profile.input()` is its `ccdcpp.Input`, the QA table included, built once per profile and shared.
 - `spectral` is checked against the profile's band count (`ValueError`), and only the count. `band_names=` (keyword only, only with a profile) names the rows as the caller holds them; a stack in another order then raises `ValueError` naming the first row that differs, before anything runs. A Sentinel-2 store that keeps B08 with the 10 m bands is refused by `sentinel2_l2a()` this way rather than having B08 read as red edge 1.
@@ -412,7 +412,7 @@ band_range 0.0 1.0
 <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 1>
 ```
 
-A configuration's values are physical, so one configuration means the same on every input: reflectance levels (`band_range`'s bounds) resolve as `r * reflectance_scale + reflectance_offset`, reflectance differences (the Lasso's `alpha` and `coef_floor`, `green_median`'s offset) as `r * reflectance_scale`, degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, probabilities to chi-squared thresholds for the detection-band count, roles to rows and QA code names to codes. A run resolves its configuration against its input once: `ccd::Algorithm`, which a `Config` holds, caches the resolution of each input it meets (the 16 used last). `cfg.resolve(encoding)` shows every resolved value and `ccdcpp.plan_of(cfg, encoding)` the resolved preprocessing.
+A configuration's values are physical, so one configuration means the same on every input: reflectance levels (`band_range`'s bounds) resolve as `r * reflectance_scale + reflectance_offset`, reflectance differences (the Lasso's `alpha` and `coef_floor`, `green_median`'s offset) as `r * reflectance_scale`, degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, probabilities to chi-squared thresholds for the detection-band count, roles to rows and QA code names to codes. A run resolves its configuration against its input once: `ccd::Algorithm`, which a `Config` holds, caches the resolution of each input it meets (the 16 used last). `cfg.resolve(input)` shows every resolved value and `ccdcpp.plan_of(cfg, input)` the resolved preprocessing.
 
 ```python
 cfg = ccdcpp.config("ccdc")
@@ -433,7 +433,7 @@ A `Config` is immutable and checked and compiled when it is built. `replace(shar
 c2 = presets.landsat_c2()
 base = ccdcpp.config("ccdc")
 stricter = base.replace(shared__change_probability=0.999, refit__factor=2.0)
-out2 = ccdcpp.detect(dates, spectral, qas, encoding=c2, config=stricter)
+out2 = ccdcpp.detect(dates, spectral, qas, input=c2, config=stricter)
 print(base.hash() != stricter.hash(), stricter.shared()["change_probability"], stricter.params("refit"))
 ```
 
@@ -572,7 +572,7 @@ A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises
 
 ## Preprocessing
 
-Before a procedure fits a pixel it builds the processing mask, the observations it fits: the input's thermal transform of the pixel's private copy where the procedure's chain asks for it, then a chain of filter steps run in order. The configuration's `preprocess` section holds one chain per procedure, `standard`, `snow` (PermanentSnow) and `insufficient_clear`, its steps by name with parameters in physical units; each pixel runs the one of the procedure it takes. `ccdcpp.plan_of(config, encoding)` is the resolved plan, in the input's codes, rows and units. The steps (`ccdcpp.steps()` lists their parameters):
+Before a procedure fits a pixel it builds the processing mask, the observations it fits: the input's thermal transform of the pixel's private copy where the procedure's chain asks for it, then a chain of filter steps run in order. The configuration's `preprocess` section holds one chain per procedure, `standard`, `snow` (PermanentSnow) and `insufficient_clear`, its steps by name with parameters in physical units; each pixel runs the one of the procedure it takes. `ccdcpp.plan_of(config, input)` is the resolved plan, in the input's codes, rows and units. The steps (`ccdcpp.steps()` lists their parameters):
 
 | Step | Effect |
 |------|--------|
@@ -631,7 +631,7 @@ snowy_cfg = ccdcpp.config("ccdc").replace(preprocess__standard=ProcedureChain(
     steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
     thermal_transform=True))
 print(ccdcpp.plan_of(snowy_cfg, ccdcpp.Input()).standard.chain[0])
-snowy = ccdcpp.detect(dates, spectral, qas, encoding=presets.landsat_c2(), config=snowy_cfg)
+snowy = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), config=snowy_cfg)
 ```
 
 ```text
@@ -653,7 +653,7 @@ everywhere = ccdcpp.config("ccdc").replace(preprocess__snow__thermal_transform=T
 
 raw = spectral.copy()
 raw[6] = (spectral[6] * 100 + 273.15 - 149.0) / 0.00341802   # ST_B10 DN
-from_raw = ccdcpp.detect(dates, raw, qas, encoding=c2_raw_thermal, config=everywhere)
+from_raw = ccdcpp.detect(dates, raw, qas, input=c2_raw_thermal, config=everywhere)
 print([m["break_day"] for m in from_raw["models"]] == [m["break_day"] for m in out["models"]])
 ```
 
@@ -671,17 +671,17 @@ When new observations arrive, a stored run can be continued instead of rerun. Th
 n = int(np.searchsorted(dates, date(2019, 1, 1).toordinal()))   # the first run: up to 2018
 
 first = ccdcpp.detect_cube(dates[:n], cube[..., :n], cube_qa[..., :n],
-                           encoding=c2, threads=4, record=True)
+                           input=c2, threads=4, record=True)
 # Store first's segment columns, first["resume"] (one entry per pixel) and first["resume_header"].
 
 SEGMENT_COLUMNS = ("row", "col", "start_day", "end_day", "break_day", "curve_qa",
                    "observation_count", "change_probability", "intercept", "coefficients",
                    "rmse", "magnitude")
-update = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=c2, threads=4, resume=first)
+update = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, threads=4, resume=first)
 
 print(update["counts"])
 capped = ccdcpp.config("ccdc").replace(shared__statistics_end=int(dates[n - 1]))
-full = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=c2, config=capped, threads=4)
+full = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, config=capped, threads=4)
 print(all(np.array_equal(update[k], full[k]) for k in SEGMENT_COLUMNS))
 ```
 
@@ -699,11 +699,11 @@ True
 One pixel is the same with `detect`:
 
 ```python
-stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], encoding=c2, record=True)
-more = ccdcpp.detect(dates, spectral, qas, encoding=c2, resume=stored)
-print(more["status"], more["models"] == ccdcpp.detect(dates, spectral, qas, encoding=c2, config=capped)["models"])
+stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], input=c2, record=True)
+more = ccdcpp.detect(dates, spectral, qas, input=c2, resume=stored)
+print(more["status"], more["models"] == ccdcpp.detect(dates, spectral, qas, input=c2, config=capped)["models"])
 try:
-    ccdcpp.detect(dates, spectral, qas, encoding=c2, config=stricter, resume=stored)
+    ccdcpp.detect(dates, spectral, qas, input=c2, config=stricter, resume=stored)
 except ValueError as e:
     print(e)
 ```
@@ -720,13 +720,13 @@ the resume record was made with another input or configuration
 ```python
 import pandas as pd
 
-traced = ccdcpp.detect(dates, spectral, qas, encoding=presets.landsat_c2(), trace=True)
+traced = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), trace=True)
 trace = pd.DataFrame(traced["trace"])
 print(trace.kind.value_counts().to_dict())
 print(trace[trace.kind == "segment"][["day", "day_to", "outcome", "observations"]].to_string())
 print(trace[trace.kind == "exit"]["outcome"].item())
 
-cube_traced = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=presets.landsat_c2(), threads=4,
+cube_traced = ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4,
                                  trace_pixels=[(1, 2)])
 print(len(cube_traced["traces"][(1, 2)]))
 ```
@@ -792,7 +792,7 @@ CubeOutput detect_cube(const RunSpec& spec, ArrayView<const std::int64_t, 1> dat
 
 | Field | Default | What it is |
 |---|---|---|
-| `encoding` | `ccd::Input{}` (Collection-1 DN, QA codes) | how to read the data, its QA table (`Input::qa_table`) included |
+| `input` | `ccd::Input{}` (Collection-1 DN, QA codes) | how to read the data, its QA table (`Input::qa_table`) included |
 | `algorithm` | `Algorithm::preset("ccdc")` | the compiled configuration |
 | `record` | `false` | also return each pixel's resume record and the call's header |
 | `masks` | `false` | also return each pixel's processing mask: `detect`'s `result.mask`, `detect_cube`'s `CubeOutput::masks` |
@@ -816,7 +816,7 @@ ccd::RunSpec a_spec(const ccd::Input& input)
     config.preprocess["standard"].steps[0].params["codes"] = cfg::names({"clear", "water", "snow"});
 
     ccd::RunSpec spec;
-    spec.encoding = input;
+    spec.input = input;
     spec.algorithm = std::make_shared<const ccd::Algorithm>(config);   // checked here
     spec.record = true;
     return spec;

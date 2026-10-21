@@ -350,10 +350,10 @@ void bind_config(py::module_& m)
     .def("config", [](const ccd::Algorithm& a) { return config_to_python(a.config()); },
          "The configuration, as a dict.")
     .def("resolve",
-         [](const ccd::Algorithm& a, const ccd::Input& encoding)
-         { return resolved_to_python(*a.for_input(encoding)); },
-         py::arg("encoding"),
-         "The configuration resolved against `encoding` (cached): {\"stages\", "
+         [](const ccd::Algorithm& a, const ccd::Input& input)
+         { return resolved_to_python(*a.for_input(input)); },
+         py::arg("input"),
+         "The configuration resolved against `input` (cached): {\"stages\", "
          "\"shared\", \"digest\"}, every value in the input's units and rows.");
 
     m.def(
@@ -372,22 +372,22 @@ void bind_config(py::module_& m)
         "The configuration's digest: equal for equal configurations, on any platform.");
     m.def(
         "_config_check",
-        [](const py::dict& config, const std::optional<ccd::Input>& encoding)
+        [](const py::dict& config, const std::optional<ccd::Input>& input)
         {
             const ccd::config::Config c = config_from_python(config);
             registry().check(c);
-            if (encoding)
-                registry().resolve(c, *encoding);
+            if (input)
+                registry().resolve(c, *input);
         },
-        py::arg("config"), py::arg("encoding") = py::none(),
-        "Raises ValueError for what a run would refuse in the configuration; with `encoding`, "
+        py::arg("config"), py::arg("input") = py::none(),
+        "Raises ValueError for what a run would refuse in the configuration; with `input`, "
         "what it refuses against that input too.");
     m.def(
         "_config_resolve",
-        [](const py::dict& config, const ccd::Input& encoding)
-        { return resolved_to_python(registry().resolve(config_from_python(config), encoding)); },
-        py::arg("config"), py::arg("encoding"),
-        "The configuration resolved against `encoding`: {\"stages\", \"shared\", \"digest\"}.");
+        [](const py::dict& config, const ccd::Input& input)
+        { return resolved_to_python(registry().resolve(config_from_python(config), input)); },
+        py::arg("config"), py::arg("input"),
+        "The configuration resolved against `input`: {\"stages\", \"shared\", \"digest\"}.");
     m.def(
         "_strategies",
         []()

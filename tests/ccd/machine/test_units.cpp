@@ -41,7 +41,7 @@
 //   GreenMedianFilterIsAUnitConstant   the green filter, which `detect` on
 //                               this pixel cannot reach at all
 //
-// and Collection2DnResolvesReflectanceZeroToOne, the encoding with an
+// and Collection2DnResolvesReflectanceZeroToOne, the input with an
 // offset: reflectance levels take it, differences do not.
 //
 // Input is the same pyccd reference pixel test_standard.cpp uses, so a failure

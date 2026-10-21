@@ -4,7 +4,7 @@
 
 The input says only how to read the data; the configuration says what to do with it, in
 physical units; the run translates once (0–1 reflectance × 10000 = the 0–10000 DN check, as in
-0.10.0). Two calls, `detect` and `detect_cube`, take the data's encoding (`encoding=`) and a
+0.10.0). Two calls, `detect` and `detect_cube`, take the input (`input=`, how to read the data) and a
 configuration (`config=`, the `ccdc` preset by default) in Python and C++. One state machine runs
 the CCDC phases, and each of its decisions is a stage decided by a named strategy. Outputs are
 0.10.0's bit for bit for the same input, configuration and statistics cutoff, except for two
@@ -26,7 +26,7 @@ its replacement.
   `ccdc`'s `snow` and `insufficient_clear` chains have no `thermal_range` step. Collection-1 DN
   outputs are unchanged; on reflectance inputs snow and insufficient-clear pixels can change,
   and a physical-unit run segments as the DN run does.
-- **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and holds the encoding only: QA
+- **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and says only how to read the data: QA
   codes and `qa_table`, `roles`, `reflectance_scale`/`reflectance_offset`,
   `thermal_scale`/`thermal_offset` with `thermal_at_100c`, `saturation_code` and
   `thermal_saturation_code`. Immutable in Python (`Input(**fields)`, `replace()`).
@@ -36,12 +36,12 @@ its replacement.
   Every 0.10.0 algorithm field and `LassoOptions`' constants are values of it; thresholds are
   derived from probabilities. It is checked and compiled when built (`ccd::Algorithm`) and
   resolved once per input.
-- **Python: two calls.** `detect(dates, spectral, qas, *, encoding, config="ccdc", record=False,
-  resume=None, band_names=None, trace=False)` and `detect_cube(..., *, encoding, config="ccdc",
+- **Python: two calls.** `detect(dates, spectral, qas, *, input, config="ccdc", record=False,
+  resume=None, band_names=None, trace=False)` and `detect_cube(..., *, input, config="ccdc",
   threads=0, record=False, resume=None, band_names=None, trace_pixels=None, masks=False)`, which
   returns 0.10.0's `detect_cube_columns` columns, names and dtypes unchanged; `resume=` is an
   earlier call's output.
-- **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{encoding,
+- **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{input,
   algorithm, record, masks, observer, observe}` on views of float64, float32 or uint16 values,
   replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
   overloads. `RunSpec::masks` is off by default (0.10.0's `keep_masks` was on).

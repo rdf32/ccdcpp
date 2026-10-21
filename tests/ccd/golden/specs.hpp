@@ -19,7 +19,7 @@ inline ccd::RunSpec spec_of(const ccd::Input& input,
                             bool record = false)
 {
     ccd::RunSpec spec;
-    spec.encoding = input;
+    spec.input = input;
     spec.algorithm = std::move(algorithm);
     spec.record = record;
     spec.masks = true;

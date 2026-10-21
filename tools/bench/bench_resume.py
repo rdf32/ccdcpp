@@ -69,12 +69,12 @@ for r0 in range(0, N, STRIP):
     del opt, t
 
     tic = time.perf_counter()
-    stored = ccdcpp.detect_cube(dates[:n], sp[..., :n], qa[..., :n], encoding=profile,
+    stored = ccdcpp.detect_cube(dates[:n], sp[..., :n], qa[..., :n], input=profile,
                                 threads=THREADS, record=True)
     t1 = time.perf_counter()
-    update = ccdcpp.detect_cube(dates, sp, qa, encoding=profile, threads=THREADS, resume=stored)
+    update = ccdcpp.detect_cube(dates, sp, qa, input=profile, threads=THREADS, resume=stored)
     t2 = time.perf_counter()
-    full = ccdcpp.detect_cube(dates, sp, qa, encoding=profile, config=capped, threads=THREADS)
+    full = ccdcpp.detect_cube(dates, sp, qa, input=profile, config=capped, threads=THREADS)
     t3 = time.perf_counter()
     t_first += t1 - tic
     t_resume += t2 - t1

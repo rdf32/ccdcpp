@@ -13,8 +13,8 @@ from ccdcpp import presets
 physical = presets.landsat_c1_physical().input()
 print(physical.reflectance_scale, physical.thermal_at_100c, physical.thermal_scale, physical.thermal_offset)
 print(ccdcpp.config("ccdc").preprocess("standard")["steps"][1])
-for encoding in (ccdcpp.Input(), physical):
-    standard = ccdcpp.plan_of("ccdc", encoding).standard
+for input in (ccdcpp.Input(), physical):
+    standard = ccdcpp.plan_of("ccdc", input).standard
     print(standard.chain[1], standard.chain[2])
 ```
 
@@ -53,7 +53,7 @@ transform (10, -27315) to Celsius x 100, `thermal_at_100c` 10000), "ccdc" resolv
 | `alpha` 1e-4 | 1.0 | difference: `r * 10000` |
 | `green_median` offset +0.04 | +400 | difference: `r * 10000` |
 
-`ccdcpp.plan_of(config, encoding)` shows the resolved preprocessing and `Config.resolve(encoding)`
+`ccdcpp.plan_of(config, input)` shows the resolved preprocessing and `Config.resolve(input)`
 every resolved value:
 
 ```python
@@ -68,9 +68,9 @@ print(green)
 <Step GreenMedian band 1, drop x >= median(every date) + 400, scope StatWindow>
 ```
 
-## The encoding
+## The input
 
-`ccd::Input` (`include/ccd/input/input.hpp`, `ccdcpp.Input`) states the data's encoding:
+`ccd::Input` (`include/ccd/input/input.hpp`, `ccdcpp.Input`) says how to read the data:
 
 - reflectance `r` is held as `r * reflectance_scale + reflectance_offset` (Collection-1 DN:
   10000 and 0, the defaults; reflectance: 1 and 0);

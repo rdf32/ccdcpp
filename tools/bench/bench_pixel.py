@@ -3,9 +3,9 @@
 The per-pixel timing of one build: the first `pixels` pixels of the corpus of make_corpus.cpp,
 one ccdcpp.detect call each, single-threaded, best of `reps` passes, in three forms:
 
-  input      detect(d, s, q, encoding=h): an Input, the "ccdc" configuration by default
-  profile    detect(d, s, q, encoding=landsat_c1_dn()): a profile, the "ccdc" configuration
-  config     detect(d, s, q, encoding=h, config=cfg), cfg = ccdcpp.config("ccdc") taken once
+  input      detect(d, s, q, input=h): an Input, the "ccdc" configuration by default
+  profile    detect(d, s, q, input=landsat_c1_dn()): a profile, the "ccdc" configuration
+  config     detect(d, s, q, input=h, config=cfg), cfg = ccdcpp.config("ccdc") taken once
 
 The first two are the default paths, what a caller writes without thinking about the
 configuration; the third names the configuration. Prints, per form, the best pass's
@@ -46,9 +46,9 @@ h = ccdcpp.Input()
 profile = presets.landsat_c1_dn()
 cfg = ccdcpp.config("ccdc")
 forms: dict[str, Callable[[NDArray[np.float64], NDArray[np.uint8]], object]] = {
-    "input": lambda s, q: ccdcpp.detect(dates, s, q, encoding=h),
-    "profile": lambda s, q: ccdcpp.detect(dates, s, q, encoding=profile),
-    "config": lambda s, q: ccdcpp.detect(dates, s, q, encoding=h, config=cfg),
+    "input": lambda s, q: ccdcpp.detect(dates, s, q, input=h),
+    "profile": lambda s, q: ccdcpp.detect(dates, s, q, input=profile),
+    "config": lambda s, q: ccdcpp.detect(dates, s, q, input=h, config=cfg),
 }
 
 for name, call in forms.items():

@@ -60,12 +60,12 @@ def cube(bands: int, timesteps: int, dtype: DTypeLike = np.float64, dates: int |
 
 
 class Options(TypedDict):
-    encoding: ccdcpp.Input
+    input: ccdcpp.Input
 
 
 def options() -> Options:
     """The default input, as the entry points' keyword."""
-    return {"encoding": ccdcpp.Input()}
+    return {"input": ccdcpp.Input()}
 
 
 def preset(**changes: object) -> dict[str, Any]:
@@ -93,10 +93,10 @@ def preset(**changes: object) -> dict[str, Any]:
 
 
 def resolved(config: Mapping[str, Any] | None = None,
-             encoding: ccdcpp.Input | None = None) -> dict[str, Any]:
-    """The configuration resolved against the encoding (default Input())."""
+             input: ccdcpp.Input | None = None) -> dict[str, Any]:
+    """The configuration resolved against the input (default Input())."""
     return ccdcpp._config_resolve(preset() if config is None else config,
-                                  ccdcpp.Input() if encoding is None else encoding)
+                                  ccdcpp.Input() if input is None else input)
 
 
 class BandCount(unittest.TestCase):
@@ -267,13 +267,13 @@ class BandLayout(unittest.TestCase):
         by_rows = preset(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5],
                          preprocess__band_range__bands=[0, 1, 2, 3, 4, 5])
         self.assertEqual(
-            repr(ccdcpp.detect(*args, encoding=h, config=by_rows)),
+            repr(ccdcpp.detect(*args, input=h, config=by_rows)),
             repr(ccdcpp.detect(*args, **options())))
 
     def test_outputs_follow_the_band_count(self):
         h, cfg = ten_band_layout(), ten_band_config()
         d, s, q = noisy(10, 120)
-        out = ccdcpp.detect(d, s, q, encoding=h, config=cfg)
+        out = ccdcpp.detect(d, s, q, input=h, config=cfg)
         self.assertEqual(out["num_bands"], 10)
         self.assertGreater(len(out["models"]), 0)
         for m in out["models"]:
@@ -283,7 +283,7 @@ class BandLayout(unittest.TestCase):
 
         cube_s = np.broadcast_to(s, (2, 3, 10, 120)).copy()
         cube_q = np.zeros((2, 3, 120), dtype=np.uint8)
-        cols = ccdcpp.detect_cube(d, cube_s, cube_q, encoding=h, threads=1, config=cfg)
+        cols = ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=cfg)
         n = len(cols["row"])
         self.assertGreater(n, 0)
         self.assertEqual(cols["num_bands"], 10)
@@ -308,9 +308,9 @@ class LayoutValidation(unittest.TestCase):
         cube_s = np.broadcast_to(s, (2, 3, bands, 40)).copy()
         cube_q = np.zeros((2, 3, 40), dtype=np.uint8)
         calls = {
-            "detect": lambda: ccdcpp.detect(d, s, q, encoding=h, config=config),
+            "detect": lambda: ccdcpp.detect(d, s, q, input=h, config=config),
             "detect_cube":
-                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, encoding=h, threads=1, config=config),
+                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=config),
         }
         for name, call in calls.items():
             with self.subTest(entry=name, expected=expected):
@@ -489,7 +489,7 @@ class CadenceParameters(unittest.TestCase):
                         for (stage, name), value in self.DEFAULTS.items()})
         for args in (noisy(7, 120), noisy(7, 400, seed=3)):
             self.assertEqual(
-                repr(ccdcpp.detect(*args, encoding=ccdcpp.Input(), config=cfg)),
+                repr(ccdcpp.detect(*args, input=ccdcpp.Input(), config=cfg)),
                 repr(ccdcpp.detect(*args, **options())))
 
     def test_peek_reference_days_reaches_the_procedure(self):
@@ -505,7 +505,7 @@ class CadenceParameters(unittest.TestCase):
         q = np.zeros(500, dtype=np.uint8)
 
         def breaks(config: Mapping[str, Any] | None) -> float:
-            out = ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(), config=config)
+            out = ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
         self.assertEqual(breaks(None), 1)
@@ -540,7 +540,7 @@ class BoundFlags(unittest.TestCase):
         d, s, q = inputs(7, 40)
         s[band, :len(values)] = values
         config = preset(**{"preprocess__" + k: v for k, v in flags.items()})
-        return ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(),
+        return ccdcpp.detect(d, s, q, input=ccdcpp.Input(),
                              config=config)["processing_mask"][:len(values)].tolist()
 
     def test_reflectance_bounds(self):
@@ -608,7 +608,7 @@ class GreenFilterScope(unittest.TestCase):
     def detect_mask(self, pixel: Series, scope: ccdcpp.GreenFilterScope) -> NDArray[np.uint8]:
         config = preset(shared__statistics_end=self.STATISTICS_END,
                         preprocess__green_median__scope=self.NAMES[scope.name])
-        out = ccdcpp.detect(*pixel, encoding=ccdcpp.Input(), config=config)
+        out = ccdcpp.detect(*pixel, input=ccdcpp.Input(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]
 
@@ -667,7 +667,7 @@ class DateOrder(unittest.TestCase):
         raw = np.zeros(40, dtype=np.uint16)
         h = ccdcpp.Input(qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel())
         with self.assertRaises(ValueError):
-            ccdcpp.detect(self.swapped(d, 5), s, raw, encoding=h)
+            ccdcpp.detect(self.swapped(d, 5), s, raw, input=h)
 
     def test_cubes(self):
         for dtype in (np.float64, np.float32, np.uint16):

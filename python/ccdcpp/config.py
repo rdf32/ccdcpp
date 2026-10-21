@@ -17,7 +17,7 @@ resume record of a configured run continues only under the same configuration.
     cfg = cfg.replace(shared__change_probability=0.95,
                       refit__factor=2.0)                 # shared__value=, stage__parameter=
     print(cfg)                                          # every shared value, stage and parameter
-    out = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2(), config=cfg)
+    out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), config=cfg)
 
 A configuration is written in physical terms, so it means the same on every input: the shared
 ``alpha`` and ``coef_floor`` and the preprocessing's bounds and offsets in reflectance (the run
@@ -378,16 +378,16 @@ class Config:
             entry["params"][param] = _value(value, known[param])
         return Config(tree)
 
-    def check(self, encoding: _extension.Input | None = None) -> None:
-        """Raises ValueError for what a run would refuse; with ``encoding`` (a ccdcpp.Input),
+    def check(self, input: _extension.Input | None = None) -> None:
+        """Raises ValueError for what a run would refuse; with ``input`` (a ccdcpp.Input),
         what it refuses against that input too (a role it lacks, a row off its bands)."""
-        _extension._config_check(self._tree, encoding)
+        _extension._config_check(self._tree, input)
 
-    def resolve(self, encoding: _extension.Input) -> dict[str, Any]:
-        """The configuration resolved against ``encoding`` (a ccdcpp.Input), as the run runs
+    def resolve(self, input: _extension.Input) -> dict[str, Any]:
+        """The configuration resolved against ``input`` (a ccdcpp.Input), as the run runs
         it: {"stages", "shared", "preprocess", "digest"}, every value in the input's units,
         rows and codes."""
-        return self._algorithm.resolve(encoding)
+        return self._algorithm.resolve(input)
 
     def hash(self) -> int:
         """The configuration's digest: equal for equal configurations, on any platform."""

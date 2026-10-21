@@ -4,7 +4,7 @@ A configuration's ``preprocess`` section says, per procedure (``standard``, ``sn
 ``insufficient_clear``), whether it reads the thermal row through the input's thermal transform
 and which steps build its processing mask, in order. A step's parameters are physical: QA codes
 by name, bands by role, bounds in reflectance and degrees Celsius. The run resolves them against
-its input with the rest of the configuration; ``ccdcpp.plan_of(config, encoding)`` shows the
+its input with the rest of the configuration; ``ccdcpp.plan_of(config, input)`` shows the
 result. The classes here write a chain; a field left None is the step's default
 (``ccdcpp.steps()`` lists them)::
 

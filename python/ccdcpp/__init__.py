@@ -73,28 +73,28 @@ from . import results
 # The two calls: detect() on one pixel, detect_cube() on a cube, and
 # to_pixels() to read a cube's columns per pixel.
 #
-# Each takes the description of the data as encoding= (a ccdcpp.Input, or a
+# Each takes the description of the data as input= (a ccdcpp.Input, or a
 # SensorProfile that builds one) and the algorithm as config= (a
 # ccdcpp.Config, or a preset's name, built once), and calls the extension
 # function of the same name with the Input and the Config's compiled
 # Algorithm.
 #------------------------------------------------------------------------------
 
-def _encoding(entry: str, encoding: object, spectral: _ArrayLike,
-              band_names: _Sequence[str] | None) -> tuple[Input, SensorProfile | None]:
-    """encoding= as the extension takes it: (the ccdcpp.Input, the profile or None)."""
-    if isinstance(encoding, SensorProfile):
-        encoding.check(spectral, band_names)
-        return encoding.input(), encoding
-    if isinstance(encoding, Input):
+def _input(entry: str, input: object, spectral: _ArrayLike,
+           band_names: _Sequence[str] | None) -> tuple[Input, SensorProfile | None]:
+    """input= as the extension takes it: (the ccdcpp.Input, the profile or None)."""
+    if isinstance(input, SensorProfile):
+        input.check(spectral, band_names)
+        return input.input(), input
+    if isinstance(input, Input):
         if band_names is not None:
             raise TypeError(
                 f"{entry}(): band_names= is checked against a profile's band names; "
-                f"pass encoding= a ccdcpp.SensorProfile")
-        return encoding, None
+                f"pass input= a ccdcpp.SensorProfile")
+        return input, None
     raise TypeError(
-        f"{entry}(): encoding is a ccdcpp.Input or a ccdcpp.SensorProfile, not "
-        f"{type(encoding).__name__}")
+        f"{entry}(): input is a ccdcpp.Input or a ccdcpp.SensorProfile, not "
+        f"{type(input).__name__}")
 
 
 def _configuration(entry: str, config: object) -> Config:
@@ -116,7 +116,7 @@ def _configuration(entry: str, config: object) -> Config:
 
 
 def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
-           encoding: Input | SensorProfile, config: Config | str = "ccdc", record: bool = False,
+           input: Input | SensorProfile, config: Config | str = "ccdc", record: bool = False,
            resume: _Mapping[str, _Any] | None = None, band_names: _Sequence[str] | None = None,
            trace: bool = False) -> results.PixelResult:
     """CCD on one pixel.
@@ -130,7 +130,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     qas
         (T,) uint8 QA codes, or raw uint8/uint16 QA when the input has a
         qa_table.
-    encoding
+    input
         What the data is: a ccdcpp.Input, or a ccdcpp.SensorProfile (see
         ccdcpp.presets), whose input() is used. spectral is checked against a
         profile's band count first (ValueError).
@@ -159,7 +159,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         list, say), or None. Given, they must be the profile's band_names in
         the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked and
-        a misordered stack runs. Needs encoding= a profile (TypeError otherwise).
+        a misordered stack runs. Needs input= a profile (TypeError otherwise).
     trace
         True to also return "trace": the pixel's run step by step, one dict
         per event (kind: transition, test, drop, segment or exit; phase and
@@ -171,9 +171,9 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     B entries in row order), processing_mask and num_bands, plus band_names
     (a tuple) with a profile.
     """
-    h, profile = _encoding("detect", encoding, spectral, band_names)
+    h, profile = _input("detect", input, spectral, band_names)
     cfg = _configuration("detect", config)
-    out = _extension.detect(dates, spectral, qas, encoding=h, config=cfg._algorithm,
+    out = _extension.detect(dates, spectral, qas, input=h, config=cfg._algorithm,
                             record=record, resume=resume, trace=trace)
     if profile is not None:
         out["band_names"] = profile.band_names
@@ -181,7 +181,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
 
 
 def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
-                encoding: Input | SensorProfile, config: Config | str = "ccdc", threads: int = 0,
+                input: Input | SensorProfile, config: Config | str = "ccdc", threads: int = 0,
                 record: bool = False, resume: _Mapping[str, _Any] | None = None,
                 band_names: _Sequence[str] | None = None,
                 trace_pixels: _Sequence[tuple[int, int]] | None = None,
@@ -196,7 +196,7 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     qas
         (H, W, T) uint8 QA codes, or raw uint8/uint16 QA when the input has a
         qa_table.
-    encoding, config, band_names
+    input, config, band_names
         As detect().
     threads
         OpenMP threads; 0 for the library's default.
@@ -236,9 +236,9 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     pixel with no segment has no row (pixels_total - pixels_with_segments
     counts them). ccdcpp.to_pixels() reads it per pixel.
     """
-    h, profile = _encoding("detect_cube", encoding, spectral, band_names)
+    h, profile = _input("detect_cube", input, spectral, band_names)
     cfg = _configuration("detect_cube", config)
-    out = _extension.detect_cube(dates, spectral, qas, encoding=h, config=cfg._algorithm,
+    out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
                                  trace_pixels=trace_pixels, masks=masks)
     if profile is not None:
@@ -246,12 +246,12 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     return out
 
 
-def plan_of(config: Config | str, encoding: Input | SensorProfile) -> PreprocessPlan:
+def plan_of(config: Config | str, input: Input | SensorProfile) -> PreprocessPlan:
     """The ccdcpp.PreprocessPlan ``config`` (a ccdcpp.Config or a preset's name) runs on
-    ``encoding`` (a ccdcpp.Input or a SensorProfile): its preprocess section resolved against
+    ``input`` (a ccdcpp.Input or a SensorProfile): its preprocess section resolved against
     the input, the QA code names as its codes, the bands by role as its rows, the bounds in its
     units. For inspection: ``print(ccdcpp.plan_of("ccdc", ccdcpp.Input()))``."""
-    h = encoding.input() if isinstance(encoding, SensorProfile) else encoding
+    h = input.input() if isinstance(input, SensorProfile) else input
     return _extension.plan_of(_configuration("plan_of", config)._algorithm, h)
 
 

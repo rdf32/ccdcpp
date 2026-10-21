@@ -14,7 +14,7 @@ The example is the README's [quick-start pixel](../README.md#one-pixel):
 import pandas as pd
 import ccdcpp
 
-out = ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2(), trace=True)
+out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), trace=True)
 trace = pd.DataFrame(out["trace"])
 print(trace[["kind", "phase", "next", "window_start", "window_stop"]].head(3).to_string())
 
@@ -24,7 +24,7 @@ print(change.day.tolist(), [round(v, 1) for v in change["values"].iloc[0]])
 
 # The segments, as the run wrote them:
 print(trace[trace.kind == "segment"][["day", "day_to", "observations"]].to_string())
-print(out["models"] == ccdcpp.detect(dates, spectral, qas, encoding=ccdcpp.presets.landsat_c2())["models"])
+print(out["models"] == ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2())["models"])
 ```
 
 ```text
@@ -42,7 +42,7 @@ True
 For a cube, name the pixels; `"traces"` holds each one's events:
 
 ```python
-cols = ccdcpp.detect_cube(dates, cube, cube_qa, encoding=ccdcpp.presets.landsat_c2(), threads=4,
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, input=ccdcpp.presets.landsat_c2(), threads=4,
                           trace_pixels=[(1, 2), (2, 3)])
 print(sorted(cols["traces"]), pd.DataFrame(cols["traces"][(2, 3)]).kind.iloc[-1])
 ```
@@ -82,7 +82,7 @@ void observed(const ccd::Input& input, ccd::ArrayView<const std::int64_t, 1> dat
               ccd::ArrayView<const double, 4> cube, ccd::ArrayView<const std::uint8_t, 3> cube_qa)
 {
     ccd::RunSpec spec;
-    spec.encoding = input;             // ccd::Input, the data's encoding
+    spec.input = input;                // ccd::Input, how to read the data
     spec.observer = std::make_shared<ccd::TextObserver>(std::cerr);
     ccd::detect(spec, dates, spectral, qas);
 

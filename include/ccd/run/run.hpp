@@ -80,11 +80,11 @@ using CubeQa = std::variant<
 //
 // What a call runs.
 //
-//   encoding            the input's encoding, its QA table included
+//   input               how to read the data, its QA table included
 //                       (validate() checks it)
 //   algorithm           the algorithm (run/algorithm.hpp): a configuration
 //                       checked when the Algorithm was built, resolved
-//                       against `encoding` once per Algorithm and input; the
+//                       against `input` once per Algorithm and input; the
 //                       "ccdc" preset's by default. Part of the resume digest
 //   record              also return each pixel's resume record and the
 //                       call's header
@@ -104,7 +104,7 @@ using CubeQa = std::variant<
 //------------------------------------------------------------------------------
 struct RunSpec
 {
-    Input encoding;
+    Input input;
     AlgorithmPtr algorithm = Algorithm::preset("ccdc");
     bool record = false;
     bool masks = false;

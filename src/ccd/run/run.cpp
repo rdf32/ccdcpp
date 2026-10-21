@@ -413,12 +413,12 @@ Run::Run(
 )
     : spec_(spec), dates_(dates), bands_(bands), timesteps_(timesteps), raw_qa_(raw_qa)
 {
-    check_shapes(spec_.encoding, bands, timesteps, dates, qa_timesteps);
-    check_qa(raw_qa, spec_.encoding.qa_table.get());
+    check_shapes(spec_.input, bands, timesteps, dates, qa_timesteps);
+    check_qa(raw_qa, spec_.input.qa_table.get());
 
     if (!spec_.algorithm)
         throw std::invalid_argument("the run has no algorithm");
-    resolved_ = spec_.algorithm->for_input(spec_.encoding);
+    resolved_ = spec_.algorithm->for_input(spec_.input);
 
 
     if (spec_.record || resume)
@@ -479,7 +479,7 @@ PixelOutcome Run::pixel_typed(
 
     PixelOutcome out;
     bool continued = false;
-    const QaTable* table = spec_.encoding.qa_table.get();
+    const QaTable* table = spec_.input.qa_table.get();
 
     if (!resume_)
     {
@@ -489,7 +489,7 @@ PixelOutcome Run::pixel_typed(
             request.record = &out.record;
             request.through = header_.series_end;
         }
-        out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.encoding,
+        out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
                                           shared_, resolved_->strategies, worker, request,
                                           continued);
         if (!spec_.masks)
@@ -510,7 +510,7 @@ PixelOutcome Run::pixel_typed(
 
     const std::uint64_t fingerprint = detail::fingerprint_of<Value>(
         dates_, spectral, decode_qa<Qa>(qa, table, worker.qas),
-        spec_.encoding.qa_fill, resume_->series_end);
+        spec_.input.qa_fill, resume_->series_end);
 
     out.status = fingerprint == from.input_fingerprint
         ? ResumeStatus::Resumed
@@ -527,7 +527,7 @@ PixelOutcome Run::pixel_typed(
     request.continue_from = continues ? &from : nullptr;
     const index_t carried = from.standard.final_segments;
     request.carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
-    out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.encoding,
+    out.result = run_steps<Value, Qa>(dates_, spectral, qa, table, run_plan_, spec_.input,
                                       shared_, resolved_->strategies, worker, request, continued);
 
     // The machine may still not continue (a stored drop on a date the plan
