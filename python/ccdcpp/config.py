@@ -286,7 +286,9 @@ class Config:
         - ``shared__name=value`` sets a shared value, ``shared__table__name=value`` one of a
           table's (``shared__lasso__alpha=1e-5``);
         - ``stage="strategy"`` swaps a stage's strategy (its parameters become the new
-          strategy's defaults), ``stage__param=value`` sets one parameter;
+          strategy's defaults), ``stage__param=value`` sets one parameter
+          (``stage__table__name=value`` the one named for a shared table's value,
+          ``table.name``);
         - ``preprocess=ccdcpp.Preprocess(...)`` replaces the procedures it gives,
           ``preprocess__procedure=chain`` one procedure (a ``ccdcpp.ProcedureChain``, a list of
           steps, or a dict), ``preprocess__procedure__thermal="celsius"`` (or ``"stored"``) how it
@@ -353,7 +355,7 @@ class Config:
                 raise ValueError(f"the configuration has no stage '{stage}'")
             if param == "strategy":
                 raise ValueError(f"{key}: swap a strategy with {stage}=\"...\"")
-            tree[stage][param] = value
+            tree[stage][param.replace("__", ".")] = value
         return Config(tree)
 
     def check(self, input: _extension.Input | None = None) -> None:

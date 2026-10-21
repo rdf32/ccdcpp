@@ -191,9 +191,10 @@ def outlier_threshold(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> 
 
 # The parameters one shared value fills in, as a run resolves them.
 GROUPS: dict[str, tuple[tuple[str, str], ...]] = {
-    "alpha": (("model", "alpha"), ("stability_fit", "alpha"), ("edge_segments", "alpha")),
-    "coef_floor": (("model", "coef_floor"), ("stability_fit", "coef_floor"),
-                   ("edge_segments", "coef_floor")),
+    "alpha": (("model", "lasso.alpha"), ("stability_fit", "lasso.alpha"),
+              ("edge_segments", "lasso.alpha")),
+    "coef_floor": (("model", "lasso.coef_floor"), ("stability_fit", "lasso.coef_floor"),
+                   ("edge_segments", "lasso.coef_floor")),
     "change_threshold": (("change_test", "change_threshold"),
                          ("stability_rule", "change_threshold"),
                          ("lookback", "change_threshold")),

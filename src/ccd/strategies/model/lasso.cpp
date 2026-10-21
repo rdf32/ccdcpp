@@ -219,26 +219,26 @@ const std::vector<config::Field<Lasso::Params>>& Lasso::schema()
 {
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
-        {"max_iter", &Params::max_iter, Unit::None, config::at_least(0),
+        {"lasso.max_iter", &Params::lasso_max_iter, Unit::None, config::at_least(0),
          "coordinate descent sweeps at most", config::Source::Shared, "lasso.max_iter"},
-        {"alpha", &Params::alpha, Unit::ReflectanceDelta, config::at_least(0),
+        {"lasso.alpha", &Params::lasso_alpha, Unit::ReflectanceDelta, config::at_least(0),
          "the L1 penalty", config::Source::Shared, "lasso.alpha"},
-        {"tolerance", &Params::tolerance, Unit::None, config::at_least(0),
+        {"lasso.tolerance", &Params::lasso_tolerance, Unit::None, config::at_least(0),
          "a sweep whose largest update is at most this times max(largest coefficient, "
          "coef_floor) checks the duality gap", config::Source::Shared, "lasso.tolerance"},
-        {"coef_floor", &Params::coef_floor, Unit::ReflectanceDelta, config::at_least(0),
-         "the least coefficient size the tolerance scales", config::Source::Shared,
-         "lasso.coef_floor"},
-        {"coefficient_min", &Params::coefficient_min, Unit::None, config::at_least(1),
+        {"lasso.coef_floor", &Params::lasso_coef_floor, Unit::ReflectanceDelta,
+         config::at_least(0), "the least coefficient size the tolerance scales",
+         config::Source::Shared, "lasso.coef_floor"},
+        {"coefficients.min", &Params::coefficients_min, Unit::None, config::at_least(1),
          "coefficients of a short window's fit, and of a start window's", config::Source::Shared,
          "coefficients.min"},
-        {"coefficient_mid", &Params::coefficient_mid, Unit::None, config::at_least(1),
-         "coefficients from coefficient_mid * num_obs_factor observations", config::Source::Shared,
+        {"coefficients.mid", &Params::coefficients_mid, Unit::None, config::at_least(1),
+         "coefficients from mid x per observations", config::Source::Shared,
          "coefficients.mid"},
-        {"coefficient_max", &Params::coefficient_max, Unit::None, config::at_least(1),
-         "coefficients from coefficient_max * num_obs_factor observations; the basis width",
+        {"coefficients.max", &Params::coefficients_max, Unit::None, config::at_least(1),
+         "coefficients from max x per observations; the basis width",
          config::Source::Shared, "coefficients.max"},
-        {"num_obs_factor", &Params::num_obs_factor, Unit::None, config::at_least(1),
+        {"coefficients.per", &Params::coefficients_per, Unit::None, config::at_least(1),
          "observations per coefficient", config::Source::Shared, "coefficients.per"},
     };
     return s;
@@ -251,13 +251,13 @@ Lasso::Lasso(const Params& p) : p_(p)
 
 CoefficientRule Lasso::coefficients() const
 {
-    return CoefficientRule{p_.coefficient_min, p_.coefficient_mid, p_.coefficient_max,
-                           p_.num_obs_factor};
+    return CoefficientRule{p_.coefficients_min, p_.coefficients_mid, p_.coefficients_max,
+                           p_.coefficients_per};
 }
 
 LassoOptions Lasso::solver_options() const
 {
-    return LassoOptions{p_.max_iter, p_.alpha, p_.tolerance, p_.coef_floor};
+    return LassoOptions{p_.lasso_max_iter, p_.lasso_alpha, p_.lasso_tolerance, p_.lasso_coef_floor};
 }
 
 Capabilities Lasso::provides() const

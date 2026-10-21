@@ -187,8 +187,8 @@ struct Record
         state.init_model->fit(
             state.series.dates().slice(ccd::range(start, stop)),
             state.series.spectral().slice(ccd::all(), ccd::range(start, stop)),
-            count("stability_fit", "coefficient_min"),
-            count("stability_fit", "coefficient_max"),
+            count("stability_fit", "coefficients.min"),
+            count("stability_fit", "coefficients.max"),
             shared.detection_bands,
             ccd::KeepResiduals::Yes
         );
@@ -405,8 +405,8 @@ TEST(StandardPrepare, SetsThePeekPlanAndTheCursor)
     // Initialize's coefficients, once for the pixel: the stability fit's
     // (coefficient_min coefficients in a coefficient_max-wide basis).
     const ccd::CoefficientRule& c = r.state.stability_coefficients;
-    EXPECT_EQ(c.min, r.count("stability_fit", "coefficient_min"));
-    EXPECT_EQ(c.max, r.count("stability_fit", "coefficient_max"));
+    EXPECT_EQ(c.min, r.count("stability_fit", "coefficients.min"));
+    EXPECT_EQ(c.max, r.count("stability_fit", "coefficients.max"));
     EXPECT_EQ(r.state.variogram.bands.size(), 7u);
 }
 
@@ -1199,7 +1199,7 @@ TEST(StandardHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
     EXPECT_EQ(s.end_day, r.dates[79]);
     EXPECT_EQ(s.break_day, r.dates[79]);
     EXPECT_EQ(s.observation_count, 10u);
-    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(r.count("model", "coefficient_min")));
+    EXPECT_EQ(s.curve_qa, static_cast<ccd::CurveQA>(r.count("model", "coefficients.min")));
     EXPECT_FALSE(r.state.forced);
     EXPECT_EQ(r.state.exit, Exit::NoFit);
     EXPECT_FALSE(r.state.resumable);   // a record keeps no forced start
@@ -1632,7 +1632,7 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
             fit,
             ccd::fit_whole_series(procedure, r.workspace, mask,
                                   r.count("edge_segments", "min_observations"),
-                                  r.count("edge_segments", "coefficients"), r.lasso, r.solver),
+                                  r.count("edge_segments", "coefficients.min"), r.lasso, r.solver),
 
             "whole series");
         ASSERT_EQ(fit.models.size(), 1u);

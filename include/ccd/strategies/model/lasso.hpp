@@ -88,22 +88,22 @@ namespace strategies
 // the harmonic basis of the window's dates (regression/harmonic_basis.hpp),
 // solved by coordinate descent (regression/lasso_solver.hpp) with these
 // parameters; its RMSE has the model's coefficient count as its degrees of
-// freedom. Its coefficients follow the rule of coefficient_min, _mid, _max
-// and num_obs_factor (CoefficientRule), the shared coefficients.min, .mid,
-// .max and .per.
+// freedom. Its coefficients follow the rule of the shared coefficients.min,
+// .mid, .max and .per (CoefficientRule), its solver the shared lasso.*; each
+// parameter is named for the shared value it reads.
 //------------------------------------------------------------------------------
 struct Lasso final : MonitoringModel, StabilityFit
 {
     struct Params
     {
-        index_t max_iter = 1000;
-        scalar_t alpha = 1.0;
-        scalar_t tolerance = 1e-4;
-        scalar_t coef_floor = 1.0;
-        index_t coefficient_min = 4;
-        index_t coefficient_mid = 6;
-        index_t coefficient_max = 8;
-        index_t num_obs_factor = 3;
+        index_t lasso_max_iter = 1000;
+        scalar_t lasso_alpha = 1.0;
+        scalar_t lasso_tolerance = 1e-4;
+        scalar_t lasso_coef_floor = 1.0;
+        index_t coefficients_min = 4;
+        index_t coefficients_mid = 6;
+        index_t coefficients_max = 8;
+        index_t coefficients_per = 3;
     };
 
     static const std::vector<config::Field<Params>>& schema();

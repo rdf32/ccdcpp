@@ -282,7 +282,7 @@ TEST(CCD, DetectClear)
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(golden::resolved().stages, "edge_segments", "min_observations")),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_segments", "coefficients")),
+            golden::parameter<std::int64_t>(golden::resolved().stages, "edge_segments", "coefficients.min")),
         lworkspace,
         solver
     );

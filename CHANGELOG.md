@@ -118,7 +118,9 @@ its replacement.
   stages are `mode`, `noise`, `start_search`, `window_screen`, `stability_fit`,
   `stability_rule`, `lookback`, `model`, `change_test`, `outlier`, `refit`, `segment_report`
   and `edge_segments`, the steps `keep_qa`, `add_qa`, `thermal_range`, `band_range`,
-  `green_median` and `one_per_date`. A file of an earlier 1.0 development build is refused,
+  `green_median` and `one_per_date`. A strategy parameter read from a shared value is named
+  for it (`model`'s `lasso.alpha`, `coefficients.min`, in `ccdcpp.strategies()` and
+  `resolve()`). A file of an earlier 1.0 development build is refused,
   naming what changed ([docs/migration-1.0.md](docs/migration-1.0.md#configuration-files)).
 - `detect_cube(masks=True)`: every pixel's processing mask in one `(H, W, T)` uint8 array;
   `ccdcpp.to_pixels()` reads the columns per pixel.

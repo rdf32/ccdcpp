@@ -416,8 +416,8 @@ A configuration's values are physical, so one configuration means the same on ev
 
 ```python
 cfg = ccdcpp.config("ccdc")
-print(cfg.resolve(ccdcpp.Input())["model"]["alpha"])            # 1e-4 x 10000
-print(cfg.resolve(presets.landsat_c2().input())["model"]["alpha"])
+print(cfg.resolve(ccdcpp.Input())["model"]["lasso.alpha"])            # 1e-4 x 10000
+print(cfg.resolve(presets.landsat_c2().input())["model"]["lasso.alpha"])
 ```
 
 ```text
@@ -564,7 +564,7 @@ print(r["change_test"]["change_threshold"] == ccdcpp.chi2_quantile(0.99, 5))
 True
 ```
 
-A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises `ValueError` before any pixel runs: `peek_reference_days` or `min_lag_days` of zero or less, a count below 1, a `peek_size` below 2, a `min_observations` not above `coefficients.min`, a probability outside (0, 1) or NaN, a factor or divisor of zero or less, a negative or NaN Lasso constant, and coefficient counts that decrease from `coefficient_min` to `coefficient_max` or exceed 8 (the harmonic basis's width).
+A value outside its parameter's bounds (`ccdcpp.strategies()` lists them) raises `ValueError` before any pixel runs: `peek_reference_days` or `min_lag_days` of zero or less, a count below 1, a `peek_size` below 2, a `min_observations` not above `coefficients.min`, a probability outside (0, 1) or NaN, a factor or divisor of zero or less, a negative or NaN Lasso constant, and coefficient counts that decrease from `coefficients.min` to `coefficients.max` or exceed 8 (the harmonic basis's width).
 
 **Denser cadences.** The peek size follows the cadence: it is `round(peek_size * peek_reference_days / (median gap + 0.001))`, never below `peek_size`, where the gap is between consecutive observations the processing mask keeps, up to the shared `statistics_end`; at 8 days it is 12, at 5 days 19, at 4 days 24. The change threshold falls as the window grows, so that a longer window keeps the default window's false-alarm rate: with the defaults it is 9.24 at a peek of 12, 6.83 at 19 and 5.90 at 24. Both are computed per pixel, as pyccd's `adjustpeek` and `adjustchgthresh` do; a series whose median gap is about 14.8 days or more keeps `peek_size` and its threshold as given. The shared `min_observations` and the refit's `min_obs` are observation counts and are deliberately not scaled with the cadence, as pyccd does not scale them: at a 4–5 day cadence 12 observations are about 50–60 days, where at 16 days they are about half a year. A caller who wants them in time sets them from the cadence, as `denser.toml` above does.
 

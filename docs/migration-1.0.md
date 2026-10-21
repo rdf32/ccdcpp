@@ -413,6 +413,7 @@ it, or start from `ccdcpp.config("ccdc").to_toml()`:
 | `ThermalRange(min, max, inclusive)`, `BandRange(bands, min, max, inclusive)`, `ProcedureChain(steps, thermal_transform)`, `Dedupe()` | `ThermalRange(celsius, inclusive)`, `BandRange(bands, reflectance, inclusive)`, `ProcedureChain(steps, thermal)`, `OnePerDate()` |
 | the dict `{"shared": ..., "stages": {stage: {"strategy": ..., "params": {...}}}, "preprocess": ...}`, and `resolve()`'s `["stages"][stage]["params"]` | the file's layout: `{"shared": ..., stage: {"strategy": ..., parameter: ...}, "preprocess": ...}`; `resolve(h)[stage][parameter]` |
 | C++ `Registry::check(config)`, `resolve(config, input)`, `build(tree)` | `config::check(registry, config)`, `config::resolve(registry, config, input)`, `config::build_strategies(registry, tree)` (`ccd/config/resolve.hpp`) |
+| a strategy parameter read from a shared value: `model`'s `alpha`, `coef_floor`, `max_iter`, `tolerance`, `coefficient_min`, `coefficient_mid`, `coefficient_max`, `num_obs_factor` (and `stability_fit`'s), `edge_segments`' `alpha`, ..., `coefficients` | named for the shared value: `lasso.alpha`, `lasso.coef_floor`, `lasso.max_iter`, `lasso.tolerance`, `coefficients.min`, `.mid`, `.max`, `.per` (`resolve(h)["model"]["lasso.alpha"]`); C++ `Params` members `lasso_alpha`, ..., `coefficients_min`, ... |
 | C++ `Shared::alpha`, `coefficient_min`, ...; `StepContext::thermal_transform` | `Shared::lasso.alpha` (a `LassoOptions`), `Shared::coefficients.min` (a `CoefficientRule`); `StepContext::thermal` (`config::Thermal`) |
 
 ```toml

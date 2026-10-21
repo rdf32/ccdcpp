@@ -158,21 +158,21 @@ const std::vector<config::Field<LassoEdges::Params>>& LassoEdges::schema()
 {
     using config::Unit;
     static const std::vector<config::Field<Params>> s = {
-        {"coefficients", &Params::coefficients, Unit::None, config::at_least(1),
+        {"coefficients.min", &Params::coefficients_min, Unit::None, config::at_least(1),
          "coefficients of every edge segment's fit", config::Source::Shared, "coefficients.min"},
         {"min_observations", &Params::min_observations, Unit::Observations, config::any(),
          "kept observations a whole-series curve needs", config::Source::Shared,
          "min_observations"},
-        {"max_iter", &Params::max_iter, Unit::None, config::at_least(0),
+        {"lasso.max_iter", &Params::lasso_max_iter, Unit::None, config::at_least(0),
          "coordinate descent sweeps at most", config::Source::Shared, "lasso.max_iter"},
-        {"alpha", &Params::alpha, Unit::ReflectanceDelta, config::at_least(0),
+        {"lasso.alpha", &Params::lasso_alpha, Unit::ReflectanceDelta, config::at_least(0),
          "the L1 penalty", config::Source::Shared, "lasso.alpha"},
-        {"tolerance", &Params::tolerance, Unit::None, config::at_least(0),
+        {"lasso.tolerance", &Params::lasso_tolerance, Unit::None, config::at_least(0),
          "a sweep whose largest update is at most this times max(largest coefficient, "
          "coef_floor) checks the duality gap", config::Source::Shared, "lasso.tolerance"},
-        {"coef_floor", &Params::coef_floor, Unit::ReflectanceDelta, config::at_least(0),
-         "the least coefficient size the tolerance scales", config::Source::Shared,
-         "lasso.coef_floor"},
+        {"lasso.coef_floor", &Params::lasso_coef_floor, Unit::ReflectanceDelta,
+         config::at_least(0), "the least coefficient size the tolerance scales",
+         config::Source::Shared, "lasso.coef_floor"},
     };
     return s;
 }
@@ -180,7 +180,7 @@ const std::vector<config::Field<LassoEdges::Params>>& LassoEdges::schema()
 std::unique_ptr<Scratch> LassoEdges::make_scratch() const
 {
     return std::make_unique<EdgeScratch>(
-        LassoOptions{p_.max_iter, p_.alpha, p_.tolerance, p_.coef_floor});
+        LassoOptions{p_.lasso_max_iter, p_.lasso_alpha, p_.lasso_tolerance, p_.lasso_coef_floor});
 }
 
 ChangeModel LassoEdges::catch_window(ArrayView<const std::int64_t, 1> dates,
@@ -188,7 +188,7 @@ ChangeModel LassoEdges::catch_window(ArrayView<const std::int64_t, 1> dates,
                                      CurveQA curve_qa, Scratch& scratch) const
 {
     EdgeScratch& s = static_cast<EdgeScratch&>(scratch);
-    return catch_segment(dates, spectral, window, p_.coefficients, curve_qa, s.workspace,
+    return catch_segment(dates, spectral, window, p_.coefficients_min, curve_qa, s.workspace,
                          s.solver);
 }
 
@@ -197,7 +197,7 @@ FitResult LassoEdges::whole_series(PixelProcedure procedure, const PixelSeries& 
 {
     EdgeScratch& s = static_cast<EdgeScratch&>(scratch);
     return fit_whole_series(procedure, pixel, std::move(mask), p_.min_observations,
-                            p_.coefficients, s.workspace, s.solver);
+                            p_.coefficients_min, s.workspace, s.solver);
 }
 
 } // namespace strategies

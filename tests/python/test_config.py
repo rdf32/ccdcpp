@@ -98,7 +98,7 @@ class Presets(unittest.TestCase):
 
     def test_resolved_on_dn_it_is_pyccds_tree(self):
         r = ccdcpp.config("ccdc").resolve(ccdcpp.Input())
-        self.assertEqual(r["model"]["alpha"], 1.0)
+        self.assertEqual(r["model"]["lasso.alpha"], 1.0)
         self.assertEqual(r["change_test"]["change_threshold"],
                          15.086272469388987)
         self.assertEqual(r["outlier"]["threshold"], 35.888186879610423)
@@ -260,10 +260,11 @@ class Replace(unittest.TestCase):
         self.assertEqual(ccdcpp.config().shared()["change_probability"], 0.99)
 
     def test_a_stage_cannot_set_a_shared_value(self):
-        with self.assertRaisesRegex(ValueError, "^model 'lasso' parameter 'alpha' is the shared "
-                                                "value 'lasso.alpha'; set shared 'lasso.alpha' "
-                                                "instead$"):
-            ccdcpp.config().replace(model__alpha=1.0)
+        # A parameter is named for the shared value it reads: model__lasso__alpha.
+        with self.assertRaisesRegex(ValueError, "^model 'lasso' parameter 'lasso.alpha' is the "
+                                                "shared value 'lasso.alpha'; set shared "
+                                                "'lasso.alpha' instead$"):
+            ccdcpp.config().replace(model__lasso__alpha=1.0)
         with self.assertRaisesRegex(ValueError, "parameter 'change_threshold' is derived from "
                                                 "the shared value 'change_probability'"):
             ccdcpp.config().replace(change_test__change_threshold=1.0)
@@ -370,9 +371,9 @@ class Strategies(unittest.TestCase):
         self.assertEqual(refit["factor"]["bounds"], "greater than 0")
         self.assertEqual(refit["factor"]["source"], "own")
         lasso = {p["name"]: p for p in table["model"]["lasso"]}
-        self.assertEqual((lasso["alpha"]["source"], lasso["alpha"]["from"]),
+        self.assertEqual((lasso["lasso.alpha"]["source"], lasso["lasso.alpha"]["from"]),
                          ("shared", "lasso.alpha"))
-        self.assertIsNone(lasso["alpha"]["default"])
+        self.assertIsNone(lasso["lasso.alpha"]["default"])
         chi2 = {p["name"]: p for p in table["change_test"]["chi2"]}
         self.assertEqual((chi2["change_threshold"]["source"], chi2["change_threshold"]["from"]),
                          ("chi2", "change_probability"))

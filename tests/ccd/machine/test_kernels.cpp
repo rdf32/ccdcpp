@@ -367,7 +367,7 @@ std::int64_t preset_count(const char* stage, const char* name)
 // edge_segments' coefficient count in the preset.
 index_t edge_coefficients()
 {
-    return static_cast<index_t>(preset_count("edge_segments", "coefficients"));
+    return static_cast<index_t>(preset_count("edge_segments", "coefficients.min"));
 }
 
 } // namespace

@@ -319,7 +319,7 @@ ccd::FitResult run_insufficient_clear(
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(tree, "edge_segments", "min_observations")),
         static_cast<ccd::index_t>(
-            golden::parameter<std::int64_t>(tree, "edge_segments", "coefficients")),
+            golden::parameter<std::int64_t>(tree, "edge_segments", "coefficients.min")),
         lworkspace,
         solver
     );

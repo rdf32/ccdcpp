@@ -35,7 +35,7 @@ print(cfg.preprocess("insufficient_clear")["steps"][4], cfg.shared()["lasso"]["a
 
 plan = ccdcpp.plan_of(cfg, ccdcpp.Input())
 print(plan.insufficient_clear.chain[4])
-print(cfg.resolve(ccdcpp.Input())["model"]["alpha"], plan.standard.chain[2])
+print(cfg.resolve(ccdcpp.Input())["model"]["lasso.alpha"], plan.standard.chain[2])
 ```
 
 ```text

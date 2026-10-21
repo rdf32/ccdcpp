@@ -220,7 +220,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
               ccd::config::roles({"green", "red", "nir", "swir1", "swir2"}));
     EXPECT_EQ(preset.stages.at("window_screen").params.at("bands"),
               ccd::config::roles({"green", "swir1"}));
-    EXPECT_EQ(preset.stages.at("model").params.count("alpha"), 0u);
+    EXPECT_EQ(preset.stages.at("model").params.count("lasso.alpha"), 0u);
     EXPECT_EQ(preset.stages.at("change_test").params.count("change_threshold"), 0u);
 
     // The tree the preset was in Collection-1 DN, every parameter.
@@ -232,40 +232,40 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
                                   {"peek_size", integer(6)},
                                   {"seasonal_count", integer(24)},
                                   {"seasonal_divisor", real(4.0)}}}},
-        {"edge_segments", {"lasso", {{"alpha", real(1.0)},
-                                {"coef_floor", real(1.0)},
-                                {"coefficients", integer(4)},
-                                {"max_iter", integer(1000)},
-                                {"min_observations", integer(12)},
-                                {"tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
+        {"edge_segments", {"lasso", {{"coefficients.min", integer(4)},
+                                {"lasso.alpha", real(1.0)},
+                                {"lasso.coef_floor", real(1.0)},
+                                {"lasso.max_iter", integer(1000)},
+                                {"lasso.tolerance", real(0x1.a36e2eb1c432dp-14)},
+                                {"min_observations", integer(12)}}}},
         {"lookback", {"pyccd", {{"change_probability", real(0x1.fae147ae147aep-1)},
                                 {"change_threshold", real(0x1.e2c2be7b52448p+3)},
                                 {"outlier_threshold", real(0x1.1f1b01b9054dfp+5)},
                                 {"peek", ccd::config::Value(std::string("change_test"))}}}},
         {"mode", {"pyccd", {{"clear_pct_threshold", real(0.25)},
                             {"snow_pct_threshold", real(0.75)}}}},
-        {"model", {"lasso", {{"alpha", real(1.0)},
-                             {"coef_floor", real(1.0)},
-                             {"coefficient_max", integer(8)},
-                             {"coefficient_mid", integer(6)},
-                             {"coefficient_min", integer(4)},
-                             {"max_iter", integer(1000)},
-                             {"num_obs_factor", integer(3)},
-                             {"tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
+        {"model", {"lasso", {{"coefficients.max", integer(8)},
+                             {"coefficients.mid", integer(6)},
+                             {"coefficients.min", integer(4)},
+                             {"coefficients.per", integer(3)},
+                             {"lasso.alpha", real(1.0)},
+                             {"lasso.coef_floor", real(1.0)},
+                             {"lasso.max_iter", integer(1000)},
+                             {"lasso.tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
         {"noise", {"variogram", {{"min_lag_days", integer(30)}}}},
         {"outlier", {"floored", {{"statistic", ccd::config::Value(std::string("change_magnitude"))},
                                  {"threshold", real(0x1.1f1b01b9054dfp+5)}}}},
         {"refit", {"span-factor", {{"factor", real(0x1.547ae147ae148p+0)},
                                    {"min_obs", integer(24)}}}},
         {"segment_report", {"model-fit", {}}},
-        {"stability_fit", {"lasso", {{"alpha", real(1.0)},
-                                     {"coef_floor", real(1.0)},
-                                     {"coefficient_max", integer(8)},
-                                     {"coefficient_mid", integer(6)},
-                                     {"coefficient_min", integer(4)},
-                                     {"max_iter", integer(1000)},
-                                     {"num_obs_factor", integer(3)},
-                                     {"tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
+        {"stability_fit", {"lasso", {{"coefficients.max", integer(8)},
+                                     {"coefficients.mid", integer(6)},
+                                     {"coefficients.min", integer(4)},
+                                     {"coefficients.per", integer(3)},
+                                     {"lasso.alpha", real(1.0)},
+                                     {"lasso.coef_floor", real(1.0)},
+                                     {"lasso.max_iter", integer(1000)},
+                                     {"lasso.tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
         {"stability_rule", {"pyccd", {{"change_probability", real(0x1.fae147ae147aep-1)},
                                       {"change_threshold", real(0x1.e2c2be7b52448p+3)},
                                       {"peek", ccd::config::Value(std::string("change_test"))}}}},
@@ -411,10 +411,10 @@ TEST(Registry, SharedValuesReachTheirStages)
     const auto lasso = golden::with_shared(golden::ccdc(), "lasso.alpha", real(0.5));
     for (const char* stage : {"model", "stability_fit", "edge_segments"})
     {
-        EXPECT_EQ(golden::parameter<double>(ccd::config::resolve(r, lasso, reflectance).stages, stage, "alpha"),
+        EXPECT_EQ(golden::parameter<double>(ccd::config::resolve(r, lasso, reflectance).stages, stage, "lasso.alpha"),
                   0.5)
             << stage;
-        EXPECT_EQ(golden::parameter<double>(ccd::config::resolve(r, lasso, ccd::Input{}).stages, stage, "alpha"),
+        EXPECT_EQ(golden::parameter<double>(ccd::config::resolve(r, lasso, ccd::Input{}).stages, stage, "lasso.alpha"),
                   0.5 * 10000.0)
             << stage;
     }
@@ -442,18 +442,18 @@ TEST(Registry, SharedValuesReachTheirStages)
     EXPECT_EQ(ccd::config::resolve(r, probable, ccd::Input{}).shared.detection_bands,
               (ccd::BandList{2, 3, 4, 5}));
 
-    // edge_segments' coefficients are the coefficient rule's minimum.
+    // edge_segments' coefficients.min is the coefficient rule's minimum.
     const auto six = golden::with_shared(golden::ccdc(), "coefficients.min", ccd::config::integer(6));
     EXPECT_EQ(golden::parameter<std::int64_t>(ccd::config::resolve(r, six, ccd::Input{}).stages, "edge_segments",
-                                              "coefficients"),
+                                              "coefficients.min"),
               6);
 
     // A stage setting a shared or derived value is refused, naming it.
     auto copy = golden::ccdc();
-    copy.stages["model"].params["alpha"] = real(1.0);
+    copy.stages["model"].params["lasso.alpha"] = real(1.0);
     expect_refused([&] { ccd::config::check(r, copy); },
-                   "model 'lasso' parameter 'alpha' is the shared value 'lasso.alpha'; set shared "
-                   "'lasso.alpha' instead");
+                   "model 'lasso' parameter 'lasso.alpha' is the shared value 'lasso.alpha'; set "
+                   "shared 'lasso.alpha' instead");
     copy = golden::ccdc();
     copy.stages["outlier"].params["threshold"] = real(30.0);
     expect_refused([&] { ccd::config::resolve(r, copy, ccd::Input{}); },
@@ -476,7 +476,7 @@ TEST(Registry, SharedValuesReachTheirStages)
     // The listing names each parameter's source.
     const auto schemas = r.schemas();
     for (const auto& p : schemas.at("model").at("lasso"))
-        if (p.name == "alpha")
+        if (p.name == "lasso.alpha")
         {
             EXPECT_EQ(p.source, ccd::config::Source::Shared);
             EXPECT_EQ(p.from, "lasso.alpha");
@@ -628,8 +628,8 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
                                                                    ccd::config::real(NAN))); },
                    "shared lasso parameter 'alpha' is nan");
     expect_refused(
-        [&] { r.make<ccd::MonitoringModel>({"lasso", {{"alpha", ccd::config::real(-1)}}}); },
-        "model 'lasso' parameter 'alpha' is -1; it must be at least 0");
+        [&] { r.make<ccd::MonitoringModel>({"lasso", {{"lasso.alpha", ccd::config::real(-1)}}}); },
+        "model 'lasso' parameter 'lasso.alpha' is -1; it must be at least 0");
 }
 
 // chi2's peek is adjust_peek() of its parameters (peek_size and
@@ -866,8 +866,8 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
     const auto count = [&](const char* stage, const char* name)
     { return static_cast<ccd::index_t>(golden::parameter<std::int64_t>(tree, stage, name)); };
     const ccd::index_t peek_size = count("change_test", "peek_size");
-    const ccd::index_t coefficient_min = count("stability_fit", "coefficient_min");
-    const ccd::index_t coefficient_max = count("stability_fit", "coefficient_max");
+    const ccd::index_t coefficient_min = count("stability_fit", "coefficients.min");
+    const ccd::index_t coefficient_max = count("stability_fit", "coefficients.max");
     const double threshold = golden::parameter<double>(tree, "stability_rule", "change_threshold");
 
     // 24 observations, 16 days apart, of a flat series with noise: a fit
@@ -1149,10 +1149,10 @@ TEST(EdgeSegments, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     const ccd::config::ConfigTree tree = golden::resolved(config, reflectance).stages;
     const auto& edges = tree.at("edge_segments");
     EXPECT_EQ(edges.strategy, "lasso");
-    EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients")), 6);
+    EXPECT_EQ(std::get<std::int64_t>(edges.params.at("coefficients.min")), 6);
     EXPECT_EQ(std::get<std::int64_t>(edges.params.at("min_observations")), 15);
     EXPECT_EQ(golden::parameter<std::int64_t>(tree, "start_search", "meow_size"), 15);
-    EXPECT_EQ(std::get<double>(edges.params.at("alpha")), 0.5);
+    EXPECT_EQ(std::get<double>(edges.params.at("lasso.alpha")), 0.5);
     EXPECT_EQ(tree.at("segment_report").strategy, "model-fit");
     EXPECT_EQ(tree.at("mode").strategy, "pyccd");
 
