@@ -3,8 +3,8 @@
 usage: python test_real_fixtures.py <module_dir> <source_dir> [--write-expected] [unittest args]
 
 <module_dir> holds the built extension; <source_dir> is the repository root.
-The package is test_profiles' (imported from beside this file). ctest runs
-this as `python_real_fixtures`.
+The package is assembled as the wheel lays it out (_harness.use_package()).
+ctest runs this as `python_real_fixtures`.
 
 The inputs are the raw values of four pixels of MGRS tile T16SGC, 2020-2023,
 in HLS v2.0 L30 and S30 and Sentinel-2 L2A, from Planetary Computer; see
@@ -29,8 +29,9 @@ import unittest
 from collections.abc import Callable
 from typing import Any
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import test_profiles as tp  # noqa: E402  (reads and removes argv[1:3])
+from _harness import SOURCE_DIR, use_package
+
+_INIT = use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
@@ -39,11 +40,13 @@ import ccdcpp  # noqa: E402
 from ccdcpp import presets  # noqa: E402
 from ccdcpp.results import PixelResult  # noqa: E402
 
+assert ccdcpp.__file__ == _INIT, ccdcpp.__file__
+
 WRITE = "--write-expected" in sys.argv
 if WRITE:
     sys.argv.remove("--write-expected")
 
-FIXTURES = os.path.join(tp.SOURCE_DIR, "tests", "python", "fixtures", "t16sgc_2020_2023")
+FIXTURES = os.path.join(SOURCE_DIR, "tests", "python", "fixtures", "t16sgc_2020_2023")
 
 #: Fixture pixel -> file suffix (0-based chunk row and column of ARD chunk
 #: h024v013/00030008) and the name its tests carry.

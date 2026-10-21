@@ -8,9 +8,7 @@ the repository root. ctest runs this as `python_bindings`.
 """
 from __future__ import annotations
 
-import glob
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,15 +17,15 @@ import unittest
 from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypedDict
 
-MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
-del sys.argv[1:3]
-sys.path.insert(0, MODULE_DIR)
+from _harness import SOURCE_DIR, assemble, use_extension
+
+use_extension()
 
 import numpy as np  # noqa: E402
 from numpy.typing import DTypeLike, NDArray  # noqa: E402
 
 if TYPE_CHECKING:
-    # MODULE_DIR's ccdcpp is the extension module itself, which ccdcpp/ccdcpp.pyi types.
+    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
     from ccdcpp import ccdcpp
 else:
     import ccdcpp
@@ -743,23 +741,17 @@ class Version(unittest.TestCase):
         self.assertEqual(ccdcpp.__version__, self.pyproject_version())
 
     def test_package_exposes_it(self):
-        # The wheel layout: python/ccdcpp/*.py next to the extension.
-        # Run in a fresh interpreter so the extension imported above is not
-        # the one found.
-        (extension,) = glob.glob(os.path.join(MODULE_DIR, "ccdcpp.*"))
+        # The wheel layout, in a fresh interpreter so the extension imported
+        # above is not the one found.
         with tempfile.TemporaryDirectory() as root:
-            package = os.path.join(root, "ccdcpp")
-            os.mkdir(package)
-            for source in glob.glob(os.path.join(SOURCE_DIR, "python", "ccdcpp", "*.py")):
-                shutil.copy(source, package)
-            shutil.copy(extension, package)
+            init = assemble(root)
             out = subprocess.run(
                 [sys.executable, "-I", "-c",
                  "import sys; sys.path.insert(0, sys.argv[1]); import ccdcpp; "
                  "print(ccdcpp.__file__); print(ccdcpp.__version__)", root],
                 check=True, capture_output=True, text=True,
             ).stdout.split()
-        self.assertEqual(out[0], os.path.join(package, "__init__.py"))
+        self.assertEqual(out[0], init)
         self.assertEqual(out[1], self.pyproject_version())
 
 

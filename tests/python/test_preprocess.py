@@ -4,29 +4,29 @@ usage: python test_preprocess.py <module_dir> <source_dir> [unittest args]
 
 <module_dir> holds the built extension; <source_dir> is the repository root.
 The package, the corpus cube and the comparison helpers are test_profiles'
-(imported from beside this file). ctest runs this as `python_preprocess`.
+(imported from beside this file, its package assembled by _harness.use_package()).
+ctest runs this as `python_preprocess`.
 """
 from __future__ import annotations
 
 import os
-import sys
 import tomllib
 import unittest
 from collections.abc import Mapping
 from typing import Any
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _harness import MODULE_DIR, SOURCE_DIR
 
-import test_profiles as tp  # noqa: E402  (reads and removes argv[1:3])
+import test_profiles as tp  # its package, corpus and helpers
 
-import numpy as np  # noqa: E402
-from numpy.typing import NDArray  # noqa: E402
+import numpy as np
+from numpy.typing import NDArray
 
-import ccdcpp  # noqa: E402
-from ccdcpp import presets  # noqa: E402
-from ccdcpp.results import PixelResult  # noqa: E402
+import ccdcpp
+from ccdcpp import presets
+from ccdcpp.results import PixelResult
 
-from ccdcpp import (  # noqa: E402
+from ccdcpp import (
     AddQa,
     BandRange,
     OnePerDate,
@@ -181,7 +181,7 @@ class Plans(unittest.TestCase):
         self.assertEqual(repr(step), "<Step BandRange bands [0, 1], 0 <= x < 1>")
 
     def test_readme_lists_the_ccdc_plan(self):
-        with open(os.path.join(tp.SOURCE_DIR, "README.md"), encoding="utf-8") as f:
+        with open(os.path.join(SOURCE_DIR, "README.md"), encoding="utf-8") as f:
             readme = f.read()
         self.assertIn(ccdcpp.plan_of("ccdc", ccdcpp.Input()).describe(), readme)
 
@@ -393,7 +393,7 @@ class Replace(unittest.TestCase):
         text = cfg.to_toml()
         self.assertIn("[preprocess.standard]", text)
         tomllib.loads(text)
-        path = os.path.join(tp.MODULE_DIR, "test_preprocess_round_trip.toml")
+        path = os.path.join(MODULE_DIR, "test_preprocess_round_trip.toml")
         with open(path, "w") as f:
             f.write(text)
         try:
@@ -401,7 +401,7 @@ class Replace(unittest.TestCase):
         finally:
             os.remove(path)
         # A file that extends "ccdc" and gives one procedure.
-        path = os.path.join(tp.MODULE_DIR, "test_preprocess_extends.toml")
+        path = os.path.join(MODULE_DIR, "test_preprocess_extends.toml")
         with open(path, "w") as f:
             f.write('extends = "ccdc"\n\n[preprocess.snow]\n'
                     'steps = [{step = "keep_qa", codes = ["clear", "water"]}, '

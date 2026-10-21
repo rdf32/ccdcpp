@@ -7,9 +7,6 @@ nlcd table and against pyccd itself are in test_qa_references.py.
 """
 from __future__ import annotations
 
-import glob
-import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,15 +14,15 @@ import unittest
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
-MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
-del sys.argv[1:3]
-sys.path.insert(0, MODULE_DIR)
+from _harness import assemble, use_extension
+
+use_extension()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
 
 if TYPE_CHECKING:
-    # MODULE_DIR's ccdcpp is the extension module itself, which ccdcpp/ccdcpp.pyi types.
+    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
     from ccdcpp import ccdcpp
 else:
     import ccdcpp
@@ -436,13 +433,8 @@ class Validation(unittest.TestCase):
 class Package(unittest.TestCase):
     def test_package_exposes_qa_tables(self):
         # The wheel layout, in a fresh interpreter; see test_bindings.py.
-        (extension,) = glob.glob(os.path.join(MODULE_DIR, "ccdcpp.*"))
         with tempfile.TemporaryDirectory() as root:
-            package = os.path.join(root, "ccdcpp")
-            os.mkdir(package)
-            for source in glob.glob(os.path.join(SOURCE_DIR, "python", "ccdcpp", "*.py")):
-                shutil.copy(source, package)
-            shutil.copy(extension, package)
+            assemble(root)
             out = subprocess.run(
                 [sys.executable, "-I", "-c",
                  "import sys; sys.path.insert(0, sys.argv[1]); "

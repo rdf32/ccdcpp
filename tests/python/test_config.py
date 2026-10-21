@@ -3,38 +3,29 @@
 usage: python test_config.py <module_dir> <source_dir> [unittest args]
 
 <module_dir> holds the built extension; <source_dir> is the repository root.
-The package is assembled as the wheel lays it out (python/ccdcpp/*.py and
-python/ccdcpp/configs next to the extension) in <module_dir>/test_config_package.
+The package is assembled as the wheel lays it out (_harness.use_package()).
 ctest runs this as `python_config`.
 """
 from __future__ import annotations
 
-import glob
 import os
 import pickle
 import re
 import shutil
-import sys
 import unittest
 
-MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
-del sys.argv[1:3]
+from _harness import use_package
 
-_ROOT = os.path.join(MODULE_DIR, "test_config_package")
-shutil.rmtree(_ROOT, ignore_errors=True)
-_PACKAGE = os.path.join(_ROOT, "ccdcpp")
-shutil.copytree(os.path.join(SOURCE_DIR, "python", "ccdcpp"), _PACKAGE,
-                ignore=shutil.ignore_patterns("__pycache__"))
-(_extension,) = glob.glob(os.path.join(MODULE_DIR, "ccdcpp.*"))
-shutil.copy(_extension, _PACKAGE)
-sys.path.insert(0, _ROOT)
+_INIT = use_package()
+_PACKAGE = os.path.dirname(_INIT)
+_ROOT = os.path.dirname(_PACKAGE)
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 
-assert ccdcpp.__file__ == os.path.join(_PACKAGE, "__init__.py"), ccdcpp.__file__
+assert ccdcpp.__file__ == _INIT, ccdcpp.__file__
 
 
 def pixel(seed: int = 3,

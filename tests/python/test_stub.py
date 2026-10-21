@@ -13,17 +13,16 @@ import ast
 import inspect
 import os
 import re
-import sys
 import unittest
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
-MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
-del sys.argv[1:3]
-sys.path.insert(0, MODULE_DIR)
+from _harness import SOURCE_DIR, use_extension
+
+use_extension()
 
 if TYPE_CHECKING:
-    # MODULE_DIR's ccdcpp is the extension module itself, which ccdcpp/ccdcpp.pyi types.
+    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
     from ccdcpp import ccdcpp
 else:
     import ccdcpp

@@ -3,43 +3,28 @@
 usage: python test_profiles.py <module_dir> <source_dir> [unittest args]
 
 <module_dir> holds the built extension; <source_dir> is the repository root.
-The package is assembled as the wheel lays it out, python/ccdcpp/*.py next to
-the extension, in a temporary directory. ctest runs this as
-`python_profiles`.
+The package is assembled as the wheel lays it out (_harness.use_package()).
+ctest runs this as `python_profiles`.
 """
 from __future__ import annotations
 
 import copy
 import dataclasses
-import glob
 import inspect
 import os
 import pickle
 import pydoc
-import shutil
-import sys
 import unittest
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import Any
 from unittest import mock
 
-MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
-del sys.argv[1:3]
+# The package as the wheel lays it out, one per test file that imports this
+# one (test_preprocess.py and test_real_fixtures.py do).
+from _harness import SOURCE_DIR, use_package  # noqa: E402
 
-# The package as the wheel lays it out (python/ccdcpp with its configs, the
-# extension beside them), in the build directory.
-# One per test file that runs this setup (test_preprocess.py and
-# test_real_fixtures.py import it), so parallel runs do not share it.
-_ROOT = os.path.join(MODULE_DIR, "test_package_" +
-                     os.path.splitext(os.path.basename(sys.argv[0]))[0])
-shutil.rmtree(_ROOT, ignore_errors=True)
-_PACKAGE = os.path.join(_ROOT, "ccdcpp")
-shutil.copytree(os.path.join(SOURCE_DIR, "python", "ccdcpp"), _PACKAGE,
-                ignore=shutil.ignore_patterns("__pycache__"))
-(_extension,) = glob.glob(os.path.join(MODULE_DIR, "ccdcpp.*"))
-shutil.copy(_extension, _PACKAGE)
-sys.path.insert(0, _ROOT)
+_INIT = use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
@@ -48,7 +33,7 @@ import ccdcpp  # noqa: E402
 from ccdcpp import presets  # noqa: E402
 from ccdcpp.results import Model, PixelResult  # noqa: E402
 
-assert ccdcpp.__file__ == os.path.join(_PACKAGE, "__init__.py"), ccdcpp.__file__
+assert ccdcpp.__file__ == _INIT, ccdcpp.__file__
 
 EXT = ccdcpp.ccdcpp
 START = 724276  # 1984-01-01
