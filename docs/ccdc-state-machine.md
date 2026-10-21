@@ -101,7 +101,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 | Phase | One call | Next |
 |---|---|---|
-| `Prepare` (`prepare`) | The early exits; the statistics window; the peek plan (the change test's `prepare()`, the pixel's peek); the stability rule's and the lookback's `prepare()`; the stability fit's and the monitoring model's coefficient rules; the variogram; the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
+| `Prepare` (`prepare`) | The early exits; the statistics window; the peek plan (the change test's `prepare()`, the pixel's peek); the stability rule's and the lookback's `prepare()`; the stability fit's and the monitoring model's coefficient rules; the band noise (the `noise` stage); the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
 | `Initialize` (`initialize`) | One candidate start window: `initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
 | `Lookback` (`lookback`) | One observation before the window: `lookback_step` returns a `LookbackOutcome` | itself while `window.start > prev_break`; then StartCatch, Extend or EndCatch |
 | `StartCatch` (`start_catch`) | The first segment's leading observations as a Start segment (curve_qa 14) | Extend or EndCatch |
@@ -178,7 +178,7 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
 | `peek_plan` (`PeekPlan`, `include/ccd/strategies/stages.hpp`) | the peek the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | a shared type, chosen by the change test |
-| `variogram` (`Variogram`, `include/ccd/strategies/stages.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
+| `noise` (`BandNoise`, `include/ccd/strategies/stages.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `stability_coefficients`, `coefficients` (`CoefficientRule`) | the stability fit's and the monitoring model's coefficient rules: Initialize's and Extend's fits | a shared type, the strategies' |
 | `stability_model`, `stability`, `lookback`, `edges`, `segment_report` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's, the lookback's, edge_segments' and segment_report's per-pixel scratch, each a `PerThread` of its strategy, made by `State::bind` before the pixel | Standard's |
 | `extend` (`ExtendState`) | what Extend carries from one peek test to the next | Standard's |
@@ -276,7 +276,7 @@ struct Shortened final : ccd::ChangeTest
 ```
 
 At an Extend peek every stage reads one `Peek` (the model, the windows, the peek's residuals,
-the variogram and the detection bands), and the change test writes what it found into a
+the band noise and the detection bands), and the change test writes what it found into a
 `PeekResult` (the comparison RMSE and its per-observation statistics by name, chi2's
 `change_magnitude`), which the outlier rule reads, selecting a statistic by name (floored's
 `statistic`). What each strategy provides and needs is declared as `Capabilities`
@@ -379,7 +379,7 @@ record:
 | `MaskedSeries` | `include/ccd/input/masked_series.hpp` |
 | `Window`, `span`, `count_through` | `include/ccd/core/window.hpp` |
 | `ChangeModel`, `BandFit`, `FitResult`, `CurveQA` | `include/ccd/results/segment.hpp` |
-| `Variogram`, with the stage interfaces | `include/ccd/strategies/stages.hpp` |
+| `BandNoise`, with the stage interfaces | `include/ccd/strategies/stages.hpp` |
 | `KeepResiduals`, with the `Model` contract | `include/ccd/strategies/model.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
 

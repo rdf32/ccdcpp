@@ -50,7 +50,7 @@ Peek peek_of(const Context& context, const State& state)
     return Peek{*extend.model, state.series.dates(), state.series.spectral(),
                     state.cursor.window,
                     extend.fit_window, extend.fits, extend.peek, extend.residuals,
-                    state.variogram, context.shared.detection_bands};
+                    state.noise, context.shared.detection_bands};
 }
 
 } // namespace
@@ -351,14 +351,14 @@ Phase prepare(const Context& context, State& state)
     //----------------------------------------------------------
     prepare_stages(context, state, stat_dates);
 
-    state.variogram.bands = context.strategies.noise->estimate(stat_dates, stat_spectral);
+    state.noise.bands = context.strategies.noise->estimate(stat_dates, stat_spectral);
 
-    if (!state.variogram.usable())
+    if (!state.noise.usable())
     {
         LOG_DEBUG("variogram has nans");
         return done_because(state, Exit::VariogramNaN);
     }
-    LOG_DEBUG("Variogram values: " << state.variogram.bands);
+    LOG_DEBUG("Band noise: " << state.noise.bands);
 
     state.cursor = Cursor{context.strategies.start_search->first(0), 0};
 
@@ -402,7 +402,7 @@ Screened screen_window(const Context& context, State& state,
     const StartSearch& search = *context.strategies.start_search;
     Window& window = state.cursor.window;
 
-    auto outliers = context.strategies.window_screen->screen(dates, spectral, state.variogram);
+    auto outliers = context.strategies.window_screen->screen(dates, spectral, state.noise);
     LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
     //--------------------------------------------------------------------------
     // The screen removed everything
@@ -449,7 +449,7 @@ bool fit_stable(const Context& context, State& state,
     return context.strategies.stability_rule->stable(
         fit,
         dates,
-        state.variogram,
+        state.noise,
         detection_bands,
         *state.stability);
 }
@@ -592,7 +592,7 @@ LookbackOutcome lookback_step(const Context& context, State& state)
 
     const LookbackJudgement judged = context.strategies.lookback->judge(
         *state.stability_model, series.dates(), series.spectral(), window,
-        state.cursor.prev_break, state.variogram, context.shared.detection_bands, *state.lookback);
+        state.cursor.prev_break, state.noise, context.shared.detection_bands, *state.lookback);
 
     switch (judged.verdict)
     {

@@ -57,7 +57,7 @@ struct PyccdLookback final : Lookback
     void prepare(const PeekPlan& peek, index_t detection_bands, Scratch& scratch) const override;
     LookbackJudgement judge(Model& fit, ArrayView<const std::int64_t, 1> dates,
                             ArrayView<const scalar_t, 2> spectral, const Window& window,
-                            index_t prev_break, const Variogram& variogram,
+                            index_t prev_break, const BandNoise& variogram,
                             const BandList& bands, Scratch& scratch) const override;
 
 private:

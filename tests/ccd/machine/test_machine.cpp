@@ -176,7 +176,7 @@ struct Record
     // A variogram of `value` in every band, as Prepare would leave one.
     void with_variogram(scalar_t value)
     {
-        state.variogram.bands.assign(7, value);
+        state.noise.bands.assign(7, value);
     }
 
     // Initialize's stable fits over (start, stop), as a Stable step leaves
@@ -407,7 +407,7 @@ TEST(StandardPrepare, SetsThePeekPlanAndTheCursor)
     const ccd::CoefficientRule& c = r.state.stability_coefficients;
     EXPECT_EQ(c.min, r.count("stability_fit", "coefficients.min"));
     EXPECT_EQ(c.max, r.count("stability_fit", "coefficients.max"));
-    EXPECT_EQ(r.state.variogram.bands.size(), 7u);
+    EXPECT_EQ(r.state.noise.bands.size(), 7u);
 }
 
 TEST(StandardPrepare, NoRoomForAStartWindowGoesToTheEndCatch)
@@ -800,7 +800,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     const auto magnitude_with = [&](const std::vector<double>& rmse)
     {
         std::vector<double> m;
-        ccd::change_magnitude(e.residuals, bands, r.state.variogram, rmse, m);
+        ccd::change_magnitude(e.residuals, bands, r.state.noise, rmse, m);
         return m;
     };
     std::vector<double> rmse(bands.size());
@@ -841,7 +841,7 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
         rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
                                      r.real("change_test", "seasonal_divisor"));
     std::vector<double> want;
-    ccd::change_magnitude(e.residuals, bands, r.state.variogram, rmse, want);
+    ccd::change_magnitude(e.residuals, bands, r.state.noise, rmse, want);
     EXPECT_EQ(e.result.comparison_rmse, rmse);
     EXPECT_EQ(*e.result.find("change_magnitude"), want);
 }

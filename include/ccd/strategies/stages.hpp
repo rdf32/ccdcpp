@@ -125,14 +125,14 @@ struct Noise
 };
 
 //------------------------------------------------------------------------------
-// Variogram
+// BandNoise
 //
 // One pixel's per-band noise floor: the noise stage's estimate() of its
 // statistics-window observations, one value per spectral row, in row order.
 // Computed once per pixel and read, never written, by Tmask, the stability
 // check and the change magnitudes. Not tied to a procedure.
 //------------------------------------------------------------------------------
-struct Variogram
+struct BandNoise
 {
     std::vector<scalar_t> bands;
 
@@ -141,8 +141,8 @@ struct Variogram
         return bands[band];
     }
 
-    // No band is NaN. A procedure stops without segments on a variogram
-    // that is not usable.
+    // No band is NaN. A procedure stops without segments when its noise
+    // is not usable.
     bool usable() const
     {
         for (const scalar_t band : bands)
@@ -235,7 +235,7 @@ struct PeekPlan
 // long enough, and grows the window when every observation is one.
 //
 //   dates, spectral   the window's observations (spectral is (B, n))
-//   variogram         the pixel's noise floor
+//   noise             the pixel's noise floor
 //------------------------------------------------------------------------------
 struct WindowScreen
 {
@@ -246,7 +246,7 @@ struct WindowScreen
     virtual ~WindowScreen() = default;
     virtual ProcessingMask screen(ArrayView<const std::int64_t, 1> dates,
                                   ArrayView<const scalar_t, 2> spectral,
-                                  const Variogram& variogram) const = 0;
+                                  const BandNoise& noise) const = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -288,7 +288,7 @@ struct StabilityRule
     virtual void prepare(const PeekPlan& peek, index_t detection_bands,
                          Scratch& scratch) const = 0;
     virtual bool stable(const Model& fit, ArrayView<const std::int64_t, 1> dates,
-                        const Variogram& variogram, const BandList& bands,
+                        const BandNoise& noise, const BandList& bands,
                         const Scratch& scratch) const = 0;
 };
 
@@ -333,7 +333,7 @@ struct Lookback
                          Scratch& scratch) const = 0;
     virtual LookbackJudgement judge(Model& fit, ArrayView<const std::int64_t, 1> dates,
                                     ArrayView<const scalar_t, 2> spectral, const Window& window,
-                                    index_t prev_break, const Variogram& variogram,
+                                    index_t prev_break, const BandNoise& noise,
                                     const BandList& bands, Scratch& scratch) const = 0;
 };
 
@@ -417,7 +417,7 @@ struct Peek
     index_t fit;                                           // that refit's number: a new one per refit
     Window peek;
     const std::vector<std::vector<scalar_t>>& residuals;   // by band, over the peek
-    const Variogram& variogram;
+    const BandNoise& noise;
     const BandList& bands;                                 // the detection bands
 };
 

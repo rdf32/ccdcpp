@@ -130,7 +130,7 @@ void PyccdLookback::prepare(const PeekPlan& peek, index_t detection_bands,
 LookbackJudgement PyccdLookback::judge(Model& model, ArrayView<const std::int64_t, 1> masked_dates,
                                        ArrayView<const scalar_t, 2> masked_spectral,
                                        const Window& window, index_t prev_break,
-                                       const Variogram& variogram,
+                                       const BandNoise& variogram,
                                        const BandList& detection_bands, Scratch& scratch) const
 {
     LookbackScratch& s = static_cast<LookbackScratch&>(scratch);

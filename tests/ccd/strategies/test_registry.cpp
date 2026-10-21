@@ -830,7 +830,7 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 
     const std::int64_t day = 730000;
     const std::vector<std::vector<double>> residuals;
-    const ccd::Variogram variogram;
+    const ccd::BandNoise variogram;
     const ccd::BandList bands;
     const auto model = golden::core_registry()
                            .make<ccd::MonitoringModel>({"lasso", {}})
@@ -885,7 +885,7 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
         }
     }
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
-    const ccd::Variogram variogram{std::vector<double>(bands, 20.0)};
+    const ccd::BandNoise variogram{std::vector<double>(bands, 20.0)};
     const ccd::BandList detection = ccd::config::Shared{}.detection_bands;
 
     const auto scratch = s.stability_rule->make_scratch();
@@ -981,7 +981,7 @@ TEST(WindowScreen, TmaskIsTmaskOfItsBands)
     }
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
     const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
-    const ccd::Variogram variogram{std::vector<double>(bands, 20.0)};
+    const ccd::BandNoise variogram{std::vector<double>(bands, 20.0)};
 
     const ccd::ProcessingMask got = s.window_screen->screen(d, x, variogram);
     const ccd::ProcessingMask want = ccd::tmask(d, x, variogram, ccd::BandList{2, 5}, 3.5);
@@ -1122,7 +1122,7 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
     std::vector<double> spectral(bands * n, 0.0);
     const auto d = ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n});
     const auto x = ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {bands, n});
-    const ccd::Variogram variogram{std::vector<double>(bands, 0.0)};
+    const ccd::BandNoise variogram{std::vector<double>(bands, 0.0)};
     const ccd::BandList detection{0, 1, 2, 3, 4};
     const double statistic = (at6 + at10) / 2;   // between the two thresholds
     Flat fit(std::sqrt(61.25 / statistic));

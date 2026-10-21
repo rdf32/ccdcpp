@@ -227,7 +227,7 @@ struct State
     PeekPlan peek_plan{};
     CoefficientRule stability_coefficients{};
     CoefficientRule coefficients{};
-    Variogram variogram;
+    BandNoise noise;
 
     // Initialize's fits of the detection bands, made by the run's
     // stability-fit strategy: the stable window's, which Lookback tests

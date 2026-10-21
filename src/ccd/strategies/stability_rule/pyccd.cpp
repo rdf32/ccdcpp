@@ -61,7 +61,7 @@ void PyccdStability::prepare(const PeekPlan& peek, index_t detection_bands,
 }
 
 bool PyccdStability::stable(const Model& fit, ArrayView<const std::int64_t, 1> dates_window,
-                            const Variogram& variogram, const BandList& detection_bands,
+                            const BandNoise& variogram, const BandList& detection_bands,
                             const Scratch& scratch) const
 {
     const scalar_t change_threshold = static_cast<const StabilityScratch&>(scratch).change_threshold;

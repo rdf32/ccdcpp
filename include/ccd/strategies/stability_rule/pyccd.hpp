@@ -40,7 +40,7 @@ struct PyccdStability final : StabilityRule
     std::unique_ptr<Scratch> make_scratch() const override;
     void prepare(const PeekPlan& peek, index_t detection_bands, Scratch& scratch) const override;
     bool stable(const Model& fit, ArrayView<const std::int64_t, 1> dates,
-                const Variogram& variogram, const BandList& bands,
+                const BandNoise& variogram, const BandList& bands,
                 const Scratch& scratch) const override;
 
 private:

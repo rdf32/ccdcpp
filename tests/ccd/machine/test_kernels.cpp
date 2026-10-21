@@ -325,7 +325,7 @@ void peek_loop(
 std::vector<scalar_t> magnitude_loop(
     const std::vector<std::vector<scalar_t>>& residuals_by_band,
     const ccd::BandList& bands,
-    const ccd::Variogram& variogram,
+    const ccd::BandNoise& variogram,
     const std::vector<scalar_t>& rmse
 )
 {
@@ -597,7 +597,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
 
                 // The magnitude over them, against the positional sum, with
                 // the models' RMSE and with a stand-in seasonal RMSE.
-                const ccd::Variogram variogram{
+                const ccd::BandNoise variogram{
                     ccd::adjusted_variogram(dates, spectral, preset_count("noise", "min_lag_days"))};
 
                 for (const scalar_t scale : {1.0, 0.37})
@@ -620,7 +620,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
 TEST(ChangeMagnitude, NonPositiveNormAndNoBands)
 {
     const std::vector<std::vector<scalar_t>> residuals{{1.0, 2.0}, {3.0, 4.0}};
-    const ccd::Variogram variogram{{0.0, 2.0}};
+    const ccd::BandNoise variogram{{0.0, 2.0}};
     std::vector<scalar_t> magnitude;
 
     ccd::change_magnitude(residuals, ccd::BandList{0, 1}, variogram, {0.0, 1.0}, magnitude);

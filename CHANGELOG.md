@@ -76,7 +76,7 @@ its replacement.
   fits in `strategies/model/lasso.hpp`, the catch and whole-series fits in
   `strategies/edge_segments/lasso.hpp`, `adjusted_variogram()` and `tmask()` with their strategies),
   pyccd's peek statistics in `strategies/pyccd/peek_statistics.hpp`, the segments in
-  `results/segment.hpp`, `Window` in `core/window.hpp`, `Variogram` in `strategies/stages.hpp`
+  `results/segment.hpp`, `Window` in `core/window.hpp`, `Variogram` as `BandNoise` in `strategies/stages.hpp`
   and `chi2_quantile()` in `core/maths.hpp`; 0.10.0's `procedure/fit.hpp` and
   `procedure/kernels.hpp` are gone. `PixelProcedure` is in `input/procedure.hpp` (with
   `PROCEDURES`, `name()` and `PreprocessPlan::of()`) and `PixelMode` in `strategies/stages.hpp`;

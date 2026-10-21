@@ -155,7 +155,7 @@ TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) c
     change_magnitude(
         peek.residuals,
         detection_bands,
-        peek.variogram,
+        peek.noise,
         comp_rmses,
         magnitudes
     );

@@ -15,7 +15,7 @@ namespace ccd
 ProcessingMask tmask(
     ArrayView<const std::int64_t, 1> dates_window,
     ArrayView<const scalar_t, 2> spect_window,
-    const Variogram& variogram,
+    const BandNoise& variogram,
     const BandList& bands,
     scalar_t t_const
 );
@@ -43,7 +43,7 @@ struct Tmask final : WindowScreen
 
     ProcessingMask screen(ArrayView<const std::int64_t, 1> dates,
                           ArrayView<const scalar_t, 2> spectral,
-                          const Variogram& variogram) const override;
+                          const BandNoise& variogram) const override;
 
 private:
     Params p_;

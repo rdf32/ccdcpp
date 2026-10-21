@@ -91,7 +91,7 @@ private:
 void change_magnitude(
     const std::vector<std::vector<scalar_t>>& residuals,
     const BandList& bands,
-    const Variogram& variogram,
+    const BandNoise& variogram,
     const std::vector<scalar_t>& rmse,
     std::vector<scalar_t>& magnitude
 );

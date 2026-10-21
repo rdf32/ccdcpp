@@ -1,7 +1,7 @@
 //==============================================================================
 //
 // The per-pixel records below Run::pixel: MaskedSeries (the processing
-// mask and the observations it keeps) and Variogram. The procedures' outputs
+// mask and the observations it keeps) and BandNoise. The procedures' outputs
 // are held by the golden and transitions fixtures; these tests hold the
 // records' own contracts.
 //
@@ -265,13 +265,13 @@ TEST(MaskedSeries, CountUntilAndTakeMask)
     EXPECT_EQ(s.size(), 0u);
 }
 
-TEST(Variogram, ReadsAndUsable)
+TEST(BandNoise, ReadsAndUsable)
 {
-    const ccd::Variogram v{{1.5, 2.5, 3.5}};
+    const ccd::BandNoise v{{1.5, 2.5, 3.5}};
     EXPECT_EQ(v[1], 2.5);
     EXPECT_TRUE(v.usable());
 
-    const ccd::Variogram nan{{1.5, std::numeric_limits<double>::quiet_NaN(), 3.5}};
+    const ccd::BandNoise nan{{1.5, std::numeric_limits<double>::quiet_NaN(), 3.5}};
     EXPECT_FALSE(nan.usable());
 }
 

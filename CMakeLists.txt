@@ -560,7 +560,7 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
-    # The per-pixel records below Run::pixel: MaskedSeries, Variogram.
+    # The per-pixel records below Run::pixel: MaskedSeries, BandNoise.
     add_executable(
         test_masked_series
 
