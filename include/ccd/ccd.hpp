@@ -41,6 +41,7 @@
 #include "ccd/strategies/coefficients.hpp"
 #include "ccd/strategies/model.hpp"
 #include "ccd/strategies/per_thread.hpp"
+#include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/register_core.hpp"
 #include "ccd/strategies/stages.hpp"
 

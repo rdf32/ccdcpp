@@ -370,9 +370,10 @@ record:
 | `fit_whole_series`, `PixelProcedure` | `include/ccd/machine/pixel_procedure.hpp` |
 | `MaskedSeries` | `include/ccd/input/masked_series.hpp` |
 | `Cursor`, `drive` | `src/ccd/machine/machine.hpp` |
-| `fit_bands` (the one per-band fit loop), `peek_residuals`, `change_magnitude`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/machine/kernels.hpp` |
+| `fit_bands` (the one per-band fit loop), `peek_residuals`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/machine/kernels.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
-| `Variogram`, `adjusted_variogram`, `tmask`, `SeasonalOrder`, `seasonal_rmse` | `include/ccd/machine/fit.hpp` |
+| `Variogram`, `adjusted_variogram`, `tmask` | `include/ccd/machine/fit.hpp` |
+| `adjust_peek`, `adjust_change_threshold`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse`: pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
 | `Window`, `span`, `count_through` | `include/ccd/core/window.hpp` |
 | `ChangeModel`, `BandFit`, `FitResult`, `CurveQA` | `include/ccd/results/segment.hpp` |
 

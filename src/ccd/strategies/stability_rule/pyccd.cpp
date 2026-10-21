@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "ccd/strategies/model.hpp"
+#include "ccd/strategies/pyccd/peek_statistics.hpp"
 
 namespace ccd
 {

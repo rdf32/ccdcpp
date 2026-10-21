@@ -34,6 +34,7 @@
 
 #include "ccd/ccd.hpp"
 #include "ccd/machine/fit.hpp"
+#include "ccd/strategies/pyccd/peek_statistics.hpp"
 
 #include "golden.hpp"
 #include "specs.hpp"

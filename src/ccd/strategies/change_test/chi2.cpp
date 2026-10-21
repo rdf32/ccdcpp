@@ -4,7 +4,7 @@
 
 #include "../../core/logger.hpp"
 #include "ccd/core/maths.hpp"
-#include "ccd/machine/kernels.hpp"
+#include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/model.hpp"
 
 namespace ccd

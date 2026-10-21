@@ -201,6 +201,7 @@ add_library(
     src/ccd/strategies/model/lasso.cpp
     src/ccd/strategies/noise_floor/variogram.cpp
     src/ccd/strategies/outlier/floored.cpp
+    src/ccd/strategies/pyccd/peek_statistics.cpp
     src/ccd/strategies/register_core.cpp
     src/ccd/strategies/refit/span_factor.cpp
     src/ccd/strategies/segment_fit/model_fit.cpp

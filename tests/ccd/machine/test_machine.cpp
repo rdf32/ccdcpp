@@ -51,6 +51,7 @@
 #include "ccd/regression/lasso_solver.hpp"
 #include "../golden/config.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
+#include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/register_core.hpp"
 
 #include "../golden/characterisation.hpp"

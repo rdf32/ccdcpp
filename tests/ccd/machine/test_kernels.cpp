@@ -42,6 +42,7 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/machine/kernels.hpp"
+#include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)
 #include "ccd/regression/harmonic_basis.hpp"

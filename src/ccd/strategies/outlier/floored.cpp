@@ -3,6 +3,7 @@
 #include <cassert>
 
 #include "../../core/logger.hpp"
+#include "ccd/strategies/pyccd/peek_statistics.hpp"
 
 namespace ccd
 {
