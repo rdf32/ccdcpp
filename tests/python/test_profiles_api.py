@@ -71,7 +71,7 @@ class Check(unittest.TestCase):
             ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0],
                           input="landsat_c1_dn")  # pyright: ignore[reportArgumentType]  # a name, refused
 
-    def test_construction(self):
+    def test_an_inconsistent_profile_is_refused(self):
         base = presets.landsat_c1_dn()
         cases = [
             (dict(roles=base.roles[:6]), "7 band_names and 6 roles"),

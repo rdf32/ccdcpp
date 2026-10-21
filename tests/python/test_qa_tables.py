@@ -144,28 +144,6 @@ class Tables(unittest.TestCase):
                 for code, values in SCHEMES[name].items():
                     np.testing.assert_array_equal(codes[values], code, err_msg=f"{code}")
 
-    def test_docstrings(self):
-        def flat(text: str | None) -> str:
-            assert text is not None
-            return " ".join(text.split())
-        q = ext.qa_tables
-        fmask, scl, module = flat(q.hls_fmask.__doc__), flat(q.sentinel2_scl.__doc__), flat(q.__doc__)
-        # HLS v2.0 reserves Fmask bit 0; it is not cirrus.
-        self.assertNotIn("cirrus)", fmask)
-        self.assertIn("bit 0, reserved and unused in v2.0", fmask)
-        self.assertIn("bits 1, 2 (cloud, adjacent to cloud or shadow) cloud", fmask)
-        self.assertIn("2, 3 (cast shadows, cloud shadows) shadow", scl)
-        self.assertNotIn("dark area", scl.lower())
-        for doc, present in ((fmask, "all 43 values present in the T16SGC 2020-2023 sample (38 in L30, 43 in S30)"),
-                             (scl, "every class present in the T16SGC 2020-2023 sample (0, 2-11)")):
-            self.assertIn(present, doc)
-            self.assertIn("no production run has used it yet", doc)
-            self.assertNotIn("all 38 values", doc)
-            self.assertNotIn("Not yet validated", doc)
-        self.assertIn("(MGRS tile T16SGC, 2020-2023); no production run has used them yet",
-                      module)
-        self.assertNotIn("not yet validated", module)
-
     def test_codes_is_a_copy(self):
         table = ext.qa_tables.sentinel2_scl()
         codes = table.codes

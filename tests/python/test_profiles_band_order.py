@@ -26,7 +26,7 @@ from ccdcpp import presets  # noqa: E402
 from _compare import assert_same  # noqa: E402
 from _corpus import (CODES, CUBE_DN, DATES, every_entry, ten_band_inputs,  # noqa: E402
                      ten_band_profile, without)
-from _profiles import NEW_PRESETS, permuted, preset_inputs, unpermute  # noqa: E402
+from _profiles import HLS_AND_SENTINEL2, permuted, preset_inputs, unpermute  # noqa: E402
 
 
 #: The band order of a Sentinel-2 store that keeps the 10 m bands first
@@ -71,7 +71,7 @@ class BandNamesCheck(unittest.TestCase):
         }
 
     def test_profile_order_runs_unchanged(self):
-        runs = [(p, preset_inputs(p.__name__)) for p in NEW_PRESETS]
+        runs = [(p, preset_inputs(p.__name__)) for p in HLS_AND_SENTINEL2]
         runs.append((presets.landsat_c1_dn, (DATES, CUBE_DN, CODES)))
         for preset, (dates, cube, qa) in runs:
             with self.subTest(preset=preset.__name__):

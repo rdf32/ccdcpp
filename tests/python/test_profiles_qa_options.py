@@ -107,7 +107,7 @@ class QaTableOptionsField(unittest.TestCase):
             ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], input=screened)["processing_mask"]
             .tobytes())
 
-    def test_validation(self):
+    def test_options_the_builder_does_not_take_are_refused(self):
         cases = [
             (presets.landsat_c1_dn(), dict(qa_table_options={"exclude_high_aerosol": True}),
              "needs a qa_table_builder"),

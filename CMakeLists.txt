@@ -602,6 +602,7 @@ if(CCD_BUILD_PYTHON)
             profiles_qa_options
             profiles_band_order
             profiles_sensors
+            docs
             preprocess
             real_fixtures
             qa_references

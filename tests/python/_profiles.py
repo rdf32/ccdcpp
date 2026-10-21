@@ -255,9 +255,8 @@ BAND_NAMES = {
 
 BUILDERS = {"hls_l30": "hls_fmask", "hls_s30": "hls_fmask", "hls": "hls_fmask",
             "sentinel2_l2a": "sentinel2_scl"}
-
-
-NEW_PRESETS = (presets.hls_l30, presets.hls_s30, presets.hls, presets.sentinel2_l2a)
+#: The HLS and Sentinel-2 presets.
+HLS_AND_SENTINEL2 = (presets.hls_l30, presets.hls_s30, presets.hls, presets.sentinel2_l2a)
 
 
 def hand_built(name: str) -> tuple[ccdcpp.Input, ccdcpp.QaTable]:

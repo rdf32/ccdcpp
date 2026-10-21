@@ -202,7 +202,7 @@ def noisy(bands: int, timesteps: int, seed: int = 1) -> Series:
 
 
 class BandLayout(unittest.TestCase):
-    def test_defaults(self):
+    def test_the_default_input_is_landsats_layout(self):
         h = ext.Input()
         self.assertEqual(h.bands(), 7)
         self.assertEqual(h.roles, ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
@@ -339,7 +339,7 @@ class LayoutValidation(unittest.TestCase):
                     call()
                 self.assertIn(expected, str(caught.exception))
 
-    def test_rules(self):
+    def test_the_layout_and_band_lists_are_refused_rule_by_rule(self):
         def roles(**at: str) -> list[str]:
             out = list(TEN_ROLES)
             for row, role in at.items():
@@ -386,7 +386,7 @@ class LayoutValidation(unittest.TestCase):
             self.assert_rejected(self.broken(), 10, band + expected,
                                  config=preset(preprocess__band_range__bands=bands))
 
-    def test_cadence_rules(self):
+    def test_cadence_parameters_are_refused_by_stage_and_parameter(self):
         # The cadence parameters are the configuration's: the schemas refuse
         # them by stage, strategy and parameter.
         nan = float("nan")
@@ -452,7 +452,7 @@ class CadenceParameters(unittest.TestCase):
     def value(self, tree: Mapping[str, Any], stage: str, name: str) -> Any:
         return tree["shared"][name] if stage == "shared" else tree[stage][name]
 
-    def test_defaults(self):
+    def test_the_preset_holds_pyccds_values(self):
         tree = preset()
         for (stage, name), value in self.DEFAULTS.items():
             with self.subTest(stage=stage, name=name):
@@ -667,13 +667,13 @@ class GreenFilterScope(unittest.TestCase):
 
 
 class TimestepMismatch(unittest.TestCase):
-    def test_detect(self):
+    def test_detect_refuses_dates_or_qas_of_another_length(self):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
             with self.subTest(dates=dates, qas=qas):
                 with self.assertRaises(ValueError):
                     ext.detect(*inputs(7, 40, dates=dates, qas=qas), **options())
 
-    def test_cubes(self):
+    def test_detect_cube_refuses_dates_or_qas_of_another_length(self):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
             with self.subTest(dates=dates, qas=qas):
                 with self.assertRaises(ValueError):
