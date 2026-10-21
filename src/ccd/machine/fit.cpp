@@ -192,11 +192,6 @@ std::vector<scalar_t> adjusted_variogram(
             const index_t freq =
                 ++histogram[delta];
 
-            // if (freq > majority_count)
-            // {
-            //     majority_count = freq;
-            //     majority_value = delta;
-            // }
             if (freq > majority_count || (freq == majority_count && delta < majority_value))
             {
                 majority_count = freq;
@@ -531,23 +526,13 @@ scalar_t seasonal_rmse(
 )
 {
     scalar_t sum = 0.0;
-    LOG_DEBUG("closest resids");
     for(auto idx : indices)
-    {   
+    {
         const scalar_t r =
             residuals[idx];
-        LOG_DEBUG("idx=" << idx << " residual=" << r);
         sum += r * r;
     }
-    LOG_DEBUG("C++ sum_sq: " << sum);
-    LOG_DEBUG("C++ norm:   " << std::sqrt(sum));
-    LOG_DEBUG("C++ rmse:   " << std::sqrt(sum) / divisor);
     return std::sqrt(sum) / divisor;
 }
 
 } // namespace ccd
-
-
-// when optimizing -- TODO
-// implement encapsulated project buffers within a workspace
-//  object to reduce number of memory allocations

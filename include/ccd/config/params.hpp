@@ -188,9 +188,6 @@ struct Field
     std::optional<Value> default_value = std::nullopt;
 };
 
-// "own", "shared 'alpha'", "chi2 of shared 'change_probability'".
-std::string describe(Source source, const char* from);
-
 //------------------------------------------------------------------------------
 // The parameters `values` give `params`, starting from its defaults. Throws
 // std::invalid_argument, naming `where` (e.g. "refit 'span-factor'") and the

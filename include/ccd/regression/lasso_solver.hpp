@@ -70,20 +70,6 @@ struct LassoOptions {
     // without producing any of the signals that would make you look. Setting
     // it to 1e-4 brings the whole fit back to 1e-13 of the DN answer.
     scalar_t coef_floor = static_cast<scalar_t>(1.0);
-
-    bool fit_intercept = true;
-
-    bool warm_start = false;
-
-    //--------------------------------------------------------------------------
-    // Evaluation Parameters
-    //--------------------------------------------------------------------------
-    // Apply degrees-of-freedom correction when calculating RMSE.
-    // Matches the unbiased RMSE calculation:
-    //     sqrt(RSS / (n - p))
-    // instead of:
-    //     sqrt(RSS / n)
-    bool unbiased_rmse = true;
 };
 
 //==============================================================================
