@@ -121,6 +121,9 @@ its replacement.
   `RuntimeError`). A list mixing strs and ints names what each may be (QA code names or codes,
   band roles or rows); a strategy or step without parameters no longer ends its unknown-parameter
   message with an empty "it has".
+- A `min_observations` at or below `coefficient_min` is refused when the configuration is
+  built, naming both values: its fits had no degree of freedom (a NaN RMSE, an assertion in
+  a debug build).
 - A TOML stage table holding anything but `strategy` and `[<stage>.params]` (a parameter
   written beside `strategy`, which was dropped silently) is refused, naming the keys.
 - A Start or End segment is written only on more observations than the edge fit's

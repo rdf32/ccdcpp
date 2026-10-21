@@ -193,6 +193,16 @@ index_t resolve_shared(const Values& given, const Input* input, Shared& shared)
     }
     apply(schema, values, shared, "shared");
 
+    // A fit of min_observations observations (a start window, a whole-series
+    // curve) has coefficient_min coefficients at least, and its RMSE needs a
+    // degree of freedom.
+    if (shared.min_observations <= shared.coefficient_min)
+        throw std::invalid_argument(
+            "shared values 'min_observations' and 'coefficient_min' are " +
+            std::to_string(shared.min_observations) + " and " +
+            std::to_string(shared.coefficient_min) +
+            "; min_observations must exceed coefficient_min");
+
     if (std::holds_alternative<std::string>(merged.at("detection_bands")))
         throw std::invalid_argument("shared value 'detection_bands' is a list of roles or rows");
     const index_t detection = list_size(merged.at("detection_bands"));

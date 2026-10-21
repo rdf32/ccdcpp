@@ -149,7 +149,7 @@ the configuration as a preset file; a `Config` pickles, so it can go to worker p
 | `alpha`, `coef_floor` | 1e-4, 1e-4 | reflectance (difference) | the Lasso of `model`, `stability_fit`, `edge_fit` |
 | `max_iter`, `tolerance` | 1000, 1e-4 | none | the same three |
 | `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | 4, 6, 8, 3 | none | `model`, `stability_fit` (the coefficient rule); `edge_fit`'s `coefficients` (`coefficient_min`) |
-| `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_fit`'s `min_observations` |
+| `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_fit`'s `min_observations`; more than `coefficient_min` |
 | `statistics_end` | `NO_STATISTICS_END` (none) | ordinal day | the QA statistics, the cadence, the variogram, `green_median`'s date |
 
 `statistics_end` is none (`ccdcpp.NO_STATISTICS_END`, the largest int64, which TOML writes as

@@ -242,6 +242,17 @@ class Replace(unittest.TestCase):
             with self.subTest(change=change):
                 with self.assertRaisesRegex(ValueError, message):
                     ccdcpp.config().replace(**change)
+        # min_observations exceeds coefficient_min: a fit of that many has a degree of freedom.
+        for change in (dict(shared__min_observations=4),
+                       dict(shared__coefficient_min=6, shared__min_observations=6)):
+            with self.subTest(change=change):
+                n, k = change.get("shared__min_observations"), change.get("shared__coefficient_min", 4)
+                with self.assertRaisesRegex(ValueError, f"^shared values 'min_observations' and "
+                                                        f"'coefficient_min' are {n} and {k}; "
+                                                        f"min_observations must exceed "
+                                                        f"coefficient_min$"):
+                    ccdcpp.config().replace(**change)
+        ccdcpp.config().replace(shared__min_observations=5).check(ccdcpp.Input())
         # The thermal and reflectance bounds take any number: an infinity is an open end.
         ccdcpp.config().replace(preprocess__thermal_range__min=-inf).check(ccdcpp.Input())
         # A list mixes no names and numbers; a strategy without parameters names none.
