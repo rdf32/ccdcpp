@@ -46,6 +46,9 @@ SharedValues resolve_shared(const Values& given, const Input* input)
             std::to_string(out.typed.coefficients.min) +
             "; min_observations must exceed coefficients.min");
 
+    // The detection-band count is read from the value as given (or its
+    // default), not from typed.detection_bands: without an input its roles
+    // stay unresolved, and the count is needed all the same.
     const auto given_bands = given.find("detection_bands");
     const Value& bands = given_bands != given.end()
                              ? given_bands->second

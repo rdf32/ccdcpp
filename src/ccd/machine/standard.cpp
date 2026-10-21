@@ -971,6 +971,8 @@ ExtendOutcome extend_step(const Context& context, State& state)
     //--------------------------------------------------------------------------
     // The peek's residuals, comparison RMSE and magnitudes
     //--------------------------------------------------------------------------
+    // A Peek holds the residuals and the model by reference, so it is built
+    // before test_peek() writes the residuals it reads.
     const Peek peek = peek_of(context, state);
     const TestOutcome outcome = test_peek(context, state, peek);
 
@@ -1271,12 +1273,10 @@ void check_fits(const Context& context, const State& state, const Suspended& fro
                 refuse("NoRoomToInitialize with a window other than the start search's");
             break;
         case Exit::InitializeExhausted:
-            if (w.size() < meow || w.stop > size)
-                refuse("InitializeExhausted with a window shorter than the start search's or past the series");
-            break;
         case Exit::PeekBeyondEnd:
             if (w.size() < meow || w.stop > size)
-                refuse("PeekBeyondEnd with a window shorter than the start search's or past the series");
+                refuse(std::string(to_string(from.exit)) +
+                       " with a window shorter than the start search's or past the series");
             break;
         case Exit::SeriesEnd:
             if (w.size() < meow || w.stop >= size)

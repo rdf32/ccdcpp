@@ -235,20 +235,14 @@ PixelOutput Run::fresh(PreparedPixel& pixel, Worker& worker) const
 {
     PixelOutput out;
     standard::Detector& detector = worker.detector;
-    const Strategies& strategies = resolved_->strategies;
 
-    if (!spec_.record)
-    {
-        out.result = detector.fit(pixel.mode, pixel.series, std::move(pixel.mask), shared_,
-                                  strategies, worker.observe);
-        return out;
-    }
-
-    const ProcessingMask filtered = pixel.mask;
+    // The record keeps the mask the chain built; the fit takes it.
+    const ProcessingMask filtered = spec_.record ? pixel.mask : ProcessingMask();
     out.result = detector.fit(pixel.mode, pixel.series, std::move(pixel.mask), shared_,
-                              strategies, worker.observe);
-    fill_record(out.record, pixel.mode.procedure, pixel.mode.extra_mask.empty(), detector,
-                filtered, out.result, dates_);
+                              resolved_->strategies, worker.observe);
+    if (spec_.record)
+        fill_record(out.record, pixel.mode.procedure, pixel.mode.extra_mask.empty(), detector,
+                    filtered, out.result, dates_);
     return out;
 }
 
