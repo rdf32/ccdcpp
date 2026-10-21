@@ -111,6 +111,7 @@ its replacement.
   `MEOW_SIZE` 0 (`min_observations`), a negative or NaN Lasso constant (`alpha`, `coef_floor`,
   `tolerance`), a NaN change or outlier probability.
 - A build without OpenMP compiles and runs a cube on one thread.
+- The package declares its dependency on numpy (`pyproject.toml`).
 - An infinite value of a parameter whose bounds are numbers (`shared__alpha=inf`) is refused
   ("it must be a finite number at least 0"); the thermal and reflectance bounds, which take any
   number, still take an infinity. A NaN `saturation_code` or `thermal_saturation_code` is

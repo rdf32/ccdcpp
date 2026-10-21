@@ -108,10 +108,10 @@ def landsat_c1_physical() -> SensorProfile:
     Celsius / 100 (``(K10 * 10 - 27315) / 10000`` from Kelvin x 10). QA:
     pre-classified uint8 codes.
 
-    Every bound is the DN value divided by 10000 and the thermal transform is
-    the identity; the configuration's reflectance values are converted with
-    ``reflectance_scale`` 1, so the fit is the DN fit and the coefficients
-    come out in the input's units.
+    Its values are the DN values divided by 10000 (``reflectance_scale`` 1,
+    ``thermal_at_100c`` 1) and its thermal transform is the identity: a
+    configuration resolves to its DN values divided by 10000, so the fit is
+    the DN fit, with the coefficients in the input's units.
     """
     return SensorProfile(
         name="landsat_c1_physical",
@@ -129,8 +129,9 @@ def landsat_c2() -> SensorProfile:
     273.15) / 100``). QA: the raw uint16 ``QA_PIXEL`` band, decoded by
     ``ccdcpp.qa_tables.landsat_c2_qa_pixel``.
 
-    The bounds are those of :func:`landsat_c1_physical`: Collection 2's
-    saturation range in DN, 7273..43636, is reflectance 0..1.
+    The units are those of :func:`landsat_c1_physical`. Reflectance 0..1 is
+    Collection 2's DN 7273..43636 (so ``band_range`` under "ccdc" keeps those
+    DN).
     """
     return SensorProfile(
         name="landsat_c2",
@@ -145,7 +146,7 @@ def landsat_c2() -> SensorProfile:
 # HLS v2.0 and Sentinel-2 L2A. Validated on one cell of T16SGC, 2020-2023.
 #------------------------------------------------------------------------------
 
-#: What the HLS and Sentinel-2 presets share: physical units, the bounds of
+#: What the HLS and Sentinel-2 presets share: reflectance, the units of
 #: landsat_c1_physical.
 _PHYSICAL: _Units = {
     "units": REFLECTANCE,
@@ -164,8 +165,8 @@ def hls_l30() -> SensorProfile:
     product's scale factor, giving reflectance; B10 is brightness
     temperature in degrees Celsius with scale factor 0.01, so ``B10 *
     0.0001`` is degrees Celsius / 100. One divisor for every row keeps one
-    Lasso alpha right for every row. Fill -9999 becomes -0.9999, outside both
-    the reflectance and the thermal bounds, and is dropped. Rows:
+    Lasso alpha right for every row. Fill -9999 becomes -0.9999, which
+    ``band_range`` and ``thermal_range`` under "ccdc" drop. Rows:
 
         B01 coastal, B02 blue, B03 green, B04 red, B05 nir (865 nm),
         B06 swir1, B07 swir2, B10 thermal (TIRS 1)
@@ -176,10 +177,11 @@ def hls_l30() -> SensorProfile:
     ``dataclasses.replace(hls_l30(), qa_table_options={"exclude_high_aerosol":
     True})`` treats high aerosol as cloud.
 
-    Detection: B03, B04, B05, B06, B07, the default thresholds. Every
-    optical row, coastal included, is saturation-screened. No statistics
-    cutoff. The cadence is 16 days with Landsat 8 alone (from 2013) and 8
-    with Landsat 9 (from late 2021); the peek window follows it.
+    Under "ccdc" change is detected on B03, B04, B05, B06, B07 (green to
+    swir2) with the default thresholds, and ``band_range`` tests every
+    optical row, coastal included. The data's cadence is 16 days with
+    Landsat 8 alone (from 2013) and 8 with Landsat 9 (from late 2021); the
+    peek window follows it.
 
     Validation: one cell of MGRS tile T16SGC near Atlanta (Landsat ARD
     h024v013 chunk 00030008), 2020-2023, read from Planetary Computer (LP
@@ -208,7 +210,8 @@ def hls_s30() -> SensorProfile:
     over bright surfaces.
 
     Input: the HLS ``int16`` layers times the product's scale factor,
-    0.0001: reflectance. Fill -9999 becomes -0.9999 and is dropped. Rows:
+    0.0001: reflectance. Fill -9999 becomes -0.9999, which ``band_range``
+    under "ccdc" drops. Rows:
 
         B01 coastal, B02 blue, B03 green, B04 red, B05 red_edge_1,
         B06 red_edge_2, B07 red_edge_3, B08 nir_broad (842 nm),
@@ -218,10 +221,11 @@ def hls_s30() -> SensorProfile:
     the raw ``Fmask`` layer (uint8), decoded by
     ``ccdcpp.qa_tables.hls_fmask``, aerosol ignored, as for :func:`hls_l30`.
 
-    Detection: B03, B04, B8A, B11, B12, with the default thresholds. HLS
-    adjusts these, and B01 and B02, to the OLI bandpasses; the red edges and
-    B08 are not adjusted. They are fitted, reported and saturation-screened,
-    with every other row. No statistics cutoff. The cadence is 10 days with
+    HLS adjusts B03, B04, B8A, B11 and B12, and B01 and B02, to the OLI
+    bandpasses; the red edges and B08 are not adjusted. Under "ccdc" change
+    is detected on B03, B04, B8A, B11 and B12 with the default thresholds,
+    and the red edges and B08 are fitted and reported, and tested by
+    ``band_range``, with every other row. The data's cadence is 10 days with
     Sentinel-2A alone (from 2015) and 5 with two satellites (2B from 2017,
     2C from 2024), denser where orbits overlap; the peek window follows it.
 
@@ -231,7 +235,7 @@ def hls_s30() -> SensorProfile:
     change threshold 6.83). It finds 41% more break pixels than
     :func:`hls_l30` on the same cell, a median 16 days earlier, in classes
     that change rather than in stable forest; taking the red edges and B08
-    out of the saturation screen changes no output. Fmask decodes as
+    out of ``band_range`` changes no output. Fmask decodes as
     documented on every value present. Caveat, Fmask over bright surfaces:
     Fmask on Sentinel-2, which has no thermal band, calls bright barren land
     cloud. Over all 1,862 quarry (land cover 31) pixels on the HLS grid it
@@ -268,12 +272,13 @@ def hls() -> SensorProfile:
     (uint8) of both, decoded by ``ccdcpp.qa_tables.hls_fmask``, aerosol
     ignored.
 
-    Detection: green, red, nir, swir1, swir2, the default thresholds; every
-    row is saturation-screened. No statistics cutoff. On the validation cell
-    the series ran at a median gap of 4-5 days, and the peek window grew to
-    19-24 observations (19 at 5 days, 24 at 4; change threshold 6.83 to
-    5.90); the shared ``min_observations`` and the refit's ``min_obs`` stay
-    pyccd's observation counts, so 12 observations span about 50-60 days.
+    Under "ccdc" change is detected on green, red, nir, swir1 and swir2 with
+    the default thresholds, and ``band_range`` tests every row. On the
+    validation cell the series ran at a median gap of 4-5 days, and the
+    peek window grew to 19-24 observations (19 at 5 days, 24 at 4; change
+    threshold 6.83 to 5.90); the shared ``min_observations`` and the refit's
+    ``min_obs`` stay pyccd's observation counts, so 12 observations span
+    about 50-60 days.
 
     An L30 and an S30 observation on one date: the filters keep the first in
     array order, so put L30 before S30 on a shared date.
@@ -310,9 +315,10 @@ def sentinel2_l2a() -> SensorProfile:
     uncorrected scenes jumps by the offset and detects false breaks. Some
     archives distribute the bands already corrected while their metadata
     still declares the offset (earth-search's ``sentinel-2-l2a`` COGs); do
-    not apply it a second time. DN 0 (no data) becomes 0 or negative and is
-    dropped, as is any value at or above 1.0. Resampling the 10 m and 20 m
-    bands to one grid is the caller's. Rows:
+    not apply it a second time. DN 0 (no data) becomes 0 or negative, which
+    ``band_range`` under "ccdc" drops, as it drops any value at or above
+    1.0. Resampling the 10 m and 20 m bands to one grid is the caller's.
+    Rows:
 
         B02 blue, B03 green, B04 red, B05 red_edge_1, B06 red_edge_2,
         B07 red_edge_3, B08 nir_broad (842 nm), B8A nir (865 nm),
@@ -332,13 +338,13 @@ def sentinel2_l2a() -> SensorProfile:
     runs ``input().replace(qa_table=ccdcpp.QaTable(codes))``, with ``codes``
     the table's codes and entry 7 changed.
 
-    Detection: B03, B04, B8A, B11, B12, the default thresholds. The red
-    edges and B08 are fitted, reported and saturation-screened. No
-    statistics cutoff. The cadence is 10 days with Sentinel-2A alone (from
-    mid-2015) and 5 with two satellites (2B from 2017, 2C from 2024), denser
-    where orbits overlap. Two observations on one date (overlapping granules
-    or datastrips): the filters keep the first in array order; merge them
-    first to choose.
+    Under "ccdc" change is detected on B03, B04, B8A, B11 and B12 with the
+    default thresholds, and the red edges and B08 are fitted and reported,
+    and tested by ``band_range``. The data's cadence is 10 days with
+    Sentinel-2A alone (from mid-2015) and 5 with two satellites (2B from
+    2017, 2C from 2024), denser where orbits overlap. Two observations on
+    one date (overlapping granules or datastrips): the filters keep the
+    first in array order; merge them first to choose.
 
     Validation: one cell of MGRS tile T16SGC near Atlanta (Landsat ARD
     h024v013 chunk 00030008), 2020-2023, read from Planetary Computer

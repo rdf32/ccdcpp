@@ -1286,8 +1286,8 @@ class SensorPresets(unittest.TestCase):
         self.assertIn("put L30 before S30", doc_of(presets.hls))
         # S30 detects on bands HLS adjusts to OLI, but B01 and B02 are
         # adjusted too, and Sentinel-2C is part of the cadence.
-        self.assertIn("HLS\n    adjusts these, and B01 and B02, to the OLI bandpasses",
-                      doc_of(presets.hls_s30))
+        self.assertIn("HLS adjusts B03, B04, B8A, B11 and B12, and B01 and B02, to the OLI\n"
+                      "    bandpasses", doc_of(presets.hls_s30))
         for preset in (presets.hls_s30, presets.sentinel2_l2a):
             with self.subTest(preset=preset.__name__):
                 self.assertIn("2C from 2024", doc_of(preset))

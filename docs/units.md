@@ -146,8 +146,9 @@ change-detection archive already stores.
 
 ## Collection 2
 
-Collection-1's saturation range (0, 10000) and Collection-2's mean the same predicate,
-reflectance in (0, 1): Collection-2 surface reflectance is `DN * 2.75e-5 - 0.2`. An input in
+`band_range` under `ccdc` keeps reflectance in (0, 1): (0, 10000) in Collection-1 DN and
+7273..43636 in Collection-2 DN, one predicate, since Collection-2 surface reflectance is
+`DN * 2.75e-5 - 0.2`. An input in
 Collection-2 DN says so with `reflectance_scale = 1 / 2.75e-5` and `reflectance_offset = 0.2 /
 2.75e-5`, and `band_range` 0..1 resolves to (7272.7..., 43636.3...), which keeps DN 7273 to
 43636 (`tests/ccd/machine/test_units.cpp`, `Collection2DnResolvesReflectanceZeroToOne`). In

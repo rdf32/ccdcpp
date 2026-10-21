@@ -47,7 +47,7 @@ def pixel(seed: int = 3,
     for b in range(7):
         spectral[b] = (1000 + 100 * b + 200 * np.sin(2 * np.pi * 16 * t / 365.25 + b)
                        + np.where(t > 2 * T // 3, 400.0, 0.0) + rng.normal(0, 20, T))
-    spectral[5] = 2900 + rng.normal(0, 5, T)   # thermal, in range
+    spectral[6] = 2900 + rng.normal(0, 5, T)   # thermal (Kelvin x 10), in range
     qas = np.zeros(T, dtype=np.uint8)
     return dates, np.ascontiguousarray(spectral), qas
 
