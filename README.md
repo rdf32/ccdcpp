@@ -605,11 +605,11 @@ standard
 snow
   transform  none
   0  KeepQa codes {0, 1}
-  1  ThermalRange band 6, 1799.5 < x < 3438.5
-  2  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
-  3  Dedupe
-  4  AddQa codes {3}
-  5  Dedupe
+  1  BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000
+  2  Dedupe
+  3  AddQa codes {3}
+  4  Dedupe
+  5  ThermalRange band 6, 1799.5 < x < 3438.5
 insufficient_clear
   transform  none
   0  KeepQa codes {0, 1}
@@ -620,7 +620,7 @@ insufficient_clear
   5  Dedupe
 ```
 
-Only `standard` sets `thermal_transform` (the input's `thermal_scale`/`thermal_offset`, none when that is the identity) and tests the thermal range on the transformed row; the other two read the thermal band in the caller's unit and test it against the same degrees Celsius taken back through the transform: 1799.5 to 3438.5, Kelvin x 10, here ([docs/units.md](docs/units.md#the-thermal-range)).
+Only `standard` sets `thermal_transform` (the input's `thermal_scale`/`thermal_offset`, none when that is the identity) and tests the thermal range on the transformed row; the other two read the thermal band in the caller's unit and test it against the same degrees Celsius taken back through the transform: 1799.5 to 3438.5, Kelvin x 10, here. Each chain's thermal range covers every observation its fit uses: `snow` tests it last, after adding the snow observations back ([docs/units.md](docs/units.md#the-thermal-range)).
 
 ### A custom chain
 
@@ -916,7 +916,7 @@ On the synthetic corpus, with pyccd patched for these four (the convergence test
 
 Two defaults of `ccdc` differ from pyccd by choice:
 
-- **The thermal range outside Standard.** pyccd's PermanentSnow and InsufficientClear filters test their untransformed thermal band against the Celsius bounds: on Collection-1 DN (Kelvin x 10 against -9320 and 7070) that drops saturated and NaN values but keeps implausible temperatures, and on any other input it tests the wrong unit. `ccdc` tests those chains' stored thermal band against the bounds taken back through the input's thermal transform, so the range is -93.2 to 70.7 °C in every procedure on every input, and a physical-unit run segments as the DN run does ([docs/units.md](docs/units.md#the-thermal-range)).
+- **The thermal range outside Standard.** pyccd's PermanentSnow and InsufficientClear filters test their untransformed thermal band against the Celsius bounds: on Collection-1 DN (Kelvin x 10 against -9320 and 7070) that drops saturated and NaN values but keeps implausible temperatures, and on any other input it tests the wrong unit. `ccdc` tests those chains' stored thermal band against the bounds taken back through the input's thermal transform, so the range is -93.2 to 70.7 °C in every procedure on every input, over every observation the procedure's fit uses (the snow chain's snow observations too, which pyccd does not test), and a physical-unit run segments as the DN run does ([docs/units.md](docs/units.md#the-thermal-range)).
 - **The statistics cutoff.** pyccd stops the QA statistics, the cadence, the variogram and the green median at 2017-12-31 (`STAT_ORD`), LCMAP's 2018 production baseline; `ccdc` reads the whole series. `shared__statistics_end=736694` is pyccd's cutoff.
 
 The Standard procedure (`ccd/procedures.py`) is pyccd's with five such corrections, each checked against Zhu's MATLAB reference, TrendSeasonalFit, and each in one function of the state machine (see [CCDC as a state machine](docs/ccdc-state-machine.md)):

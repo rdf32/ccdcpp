@@ -72,20 +72,23 @@ print([m["break_day"] for m in whole["models"]])
 [738095, 738751]
 ```
 
-**(b) The snow and insufficient-clear thermal check compares in degrees Celsius on every
-input.** pyccd's PermanentSnow and InsufficientClear filters, and 0.10.0's default plan with
+**(b) Every procedure's thermal check compares in degrees Celsius and covers every observation
+its fit uses.** pyccd's PermanentSnow and InsufficientClear filters, and 0.10.0's default plan with
 them, test the thermal band against the Celsius bounds without converting it. On Collection-1
 DN that compares Kelvin x 10 with -9320 to 7070: it drops saturated (20000) and NaN values and
 keeps every temperature below 707 K; on any other input it is a test of the wrong unit. `ccdc`
 tests those two chains' stored thermal band against the bounds taken back through the input's
 thermal transform, 1799.5 to 3438.5 on Collection-1 DN (179.95 to 343.85 K), so every
-procedure keeps -93.2 to 70.7 °C, the values whose transform Standard's range keeps. On
+procedure keeps -93.2 to 70.7 °C, the values whose transform Standard's range keeps. The snow
+chain tests the range last, after it adds the snow observations back (pyccd tests only the clear
+and water ones), so a saturated or NaN thermal value no longer reaches a snow fit. On
 Collection-1 DN it drops, besides 20000 and NaN as before, the implausible temperatures 0.10.0
 kept in those fits: none on the 1,500 reference Collection-1 pixels; 218 of the synthetic
 corpus's 2,900 pixels change (snow and insufficient-clear pixels, and 8 without a segment),
-whose thermal values range far beyond the bounds. Physical-unit outputs are 0.10.0's, and the
-DN run segments as the physical-unit run does. On the Atlanta cell (Collection 2) no pixel
-changes.
+whose thermal values range far beyond the bounds. Physical-unit outputs are 0.10.0's but for 4
+snow pixels of that corpus, where a clear observation with an implausible thermal value came
+first on a date and the date's snow observation goes with it, and the DN run segments as the
+physical-unit run does. On the Atlanta cell (Collection 2) no pixel changes.
 
 ## Resume records
 
@@ -362,7 +365,7 @@ print(plan.standard.chain[2], plan.snow.chain[1])
 
 ```python
 plan = ccdcpp.plan_of(pyccd, ccdcpp.Input())
-print(plan.standard.chain[2], plan.snow.chain[1])
+print(plan.standard.chain[2], plan.snow.chain[5])
 ```
 
 ```text
@@ -370,7 +373,8 @@ print(plan.standard.chain[2], plan.snow.chain[1])
 ```
 
 The snow chain tests the stored thermal band against the same degrees Celsius as Standard's
-transformed one ([change (b)](#what-changes-in-the-outputs)).
+transformed one, as its last step, so the snow observations too
+([change (b)](#what-changes-in-the-outputs)).
 
 ### Other names
 

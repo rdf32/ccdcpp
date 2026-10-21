@@ -9,7 +9,8 @@ configuration (`config=`, the `ccdc` preset by default) in Python and C++. One s
 the CCDC phases, and each of its decisions is a stage decided by a named strategy. Outputs are
 0.10.0's bit for bit for the same input, configuration and statistics cutoff, except for two
 deliberate changes of defaults: `ccdc` has no statistics cutoff, and the PermanentSnow and
-InsufficientClear chains test their thermal range in degrees Celsius on every input. 0.10.0
+InsufficientClear chains test their thermal range in degrees Celsius on every input, the snow
+chain over its snow observations too. 0.10.0
 resume records are refused: rerun once
 with `record=True`. [docs/migration-1.0.md](docs/migration-1.0.md) maps every 0.10.0 name to
 its replacement.
@@ -22,16 +23,19 @@ its replacement.
   baseline; `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` is that run, bit for
   bit. On the Atlanta cell (h024v013, 250,000 pixels) 57.1% of the pixels differ, 6.5% in their
   segment count.
-- **The snow and insufficient-clear thermal check compares in degrees Celsius on every input.**
-  pyccd's PermanentSnow and InsufficientClear filters test the untransformed thermal band
-  against the Celsius bounds. `ccdc`'s `snow` and `insufficient_clear` chains test the stored
-  band against the bounds taken back through the input's thermal transform
+- **Every procedure's thermal check compares in degrees Celsius and covers every observation its
+  fit uses.** pyccd's PermanentSnow and InsufficientClear filters test the untransformed
+  thermal band against the Celsius bounds, and the snow filter tests only the clear and water
+  observations. `ccdc`'s `snow` and `insufficient_clear` chains test the stored band against
+  the bounds taken back through the input's thermal transform
   (`ccd::preprocess::stored_range()`: 1799.5 to 3438.5 on Collection-1 DN, 179.95 to 343.85 K),
-  so they keep exactly the values whose transform Standard's range keeps. On Collection-1 DN
-  they drop, besides saturated (20000) and NaN values as before, the implausible temperatures
-  0.10.0 kept: no change on the 1,500 reference Collection-1 pixels, 218 of the synthetic
-  corpus's 2,900 pixels, none of the Atlanta cell's 250,000 (Collection 2). Physical-unit
-  outputs are 0.10.0's. An input's `thermal_scale` must be a positive number and its
+  so they keep exactly the values whose transform Standard's range keeps, and the snow chain
+  tests it last, after adding the snow observations back. On Collection-1 DN they drop, besides
+  saturated (20000) and NaN values as before, the implausible temperatures 0.10.0 kept, and a
+  saturated or NaN snow observation no longer reaches a snow fit: no change on the 1,500
+  reference Collection-1 pixels, 218 of the synthetic corpus's 2,900 pixels, none of the
+  Atlanta cell's 250,000 (Collection 2). Physical-unit outputs are 0.10.0's but for 4 snow
+  pixels of that corpus. An input's `thermal_scale` must be a positive number and its
   `thermal_offset` a finite one.
 - **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and says only how to read the data: QA
   codes and `qa_table`, `roles`, `reflectance_scale`/`reflectance_offset`,

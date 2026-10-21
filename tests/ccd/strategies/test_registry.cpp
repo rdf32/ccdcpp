@@ -1203,7 +1203,7 @@ TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
     EXPECT_EQ(standard.at(2).params.at("max"), real(5000.0));
     EXPECT_TRUE(got.plan.standard.chain[0].codes.test(24));
     EXPECT_FALSE(got.plan.standard.chain[0].codes.test(0));
-    EXPECT_EQ(got.plan.snow.chain[4].codes, ccd::preprocess::qa_set({23}));
+    EXPECT_EQ(got.plan.snow.chain[3].codes, ccd::preprocess::qa_set({23}));
 
     ccd::Input reflectance = golden::physical_input();
     const ccd::config::Resolved phys = r.resolve(config, reflectance);

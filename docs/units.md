@@ -157,7 +157,7 @@ physical units there is no collection branch.
 ## The thermal range
 
 `thermal_range`'s bounds are degrees Celsius, and `ccdc` tests them in every procedure's chain,
-on every input. The Standard procedure applies the thermal transform first and tests the
+on every input, over every observation the procedure's fit uses. The Standard procedure applies the thermal transform first and tests the
 transformed row against the bounds in the transformed unit (`-9320 < x < 7070` on Collection-1
 DN). The PermanentSnow and InsufficientClear chains read the thermal row as the input holds it,
 so their step tests the stored row against the same bounds taken back through the inverse of
@@ -166,12 +166,13 @@ transform is non-decreasing; `ccd::preprocess::stored_range()`), so the stored t
 exactly the values whose transform Standard's test keeps, NaN included, for every flag. On
 Collection-1 DN -93.2 and 70.7 °C are 1799.5 and 3438.5 (179.95 and 343.85 K); with the
 identity transform (`landsat_c1_physical`, `landsat_c2`) the bounds are the transformed ones.
-The snow chain tests the clear and water observations it keeps before it adds the snow ones
-back, as pyccd does.
+The snow chain tests the range last, after it adds the snow observations back and dedupes, so
+the snow observations are tested too (pyccd tests only the clear and water ones, before it adds
+the snow back).
 
 ```python
 for input in (ccdcpp.Input(), physical):
-    print(ccdcpp.plan_of("ccdc", input).snow.chain[1])
+    print(ccdcpp.plan_of("ccdc", input).snow.chain[5])
 ```
 
 ```text
@@ -189,7 +190,11 @@ those two procedures' fits: on the 1,500 reference Collection-1 pixels nothing c
 synthetic Collection-1 corpus, whose thermal values range far beyond the bounds, 218 of 2,900
 pixels change (117 snow, 93 insufficient-clear, 8 without a segment), and the DN run segments
 as the physical-unit run does. On the Atlanta cell (Collection 2, 250,000 pixels) no pixel
-changes. A thermal transform's `thermal_scale` is a positive number and its `thermal_offset` a
+changes. Testing the snow observations too keeps a saturated or NaN thermal value out of a snow
+fit (one such pixel's thermal RMSE goes from 1507, or NaN, to 41); as the snow chain's last
+step it also changes 4 snow pixels of the synthetic corpus's 2,900, on both units: on 7 dates a
+clear observation with an implausible thermal value comes first, the dedupe keeps it, the
+range then drops it, and the date's snow observation goes with it. A thermal transform's `thermal_scale` is a positive number and its `thermal_offset` a
 finite one.
 
 ## The guards

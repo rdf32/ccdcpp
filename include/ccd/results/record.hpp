@@ -40,7 +40,8 @@ inline constexpr std::uint16_t RESUME_FORMAT = 2;
 // input and configuration, or changes the default configuration's outputs,
 // so a record of another version describes a run this one would not make.
 // 3: the "ccdc" preset has no statistics cutoff, and its snow and
-// insufficient-clear procedures test the thermal range in degrees Celsius.
+// insufficient-clear procedures test the thermal range in degrees Celsius
+// (the snow procedure over its snow observations too).
 inline constexpr std::uint32_t RESULTS_VERSION = 3;
 
 // One call's part of the record, shared by its pixels.
