@@ -31,10 +31,10 @@ c2 = presets.landsat_c2().input()
 print(c2.reflectance_scale, c2.thermal_at_100c, c2.qa_table is not None)
 
 cfg = ccdcpp.config("ccdc")
-print(cfg.preprocess("insufficient_clear")["steps"][3], cfg.shared()["alpha"])
+print(cfg.preprocess("insufficient_clear")["steps"][4], cfg.shared()["alpha"])
 
 plan = ccdcpp.plan_of(cfg, ccdcpp.Input())
-print(plan.insufficient_clear.chain[3])
+print(plan.insufficient_clear.chain[4])
 print(cfg.resolve(ccdcpp.Input())["stages"]["model"]["params"]["alpha"], plan.standard.chain[2])
 ```
 
