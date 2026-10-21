@@ -66,8 +66,8 @@ option(
     ON
 )
 
-# Strategy extensions built into the library: directories, relative to the
-# source directory, each with an extension.cmake that appends to
+# Strategy extensions built into the library: directories, absolute or relative
+# to the source directory, each with an extension.cmake that appends to
 #   CCD_EXTENSION_SOURCES        its library sources
 #   CCD_EXTENSION_INCLUDE_DIRS   its include directories
 #   CCD_EXTENSION_REGISTRATIONS  its registration functions' names, each a
@@ -137,7 +137,11 @@ set(CCD_EXTENSION_REGISTRATIONS "")
 set(extensions ${CCD_EXTENSIONS})
 list(REMOVE_DUPLICATES extensions)
 foreach(extension IN LISTS extensions)
-    set(CCD_EXTENSION_DIR ${PROJECT_SOURCE_DIR}/${extension})
+    if(IS_ABSOLUTE "${extension}")
+        set(CCD_EXTENSION_DIR ${extension})
+    else()
+        set(CCD_EXTENSION_DIR ${PROJECT_SOURCE_DIR}/${extension})
+    endif()
     if(NOT EXISTS ${CCD_EXTENSION_DIR}/extension.cmake)
         message(FATAL_ERROR "CCD_EXTENSIONS: ${extension} has no extension.cmake")
     endif()

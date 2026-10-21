@@ -196,10 +196,10 @@ strategy type by name for its interface's stage, and refuses a name the stage al
 `add_preset(name, config)` a named configuration. Where the registration runs decides who
 sees the strategy:
 
-- **An extension.** A directory, relative to the source directory, whose `extension.cmake`
-  appends its sources, include directories and registration functions; CMake's
-  `CCD_EXTENSIONS` lists the directories, and the library calls each registration function when
-  it first builds `ccd::strategies::library_registry()`
+- **An extension.** A directory, absolute or relative to the source directory, whose
+  `extension.cmake` appends its sources, include directories and registration functions;
+  CMake's `CCD_EXTENSIONS` lists the directories, and the library calls each registration
+  function when it first builds `ccd::strategies::library_registry()`
   (`src/ccd/strategies/register_extensions.cpp.in`). Every `Algorithm`, and so Python, then has
   the strategy. The scaffold writes this file:
 
@@ -245,7 +245,8 @@ cmake --build build -j8
 ctest --test-dir build -j8 -LE corpus
 ```
 
-`CCD_EXTENSIONS` takes `;`-separated directories, each relative to the source directory. On
+`CCD_EXTENSIONS` takes `;`-separated directories, each absolute or relative to the source
+directory: `-DCCD_EXTENSIONS="tests/ccd/extension;$HOME/my-strategies"` builds both. On
 macOS add the OpenMP flags of the README's [Build and test](../README.md#build-and-test).
 
 The editable Python install, into your own environment: the package's Python files are read
