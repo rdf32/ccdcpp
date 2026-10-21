@@ -98,9 +98,24 @@ its replacement.
   its pyccd strategy; a registry of strategies, steps and presets with parameter schemas;
   strategy extensions through CMake's `CCD_EXTENSIONS`.
 - Configurations from Python ([docs/config.md](docs/config.md)): `ccdcpp.config()` (a preset,
-  a TOML file with `extends`, a dict), `Config.replace(shared__name=, stage__param=,
-  stage="strategy", preprocess__...=)`, `resolve()`, `hash()`, `to_toml()`;
-  `ccdcpp.strategies()`, `shared_values()`, `steps()`, `plan_of()`; `python/ccdcpp/configs/ccdc.toml`.
+  a TOML file with `extends`, a dict laid out as the file), `Config.replace(shared__name=,
+  shared__table__name=, stage__param=, stage="strategy", preprocess__...=)`, `resolve()`,
+  `hash()`, `to_toml(full=False)`; `ccdcpp.strategies()`, `shared_values()`, `steps()`,
+  `plan_of()`; `python/ccdcpp/configs/ccdc.toml`.
+- The configuration file's layout ([docs/config.md](docs/config.md#presets)): one table per
+  stage, in the order a pixel meets them, its `strategy` beside its parameters; `[shared]` with
+  the tables `[shared.coefficients]` (`min`, `mid`, `max`, `per`) and `[shared.lasso]`
+  (`alpha`, `coef_floor`, `max_iter`, `tolerance`); `[preprocess.<procedure>]` with `thermal =
+  "celsius"` or `"stored"` and its steps. Named values replace magic numbers
+  (`statistics_end = "none"` or a date `"YYYY-MM-DD"`, `peek = "change_test"`), and a range is
+  a pair keyed by its unit (`celsius = [-93.2, 70.7]`, `reflectance = [0.0, 1.0]`, with
+  `inclusive = [false, false]`). `to_toml()` comments each table with what it decides and each
+  value with its unit, from the schemas, and leaves out a flag left off at its default. The
+  stages are `mode`, `noise`, `start_search`, `window_screen`, `stability_fit`,
+  `stability_rule`, `lookback`, `model`, `change_test`, `outlier`, `refit`, `segment_report`
+  and `edge_segments`, the steps `keep_qa`, `add_qa`, `thermal_range`, `band_range`,
+  `green_median` and `one_per_date`. A file of an earlier 1.0 development build is refused,
+  naming what changed ([docs/migration-1.0.md](docs/migration-1.0.md#configuration-files)).
 - `detect_cube(masks=True)`: every pixel's processing mask in one `(H, W, T)` uint8 array;
   `ccdcpp.to_pixels()` reads the columns per pixel.
 - Diagnostics ([docs/diagnostics.md](docs/diagnostics.md)): `ccd::Observer`,
@@ -151,8 +166,6 @@ its replacement.
 - A `min_observations` at or below `coefficients.min` is refused when the configuration is
   built, naming both values: its fits had no degree of freedom (a NaN RMSE, an assertion in
   a debug build).
-- A TOML stage table holding anything but `strategy` and `[<stage>.params]` (a parameter
-  written beside `strategy`, which was dropped silently) is refused, naming the keys.
 - A Start or End segment is written only on more observations than edge_segments'
   coefficients (`coefficients.min`), as well as more than the peek: a `peek_size` below
   `coefficients.min` (2 or 3, or `coefficients.min` 7 or 8 with the default peek) wrote a

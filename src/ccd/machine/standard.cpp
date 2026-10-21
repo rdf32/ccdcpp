@@ -1378,7 +1378,8 @@ FitResult Detector::fit(
 
     return strategies.edge_segments->whole_series(
         mode.procedure, series, std::move(mask),
-        edges_.get(strategies.edge_segments, [](const EdgeSegments& e) { return e.make_scratch(); }));
+        edges_.get(strategies.edge_segments,
+                   [](const EdgeSegments& e) { return e.make_scratch(); }));
 }
 
 } // namespace standard

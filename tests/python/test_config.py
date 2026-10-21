@@ -12,6 +12,7 @@ from __future__ import annotations
 import glob
 import os
 import pickle
+import re
 import shutil
 import sys
 import unittest
@@ -97,11 +98,11 @@ class Presets(unittest.TestCase):
 
     def test_resolved_on_dn_it_is_pyccds_tree(self):
         r = ccdcpp.config("ccdc").resolve(ccdcpp.Input())
-        self.assertEqual(r["stages"]["model"]["params"]["alpha"], 1.0)
-        self.assertEqual(r["stages"]["change_test"]["params"]["change_threshold"],
+        self.assertEqual(r["model"]["alpha"], 1.0)
+        self.assertEqual(r["change_test"]["change_threshold"],
                          15.086272469388987)
-        self.assertEqual(r["stages"]["outlier"]["params"]["threshold"], 35.888186879610423)
-        self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], [1, 4])
+        self.assertEqual(r["outlier"]["threshold"], 35.888186879610423)
+        self.assertEqual(r["window_screen"]["bands"], [1, 4])
         self.assertEqual(r["shared"]["detection_bands"], [1, 2, 3, 4, 5])
         clear = r["preprocess"]["insufficient_clear"]["steps"]
         self.assertEqual(clear[0]["codes"], [0, 1])
@@ -112,16 +113,18 @@ class Presets(unittest.TestCase):
 
     def test_a_file_extends_a_preset(self):
         path = os.path.join(_ROOT, "variant.toml")
-        with open(path, "w") as f:
-            f.write('extends = "ccdc"\n\n[refit]\nstrategy = "span-factor"\n'
-                    '[refit.params]\nfactor = 2.0\n')
-        variant = ccdcpp.config(path)
         base = ccdcpp.config("ccdc")
-        self.assertEqual(variant.params("refit"), {"min_obs": 24, "factor": 2.0})
-        for stage in base.stages():
-            if stage != "refit":
-                self.assertEqual(variant.params(stage), base.params(stage), stage)
-        self.assertNotEqual(variant.hash(), base.hash())
+        # A stage keeps its base's strategy; naming it again is the same.
+        for text in ('[refit]\nfactor = 2.0\n', '[refit]\nstrategy = "span-factor"\nfactor = 2.0\n'):
+            with self.subTest(text=text):
+                with open(path, "w") as f:
+                    f.write('extends = "ccdc"\n\n' + text)
+                variant = ccdcpp.config(path)
+                self.assertEqual(variant.params("refit"), {"min_obs": 24, "factor": 2.0})
+                for stage in base.stages():
+                    if stage != "refit":
+                        self.assertEqual(variant.params(stage), base.params(stage), stage)
+                self.assertNotEqual(variant.hash(), base.hash())
 
     def test_a_shared_table_is_reached_by_its_path(self):
         cfg = ccdcpp.config().replace(shared__lasso__alpha=2e-4, shared__coefficients__max=6)
@@ -139,19 +142,51 @@ class Presets(unittest.TestCase):
         self.assertEqual(ccdcpp.config(path).shared()["lasso"],
                          dict(ccdcpp.config().shared()["lasso"], max_iter=500))
 
-    def test_a_stage_table_holds_its_strategy_and_params_only(self):
-        # A parameter written beside strategy, not under [refit.params], is refused by name.
-        path = os.path.join(_ROOT, "beside.toml")
-        with open(path, "w") as f:
-            f.write('extends = "ccdc"\n\n[refit]\nstrategy = "span-factor"\nfactor = 2.0\n'
-                    'min_obs = 30\n')
-        with self.assertRaisesRegex(ValueError, r"stage 'refit' holds factor, min_obs; a stage "
-                                                r"table holds strategy and \[refit\.params\]"):
-            ccdcpp.config(path)
-        with open(path, "w") as f:
-            f.write('extends = "ccdc"\n\n[refit]\nstrategy = "span-factor"\nparams = 2.0\n')
-        with self.assertRaisesRegex(ValueError, r"\[refit\.params\] is a table of parameters"):
-            ccdcpp.config(path)
+    def test_a_file_of_the_old_layout_is_refused_naming_what_changed(self):
+        path = os.path.join(_ROOT, "old.toml")
+        for text, message in (
+                ('[refit]\nstrategy = "span-factor"\n[refit.params]\nfactor = 2.0\n',
+                 r"stage 'refit' holds a 'params' table; a stage's parameters are written in its "
+                 r"own table, beside its strategy"),
+                ('[refit]\nfctor = 2.0\n', r"refit 'span-factor' has no parameter 'fctor'"),
+                ('[noise_floor]\nstrategy = "variogram"\n',
+                 r"the configuration has no stage 'noise_floor'; the stages are mode, noise, "),
+                ('[shared]\nalpha = 0.0002\n', r"shared has no value 'alpha'; it has "),
+                ('[preprocess.snow]\nthermal_transform = false\n',
+                 r"preprocess snow holds \"thermal\" and \"steps\", not 'thermal_transform'"),
+                ('[preprocess.snow]\nsteps = [{ step = "dedupe" }]\n',
+                 r"preprocess snow step 0 is 'dedupe', which is not a preprocessing step"),
+                ('[preprocess.snow]\nsteps = [{ step = "thermal_range", min = -90.0 }]\n',
+                 r"'thermal_range' has no parameter 'min'; it has celsius, inclusive"),
+                ('[lookback]\npeek = 0\n', r"lookback 'pyccd' parameter 'peek' is 0; it must be at "
+                                            r"least 1")):
+            with self.subTest(text=text):
+                with open(path, "w") as f:
+                    f.write('extends = "ccdc"\n\n' + text)
+                with self.assertRaisesRegex(ValueError, "^" + re.escape(path) + ": .*" + message):
+                    ccdcpp.config(path)
+
+    def test_the_file_is_to_toml_of_the_preset(self):
+        path = os.path.join(_PACKAGE, "configs", "ccdc.toml")
+        with open(path) as f:
+            header, body = f.read().split("\n\n", 1)
+        self.assertTrue(all(line.startswith("#") for line in header.splitlines()))
+        self.assertEqual(body, ccdcpp.Config(ccdcpp.ccdcpp._config_preset("ccdc")).to_toml())
+        # Every value, the flags left off at their defaults among them, with full=True.
+        full = ccdcpp.config().to_toml(full=True)
+        self.assertIn('{ step = "thermal_range", celsius = [-93.2, 70.7], '
+                      'inclusive = [false, false] }', full)
+        self.assertNotIn("inclusive", body)
+        for cfg_text in (body, full):
+            written = os.path.join(_ROOT, "written.toml")
+            with open(written, "w") as f:
+                f.write(cfg_text)
+            self.assertEqual(ccdcpp.config(written), ccdcpp.config())
+        # The stages in the order a pixel meets them, each with what it decides.
+        stages = [line.split("]")[0][1:] for line in body.splitlines()
+                  if line.startswith("[") and not line.startswith(("[shared", "[preprocess"))]
+        self.assertEqual(stages, ccdcpp.config().stages())
+        self.assertIn("[refit]                          # when a growing curve is refitted", body)
 
     def test_to_toml_reads_back_as_the_same_configuration(self):
         path = os.path.join(_ROOT, "written.toml")
@@ -186,7 +221,7 @@ class Presets(unittest.TestCase):
     def test_a_peek_is_the_change_tests_or_a_number(self):
         cfg = ccdcpp.config()
         self.assertEqual(cfg.params("lookback")["peek"], "change_test")
-        self.assertEqual(cfg.resolve(ccdcpp.Input())["stages"]["lookback"]["params"]["peek"],
+        self.assertEqual(cfg.resolve(ccdcpp.Input())["lookback"]["peek"],
                          "change_test")
         self.assertEqual(cfg.replace(lookback__peek=8).params("lookback")["peek"], 8)
         with self.assertRaisesRegex(ValueError, r"^lookback 'pyccd' parameter 'peek' is 0; it "
@@ -217,10 +252,10 @@ class Replace(unittest.TestCase):
     def test_a_shared_value_reaches_every_stage_that_reads_it(self):
         cfg = ccdcpp.config().replace(shared__change_probability=0.95)
         self.assertEqual(cfg.shared()["change_probability"], 0.95)
-        stages = cfg.resolve(ccdcpp.Input())["stages"]
+        stages = cfg.resolve(ccdcpp.Input())
         for stage in ("change_test", "stability_rule", "lookback"):
-            self.assertEqual(stages[stage]["params"]["change_probability"], 0.95, stage)
-            self.assertEqual(stages[stage]["params"]["change_threshold"],
+            self.assertEqual(stages[stage]["change_probability"], 0.95, stage)
+            self.assertEqual(stages[stage]["change_threshold"],
                              ccdcpp.chi2_quantile(0.95, 5), stage)
         self.assertEqual(ccdcpp.config().shared()["change_probability"], 0.99)
 
@@ -327,7 +362,8 @@ class Replace(unittest.TestCase):
 class Strategies(unittest.TestCase):
     def test_every_stage_lists_its_strategies_and_parameters(self):
         table = ccdcpp.strategies()
-        self.assertEqual(sorted(table), ccdcpp.config().stages())
+        self.assertEqual(sorted(table), sorted(ccdcpp.config().stages()))
+        self.assertEqual(ccdcpp.config().stages()[:3], ["mode", "noise", "start_search"])
         refit = {p["name"]: p for p in table["refit"]["span-factor"]}
         self.assertEqual(refit["factor"]["default"], 1.33)
         self.assertEqual(refit["min_obs"]["unit"], "observations")
@@ -452,12 +488,15 @@ class Runs(unittest.TestCase):
         d, s, q = pixel()
         h = ccdcpp.Input()
         tree = ccdcpp.config().to_dict()
-        tree["stages"]["refit"] = {"strategy": "nope", "params": {}}
+        tree["refit"] = {"strategy": "nope"}
         with self.assertRaisesRegex(ValueError, "refit has no strategy 'nope'"):
             ccdcpp.detect(d, s, q, input=h, config=ccdcpp.Config(tree))
+        with self.assertRaisesRegex(ValueError, "a configuration holds no 'stages': each stage is "
+                                                "a table of its own"):
+            ccdcpp.Config({"stages": {"refit": {"strategy": "span-factor", "params": {}}}})
         with self.assertRaisesRegex(ValueError, "the configuration has no 'mode' stage"):
             ccdcpp.detect(d, s, q, input=h,
-                          config=ccdcpp.Config({"stages": {"refit": {"strategy": "span-factor"}}}))
+                          config=ccdcpp.Config({"refit": {"strategy": "span-factor"}}))
         with self.assertRaisesRegex(ValueError, "refit 'span-factor' parameter 'factor' is 0"):
             ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(refit__factor=0.0))
 

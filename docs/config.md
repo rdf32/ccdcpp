@@ -1,7 +1,7 @@
 # Configuring the algorithm
 
 ccdcpp runs one fixed machine, the CCDC family's phases and routes, whose decisions are made by
-**stages**: the procedure a pixel takes, its noise floor, where the search for a stable start
+**stages**: the procedure a pixel takes, its noise, where the search for a stable start
 begins, the outlier screen and the fit and rule a start window is judged by, Lookback, the
 monitoring model and when it is refitted, the change test, the outlier rule, and the fits a
 segment reports. Each stage is decided by a **strategy** chosen by name, with parameters. A
@@ -20,8 +20,8 @@ The examples use `dates`, `spectral`, `qas`, `cube` and `cube_qa` from the READM
 | | Example |
 |---|---|
 | The input says only how to read the data. | `presets.landsat_c2().input()` holds reflectance 0..1 (`reflectance_scale` 1), thermal in degrees Celsius / 100, and the decoder of `QA_PIXEL`. |
-| The configuration says what to do with it, in physical units. | `ccdc`'s `green_median` drops observations 0.04 reflectance above the median green; its `alpha` is 1e-4 reflectance. |
-| The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | On `ccdcpp.Input()` the `green_median` offset resolves to 400 DN, `alpha` to 1.0 and `band_range` to `0 < x < 10000`. |
+| The configuration says what to do with it, in physical units. | `ccdc`'s `green_median` drops observations 0.04 reflectance above the median green; its `lasso.alpha` is 1e-4 reflectance. |
+| The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | On `ccdcpp.Input()` the `green_median` offset resolves to 400 DN, `lasso.alpha` to 1.0 and `band_range` to `0 < x < 10000`. |
 
 ```python
 import ccdcpp
@@ -31,11 +31,11 @@ c2 = presets.landsat_c2().input()
 print(c2.reflectance_scale, c2.thermal_at_100c, c2.qa_table is not None)
 
 cfg = ccdcpp.config("ccdc")
-print(cfg.preprocess("insufficient_clear")["steps"][4], cfg.shared()["alpha"])
+print(cfg.preprocess("insufficient_clear")["steps"][4], cfg.shared()["lasso"]["alpha"])
 
 plan = ccdcpp.plan_of(cfg, ccdcpp.Input())
 print(plan.insufficient_clear.chain[4])
-print(cfg.resolve(ccdcpp.Input())["stages"]["model"]["params"]["alpha"], plan.standard.chain[2])
+print(cfg.resolve(ccdcpp.Input())["model"]["alpha"], plan.standard.chain[2])
 ```
 
 ```text
@@ -49,11 +49,12 @@ The input is a `ccdcpp.Input`, or a `SensorProfile` that builds one ([units.md](
 Input's fields and the boundary between the data and the configuration). A run resolves its
 configuration against its input once:
 
-- a reflectance level (unit `reflectance`: `band_range`'s bounds) as
+- a reflectance level (unit `reflectance`: `band_range`'s `reflectance` range) as
   `r * reflectance_scale + reflectance_offset`;
-- a reflectance difference (unit `reflectance_delta`: `alpha`, `coef_floor`, `green_median`'s
-  offset) as `r * reflectance_scale`;
-- degrees Celsius `c` (`thermal_range`'s bounds) as `c * 100 * thermal_at_100c / 10000`;
+- a reflectance difference (unit `reflectance_delta`: `lasso.alpha`, `lasso.coef_floor`,
+  `green_median`'s offset) as `r * reflectance_scale`;
+- degrees Celsius `c` (`thermal_range`'s `celsius` range) as `c * 100 * thermal_at_100c / 10000`;
+- a date `"YYYY-MM-DD"` (`statistics_end`) as its ordinal day;
 - a probability to its chi-squared quantile for the detection-band count;
 - roles to rows and QA code names to the input's codes.
 
@@ -83,8 +84,8 @@ print(len(pixel["models"]), cols["pixels_with_segments"], cfg3 == cfg)
 ```
 
 ```text
-['change_test', 'edge_segments', 'lookback', 'mode'] span-factor {'min_obs': 24, 'factor': 1.33}
-['green', 'red', 'nir', 'swir1', 'swir2'] True
+['mode', 'noise', 'start_search', 'window_screen'] span-factor {'factor': 1.33, 'min_obs': 24}
+['green', 'red', 'nir', 'swir1', 'swir2'] none
 2 12 True
 ```
 
@@ -135,9 +136,12 @@ change_probability | none | shared | None
 ```
 
 A parameter whose source is `shared` or `chi2` reads a shared value (its chi-squared quantile
-for the detection-band count, for `chi2`) and is set as `shared__<name>`, not in its stage.
+for the detection-band count, for `chi2`) and is set as `shared__<name>`, or
+`shared__<table>__<name>` for a table's (`shared__lasso__alpha`), not in its stage.
 `cfg.hash()` is a digest equal for equal configurations on any platform; `cfg.to_toml()` writes
-the configuration as a preset file; a `Config` pickles, so it can go to worker processes.
+the configuration as a preset file ([below](#presets)); a `Config` pickles, so it can go to
+worker processes. `cfg.to_dict()` is the configuration laid out as its file: `"shared"`, one
+table per stage (`{"strategy": ..., <parameter>: ...}`) and `"preprocess"`.
 
 ### Shared values
 
@@ -177,13 +181,82 @@ print(ccdcpp.plan_of(colder, ccdcpp.Input()).standard.chain[1])  # the plan, in 
 
 ## Presets
 
-A preset is a TOML file: a `[shared]` table, one table per stage and one
-`[preprocess.<procedure>]` table per procedure. `ccdcpp.config(name)` reads
-`ccdcpp/configs/<name>.toml`, or else the library registry's preset of that name (an
-extension's, `Registry::add_preset()`), built once; `ccdcpp.config(path)` reads any file. A
-stage's table holds its `strategy` and a `[<stage>.params]` table of parameters; any other key in
-it (a parameter written beside `strategy`, say) is refused by name. A file may extend another
-and list only what differs:
+A preset is a TOML file. `ccdcpp.config(name)` reads `ccdcpp/configs/<name>.toml`, or else the
+library registry's preset of that name (an extension's, `Registry::add_preset()`), built once;
+`ccdcpp.config(path)` reads any file. `cfg.to_toml()` writes one, in this layout (`ccdc`'s
+file, shortened):
+
+```toml
+# --- Values several stages share ----------------------------------------------------------
+
+[shared]
+detection_bands = ["green", "red", "nir", "swir1", "swir2"]
+change_probability = 0.99
+outlier_probability = 0.999999
+min_observations = 12            # observations
+statistics_end = "none"          # a date "YYYY-MM-DD", an ordinal day, or "none"
+
+[shared.coefficients]            # how many harmonic coefficients a curve gets
+min = 4
+mid = 6
+max = 8
+per = 3
+
+[shared.lasso]                   # the Lasso every fitting stage uses
+alpha = 0.0001                   # reflectance
+coef_floor = 0.0001              # reflectance
+max_iter = 1000
+tolerance = 0.0001
+
+# --- Preprocessing: which observations each procedure keeps -------------------------------
+
+[preprocess.standard]
+thermal = "celsius"              # through the input's thermal transform (degrees Celsius)
+steps = [
+    { step = "keep_qa", codes = ["clear", "water"] },
+    { step = "thermal_range", celsius = [-93.2, 70.7] },                      # degrees Celsius
+    { step = "band_range", bands = "reflective", reflectance = [0.0, 1.0] },  # reflectance
+    { step = "one_per_date" },
+]
+
+# --- The stages, in the order a pixel meets them ------------------------------------------
+
+[mode]                           # the procedure a pixel runs: standard, snow or insufficient clear
+strategy = "pyccd"
+clear_pct_threshold = 0.25
+snow_pct_threshold = 0.75
+
+[stability_rule]                 # whether that fit is stable enough to start a curve
+strategy = "pyccd"
+peek = "change_test"             # observations, or "change_test"
+
+[refit]                          # when a growing curve is refitted
+strategy = "span-factor"
+min_obs = 24                     # observations
+factor = 1.33
+```
+
+- **One table per stage**, in the order a pixel meets them: `strategy`, and beside it the
+  strategy's parameters. A file may give the tables in any order. An unknown key is refused,
+  naming it.
+- **The shared values** are `[shared]`, with two tables for the values of one rule each:
+  `[shared.coefficients]` (`min`, `mid`, `max`, `per`) and `[shared.lasso]` (`alpha`,
+  `coef_floor`, `max_iter`, `tolerance`). Python reaches a table's value with double
+  underscores, `replace(shared__lasso__alpha=1e-5)`; C++ by its path,
+  `config.shared["lasso.alpha"]`.
+- **Each procedure's chain** is `[preprocess.<procedure>]`: `thermal` (`"celsius"`, through the
+  input's thermal transform, or `"stored"`, as the input holds it) and its `steps` in order,
+  each written out in full: nothing is looked up elsewhere.
+- **Named values** stand where a number would mean something particular: `statistics_end =
+  "none"` (or a date `"2017-12-31"`, or an ordinal), `peek = "change_test"` (or a number of
+  observations).
+- **A range is a pair keyed by its unit**: `celsius = [-93.2, 70.7]`, `reflectance = [0.0,
+  1.0]`, open at both ends unless `inclusive = [true, false]` (or another pair) says so.
+- **Comments from the code**: each table says what it decides and each value its unit, from
+  the registry's schemas. `to_toml()` leaves out a flag left off at its default (the
+  `inclusive` pairs); `to_toml(full=True)` writes every value.
+
+A file may extend another and list only what differs:
 
 ```toml
 # my_variant.toml
@@ -193,8 +266,6 @@ extends = "ccdc"
 change_probability = 0.95
 
 [refit]
-strategy = "span-factor"
-[refit.params]
 factor = 2.0
 
 [preprocess.insufficient_clear]
@@ -215,16 +286,20 @@ print(variant.preprocess("standard") == cfg.preprocess("standard"))
 ```
 
 ```text
-0.95 {'min_obs': 24, 'factor': 2.0}
+0.95 {'factor': 2.0, 'min_obs': 24}
 {'step': 'green_median', 'offset': 0.05, 'scope': 'stat_window'}
 True
 ```
 
-A stage the file names with the base's strategy changes only the parameters it gives; with
-another strategy, the stage starts from that strategy's defaults. A procedure the file names
-takes the file's `thermal` and `steps` where it gives them, each step's parameters
-from the step's defaults. A relative path in `extends` is the extending file's directory's. The
-shipped preset is `ccdc`; `python/ccdcpp/configs/ccdc.toml` is its `to_toml()`.
+A stage the file names keeps its base's strategy and the parameters the file does not give
+(`strategy` may be left out, or repeated); with another `strategy`, the stage starts from that
+strategy's defaults. A shared table changes the values it gives. A procedure the file names
+takes the file's `thermal` and `steps` where it gives them, each step's parameters from the
+step's defaults. A relative path in `extends` is the extending file's directory's. The shipped
+preset is `ccdc`; `python/ccdcpp/configs/ccdc.toml` is its `to_toml()` under a header comment.
+A file in the layout before 1.0 (`[<stage>.params]`, `thermal_transform`, the old names) is
+refused, naming what changed; [migration-1.0.md](migration-1.0.md#configuration-files) maps
+it.
 
 ## From C++
 
@@ -239,6 +314,7 @@ PixelOutput run_variant(ArrayView<const std::int64_t, 1> dates,
 {
     config::Config config = strategies::library_registry().preset("ccdc");
     config.shared["change_probability"] = config::real(0.95);
+    config.shared["lasso.alpha"] = config::real(2e-4);            // [shared.lasso] alpha
     config.stages["refit"].params["factor"] = config::real(2.0);
 
     RunSpec spec;                        // spec.input is Collection-1 DN, spec.algorithm "ccdc"
@@ -248,8 +324,10 @@ PixelOutput run_variant(ArrayView<const std::int64_t, 1> dates,
 }
 ```
 
-Three types hold a configuration. `config::Config` is the data: the `shared` values, the
-`stages` and the `preprocess` chains, as written, a value you edit. `ccd::Algorithm` is its
+Three types hold a configuration. `config::Config` (`include/ccd/config/config.hpp`) is the
+data: the `shared` values (a table's by its path, `"lasso.alpha"`), the `stages` and the
+`preprocess` chains, as written, a value you edit; `config::canonical()` writes it out in
+full, and `config::resolve()` (`include/ccd/config/resolve.hpp`) against an input. `ccd::Algorithm` is its
 compiled form: built once from a `Config` (checked by the schemas then), immutable, shared by
 every call and thread, and caching its resolution per input (`for_input()`: resolved and built
 the first time it meets an input, reused for every equal one; the 16 inputs used last are
@@ -276,7 +354,7 @@ your own registered and named.
 | fewer outliers dropped | `cfg.replace(shared__outlier_probability=0.99999)` |
 | Initialize and Lookback at a peek of 6, whatever the change test's | `cfg.replace(stability_rule__peek=6, lookback__peek=6)` |
 | fewer coefficients for long windows | `cfg.replace(shared__coefficients__max=6)` |
-| pyccd's statistics cutoff | `cfg.replace(shared__statistics_end=736694)` |
+| pyccd's statistics cutoff | `cfg.replace(shared__statistics_end="2017-12-31")` |
 | another preprocessing | `cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)`, `cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(...))` |
 | a sweep | `[ccdcpp.detect_cube(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |
 | a new decision rule | a C++ strategy class for its stage, registered by name (below) |

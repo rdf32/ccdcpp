@@ -227,7 +227,8 @@ const std::vector<config::Field<Lasso::Params>>& Lasso::schema()
          "a sweep whose largest update is at most this times max(largest coefficient, "
          "coef_floor) checks the duality gap", config::Source::Shared, "lasso.tolerance"},
         {"coef_floor", &Params::coef_floor, Unit::ReflectanceDelta, config::at_least(0),
-         "the least coefficient size the tolerance scales", config::Source::Shared, "lasso.coef_floor"},
+         "the least coefficient size the tolerance scales", config::Source::Shared,
+         "lasso.coef_floor"},
         {"coefficient_min", &Params::coefficient_min, Unit::None, config::at_least(1),
          "coefficients of a short window's fit, and of a start window's", config::Source::Shared,
          "coefficients.min"},

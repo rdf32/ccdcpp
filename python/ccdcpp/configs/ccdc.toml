@@ -1,122 +1,120 @@
-# The ccdc preset: pyccd's algorithm, as ccdcpp corrects it (README), in physical terms: the
-# shared alpha and coef_floor and the preprocessing's reflectance bounds and offset in
-# reflectance (a run multiplies them by its input's reflectance_scale), the thermal bounds in
-# degrees Celsius, probabilities for the chi-squared thresholds, bands by role, QA codes by
-# name, no statistics cutoff (statistics_end 9223372036854775807). The library registry's "ccdc"
-# preset (ccd::strategies::library_registry().preset("ccdc")), written out by its Config's
-# to_toml().
+# ccdc: pyccd's CCDC algorithm (Zhu & Woodcock 2014, as pyccd implements it), with the
+# corrections listed in the README. Values are in physical units: reflectance 0-1, degrees
+# Celsius, days, observations. A run converts them to its input's units once.
+#
+# A file of your own starts from this one and lists only what it changes:
+#     extends = "ccdc"
+#     [refit]
+#     factor = 2.0
+
+# --- Values several stages share ----------------------------------------------------------
 
 [shared]
-change_probability = 0.99
 detection_bands = ["green", "red", "nir", "swir1", "swir2"]
-min_observations = 12
+change_probability = 0.99
 outlier_probability = 0.999999
-statistics_end = "none"
+min_observations = 12            # observations
+statistics_end = "none"          # a date "YYYY-MM-DD", an ordinal day, or "none"
 
-[shared.coefficients]
-max = 8
-mid = 6
+[shared.coefficients]            # how many harmonic coefficients a curve gets
 min = 4
+mid = 6
+max = 8
 per = 3
 
-[shared.lasso]
-alpha = 0.0001
-coef_floor = 0.0001
+[shared.lasso]                   # the Lasso every fitting stage uses
+alpha = 0.0001                   # reflectance
+coef_floor = 0.0001              # reflectance
 max_iter = 1000
 tolerance = 0.0001
 
-[change_test]
-strategy = "chi2"
-[change_test.params]
-model_rmse_up_to = 24
-peek_reference_days = 16.0
-peek_size = 6
-seasonal_count = 24
-seasonal_divisor = 4.0
-
-[edge_segments]
-strategy = "lasso"
-
-[lookback]
-strategy = "pyccd"
-[lookback.params]
-peek = "change_test"
-
-[mode]
-strategy = "pyccd"
-[mode.params]
-clear_pct_threshold = 0.25
-snow_pct_threshold = 0.75
-
-[model]
-strategy = "lasso"
-
-[noise]
-strategy = "variogram"
-[noise.params]
-min_lag_days = 30
-
-[outlier]
-strategy = "floored"
-[outlier.params]
-statistic = "change_magnitude"
-
-[refit]
-strategy = "span-factor"
-[refit.params]
-factor = 1.33
-min_obs = 24
-
-[segment_report]
-strategy = "model-fit"
-
-[stability_fit]
-strategy = "lasso"
-
-[stability_rule]
-strategy = "pyccd"
-[stability_rule.params]
-peek = "change_test"
-
-[start_search]
-strategy = "pyccd"
-[start_search.params]
-day_delta = 365
-
-[window_screen]
-strategy = "tmask"
-[window_screen.params]
-bands = ["green", "swir1"]
-t_const = 4.89
+# --- Preprocessing: which observations each procedure keeps -------------------------------
 
 [preprocess.standard]
-thermal = "celsius"
+thermal = "celsius"              # through the input's thermal transform (degrees Celsius)
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
-    { step = "band_range", bands = "reflective", inclusive = [false, false], reflectance = [0.0, 1.0] },
+    { step = "thermal_range", celsius = [-93.2, 70.7] },                      # degrees Celsius
+    { step = "band_range", bands = "reflective", reflectance = [0.0, 1.0] },  # reflectance
     { step = "one_per_date" },
 ]
 
 [preprocess.snow]
-thermal = "stored"
+thermal = "stored"               # as stored; the range still compares in degrees Celsius
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
-    { step = "band_range", bands = "reflective", inclusive = [false, false], reflectance = [0.0, 1.0] },
+    { step = "thermal_range", celsius = [-93.2, 70.7] },                      # degrees Celsius
+    { step = "band_range", bands = "reflective", reflectance = [0.0, 1.0] },  # reflectance
     { step = "one_per_date" },
     { step = "add_qa", codes = ["snow"] },
     { step = "one_per_date" },
-    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
+    { step = "thermal_range", celsius = [-93.2, 70.7] },                      # degrees Celsius
 ]
 
 [preprocess.insufficient_clear]
-thermal = "stored"
+thermal = "stored"               # as stored; the range still compares in degrees Celsius
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
-    { step = "band_range", bands = "reflective", inclusive = [false, false], reflectance = [0.0, 1.0] },
+    { step = "thermal_range", celsius = [-93.2, 70.7] },                      # degrees Celsius
+    { step = "band_range", bands = "reflective", reflectance = [0.0, 1.0] },  # reflectance
     { step = "one_per_date" },
-    { step = "green_median", offset = 0.04, scope = "stat_window" },
+    { step = "green_median", offset = 0.04, scope = "stat_window" },          # reflectance
     { step = "one_per_date" },
 ]
+
+# --- The stages, in the order a pixel meets them ------------------------------------------
+
+[mode]                           # the procedure a pixel runs: standard, snow or insufficient clear
+strategy = "pyccd"
+clear_pct_threshold = 0.25
+snow_pct_threshold = 0.75
+
+[noise]                          # each band's noise, which every test scales by
+strategy = "variogram"
+min_lag_days = 30                # days
+
+[start_search]                   # where a curve may start: the first window of enough time
+strategy = "pyccd"
+day_delta = 365                  # days
+
+[window_screen]                  # the outliers dropped from a start window before it is fitted
+strategy = "tmask"
+bands = ["green", "swir1"]
+t_const = 4.89
+
+[stability_fit]                  # the fit a start window is judged on
+strategy = "lasso"
+
+[stability_rule]                 # whether that fit is stable enough to start a curve
+strategy = "pyccd"
+peek = "change_test"             # observations, or "change_test"
+
+[lookback]                       # the observations before the start that join the curve
+strategy = "pyccd"
+peek = "change_test"             # observations, or "change_test"
+
+[model]                          # the curve fitted while a segment grows
+strategy = "lasso"
+
+[change_test]                    # whether the next peek of observations breaks the curve
+strategy = "chi2"
+peek_size = 6                    # observations
+peek_reference_days = 16.0       # days
+model_rmse_up_to = 24            # observations
+seasonal_count = 24              # observations
+seasonal_divisor = 4.0
+
+[outlier]                        # a single observation that does not fit, dropped
+strategy = "floored"
+statistic = "change_magnitude"
+
+[refit]                          # when a growing curve is refitted
+strategy = "span-factor"
+min_obs = 24                     # observations
+factor = 1.33
+
+[segment_report]                 # the fit a finished segment reports
+strategy = "model-fit"
+
+[edge_segments]                  # the short segments at the series' start and end
+strategy = "lasso"

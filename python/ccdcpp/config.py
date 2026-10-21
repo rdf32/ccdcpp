@@ -1,15 +1,21 @@
 """The algorithm's configuration: the shared values, for each stage the strategy that
 decides it and that strategy's parameters, and each procedure's preprocessing.
 
-A ``Config`` is immutable, and checked and compiled when it is built. It holds a dict ``{"shared": {name: value}, "stages": {stage:
-{"strategy": name, "params": {name: value}}}, "preprocess": {procedure: {"thermal":
-"celsius" or "stored", "steps": [{"step": name, name: value, ...}, ...]}}}``; a value is a bool, an int, a
-float, a str, a list of names (band roles, QA code names) or a list of ints (band rows, QA
-codes). Pass it as ``config=`` to
-``ccdcpp.detect`` and ``ccdcpp.detect_cube``: it is checked when it is built (unknown stages,
-strategies, steps, parameters or shared values, values out of range, what a strategy needs from
-another) and resolved against each input it runs on once (band roles against the input's rows). A
-resume record of a configured run continues only under the same configuration.
+A ``Config`` is immutable, and checked and compiled when it is built. It holds a dict laid out
+as its TOML file::
+
+    {"shared": {name: value, table: {name: value}},
+     stage: {"strategy": name, parameter: value, ...},          # one per stage
+     "preprocess": {procedure: {"thermal": "celsius" or "stored",
+                                "steps": [{"step": name, parameter: value}, ...]}}}
+
+A value is a bool, an int, a float, a str, or a list of names (band roles, QA code names), of
+ints (band rows, QA codes), of numbers (a range's [min, max]) or of bools (its ends'). Pass it
+as ``config=`` to ``ccdcpp.detect`` and ``ccdcpp.detect_cube``: it is checked when it is built
+(unknown stages, strategies, steps, parameters or shared values, values out of range, what a
+strategy needs from another) and resolved against each input it runs on once (band roles
+against the input's rows). A resume record of a configured run continues only under the same
+configuration.
 
     import ccdcpp
 
@@ -20,14 +26,14 @@ resume record of a configured run continues only under the same configuration.
     out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), config=cfg)
 
 A configuration is written in physical terms, so it means the same on every input: the shared
-``alpha`` and ``coef_floor`` and the preprocessing's bounds and offsets in reflectance (the run
-multiplies them by the input's ``reflectance_scale``), the thermal bounds in degrees Celsius, the
-change and outlier thresholds as probabilities (the run takes their chi-squared quantiles for
-the number of detection bands), bands by role, QA codes by name. The values
-several stages read are written once, in ``shared`` (``ccdcpp.shared_values()`` lists them); a
-stage cannot set them. Swapping a stage's strategy resets that stage's parameters to the new
-strategy's defaults (``cfg.replace(outlier="floored")``). ``ccdcpp.strategies()`` lists every
-stage's strategies and their parameters (unit, bounds, source, default, meaning).
+``lasso.alpha`` and ``lasso.coef_floor`` and the preprocessing's ranges and offsets in
+reflectance (the run multiplies them by the input's ``reflectance_scale``), the thermal range
+in degrees Celsius, the change and outlier thresholds as probabilities (the run takes their
+chi-squared quantiles for the number of detection bands), bands by role, QA codes by name. The
+values several stages read are written once, in ``shared`` (``ccdcpp.shared_values()`` lists
+them); a stage cannot set them. Swapping a stage's strategy resets that stage's parameters to
+the new strategy's defaults (``cfg.replace(outlier="floored")``). ``ccdcpp.strategies()``
+lists every stage's strategies and their parameters (unit, bounds, source, default, meaning).
 
 The preprocessing (``ccdcpp.Preprocess``, ``ProcedureChain`` and the step classes;
 ``ccdcpp.steps()`` lists the step types) is edited with ``replace()`` too::
@@ -36,28 +42,29 @@ The preprocessing (``ccdcpp.Preprocess``, ``ProcedureChain`` and the step classe
     cfg.replace(preprocess__thermal_range__celsius=[-80.0, 70.7])   # every thermal_range step
     cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(steps=(...), thermal="celsius"))
 
-Presets are TOML files (``ccdcpp/configs/<name>.toml``, or any path): a ``[shared]`` table, one
-table per stage and one ``[preprocess.<procedure>]`` table per procedure:
+Presets are TOML files (``ccdcpp/configs/<name>.toml``, or any path), laid out as the dict:
+``Config.to_toml()`` writes one. A file of your own lists only what it changes::
 
     extends = "ccdc"            # optional: start from another preset or file
 
     [shared]
     change_probability = 0.995
 
+    [shared.lasso]
+    alpha = 0.0002
+
     [refit]
-    strategy = "span-factor"
-    [refit.params]
     factor = 2.0
 
     [preprocess.snow]
-    steps = [{step = "keep_qa", codes = ["clear", "water"]}, {step = "one_per_date"}]
+    steps = [{ step = "keep_qa", codes = ["clear", "water"] }, { step = "one_per_date" }]
 
-A stage a file names with the base's strategy changes only the parameters it gives; with
-another strategy, the stage starts from that strategy's defaults. A procedure a file names
-takes the file's ``thermal`` and ``steps`` where it gives them, its base's otherwise.
-``statistics_end`` is ``"none"`` (no statistics cutoff), a date ``"YYYY-MM-DD"`` or an ordinal
-day; a lookback's and a stability rule's ``peek`` is ``"change_test"`` (the change test's) or a
-number.
+A stage a file names keeps its base's strategy and parameters but for the ones it gives; with
+another ``strategy``, the stage starts from that strategy's defaults. A shared table changes
+the values it gives. A procedure a file names takes the file's ``thermal`` and ``steps`` where
+it gives them, its base's otherwise. ``statistics_end`` is ``"none"`` (no statistics cutoff), a
+date ``"YYYY-MM-DD"`` or an ordinal day; a lookback's and a stability rule's ``peek`` is
+``"change_test"`` (the change test's) or a number.
 """
 from __future__ import annotations
 
@@ -79,6 +86,10 @@ _SCHEMA = _extension._strategies()
 _STEPS = _extension._steps()
 _SHARED = {v["name"]: v for v in _extension._shared()}
 _TABLES = _extension._shared_tables()
+# The stages, in the order a pixel meets them, with what each decides.
+_STAGES = _extension._stages()
+# The sections of a configuration's dict that are not stages.
+_SECTIONS = ("shared", "preprocess")
 
 
 def strategies() -> dict[str, dict[str, list[dict[str, Any]]]]:
@@ -137,6 +148,73 @@ def _set_step(tree: dict[str, Any], procedures: Sequence[str], step: str, param:
         raise ValueError(f"the configuration's preprocess has no '{step}' step")
 
 
+# What the comments of a preset file say of a value's unit (to_toml()).
+_UNIT_NOTES = {"observations": "observations", "days": "days", "reflectance": "reflectance",
+               "reflectance_delta": "reflectance", "celsius": "degrees Celsius",
+               "date": 'a date "YYYY-MM-DD", an ordinal day, or "none"'}
+_THERMAL_NOTES = {"celsius": "through the input's thermal transform (degrees Celsius)",
+                  "stored": "as stored; the range still compares in degrees Celsius"}
+# The column a preset file's comments start at, and its section banners' width.
+_NOTE_COLUMN = 33
+_BANNER_WIDTH = 92
+
+
+def _text(v: Any) -> str:
+    """A value as TOML writes it."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, str):
+        return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    if isinstance(v, float):
+        return repr(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(_text(b) for b in v) + "]"
+    return str(v)
+
+
+def _unit_note(info: dict[str, Any]) -> str:
+    """A parameter's unit, as a comment says it ("" for none), with the name it takes for a
+    value (its keyword)."""
+    note = _UNIT_NOTES.get(info.get("unit", ""), "")
+    keyword = info.get("keyword")
+    if keyword and keyword not in note:
+        note = f'{note}, or "{keyword}"' if note else f'or "{keyword}"'
+    return note
+
+
+def _noted(line: str, note: str) -> str:
+    """`line` with `note` as its comment, at the comment column."""
+    return f"{line.ljust(_NOTE_COLUMN - 1)} # {note}" if note else line
+
+
+def _banner(title: str) -> str:
+    head = f"# --- {title} "
+    return head + "-" * max(3, _BANNER_WIDTH - len(head))
+
+
+def _left_out(value: Any, info: dict[str, Any], full: bool) -> bool:
+    """Whether to_toml() leaves the value out: a flag left off at its default."""
+    default = info.get("default")
+    off = default is False or (isinstance(default, list) and bool(default)
+                               and all(v is False for v in default))
+    return not full and off and value == default
+
+
+def _step_row(step: dict[str, Any], full: bool) -> tuple[str, str]:
+    """A step as a chain's line, in its schema's order, and its units' comment."""
+    info = {p["name"]: p for p in _STEPS.get(step["step"], ())}
+    fields = [f"step = {_text(step['step'])}"]
+    notes: list[str] = []
+    for name in list(info) + sorted(set(step) - set(info) - {"step"}):
+        if name not in step or _left_out(step[name], info.get(name, {}), full):
+            continue
+        fields.append(f"{name} = {_text(step[name])}")
+        note = _unit_note(info.get(name, {}))
+        if note and note not in notes:
+            notes.append(note)
+    return "    { " + ", ".join(fields) + " },", "; ".join(notes)
+
+
 def _paths(shared: dict[str, Any]) -> list[tuple[str, Any]]:
     """The shared values by their paths: a table's as "lasso.alpha"."""
     return [(f"{k}.{n}", v) for k, t in shared.items() if isinstance(t, dict)
@@ -181,15 +259,15 @@ class Config:
         raise AttributeError("a Config is immutable; replace() returns a changed copy")
 
     def stages(self) -> list[str]:
-        """The stage names, sorted."""
-        return sorted(self._tree["stages"])
+        """The stage names, in the order a pixel meets them."""
+        return [s["name"] for s in _STAGES if s["name"] in self._tree]
 
     def strategy(self, stage: str) -> str:
-        return self._tree["stages"][stage]["strategy"]
+        return self._tree[stage]["strategy"]
 
     def params(self, stage: str) -> dict[str, Any]:
         """A copy of the stage's parameters."""
-        return copy.deepcopy(self._tree["stages"][stage]["params"])
+        return {k: copy.deepcopy(v) for k, v in self._tree[stage].items() if k != "strategy"}
 
     def shared(self) -> dict[str, Any]:
         """A copy of the shared values: {name: value, table: {name: value}}."""
@@ -226,7 +304,9 @@ class Config:
         swaps = {k: v for k, v in changes.items() if "__" not in k}
         sets = {k: v for k, v in changes.items() if "__" in k}
         for stage, strategy in swaps.items():
-            tree["stages"][stage] = {"strategy": strategy, "params": {}}
+            if stage in _SECTIONS:
+                raise ValueError(f"{stage}= is not a stage; write {stage}__name=value")
+            tree[stage] = {"strategy": strategy}
         chains = {k: v for k, v in sets.items()
                   if k.startswith("preprocess__") and k.count("__") == 1}
         for key, value in chains.items():
@@ -266,9 +346,11 @@ class Config:
                 else:
                     tree["shared"][param] = value
                 continue
-            if stage not in tree["stages"]:
+            if stage not in tree:
                 raise ValueError(f"the configuration has no stage '{stage}'")
-            tree["stages"][stage]["params"][param] = value
+            if param == "strategy":
+                raise ValueError(f"{key}: swap a strategy with {stage}=\"...\"")
+            tree[stage][param] = value
         return Config(tree)
 
     def check(self, input: _extension.Input | None = None) -> None:
@@ -278,8 +360,8 @@ class Config:
 
     def resolve(self, input: _extension.Input) -> dict[str, Any]:
         """The configuration resolved against ``input`` (a ccdcpp.Input), as the run runs
-        it: {"stages", "shared", "preprocess", "digest"}, every value in the input's units,
-        rows and codes."""
+        it, laid out as the configuration (shared, each stage, preprocess) with its "digest",
+        every value in the input's units, rows and codes."""
         return self._algorithm.resolve(input)
 
     def hash(self) -> int:
@@ -289,53 +371,53 @@ class Config:
     def to_dict(self) -> dict[str, Any]:
         return copy.deepcopy(self._tree)
 
-    def to_toml(self) -> str:
-        """The configuration as a preset file (a [shared] table, every stage, then every
-        procedure's preprocessing)."""
-        def text(v: Any) -> str:
-            if isinstance(v, bool):
-                return "true" if v else "false"
-            if isinstance(v, str):
-                return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
-            if isinstance(v, float):
-                return repr(v)
-            if isinstance(v, list):
-                return "[" + ", ".join(text(b) for b in v) + "]"
-            return str(v)
-
-        shared = self._tree["shared"]
-        lines = ["[shared]"]
-        for name in sorted(k for k in shared if not isinstance(shared[k], dict)):
-            lines.append(f"{name} = {text(shared[name])}")
-        lines.append("")
-        for table in sorted(k for k in shared if isinstance(shared[k], dict)):
-            lines.append(f"[shared.{table}]")
-            for name in sorted(shared[table]):
-                lines.append(f"{name} = {text(shared[table][name])}")
-            lines.append("")
-        for stage in self.stages():
-            entry = self._tree["stages"][stage]
-            lines.append(f"[{stage}]")
-            lines.append(f"strategy = {text(entry['strategy'])}")
-            if entry["params"]:
-                lines.append(f"[{stage}.params]")
-                for name in sorted(entry["params"]):
-                    lines.append(f"{name} = {text(entry['params'][name])}")
-            lines.append("")
-        for procedure in PROCEDURES:
-            if procedure not in self._tree["preprocess"]:
+    def to_toml(self, full: bool = False) -> str:
+        """The configuration as a preset file: the shared values, each procedure's
+        preprocessing, then the stages in the order a pixel meets them; each table with what it
+        decides and each value with its unit as comments, from the registry's schemas. A flag
+        left off at its default (a range's ``inclusive = [false, false]``) is left out, unless
+        ``full``."""
+        tree = self._tree
+        lines = [_banner("Values several stages share"), "", "[shared]"]
+        shared = tree["shared"]
+        tables = {t["name"]: t["doc"] for t in _TABLES}
+        for name, info in _SHARED.items():
+            if "." not in name and name in shared:
+                lines.append(_noted(f"{name} = {_text(shared[name])}", _unit_note(info)))
+        for table, doc in tables.items():
+            if not isinstance(shared.get(table), dict):
                 continue
-            chain = self._tree["preprocess"][procedure]
-            lines.append(f"[preprocess.{procedure}]")
-            lines.append(f"thermal = {text(chain['thermal'])}")
-            lines.append("steps = [")
-            for step in chain["steps"]:
-                fields = [f"step = {text(step['step'])}"] + [
-                    f"{k} = {text(step[k])}" for k in sorted(step) if k != "step"]
-                lines.append("    { " + ", ".join(fields) + " },")
+            lines += ["", _noted(f"[shared.{table}]", doc)]
+            for path, info in _SHARED.items():
+                name = path.removeprefix(f"{table}.")
+                if name != path and name in shared[table]:
+                    lines.append(_noted(f"{name} = {_text(shared[table][name])}",
+                                        _unit_note(info)))
+        lines += ["", _banner("Preprocessing: which observations each procedure keeps")]
+        for procedure in PROCEDURES:
+            if procedure not in tree["preprocess"]:
+                continue
+            chain = tree["preprocess"][procedure]
+            lines += ["", f"[preprocess.{procedure}]",
+                      _noted(f"thermal = {_text(chain['thermal'])}", _THERMAL_NOTES.get(
+                          chain["thermal"], "")), "steps = ["]
+            rows = [_step_row(step, full) for step in chain["steps"]]
+            width = max((len(row) for row, _ in rows), default=0) + 2
+            lines += [row.ljust(width) + f"# {note}" if note else row for row, note in rows]
             lines.append("]")
-            lines.append("")
-        return "\n".join(lines)
+        lines += ["", _banner("The stages, in the order a pixel meets them")]
+        for stage in _STAGES:
+            name = stage["name"]
+            if name not in tree:
+                continue
+            entry = tree[name]
+            info = {p["name"]: p for p in _SCHEMA.get(name, {}).get(entry["strategy"], [])}
+            lines += ["", _noted(f"[{name}]", stage["purpose"]),
+                      f"strategy = {_text(entry['strategy'])}"]
+            for param, p in info.items():
+                if param in entry and not _left_out(entry[param], p, full):
+                    lines.append(_noted(f"{param} = {_text(entry[param])}", _unit_note(p)))
+        return "\n".join(lines) + "\n"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Config) and self._tree == other._tree
@@ -344,11 +426,12 @@ class Config:
         return self.hash()
 
     def __repr__(self) -> str:
-        rows = ["  shared: " + ", ".join(f"{k}={v!r}" for k, v in sorted(_paths(self._tree["shared"])))]
+        rows = ["  shared: " + ", ".join(f"{k}={v!r}"
+                                         for k, v in sorted(_paths(self._tree["shared"])))]
         for stage in self.stages():
-            entry = self._tree["stages"][stage]
-            params = ", ".join(f"{k}={entry['params'][k]!r}" for k in sorted(entry["params"]))
-            rows.append(f"  {stage}: {entry['strategy']}({params})")
+            params = self.params(stage)
+            rows.append(f"  {stage}: {self.strategy(stage)}("
+                        + ", ".join(f"{k}={params[k]!r}" for k in sorted(params)) + ")")
         for procedure in PROCEDURES:
             if procedure not in self._tree["preprocess"]:
                 continue
@@ -356,8 +439,7 @@ class Config:
             steps = "; ".join(
                 s["step"] + "(" + ", ".join(f"{k}={s[k]!r}" for k in sorted(s) if k != "step")
                 + ")" for s in chain["steps"])
-            transform = f"thermal {chain['thermal']}, "
-            rows.append(f"  preprocess {procedure}: {transform}{steps}")
+            rows.append(f"  preprocess {procedure}: thermal {chain['thermal']}, {steps}")
         return "Config(\n" + "\n".join(rows) + "\n)"
 
     def __reduce__(self) -> tuple[type[Config], tuple[dict[str, Any]]]:
@@ -375,7 +457,7 @@ def _load(path: str, seen: frozenset[str]) -> Config:
             and not os.path.isabs(base):
         base = os.path.join(os.path.dirname(os.path.abspath(path)), base)   # the file's own dir
     tree = copy.deepcopy(_resolve(base, seen | {real})._tree) if base is not None \
-        else {"shared": {}, "stages": {}, "preprocess": {}}
+        else {"shared": {}, "preprocess": {}}
     shared = data.pop("shared", {})
     if not isinstance(shared, dict):
         raise ValueError(f"{path}: [shared] is a table of values")
@@ -390,22 +472,20 @@ def _load(path: str, seen: frozenset[str]) -> Config:
     for procedure, chain in preprocess.items():
         tree["preprocess"][procedure] = _chain(chain, tree["preprocess"].get(procedure))
     for stage, entry in data.items():
-        if not isinstance(entry, dict) or "strategy" not in entry:
-            raise ValueError(f"{path}: stage '{stage}' needs strategy = \"...\"")
-        unknown = sorted(set(entry) - {"strategy", "params"})
-        if unknown:
-            raise ValueError(f"{path}: stage '{stage}' holds {', '.join(unknown)}; a stage "
-                             f"table holds strategy and [{stage}.params], its parameters")
-        strategy = entry["strategy"]
-        if not isinstance(entry.get("params", {}), dict):
-            raise ValueError(f"{path}: [{stage}.params] is a table of parameters")
-        params = dict(entry.get("params", {}))
-        stages = tree["stages"]
-        if stage in stages and stages[stage]["strategy"] == strategy:
-            stages[stage]["params"].update(params)
+        if not isinstance(entry, dict):
+            raise ValueError(f"{path}: stage '{stage}' is a table, [{stage}]")
+        base_entry = tree.get(stage)
+        if isinstance(base_entry, dict) and entry.get("strategy", base_entry["strategy"]) \
+                == base_entry["strategy"]:
+            base_entry.update(entry)    # the base's strategy: the file's parameters over its
+        elif "strategy" in entry:
+            tree[stage] = dict(entry)   # another strategy: its defaults, and the file's
         else:
-            stages[stage] = {"strategy": strategy, "params": params}
-    return Config(tree)
+            raise ValueError(f"{path}: stage '{stage}' needs strategy = \"...\"")
+    try:
+        return Config(tree)
+    except ValueError as e:
+        raise ValueError(f"{path}: {e}") from None
 
 
 # The presets by name, built once: they are fixed.
@@ -440,6 +520,7 @@ def _resolve(source: Config | dict[str, Any] | str | os.PathLike[str],
 
 def config(source: Config | dict[str, Any] | str | os.PathLike[str] = "ccdc") -> Config:
     """A configuration: a preset's name (``ccdcpp/configs/<name>.toml``, or one of the
-    library's registry, an extension's; built once and shared), a TOML file's path, a dict
-    ``{"shared": ..., "stages": ..., "preprocess": ...}`` or a Config."""
+    library's registry, an extension's; built once and shared), a TOML file's path, a
+    configuration's dict (``{"shared": ..., <stage>: {"strategy": ..., ...}, "preprocess":
+    ...}``) or a Config."""
     return _resolve(source)

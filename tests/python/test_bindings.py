@@ -69,8 +69,8 @@ def options() -> Options:
 
 
 def preset(**changes: object) -> dict[str, Any]:
-    """The built-in ccdc preset as the extension takes it (a dict {"shared",
-    "stages", "preprocess"}), with shared__name=value, stage__param=value and
+    """The built-in ccdc preset as the extension takes it (a configuration's dict, laid out
+    as its TOML file), with shared__name=value, stage__param=value and
     preprocess__step__param=value (every step of that type) changes."""
     tree = ccdcpp._config_preset("ccdc")
     for key, value in changes.items():
@@ -87,8 +87,8 @@ def preset(**changes: object) -> dict[str, Any]:
             assert param in tree["shared"], key
             tree["shared"][param] = value
             continue
-        assert param in tree["stages"][stage]["params"], key
-        tree["stages"][stage]["params"][param] = value
+        assert param in tree[stage], key
+        tree[stage][param] = value
     return tree
 
 
@@ -192,10 +192,10 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(h.roles, ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
         self.assertEqual(preset()["shared"]["detection_bands"],
                          ["green", "red", "nir", "swir1", "swir2"])
-        self.assertEqual(preset()["stages"]["window_screen"]["params"]["bands"],
+        self.assertEqual(preset()["window_screen"]["bands"],
                          ["green", "swir1"])
         self.assertEqual(resolved()["shared"]["detection_bands"], [1, 2, 3, 4, 5])
-        self.assertEqual(resolved()["stages"]["window_screen"]["params"]["bands"], [1, 4])
+        self.assertEqual(resolved()["window_screen"]["bands"], [1, 4])
         band_range = [s for s in preset()["preprocess"]["standard"]["steps"]
                       if s["step"] == "band_range"]
         self.assertEqual([s["bands"] for s in band_range], ["reflective"])
@@ -430,7 +430,7 @@ class CadenceParameters(unittest.TestCase):
     }
 
     def value(self, tree: Mapping[str, Any], stage: str, name: str) -> Any:
-        return tree["shared"][name] if stage == "shared" else tree["stages"][stage]["params"][name]
+        return tree["shared"][name] if stage == "shared" else tree[stage][name]
 
     def test_defaults(self):
         tree = preset()
@@ -448,7 +448,7 @@ class CadenceParameters(unittest.TestCase):
                 if stage == "shared":
                     param = shared[name]
                 else:
-                    (param,) = [p for p in table[stage][tree["stages"][stage]["strategy"]]
+                    (param,) = [p for p in table[stage][tree[stage]["strategy"]]
                                 if p["name"] == name]
                 self.assertEqual(param["unit"], unit)
                 self.assertTrue(param["doc"])
@@ -461,8 +461,9 @@ class CadenceParameters(unittest.TestCase):
         self.assertEqual({n for n in dir(h) if not n.startswith("_")}, self.INPUT_FIELDS)
         tree = preset()
         names = set(tree["shared"])
-        for entry in tree["stages"].values():
-            names |= set(entry["params"])
+        for stage, entry in tree.items():
+            if stage not in ("shared", "preprocess"):
+                names |= set(entry) - {"strategy"}
         for name in names:
             with self.subTest(name=name):
                 with self.assertRaises(AttributeError):
@@ -489,7 +490,7 @@ class CadenceParameters(unittest.TestCase):
         tree = resolved()
         for stage in ("change_test", "stability_rule", "lookback"):
             with self.subTest(stage=stage):
-                params = tree["stages"][stage]["params"]
+                params = tree[stage]
                 # To the last bit.
                 self.assertEqual(
                     ccdcpp.chi2_quantile(0.99, 5).hex(), params["change_threshold"].hex())

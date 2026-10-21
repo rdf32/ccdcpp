@@ -7,8 +7,8 @@
 
 // A Python configuration as the Algorithm a run runs: None for the "ccdc"
 // preset's; a ccdcpp.Config (its compiled `_algorithm`); an
-// _extension.Algorithm; or a dict {"shared": {...}, "stages": {stage:
-// {"strategy": ..., "params": {...}}}}, compiled here. TypeError on a value of
+// _extension.Algorithm; or a configuration's dict {"shared": {...}, <stage>:
+// {"strategy": ..., <parameter>: ...}, "preprocess": {...}}, compiled here. TypeError on a value of
 // no configuration type, ValueError for what the Algorithm refuses.
 ccd::AlgorithmPtr algorithm_from_python(const pybind11::object& config);
 

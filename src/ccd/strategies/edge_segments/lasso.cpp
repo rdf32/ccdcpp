@@ -171,7 +171,8 @@ const std::vector<config::Field<LassoEdges::Params>>& LassoEdges::schema()
          "a sweep whose largest update is at most this times max(largest coefficient, "
          "coef_floor) checks the duality gap", config::Source::Shared, "lasso.tolerance"},
         {"coef_floor", &Params::coef_floor, Unit::ReflectanceDelta, config::at_least(0),
-         "the least coefficient size the tolerance scales", config::Source::Shared, "lasso.coef_floor"},
+         "the least coefficient size the tolerance scales", config::Source::Shared,
+         "lasso.coef_floor"},
     };
     return s;
 }

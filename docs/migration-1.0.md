@@ -5,7 +5,7 @@
 | | Example |
 |---|---|
 | The input says only how to read the data. | `HarmonicOptions` is gone; `ccdcpp.Input()` says only how to read the data: `reflectance_scale` 10000, the thermal transform (10, -27315), the QA codes. |
-| The configuration says what to do with it, in physical units. | `HarmonicOptions.REFL_MAX = 10000` is `band_range`'s `max = 1.0` (reflectance) in `ccdcpp.config("ccdc")`. |
+| The configuration says what to do with it, in physical units. | `HarmonicOptions.REFL_MAX = 10000` is `band_range`'s `reflectance = [0.0, 1.0]` in `ccdcpp.config("ccdc")`. |
 | The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | `ccdcpp.plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000`, 0.10.0's `REFL_MIN < x < REFL_MAX`. |
 
 What to do:
@@ -329,7 +329,7 @@ print(out["band_names"], h.STAT_ORD, lo.alpha)
 ```python
 out = ccdcpp.detect(dates, dn, codes, input=presets.landsat_c1_dn(), config=pyccd)
 h = presets.landsat_c1_dn().input()
-print(out["band_names"], h.saturation_code, pyccd.resolve(h)["shared"]["alpha"])
+print(out["band_names"], h.saturation_code, pyccd.resolve(h)["shared"]["lasso"]["alpha"])
 ```
 
 ```text
@@ -386,6 +386,53 @@ back ([change (b)](#what-changes-in-the-outputs)).
 | `ccdcpp.QA_CODE_FIELDS` | `ccdcpp.QA_CODE_NAMES` (the names a configuration's `codes` take) |
 | `ccdcpp.GREEN_FILTER_SCOPES` | the names `green_median`'s `scope` takes: `"all"`, `"stat_window"`, `"off"` |
 | `qa_tables.<builder>(options)` | `qa_tables.<builder>(input)`, an `Input` |
+
+### Configuration files
+
+A configuration file or dict written by a development build before the 1.0 layout is refused,
+naming the key that changed (`stage 'refit' holds a 'params' table; ...`, `the configuration
+has no stage 'noise_floor'; the stages are ...`, `shared has no value 'alpha'; ...`). Rewrite
+it, or start from `ccdcpp.config("ccdc").to_toml()`:
+
+| Before the 1.0 layout | 1.0 |
+|---|---|
+| `[refit]` `strategy = "span-factor"` and `[refit.params]` `factor = 2.0` | `[refit]` `strategy = "span-factor"` and `factor = 2.0` side by side; a file extending another may leave `strategy` out |
+| the stages `noise_floor`, `segment_fit`, `edge_fit` | `noise`, `segment_report`, `edge_segments` |
+| shared `alpha`, `coef_floor`, `max_iter`, `tolerance` | `[shared.lasso]` `alpha`, `coef_floor`, `max_iter`, `tolerance` (`shared__lasso__alpha=`, C++ `config.shared["lasso.alpha"]`) |
+| shared `coefficient_min`, `coefficient_mid`, `coefficient_max`, `num_obs_factor` | `[shared.coefficients]` `min`, `mid`, `max`, `per` (`shared__coefficients__max=`) |
+| `statistics_end = 9223372036854775807` (`shared__statistics_end=None`) | `statistics_end = "none"`; a date `"2017-12-31"` or an ordinal for a cutoff |
+| `peek = 0` | `peek = "change_test"`; a number of at least 1 otherwise |
+| `thermal_transform = true` / `false` | `thermal = "celsius"` / `"stored"` (`preprocess__snow__thermal="celsius"`) |
+| `thermal_range`'s `min = -93.2, max = 70.7`, `min_inclusive`, `max_inclusive` | `celsius = [-93.2, 70.7]`, `inclusive = [false, false]` (the default, left out) |
+| `band_range`'s `min = 0.0, max = 1.0`, `min_inclusive`, `max_inclusive` | `reflectance = [0.0, 1.0]`, `inclusive = [false, false]` |
+| `{ step = "dedupe" }` | `{ step = "one_per_date" }` |
+| `ThermalRange(min, max, inclusive)`, `BandRange(bands, min, max, inclusive)`, `ProcedureChain(steps, thermal_transform)`, `Dedupe()` | `ThermalRange(celsius, inclusive)`, `BandRange(bands, reflectance, inclusive)`, `ProcedureChain(steps, thermal)`, `OnePerDate()` |
+| the dict `{"shared": ..., "stages": {stage: {"strategy": ..., "params": {...}}}, "preprocess": ...}`, and `resolve()`'s `["stages"][stage]["params"]` | the file's layout: `{"shared": ..., stage: {"strategy": ..., parameter: ...}, "preprocess": ...}`; `resolve(h)[stage][parameter]` |
+| C++ `Registry::check(config)`, `resolve(config, input)`, `build(tree)` | `config::check(registry, config)`, `config::resolve(registry, config, input)`, `config::build_strategies(registry, tree)` (`ccd/config/resolve.hpp`) |
+| C++ `Shared::alpha`, `coefficient_min`, ...; `StepContext::thermal_transform` | `Shared::lasso.alpha` (a `LassoOptions`), `Shared::coefficients.min` (a `CoefficientRule`); `StepContext::thermal` (`config::Thermal`) |
+
+```toml
+# Before
+[refit]
+strategy = "span-factor"
+[refit.params]
+factor = 2.0
+
+[preprocess.snow]
+thermal_transform = false
+steps = [{ step = "thermal_range", min = -93.2, max = 70.7 }, { step = "dedupe" }]
+```
+
+```toml
+# 1.0
+[refit]
+strategy = "span-factor"
+factor = 2.0
+
+[preprocess.snow]
+thermal = "stored"
+steps = [{ step = "thermal_range", celsius = [-93.2, 70.7] }, { step = "one_per_date" }]
+```
 
 ## Newly refused values
 

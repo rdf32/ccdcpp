@@ -59,7 +59,7 @@ every resolved value:
 ```python
 r = ccdcpp.config("ccdc").resolve(ccdcpp.Input())
 green = ccdcpp.plan_of("ccdc", ccdcpp.Input()).insufficient_clear.chain[4]
-print(r["stages"]["model"]["params"]["alpha"], r["stages"]["model"]["params"]["coef_floor"])
+print(r["model"]["alpha"], r["model"]["coef_floor"])
 print(green)
 ```
 

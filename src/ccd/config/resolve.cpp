@@ -67,14 +67,23 @@ SharedValues resolve_shared(const Values& given, const Input* input)
     return out;
 }
 
-// The stages of `stages` resolved `with`. A stage the algorithm does not have
-// is refused as a strategy its stage does not have.
+// The stages of `stages` resolved `with`, refusing a stage the algorithm does
+// not have, naming its stages.
 ConfigTree resolve_stages(const Registry& registry, const ConfigTree& stages,
                           const SectionContext& with)
 {
     ConfigTree out;
     for (const auto& [stage, chosen] : stages)
     {
+        if (std::none_of(STAGES.begin(), STAGES.end(),
+                         [&](const StageInfo& s) { return stage == s.name; }))
+        {
+            std::vector<std::string> names;
+            for (const StageInfo& s : STAGES)
+                names.push_back(s.name);
+            throw std::invalid_argument("the configuration has no stage '" + stage +
+                                        "'; the stages are " + listed(names));
+        }
         const StrategyType& type = registry.strategy(stage, chosen.strategy);
         const std::string where = stage + " '" + chosen.strategy + "'";
         out[stage] = {chosen.strategy,

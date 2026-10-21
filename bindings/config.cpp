@@ -23,13 +23,17 @@ namespace py = pybind11;
 //
 // The algorithm's configuration, in Python
 //
-// A configuration crosses into Python as a dict {"shared": {name: value,
-// table: {name: value}},
-// "stages": {stage: {"strategy": name, "params": {name: value}}},
-// "preprocess": {procedure: {"thermal": "celsius" or "stored", "steps": [{"step":
-// name, name: value, ...}, ...]}}}: a value is a bool, an int, a float, a
-// str, a list of ints (band rows, QA codes) or a list of strs (band roles, QA
-// code names); a numpy array is its list, a numpy scalar its Python value.
+// A configuration crosses into Python as a dict laid out as its TOML file:
+//
+//     {"shared": {name: value, table: {name: value}},
+//      stage: {"strategy": name, parameter: value, ...},    (one per stage)
+//      "preprocess": {procedure: {"thermal": "celsius" or "stored",
+//                                 "steps": [{"step": name, name: value}, ...]}}}
+//
+// A value is a bool, an int, a float, a str, or a list of strs (band roles,
+// QA code names), of ints (band rows, QA codes), of numbers (a range) or of
+// bools (a range's ends); a numpy array is its list, a numpy scalar its
+// Python value.
 // python/ccdcpp/config.py wraps it (ccdcpp.Config) and holds its compiled
 // Algorithm, whose config() is the configuration in full
 // (config::canonical()); these functions are their C++ half.
@@ -201,35 +205,40 @@ py::dict shared_to_python(const ccd::config::Values& values)
     return out;
 }
 
-ccd::config::ConfigTree stages_from_python(const py::handle& stages)
+// A stage's table: its strategy and the strategy's parameters, side by side.
+ccd::config::StageConfig stage_from_python(const std::string& stage, const py::handle& table)
 {
-    if (!py::isinstance<py::dict>(stages))
-        throw py::value_error("a configuration's stages are a dict of stages");
-    ccd::config::ConfigTree tree;
-    for (const auto& [stage_obj, chosen] : stages.cast<py::dict>())
+    if (!py::isinstance<py::dict>(table))
+        throw py::value_error("stage '" + stage + "' is a table {\"strategy\": name, "
+                              "parameter: value, ...}");
+    const py::dict entry = table.cast<py::dict>();
+    if (!entry.contains("strategy") || !py::isinstance<py::str>(entry["strategy"]))
+        throw py::value_error("stage '" + stage + "' names no strategy (strategy = \"...\")");
+    ccd::config::StageConfig out;
+    out.strategy = entry["strategy"].cast<std::string>();
+    for (const auto& [key, value] : entry)
     {
-        const std::string stage = py::str(stage_obj);
-        if (!py::isinstance<py::dict>(chosen))
-            throw py::value_error("stage '" + stage + "' is a dict {\"strategy\": ..., \"params\": ...}");
-        const py::dict entry = chosen.cast<py::dict>();
-        if (!entry.contains("strategy"))
-            throw py::value_error("stage '" + stage + "' names no strategy");
-        ccd::config::StageConfig out;
-        out.strategy = py::str(entry["strategy"]);
-        if (entry.contains("params"))
-        {
-            if (!py::isinstance<py::dict>(entry["params"]))
-                throw py::value_error("stage '" + stage + "' params is a dict of parameters");
-            for (const auto& [name, value] : entry["params"].cast<py::dict>())
-            {
-                const std::string n = py::str(name);
-                out.params[n] = value_from_python(
-                    value, stage + " '" + out.strategy + "' parameter '" + n + "'");
-            }
-        }
-        tree[stage] = std::move(out);
+        const std::string name = py::str(key);
+        if (name == "strategy")
+            continue;
+        if (name == "params" && py::isinstance<py::dict>(value))
+            throw py::value_error("stage '" + stage + "' holds a 'params' table; a stage's "
+                                  "parameters are written in its own table, beside its "
+                                  "strategy ([" + stage + "] strategy = ..., parameter = ...)");
+        out.params[name] =
+            value_from_python(value, stage + " '" + out.strategy + "' parameter '" + name + "'");
     }
-    return tree;
+    return out;
+}
+
+// A stage's table as Python holds it.
+py::dict stage_to_python(const ccd::config::StageConfig& chosen)
+{
+    py::dict entry;
+    entry["strategy"] = chosen.strategy;
+    for (const auto& [name, value] : chosen.params)
+        entry[py::str(name)] = value_to_python(value);
+    return entry;
 }
 
 ccd::config::PreprocessConfig preprocess_from_python(const py::handle& preprocess)
@@ -316,17 +325,10 @@ py::dict preprocess_to_python(const ccd::config::PreprocessConfig& preprocess)
     return out;
 }
 
-py::dict stages_to_python(const ccd::config::ConfigTree& tree)
+// A parameter's keyword (ParameterInfo::keyword), None for none.
+py::object keyword_to_python(const std::string& keyword)
 {
-    py::dict out;
-    for (const auto& [stage, chosen] : tree)
-    {
-        py::dict entry;
-        entry["strategy"] = chosen.strategy;
-        entry["params"] = values_to_python(chosen.params);
-        out[py::str(stage)] = entry;
-    }
-    return out;
+    return keyword.empty() ? py::object(py::none()) : py::object(py::str(keyword));
 }
 
 const char* unit_name(ccd::config::Unit unit)
@@ -362,13 +364,15 @@ const ccd::config::Registry& registry()
     return ccd::strategies::library_registry();
 }
 
-// A resolution as Python data: the stages, the shared values (in the input's
-// units and rows) and the digest.
+// A resolution as Python data, laid out as its configuration: the shared
+// values, each stage's table and the preprocessing, every value in the
+// input's units and rows, and the digest.
 py::dict resolved_to_python(const ccd::config::Resolved& r)
 {
     py::dict out;
-    out["stages"] = stages_to_python(r.stages);
     out["shared"] = shared_to_python(ccd::config::shared_values(r.shared));
+    for (const auto& [stage, chosen] : r.stages)
+        out[py::str(stage)] = stage_to_python(chosen);
     out["preprocess"] = preprocess_to_python(r.preprocess);
     out["digest"] = r.digest;
     return out;
@@ -379,22 +383,23 @@ py::dict resolved_to_python(const ccd::config::Resolved& r)
 ccd::config::Config config_from_python(const py::handle& config)
 {
     if (!py::isinstance<py::dict>(config))
-        throw py::type_error("a configuration is a dict {\"shared\": ..., \"stages\": ...}");
-    const py::dict d = config.cast<py::dict>();
-    for (const auto& [key, _] : d)
-    {
-        const std::string k = py::str(key);
-        if (k != "shared" && k != "stages" && k != "preprocess")
-            throw py::value_error("a configuration holds \"shared\", \"stages\" and "
-                                  "\"preprocess\", not '" + k + "'");
-    }
+        throw py::type_error("a configuration is a dict {\"shared\": {...}, <stage>: "
+                             "{\"strategy\": ..., ...}, \"preprocess\": {...}}");
     ccd::config::Config out;
-    if (d.contains("shared"))
-        out.shared = shared_from_python(d["shared"]);
-    if (d.contains("stages"))
-        out.stages = stages_from_python(d["stages"]);
-    if (d.contains("preprocess"))
-        out.preprocess = preprocess_from_python(d["preprocess"]);
+    for (const auto& [key, value] : config.cast<py::dict>())
+    {
+        const std::string name = py::str(key);
+        if (name == "shared")
+            out.shared = shared_from_python(value);
+        else if (name == "preprocess")
+            out.preprocess = preprocess_from_python(value);
+        else if (name == "stages")
+            throw py::value_error("a configuration holds no 'stages': each stage is a table of "
+                                  "its own, {\"refit\": {\"strategy\": \"span-factor\", "
+                                  "\"factor\": 1.33}, ...}");
+        else
+            out.stages[name] = stage_from_python(name, value);
+    }
     return out;
 }
 
@@ -402,7 +407,8 @@ py::dict config_to_python(const ccd::config::Config& config)
 {
     py::dict out;
     out["shared"] = shared_to_python(config.shared);
-    out["stages"] = stages_to_python(config.stages);
+    for (const auto& [stage, chosen] : config.stages)
+        out[py::str(stage)] = stage_to_python(chosen);
     out["preprocess"] = preprocess_to_python(config.preprocess);
     return out;
 }
@@ -417,8 +423,8 @@ ccd::AlgorithmPtr algorithm_from_python(const py::object& config)
     if (py::hasattr(py::type::of(config), "_algorithm"))
         return config.attr("_algorithm").cast<std::shared_ptr<ccd::Algorithm>>();
     if (!py::isinstance<py::dict>(config))
-        throw py::type_error("config is a ccdcpp.Config, a dict {\"shared\": ..., \"stages\": "
-                             "..., \"preprocess\": ...} or None");
+        throw py::type_error("config is a ccdcpp.Config, a configuration's dict {\"shared\": "
+                             "..., <stage>: ..., \"preprocess\": ...} or None");
     return std::make_shared<const ccd::Algorithm>(config_from_python(config));
 }
 
@@ -476,7 +482,10 @@ void bind_config(py::module_& m)
     m.def(
         "_config_resolve",
         [](const py::dict& config, const ccd::Input& input)
-        { return resolved_to_python(ccd::config::resolve(registry(), config_from_python(config), input)); },
+        {
+            return resolved_to_python(
+                ccd::config::resolve(registry(), config_from_python(config), input));
+        },
         py::arg("config"), py::arg("input"),
         "The configuration resolved against `input`: {\"stages\", \"shared\", \"digest\"}.");
     m.def(
@@ -501,7 +510,7 @@ void bind_config(py::module_& m)
                         d["from"] = p.from;
                         d["default"] = p.default_value ? value_to_python(*p.default_value)
                                                        : py::none();
-                        d["keyword"] = p.keyword.empty() ? py::object(py::none()) : py::object(py::str(p.keyword));
+                        d["keyword"] = keyword_to_python(p.keyword);
                         list.append(d);
                     }
                     by_name[py::str(name)] = list;
@@ -532,7 +541,7 @@ void bind_config(py::module_& m)
                     d["from"] = p.from;
                     d["default"] = p.default_value ? value_to_python(*p.default_value)
                                                    : py::none();
-                    d["keyword"] = p.keyword.empty() ? py::object(py::none()) : py::object(py::str(p.keyword));
+                    d["keyword"] = keyword_to_python(p.keyword);
                     list.append(d);
                 }
                 out[py::str(name)] = list;
@@ -541,6 +550,22 @@ void bind_config(py::module_& m)
         },
         "Every preprocessing step type and its parameters, from the library's registry, as "
         "_strategies() lists a strategy's.");
+    m.def(
+        "_stages",
+        []()
+        {
+            py::list out;
+            for (const ccd::StageInfo& s : ccd::STAGES)
+            {
+                py::dict d;
+                d["name"] = s.name;
+                d["purpose"] = s.purpose;
+                out.append(d);
+            }
+            return out;
+        },
+        "The stages of a configuration, in the order a pixel meets them, with what each "
+        "decides.");
     m.def(
         "_procedures",
         []() { return ccd::config::procedures(); },
@@ -558,7 +583,7 @@ void bind_config(py::module_& m)
                 d["bounds"] = p.bounds;
                 d["doc"] = p.doc;
                 d["default"] = value_to_python(*p.default_value);
-                d["keyword"] = p.keyword.empty() ? py::object(py::none()) : py::object(py::str(p.keyword));
+                d["keyword"] = keyword_to_python(p.keyword);
                 out.append(d);
             }
             return out;

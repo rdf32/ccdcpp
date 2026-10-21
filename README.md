@@ -384,14 +384,14 @@ print(h.bands(), shared["detection_bands"], h.index("thermal"))
 
 # Configurations and presets
 
-ccdcpp runs one fixed machine, the CCDC phases and routes, whose decisions are made by **stages**: the procedure a pixel takes, its noise floor, where the search for a stable start begins, the start window's outlier screen, fit and stability rule, Lookback, the monitoring model and when it is refitted, the change test, the outlier rule, and the fits a segment reports. Each stage is decided by a **strategy**, chosen by name, with parameters. A **configuration** holds the **shared** values several stages read, for every stage its strategy and that strategy's parameters, and for every procedure its **preprocessing** chain. A run without one uses the preset `ccdc`: PyCCD's algorithm with ccdcpp's corrections, each strategy and step at its defaults, on any input.
+ccdcpp runs one fixed machine, the CCDC phases and routes, whose decisions are made by **stages**: the procedure a pixel takes, its noise, where the search for a stable start begins, the start window's outlier screen, fit and stability rule, Lookback, the monitoring model and when it is refitted, the change test, the outlier rule, and the fits a segment reports. Each stage is decided by a **strategy**, chosen by name, with parameters. A **configuration** holds the **shared** values several stages read, for every stage its strategy and that strategy's parameters, and for every procedure its **preprocessing** chain. A run without one uses the preset `ccdc`: PyCCD's algorithm with ccdcpp's corrections, each strategy and step at its defaults, on any input.
 
 ## The rule
 
 | | Example |
 |---|---|
 | The input says only how to read the data. | `ccdcpp.Input()` is Collection-1 DN: reflectance x 10000 (`reflectance_scale` 10000), thermal Kelvin x 10 (`thermal_scale` 10, `thermal_offset` -27315). |
-| The configuration says what to do with it, in physical units. | `ccdc`'s `band_range` keeps reflectance in (0, 1), its `thermal_range` -93.2 to 70.7 °C, its `alpha` is 1e-4 reflectance. |
+| The configuration says what to do with it, in physical units. | `ccdc`'s `band_range` keeps reflectance in (0, 1), its `thermal_range` -93.2 to 70.7 °C, its `lasso.alpha` is 1e-4 reflectance. |
 | The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check, exactly as today. | `plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000` on DN, and on `presets.landsat_c1_physical()` `0 < x < 1`. |
 
 ```python
@@ -399,7 +399,7 @@ dn = ccdcpp.Input()
 print(dn.reflectance_scale, dn.thermal_scale, dn.thermal_offset)
 
 band_range = ccdcpp.config("ccdc").preprocess("standard")["steps"][2]
-print(band_range["step"], band_range["min"], band_range["max"])
+print(band_range["step"], band_range["reflectance"])
 
 print(ccdcpp.plan_of("ccdc", dn).standard.chain[2])
 print(ccdcpp.plan_of("ccdc", presets.landsat_c1_physical()).standard.chain[2])
@@ -407,17 +407,17 @@ print(ccdcpp.plan_of("ccdc", presets.landsat_c1_physical()).standard.chain[2])
 
 ```text
 10000.0 10.0 -27315.0
-band_range 0.0 1.0
+band_range [0.0, 1.0]
 <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000>
 <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 1>
 ```
 
-A configuration's values are physical, so one configuration means the same on every input: reflectance levels (`band_range`'s bounds) resolve as `r * reflectance_scale + reflectance_offset`, reflectance differences (the Lasso's `alpha` and `coef_floor`, `green_median`'s offset) as `r * reflectance_scale`, degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, probabilities to chi-squared thresholds for the detection-band count, roles to rows and QA code names to codes. A run resolves its configuration against its input once: `ccd::Algorithm`, which a `Config` holds, caches the resolution of each input it meets (the 16 used last). `cfg.resolve(input)` shows every resolved value and `ccdcpp.plan_of(cfg, input)` the resolved preprocessing.
+A configuration's values are physical, so one configuration means the same on every input: reflectance levels (`band_range`'s `reflectance` range) resolve as `r * reflectance_scale + reflectance_offset`, reflectance differences (the shared `lasso.alpha` and `lasso.coef_floor`, `green_median`'s offset) as `r * reflectance_scale`, degrees Celsius `c` as `c * 100 * thermal_at_100c / 10000`, probabilities to chi-squared thresholds for the detection-band count, roles to rows and QA code names to codes. A run resolves its configuration against its input once: `ccd::Algorithm`, which a `Config` holds, caches the resolution of each input it meets (the 16 used last). `cfg.resolve(input)` shows every resolved value and `ccdcpp.plan_of(cfg, input)` the resolved preprocessing.
 
 ```python
 cfg = ccdcpp.config("ccdc")
-print(cfg.resolve(ccdcpp.Input())["stages"]["model"]["params"]["alpha"])            # 1e-4 x 10000
-print(cfg.resolve(presets.landsat_c2().input())["stages"]["model"]["params"]["alpha"])
+print(cfg.resolve(ccdcpp.Input())["model"]["alpha"])            # 1e-4 x 10000
+print(cfg.resolve(presets.landsat_c2().input())["model"]["alpha"])
 ```
 
 ```text
@@ -497,7 +497,7 @@ A value several stages read is written once, in `shared`, and the stages that re
 | Stage | Decides | `ccdc`'s strategy |
 |---|---|---|
 | `mode` | the pixel's procedure from its QA statistics | `pyccd` (`clear_pct_threshold` 0.25, `snow_pct_threshold` 0.75) |
-| `noise` | each band's noise floor | `variogram` (`min_lag_days` 30) |
+| `noise` | each band's noise | `variogram` (`min_lag_days` 30) |
 | `start_search` | where a stable start is searched for | `pyccd` (`day_delta` 365; the shared `min_observations`) |
 | `window_screen` | the outliers of a candidate start window | `tmask` (`bands` green and swir1, `t_const` 4.89) |
 | `stability_fit`, `stability_rule` | the start window's fit and whether it is stable | `lasso`, `pyccd` |
@@ -511,7 +511,7 @@ A value several stages read is written once, in `shared`, and the stages that re
 
 ## TOML presets
 
-A preset is a TOML file: a `[shared]` table, one table per stage and one `[preprocess.<procedure>]` table per procedure. `python/ccdcpp/configs/ccdc.toml` is `ccdc` written out. `ccdcpp.config(name)` returns a preset by name (built once); `ccdcpp.config(path)` reads a file, and a file may `extends = "ccdc"` and list only what differs:
+A preset is a TOML file: a `[shared]` table (with its tables `[shared.coefficients]` and `[shared.lasso]`), one `[preprocess.<procedure>]` table per procedure, and one table per stage, in the order a pixel meets them, holding the stage's `strategy` and beside it the strategy's parameters. Each table says what it decides and each value its unit, as comments. `python/ccdcpp/configs/ccdc.toml` is `ccdc` written out (`Config.to_toml()`); [docs/config.md](docs/config.md#presets) has the layout. `ccdcpp.config(name)` returns a preset by name (built once); `ccdcpp.config(path)` reads a file, and a file may `extends = "ccdc"` and list only what differs:
 
 ```toml
 # denser.toml
@@ -521,8 +521,6 @@ extends = "ccdc"
 min_observations = 24
 
 [refit]
-strategy = "span-factor"
-[refit.params]
 min_obs = 48
 ```
 
@@ -533,7 +531,7 @@ print(denser == ccdcpp.config("ccdc").replace(shared__min_observations=24, refit
 ```
 
 ```text
-24 {'min_obs': 48, 'factor': 1.33} span-factor
+24 {'factor': 1.33, 'min_obs': 48} span-factor
 True
 ```
 
@@ -559,7 +557,7 @@ The Standard procedure has parameters that assume something about the revisit in
 
 ```python
 r = ccdcpp.config("ccdc").resolve(ccdcpp.Input())
-print(r["stages"]["change_test"]["params"]["change_threshold"] == ccdcpp.chi2_quantile(0.99, 5))
+print(r["change_test"]["change_threshold"] == ccdcpp.chi2_quantile(0.99, 5))
 ```
 
 ```text

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -101,6 +102,8 @@ struct PixelMode
 struct ModeRule
 {
     static constexpr const char* stage = "mode";
+    static constexpr const char* purpose =
+        "the procedure a pixel runs: standard, snow or insufficient clear";
 
     virtual ~ModeRule() = default;
     virtual PixelMode choose(const QaStatistics& statistics) const = 0;
@@ -114,6 +117,7 @@ struct ModeRule
 struct Noise
 {
     static constexpr const char* stage = "noise";
+    static constexpr const char* purpose = "each band's noise, which every test scales by";
 
     virtual ~Noise() = default;
     virtual std::vector<scalar_t> estimate(ArrayView<const std::int64_t, 1> dates,
@@ -197,6 +201,8 @@ struct SearchPlan
 struct StartSearch
 {
     static constexpr const char* stage = "start_search";
+    static constexpr const char* purpose =
+        "where a curve may start: the first window of enough time";
 
     virtual ~StartSearch() = default;
     virtual bool too_few(index_t observations) const = 0;
@@ -234,6 +240,8 @@ struct PeekPlan
 struct WindowScreen
 {
     static constexpr const char* stage = "window_screen";
+    static constexpr const char* purpose =
+        "the outliers dropped from a start window before it is fitted";
 
     virtual ~WindowScreen() = default;
     virtual ProcessingMask screen(ArrayView<const std::int64_t, 1> dates,
@@ -250,6 +258,7 @@ struct WindowScreen
 struct StabilityFit
 {
     static constexpr const char* stage = "stability_fit";
+    static constexpr const char* purpose = "the fit a start window is judged on";
 
     virtual ~StabilityFit() = default;
     virtual Capabilities provides() const = 0;
@@ -271,6 +280,7 @@ struct StabilityFit
 struct StabilityRule
 {
     static constexpr const char* stage = "stability_rule";
+    static constexpr const char* purpose = "whether that fit is stable enough to start a curve";
 
     virtual ~StabilityRule() = default;
     virtual Capabilities needs() const = 0;
@@ -314,6 +324,7 @@ struct LookbackJudgement
 struct Lookback
 {
     static constexpr const char* stage = "lookback";
+    static constexpr const char* purpose = "the observations before the start that join the curve";
 
     virtual ~Lookback() = default;
     virtual Capabilities needs() const = 0;
@@ -338,6 +349,7 @@ struct Lookback
 struct RefitSchedule
 {
     static constexpr const char* stage = "refit";
+    static constexpr const char* purpose = "when a growing curve is refitted";
 
     virtual ~RefitSchedule() = default;
     virtual bool due(index_t window_size, scalar_t window_span, index_t fit_size,
@@ -352,6 +364,7 @@ struct RefitSchedule
 struct MonitoringModel
 {
     static constexpr const char* stage = "model";
+    static constexpr const char* purpose = "the curve fitted while a segment grows";
 
     virtual ~MonitoringModel() = default;
     virtual Capabilities provides() const = 0;
@@ -450,6 +463,7 @@ struct PeekResult
 struct ChangeTest
 {
     static constexpr const char* stage = "change_test";
+    static constexpr const char* purpose = "whether the next peek of observations breaks the curve";
 
     virtual ~ChangeTest() = default;
     virtual Capabilities needs() const = 0;
@@ -483,6 +497,7 @@ enum class OutlierOutcome : std::uint8_t
 struct OutlierRule
 {
     static constexpr const char* stage = "outlier";
+    static constexpr const char* purpose = "a single observation that does not fit, dropped";
 
     virtual ~OutlierRule() = default;
     virtual Capabilities needs() const = 0;
@@ -506,6 +521,7 @@ struct OutlierRule
 struct SegmentReport
 {
     static constexpr const char* stage = "segment_report";
+    static constexpr const char* purpose = "the fit a finished segment reports";
 
     virtual ~SegmentReport() = default;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
@@ -536,6 +552,7 @@ struct SegmentReport
 struct EdgeSegments
 {
     static constexpr const char* stage = "edge_segments";
+    static constexpr const char* purpose = "the short segments at the series' start and end";
 
     virtual ~EdgeSegments() = default;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
@@ -547,6 +564,31 @@ struct EdgeSegments
     virtual FitResult whole_series(PixelProcedure procedure, const PixelSeries& pixel,
                                    ProcessingMask mask, Scratch& scratch) const = 0;
 };
+
+// A stage as a configuration names it, and what it decides.
+struct StageInfo
+{
+    const char* name;
+    const char* purpose;
+};
+
+// Every stage, in the order a pixel meets them: a configuration's file
+// lists them so (config.py's to_toml()).
+constexpr std::array<StageInfo, 13> STAGES = {{
+    {ModeRule::stage, ModeRule::purpose},
+    {Noise::stage, Noise::purpose},
+    {StartSearch::stage, StartSearch::purpose},
+    {WindowScreen::stage, WindowScreen::purpose},
+    {StabilityFit::stage, StabilityFit::purpose},
+    {StabilityRule::stage, StabilityRule::purpose},
+    {Lookback::stage, Lookback::purpose},
+    {MonitoringModel::stage, MonitoringModel::purpose},
+    {ChangeTest::stage, ChangeTest::purpose},
+    {OutlierRule::stage, OutlierRule::purpose},
+    {RefitSchedule::stage, RefitSchedule::purpose},
+    {SegmentReport::stage, SegmentReport::purpose},
+    {EdgeSegments::stage, EdgeSegments::purpose},
+}};
 
 // One call's strategies, one per stage, built from its configuration.
 struct Strategies

@@ -177,16 +177,16 @@ def explicit_physical() -> tuple[ccdcpp.Input, ccdcpp.Config]:
 
 
 def resolved(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> dict[str, Any]:
-    """``cfg``'s stages resolved against ``input`` (default ccdcpp.Input())."""
-    return cfg.resolve(ccdcpp.Input() if input is None else input)["stages"]
+    """``cfg`` resolved against ``input`` (default ccdcpp.Input())."""
+    return cfg.resolve(ccdcpp.Input() if input is None else input)
 
 
 def change_threshold(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> float:
-    return resolved(cfg, input)["change_test"]["params"]["change_threshold"]
+    return resolved(cfg, input)["change_test"]["change_threshold"]
 
 
 def outlier_threshold(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> float:
-    return resolved(cfg, input)["outlier"]["params"]["threshold"]
+    return resolved(cfg, input)["outlier"]["threshold"]
 
 
 # The parameters one shared value fills in, as a run resolves them.
@@ -209,9 +209,9 @@ def option_params(cfg: ccdcpp.Config, name: str,
     stage, _, param = name.partition("__")
     pairs = GROUPS.get(name) or ((stage, param),)
     stages = resolved(cfg, input)
-    return {(stage, param): stages[stage]["params"][param]
+    return {(stage, param): stages[stage][param]
             for stage, param in pairs
-            if stage in stages and param in stages[stage]["params"]}
+            if stage in stages and param in stages[stage]}
 
 
 DATES, CUBE_DN, CODES = corpus_cube()
@@ -942,9 +942,9 @@ class Profiles(unittest.TestCase):
         h = presets.landsat_c1_dn().input()
         self.assertEqual(cfg.params("change_test")["peek_reference_days"], 5.0)
         self.assertEqual(cfg.shared()["min_observations"], 18)
-        stages = cfg.resolve(h)["stages"]
-        self.assertEqual(stages["start_search"]["params"]["meow_size"], 18)
-        self.assertEqual(stages["edge_segments"]["params"]["min_observations"], 18)
+        stages = cfg.resolve(h)
+        self.assertEqual(stages["start_search"]["meow_size"], 18)
+        self.assertEqual(stages["edge_segments"]["min_observations"], 18)
         self.assertEqual(cfg.shared()["statistics_end"], "none")
         self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], "none")
         out = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(), config=cfg)
@@ -954,7 +954,7 @@ class Profiles(unittest.TestCase):
         cfg = ccdcpp.config("ccdc").replace(shared__change_probability=0.995)
         self.assertEqual(set(option_params(cfg, "change_threshold").values()),
                          {ccdcpp.chi2_quantile(0.995, 5)})
-        self.assertEqual(resolved(cfg)["change_test"]["params"]["change_probability"], 0.995)
+        self.assertEqual(resolved(cfg)["change_test"]["change_probability"], 0.995)
         self.assertEqual(option_params(cfg, "outlier_threshold"),
                          option_params(ccdcpp.config("ccdc"), "outlier_threshold"))
 
@@ -1057,7 +1057,7 @@ class TenBand(unittest.TestCase):
         self.assertEqual(profile.input(), with_table(h, ccdcpp.qa_tables.sentinel2_scl(h)))
         r = cfg.resolve(h)
         self.assertEqual(r["shared"]["detection_bands"], [1, 2, 4, 7, 8, 9])
-        self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], [1, 8])
+        self.assertEqual(r["window_screen"]["bands"], [1, 8])
         self.assertEqual(set(option_params(cfg, "change_threshold", h).values()),
                          {ccdcpp.chi2_quantile(0.99, 6)})
         table = ccdcpp.qa_tables.sentinel2_scl(h)
@@ -1229,7 +1229,7 @@ class SensorPresets(unittest.TestCase):
                 expected, table = hand_built(name)
                 self.assertEqual(fields(h), fields(with_table(expected, table)))
                 r = cfg.resolve(h)
-                self.assertEqual(r["stages"]["window_screen"]["params"]["bands"], TMASK[name])
+                self.assertEqual(r["window_screen"]["bands"], TMASK[name])
                 self.assertEqual(r["shared"]["detection_bands"], DETECTION[name])
                 self.assertEqual(set(option_params(cfg, "alpha", h).values()), {1e-4})
                 for threshold in (change_threshold, outlier_threshold):
