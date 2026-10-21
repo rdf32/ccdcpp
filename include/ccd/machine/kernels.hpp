@@ -150,9 +150,6 @@ struct InitializeCriteria
     std::int64_t last_day = std::numeric_limits<std::int64_t>::max();
 };
 
-// The observations of `dates` dated up to `day`: dates is sorted.
-index_t count_through(ArrayView<const std::int64_t, 1> dates, std::int64_t day);
-
 // The strategies one Initialize step runs, of the run's stages: the start
 // search, the window screen, the stability fit (its Model, which holds the
 // fits) and the stability rule with its scratch, prepared for the pixel.

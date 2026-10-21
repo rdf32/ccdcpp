@@ -166,6 +166,9 @@ configure_file(
 add_library(
     ccd_core
 
+    src/ccd/core/maths.cpp
+    src/ccd/core/window.cpp
+
     src/ccd/regression/lasso_solver.cpp
     src/ccd/regression/robust_solver.cpp
     src/ccd/regression/harmonic_basis.cpp

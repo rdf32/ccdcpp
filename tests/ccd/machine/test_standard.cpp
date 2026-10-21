@@ -18,7 +18,7 @@
 #include "ccd/input/pixel_series.hpp"
 
 #include "ccd/input/mask/filter.hpp"
-#include "ccd/machine/fit.hpp"
+#include "ccd/results/segment.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)
 #include "../golden/specs.hpp"
 

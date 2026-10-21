@@ -9,7 +9,7 @@
 #include "ccd/input/pmask.hpp"
 
 #include "ccd/input/pixel_series.hpp"
-#include "ccd/machine/fit.hpp"
+#include "ccd/core/window.hpp"
 
 namespace ccd
 {

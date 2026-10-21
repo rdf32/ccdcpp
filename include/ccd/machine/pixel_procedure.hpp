@@ -6,7 +6,7 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/preprocess.hpp"
 
-#include "ccd/machine/fit.hpp"
+#include "ccd/results/segment.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
 namespace ccd

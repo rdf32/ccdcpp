@@ -6,8 +6,8 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/types.hpp"
+#include "ccd/results/segment.hpp"
 
-#include "ccd/machine/fit.hpp"
 #include "ccd/machine/kernels.hpp"
 
 namespace ccd

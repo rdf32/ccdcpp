@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <unordered_map>
-#include <boost/math/distributions/chi_squared.hpp>
 
 #include "ccd/core/maths.hpp"
 #include "ccd/core/constants.hpp"
@@ -100,13 +99,6 @@ scalar_t ChangeThresholdMemo::operator()(index_t peek, index_t defpeek, scalar_t
         valid_ = true;
     }
     return value_;
-}
-
-scalar_t chi2_quantile(scalar_t p, index_t df)
-{
-    boost::math::chi_squared dist(static_cast<scalar_t>(df));
-
-    return boost::math::quantile(dist, p);
 }
 
 //------------------------------------------------------------------------------

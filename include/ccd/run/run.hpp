@@ -9,9 +9,9 @@
 
 #include "ccd/core/array_view.hpp"
 #include "ccd/input/input.hpp"
-#include "ccd/machine/fit.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/results/record.hpp"
+#include "ccd/results/segment.hpp"
 #include "ccd/run/algorithm.hpp"
 
 namespace ccd

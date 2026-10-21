@@ -5,6 +5,8 @@
 #include <algorithm>   // std::nth_element, std::max_element
 #include <type_traits> // std::is_floating_point
 
+#include "ccd/core/types.hpp"
+
 
 namespace ccd
 {
@@ -74,5 +76,11 @@ static T median_absolute(
     auto temp = absolute(values);
     return median(temp);
 }
+
+// The chi-squared quantile at probability p with df degrees of freedom: the
+// distribution pyccd's change thresholds are read from
+// (adjust_change_threshold(), strategies/pyccd/peek_statistics.hpp, and a
+// configuration's Chi2 fields).
+scalar_t chi2_quantile(scalar_t p, index_t df);
 
 }

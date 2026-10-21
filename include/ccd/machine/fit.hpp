@@ -7,7 +7,9 @@
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
+#include "ccd/core/window.hpp"
 #include "ccd/input/pmask.hpp"
+#include "ccd/results/segment.hpp"
 
 #include "ccd/input/pixel_series.hpp"
 
@@ -18,113 +20,9 @@
 namespace ccd
 {
 
-enum class CurveQA : std::uint8_t {
-    MinCoefficients = 4,
-    MidCoefficients = 6,
-    MaxCoefficients = 8,
-
-    Start             = 14,
-    End               = 24,
-    InsufficientClear = 44,
-    PersistentSnow    = 54,
-
-    // future CCD states
-    Stable            = 64,
-    Recovery          = 74,
-    Disturbance       = 84
-};
-
-//------------------------------------------------------------------------------
-// BandFit
-//
-// One band's fit over a segment, as the segment reports it, whatever fitted
-// it:
-//
-//     intercept, coefficients  the harmonic model, coefficients in
-//                              HarmonicBasis column order (t, cos1, sin1,
-//                              ...), those the fit did not use 0
-//     rmse                     its RMSE over the segment's observations
-//     magnitude                the band's change magnitude: the median
-//                              absolute peek residual of a segment Extend
-//                              ended, 0 for the others
-//     iterations               the solver's iteration count, 0 for a fit in
-//                              closed form
-//------------------------------------------------------------------------------
-struct BandFit
-{
-    scalar_t intercept = 0.0;
-    std::array<scalar_t, CCD_MAX_COEFS> coefficients{};
-    scalar_t rmse = 0.0;
-    scalar_t magnitude = 0.0;
-    index_t iterations = 0;
-};
-
 // The BandFit of a Lasso fit: its model's intercept, coefficients and
 // iteration count, its RMSE and its magnitude.
 BandFit band_fit(const LassoResult& fit);
-
-struct ChangeModel {
-
-    std::int64_t start_day;
-    std::int64_t end_day;
-    std::int64_t break_day;
-
-    index_t observation_count;
-
-    scalar_t change_probability;
-
-    CurveQA curve_qa;
-
-    // One fit per row of the input's spectral array, in row order.
-    std::vector<BandFit> bands;
-};
-
-struct FitResult
-{
-    std::vector<ChangeModel> models;
-    ProcessingMask mask;
-};
-
-struct Window
-{
-    index_t start = 0;
-    index_t stop  = 0;
-
-    Window() = default;
-
-    Window(index_t start_, index_t stop_)
-        : start(start_), stop(stop_){}
-
-    index_t size() const
-    {
-        return stop - start;
-    }
-
-    void grow()
-    {
-        ++stop;
-    }
-
-    void shift()
-    {
-        ++start;
-        ++stop;
-    }
-};
-
-// The days `window` spans in `dates`: its last date minus its first.
-inline scalar_t span(
-    ArrayView<const std::int64_t, 1> dates,
-    const Window& window
-)
-{
-    assert(window.stop > window.start);
-
-    return static_cast<scalar_t>(
-        dates(window.stop - 1) -
-        dates(window.start)
-    );
-}
 
 // full timeseries
 
@@ -166,10 +64,6 @@ private:
     index_t peek_ = 0, defpeek_ = 0, df_ = 0;
     scalar_t defthresh_ = 0, probability_ = 0, value_ = 0;
 };
-
-// The chi-squared quantile at probability p with df degrees of freedom: the
-// distribution adjust_change_threshold() reads its threshold from.
-scalar_t chi2_quantile(scalar_t p, index_t df);
 
 std::vector<scalar_t> calculate_variogram(
     ArrayView<const scalar_t, 2> spectral

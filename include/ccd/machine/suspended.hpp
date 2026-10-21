@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "ccd/core/types.hpp"
-#include "ccd/machine/fit.hpp"
+#include "ccd/core/window.hpp"
 
 //==============================================================================
 //

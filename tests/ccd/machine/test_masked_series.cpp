@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include "ccd/input/pixel_series.hpp"
+#include "ccd/core/window.hpp"
 #include "ccd/machine/fit.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)

@@ -5,7 +5,7 @@
 #include <string>
 #include <type_traits>
 
-#include "ccd/machine/fit.hpp"
+#include "ccd/core/maths.hpp"
 
 #include "../core/fnv.hpp"
 

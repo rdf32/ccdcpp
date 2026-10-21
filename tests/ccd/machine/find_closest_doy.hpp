@@ -12,7 +12,7 @@
 
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/types.hpp"
-#include "ccd/machine/fit.hpp"
+#include "ccd/core/window.hpp"
 
 namespace reference
 {

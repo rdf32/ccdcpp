@@ -5,7 +5,8 @@
 #include "ccd/core/types.hpp"
 #include "ccd/results/diagnostics.hpp"
 
-#include "ccd/machine/fit.hpp"
+#include "ccd/core/window.hpp"
+#include "ccd/results/segment.hpp"
 
 #include "../core/logger.hpp"
 
@@ -26,7 +27,7 @@ namespace ccd
 //   * MaskedSeries (masked_series.hpp): the pixel's processing mask and
 //     kept observations;
 //   * Cursor (below): where the model window is;
-//   * the segments written so far (ChangeModel, fit.hpp);
+//   * the segments written so far (ChangeModel, results/segment.hpp);
 //   * the kernels of kernels.hpp, Initialize's step among them;
 //   * drive() (below), the loop, with its trace.
 //

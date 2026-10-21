@@ -10,7 +10,7 @@
 
 #include "ccd/config/registry.hpp"
 #include "ccd/config/shared.hpp"
-#include "ccd/machine/fit.hpp"
+#include "ccd/core/maths.hpp"
 #include "ccd/run/algorithm.hpp"
 #include "ccd/strategies/register_core.hpp"
 

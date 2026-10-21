@@ -10,6 +10,7 @@
 #include "ccd/core/constants.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/core/types.hpp"
+#include "ccd/core/window.hpp"
 
 #include "ccd/config/params.hpp"
 #include "ccd/config/preprocess.hpp"
@@ -45,6 +46,7 @@
 
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/results/record.hpp"
+#include "ccd/results/segment.hpp"
 
 #include "ccd/run/algorithm.hpp"
 #include "ccd/run/run.hpp"
