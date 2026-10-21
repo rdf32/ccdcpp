@@ -3,8 +3,8 @@
 //==============================================================================
 //
 // Whole pixel series for the tests that cut them at a date: prefix stability
-// (test_prefix.cpp) and resume (test_resume.cpp), each a Series (series.hpp)
-// with the input and configuration it runs under:
+// (test_prefix.cpp) and resume (test_resume.cpp, test_run_spec.cpp), each a
+// Series (series.hpp) with the input and configuration it runs under:
 //
 //   * characterization_pixels() (characterization.hpp);
 //   * csv_series(dir): the pyccd reference pixel, the Atlanta pixel with a
@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "ccd/ccd.hpp"
 
@@ -49,6 +51,37 @@ inline ccd::PixelOutput recorded_at(const Series& s, std::int64_t statistics_end
         s.date_view(),
         s.spectral_view(),
         s.qa_view());
+}
+
+// The stored run continued on the whole series: detect() on `whole` with the
+// stored record and segments as its resume.
+inline ccd::PixelOutput resume_on(const Series& whole, const ccd::PixelOutput& stored)
+{
+    return ccd::detect(
+        golden::spec_of(whole.h, whole.config),
+        whole.date_view(),
+        whole.spectral_view(),
+        whole.qa_view(),
+        ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+}
+
+// Two records say the same, field by field.
+inline void expect_same_record(const ccd::PixelRecord& a, const ccd::PixelRecord& b, const std::string& at)
+{
+    EXPECT_EQ(a.input_fingerprint, b.input_fingerprint) << at;
+    EXPECT_EQ(a.procedure, b.procedure) << at;
+    EXPECT_EQ(a.excluded_days, b.excluded_days) << at;
+    const auto& x = a.standard;
+    const auto& y = b.standard;
+    EXPECT_EQ(x.exit, y.exit) << at;
+    EXPECT_EQ(x.window.start, y.window.start) << at;
+    EXPECT_EQ(x.window.stop, y.window.stop) << at;
+    EXPECT_EQ(x.prev_break, y.prev_break) << at;
+    EXPECT_EQ(x.fit_stop, y.fit_stop) << at;
+    EXPECT_EQ(x.grow, y.grow) << at;
+    EXPECT_EQ(x.num_coef, y.num_coef) << at;
+    EXPECT_EQ(x.magnitude, y.magnitude) << at;
+    EXPECT_EQ(x.final_segments, y.final_segments) << at;
 }
 
 inline std::vector<Series> csv_series(const std::string& dir)

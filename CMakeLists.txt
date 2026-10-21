@@ -447,8 +447,14 @@ if(CCD_BUILD_TESTS)
     # tests/ccd/machine/test_record.cpp.
     ccd_add_gtest(test_record SOURCES tests/ccd/machine/test_record.cpp)
 
-    # Resume equals the full run. See tests/ccd/golden/test_resume.cpp.
-    ccd_add_gtest(test_resume NO_DISCOVER SOURCES tests/ccd/golden/test_resume.cpp)
+    # Resume equals the full run (tests/ccd/golden/test_resume.cpp), and
+    # what a run's configuration and observer add to it
+    # (tests/ccd/golden/test_run_spec.cpp).
+    ccd_add_gtest(
+        test_resume
+        NO_DISCOVER
+        SOURCES tests/ccd/golden/test_resume.cpp tests/ccd/golden/test_run_spec.cpp
+    )
 
     # Prefix stability: a run on the observations up to a date keeps every
     # final segment of the run on the whole series. See
