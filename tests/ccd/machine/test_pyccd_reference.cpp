@@ -19,6 +19,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -66,7 +67,13 @@ std::vector<ExpectedModel> read_models_reference(const std::string& filename)
     for (const auto& row : golden::read_reference_rows(filename))
     {
         std::size_t at = 0;
-        auto next = [&]() { return row.at(at++); };
+        auto next = [&]()
+        {
+            if (at == row.size())
+                throw std::runtime_error(filename + ": a row of " + std::to_string(row.size())
+                                         + " values; a segment has 76");
+            return row[at++];
+        };
 
         ExpectedModel m{};
         m.start_day = static_cast<int>(next());
@@ -115,6 +122,7 @@ void expect_fits_match(const ccd::ChangeModel& actual, const ExpectedModel& expe
 {
     for (std::size_t b = 0; b < 7; ++b)
     {
+        SCOPED_TRACE("band " + std::to_string(b));
         const auto& actual_band = actual.bands[b];
         const auto& expected_band = expected.bands[b];
 
@@ -125,7 +133,7 @@ void expect_fits_match(const ccd::ChangeModel& actual, const ExpectedModel& expe
         const auto& coef = actual_band.coefficients;
         ASSERT_EQ(coef.size(), expected_band.coefficients.size());
         for (std::size_t i = 0; i < coef.size(); ++i)
-            EXPECT_NEAR(coef[i], expected_band.coefficients[i], 1e-6);
+            EXPECT_NEAR(coef[i], expected_band.coefficients[i], 1e-6) << "coefficient " << i;
     }
 }
 
@@ -229,6 +237,7 @@ TEST(PyccdReference, StandardMatchesPyccd)
 
     for (std::size_t m = 0; m < result.models.size(); ++m)
     {
+        SCOPED_TRACE("segment " + std::to_string(m));
         expect_segment_matches(result.models[m], expected[m]);
 
         if (m <= 1)
