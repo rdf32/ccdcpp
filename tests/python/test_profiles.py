@@ -881,7 +881,7 @@ class Profiles(unittest.TestCase):
     def test_input_is_built_once_and_immutable(self):
         p = presets.landsat_c1_dn()
         self.assertIs(p.input(), p.input())
-        self.assertIs(p.input(), presets.landsat_c1_dn().input())
+        self.assertEqual(p.input(), presets.landsat_c1_dn().input())
         with self.assertRaises(AttributeError):
             p.input().reflectance_scale = 99.0  # pyright: ignore[reportAttributeAccessIssue]  # immutable, refused
         h = p.input().replace(reflectance_scale=99.0)
