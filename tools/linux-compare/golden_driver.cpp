@@ -5,12 +5,17 @@
 //   golden_driver gen <corpus_dir>
 //   golden_driver run <corpus_dir> <csv_dir> <out_dir> [bench]
 //
+// gen writes one file per cube; c16.bin is also tools/bench's corpus. The
+// format, little-endian: uint64 H, W, T; int64 dates[T]; float64
+// spectral[H][W][7][T]; uint8 qas[H][W][T]. run exits 1 if a cube's dump
+// differs from the detect() dump of the same input; with bench it only times.
+//
 // <csv_dir> is a tree's tests/ccd/machine. Build it against a tree's
 // include/, tests/ccd/golden/ and libccd_core.a. Every tree's dumps compare
 // file for file with every other's: v0.6.1 to v0.10.0 ran it through their
 // option-argument detect() and detect_cube() (this driver as of v0.10.0), 1.0
-// on through the RunSpec ones. This is the driver of the refactor's golden
-// check, kept here for linux-compare.
+// on through the RunSpec ones. It is the golden check's driver and
+// linux-compare's.
 
 #include <algorithm>
 #include <array>
@@ -39,22 +44,33 @@ static const CubeSpec SPECS[] = {
     {"medium", 5, golden::Regime::Medium,     10, 20},
 };
 
+static FILE* open_or_exit(const std::string& path, const char* mode)
+{
+    FILE* f = std::fopen(path.c_str(), mode);
+    if (!f) { std::perror(path.c_str()); std::exit(1); }
+    return f;
+}
+
+static void close_or_exit(const std::string& path, FILE* f)
+{
+    if (std::fclose(f) != 0) { std::perror(path.c_str()); std::exit(1); }
+}
+
 static void write_cube(const std::string& path, const golden::Cube& c)
 {
-    FILE* f = std::fopen(path.c_str(), "wb");
+    FILE* f = open_or_exit(path, "wb");
     std::uint64_t hdr[3] = {c.H, c.W, c.T};
     std::fwrite(hdr, sizeof(hdr), 1, f);
     std::fwrite(c.dates.data(), 8, c.T, f);
     std::fwrite(c.spectral.data(), 8, c.spectral.size(), f);
     std::fwrite(c.qas.data(), 1, c.qas.size(), f);
-    std::fclose(f);
+    close_or_exit(path, f);
 }
 
 static golden::Cube read_cube(const std::string& path)
 {
     golden::Cube c;
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) { std::perror(path.c_str()); std::exit(1); }
+    FILE* f = open_or_exit(path, "rb");
     std::uint64_t hdr[3];
     if (std::fread(hdr, sizeof(hdr), 1, f) != 1) std::exit(1);
     c.H = hdr[0]; c.W = hdr[1]; c.T = hdr[2];
@@ -98,9 +114,9 @@ static Csv read_csv(const std::string& path)
 
 static void write_text(const std::string& path, const std::string& s)
 {
-    FILE* f = std::fopen(path.c_str(), "wb");
+    FILE* f = open_or_exit(path, "wb");
     std::fwrite(s.data(), 1, s.size(), f);
-    std::fclose(f);
+    close_or_exit(path, f);
 }
 
 // Each runs the "ccdc" preset on its input.
@@ -141,12 +157,22 @@ static double peak_mb()
 #endif
 }
 
+static int usage()
+{
+    std::fprintf(stderr,
+        "usage: golden_driver gen <corpus_dir>\n"
+        "       golden_driver run <corpus_dir> <csv_dir> <out_dir> [bench]\n");
+    return 2;
+}
+
 int main(int argc, char** argv)
 {
-    if (argc < 3) { std::fprintf(stderr, "usage\n"); return 2; }
-    const std::string mode = argv[1];
+    const std::string mode = argc > 1 ? argv[1] : "";
+    const bool gen = mode == "gen" && argc == 3;
+    const bool run = mode == "run" && (argc == 5 || (argc == 6 && std::string(argv[5]) == "bench"));
+    if (!gen && !run) return usage();
 
-    if (mode == "gen")
+    if (gen)
     {
         for (const auto& s : SPECS)
         {
@@ -160,7 +186,8 @@ int main(int argc, char** argv)
     const std::string corpus = argv[2];
     const std::string csvdir = argv[3];
     const std::string out = argv[4];
-    const bool bench = argc > 5;
+    const bool bench = argc == 6;
+    bool mismatch = false;
 
     std::vector<OptSet> opts = {
         {"dn", ccd::Input{}, 0},
@@ -263,12 +290,16 @@ int main(int argc, char** argv)
                 write_text(out + "/cube_" + spec.name + "_" + o.name + "_t" + std::to_string(threads) + ".txt", cs);
 
                 // cube vs detect must agree too
-                if (cs != s) std::fprintf(stderr, "  NOTE: cube dump differs from detect dump for %s %s t%d\n", spec.name, o.name, threads);
+                if (cs != s)
+                {
+                    std::fprintf(stderr, "cube dump differs from detect dump for %s %s t%d\n", spec.name, o.name, threads);
+                    mismatch = true;
+                }
             }
         }
     }
 
     std::fprintf(stderr, "detect: %zu px, %.1f ms, %.4f ms/px; peak %.0f MB\n",
         detect_px, detect_ms, detect_ms / detect_px, peak_mb());
-    return 0;
+    return mismatch ? 1 : 0;
 }

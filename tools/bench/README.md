@@ -6,7 +6,6 @@ against v0.6.1 measured in the same session.
 
 | File | What it does |
 |---|---|
-| `make_corpus.cpp` | Writes the synthetic corpus: 2000 pixels at a 16-day cadence, from `tests/ccd/golden/synthetic.hpp` (the golden corpus's `c16` cube). |
 | `bench_synthetic.py` | Times `detect_cube` on that corpus tiled 2x2 (8000 pixels), best of N calls. |
 | `bench.sh` | Runs `bench_synthetic.py` for the two reported configs, each in its own process. |
 | `bench_cell.py` | Times `detect_cube` with `input=presets.landsat_c2()` on a 500 x 500 Landsat C2 ARD cell (`--size n`: its n x n corner) and prints a fingerprint of every output. |
@@ -23,11 +22,14 @@ every build you compare. A build directory holds the bare extension (`ccdcpp.cpy
 which is enough for the synthetic bench. The cell bench needs the package: copy
 `python/ccdcpp/*.py` of the tree and the built extension into `<dir>/ccdcpp/`.
 
-Make the corpus once:
+The synthetic corpus is the golden corpus's `c16` cube: 2000 pixels at a 16-day cadence, from
+`tests/ccd/golden/synthetic.hpp`. Make it once with the golden driver
+(`tools/linux-compare/golden_driver.cpp`), which writes `c16.bin` with the other cubes:
 
 ```
-c++ -std=c++17 -O2 -I <repo>/tests/ccd/golden <repo>/tools/bench/make_corpus.cpp -o make_corpus
-./make_corpus c16.bin
+cmake -S <repo> -B <build dir> -DCMAKE_BUILD_TYPE=Release -DCCD_BUILD_GOLDEN_DRIVER=ON
+cmake --build <build dir> --target golden_driver
+<build dir>/golden_driver gen <corpus dir>
 ```
 
 ## Method

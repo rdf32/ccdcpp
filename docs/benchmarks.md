@@ -20,7 +20,7 @@ on one machine:
 
 | Name | What it is |
 |---|---|
-| Synthetic | `make_corpus.cpp`'s 2000 pixels at a 16-day cadence, tiled 2 x 2 (8000 pixels, float64 input), through `detect_cube`, returning columns ("cols"; 0.10.0's `detect_cube_columns`) or, in 0.10.0 only, a dict per pixel ("cube"; `to_pixels` of the columns in 1.0). Small and repeatable: the per-change bench. |
+| Synthetic | The golden corpus's `c16` cube (`golden_driver gen`), 2000 pixels at a 16-day cadence, tiled 2 x 2 (8000 pixels, float64 input), through `detect_cube`, returning columns ("cols"; 0.10.0's `detect_cube_columns`) or, in 0.10.0 only, a dict per pixel ("cube"; `to_pixels` of the columns in 1.0). Small and repeatable: the per-change bench. |
 | Atlanta cell | A real 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 7 bands, uint16), through `detect_cube` with `input=presets.landsat_c2()` in strips of 50 rows, as a production plugin runs it. 250,000 pixels, 455,231 segments. Read whole before timing; only detection is timed. |
 | Annual update | The same cell recorded up to 2022-12-31, then resumed to 2023 with `detect_cube(resume=...)`, against a full run to 2023. |
 | PyCCD pixels | Pixels run one at a time through PyCCD's `ccd.detect` and `ccdcpp.detect`. |
