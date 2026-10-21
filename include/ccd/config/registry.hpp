@@ -202,7 +202,7 @@ public:
     std::map<std::string, std::vector<std::string>> names() const;
 
     // Each strategy's parameters with their sources and defaults, by stage
-    // and name.
+    // and name, as a copy: hold it to iterate one stage's.
     std::map<std::string, std::map<std::string, std::vector<ParameterInfo>>> schemas() const;
 
     // The parameters a stage of `strategy` in `stage` sets, at their

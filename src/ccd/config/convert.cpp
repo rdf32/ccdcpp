@@ -235,8 +235,9 @@ std::optional<Value> convert(Unit unit, const Value& value, const std::string& a
 void check_names(const std::vector<ParameterInfo>& info, const Values& given,
                  const std::string& where, const char* noun)
 {
-    for (const auto& [name, value] : given)
+    for (const auto& entry : given)
     {
+        const std::string& name = entry.first;
         const auto field = std::find_if(info.begin(), info.end(),
                                         [&](const ParameterInfo& p) { return p.name == name; });
         if (field == info.end())

@@ -184,7 +184,10 @@ def _unit_note(info: dict[str, Any]) -> str:
 
 def _noted(line: str, note: str) -> str:
     """`line` with `note` as its comment, at the comment column."""
-    return f"{line.ljust(_NOTE_COLUMN - 1)} # {note}" if note else line
+    if not note:
+        return line
+    return f"{line.ljust(_NOTE_COLUMN - 1)} # {note}" if len(line) < _NOTE_COLUMN - 1 \
+        else f"{line}  # {note}"
 
 
 def _banner(title: str) -> str:
@@ -373,8 +376,9 @@ class Config:
 
     def to_toml(self, full: bool = False) -> str:
         """The configuration as a preset file: the shared values, each procedure's
-        preprocessing, then the stages in the order a pixel meets them; each table with what it
-        decides and each value with its unit as comments, from the registry's schemas. A flag
+        preprocessing, then the stages in the order a pixel meets them; as comments from the
+        registry's schemas, each table with what it decides, each shared value with what it
+        is, and every other value with its unit. A flag
         left off at its default (a range's ``inclusive = [false, false]``) is left out, unless
         ``full``."""
         tree = self._tree
@@ -383,7 +387,7 @@ class Config:
         tables = {t["name"]: t["doc"] for t in _TABLES}
         for name, info in _SHARED.items():
             if "." not in name and name in shared:
-                lines.append(_noted(f"{name} = {_text(shared[name])}", _unit_note(info)))
+                lines.append(_noted(f"{name} = {_text(shared[name])}", info["doc"]))
         for table, doc in tables.items():
             if not isinstance(shared.get(table), dict):
                 continue
@@ -391,8 +395,7 @@ class Config:
             for path, info in _SHARED.items():
                 name = path.removeprefix(f"{table}.")
                 if name != path and name in shared[table]:
-                    lines.append(_noted(f"{name} = {_text(shared[table][name])}",
-                                        _unit_note(info)))
+                    lines.append(_noted(f"{name} = {_text(shared[table][name])}", info["doc"]))
         lines += ["", _banner("Preprocessing: which observations each procedure keeps")]
         for procedure in PROCEDURES:
             if procedure not in tree["preprocess"]:

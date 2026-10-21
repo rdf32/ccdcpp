@@ -474,7 +474,8 @@ TEST(Registry, SharedValuesReachTheirStages)
         "it is all, stat_window or off");
 
     // The listing names each parameter's source.
-    for (const auto& p : r.schemas().at("model").at("lasso"))
+    const auto schemas = r.schemas();
+    for (const auto& p : schemas.at("model").at("lasso"))
         if (p.name == "alpha")
         {
             EXPECT_EQ(p.source, ccd::config::Source::Shared);

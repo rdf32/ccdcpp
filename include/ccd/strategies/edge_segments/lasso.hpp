@@ -76,7 +76,8 @@ namespace strategies
 // Start and End segments are written when more than a peek of observations
 // is before the first stable start, or after the last segment, and more
 // than `coefficients`, so that the fit's RMSE has a degree of freedom (a
-// peek_size below coefficient_min leaves those observations without one).
+// peek_size below the shared coefficients.min leaves those observations
+// without one).
 //------------------------------------------------------------------------------
 struct LassoEdges final : EdgeSegments
 {

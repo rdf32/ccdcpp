@@ -190,23 +190,23 @@ file, shortened):
 # --- Values several stages share ----------------------------------------------------------
 
 [shared]
-detection_bands = ["green", "red", "nir", "swir1", "swir2"]
-change_probability = 0.99
-outlier_probability = 0.999999
-min_observations = 12            # observations
-statistics_end = "none"          # a date "YYYY-MM-DD", an ordinal day, or "none"
+detection_bands = ["green", "red", "nir", "swir1", "swir2"]  # the bands a change is tested on
+change_probability = 0.99        # the change tests' threshold is its chi-squared quantile
+outlier_probability = 0.999999   # the outlier tests' threshold is its chi-squared quantile
+min_observations = 12            # the fewest observations a curve is fitted on
+statistics_end = "none"          # the last date the statistics read; "none": the whole series
 
 [shared.coefficients]            # how many harmonic coefficients a curve gets
-min = 4
-mid = 6
-max = 8
-per = 3
+min = 4                          # coefficients below mid x per observations
+mid = 6                          # coefficients below max x per observations
+max = 8                          # coefficients otherwise: the basis width
+per = 3                          # observations per coefficient
 
 [shared.lasso]                   # the Lasso every fitting stage uses
-alpha = 0.0001                   # reflectance
-coef_floor = 0.0001              # reflectance
-max_iter = 1000
-tolerance = 0.0001
+alpha = 0.0001                   # the L1 penalty, in reflectance
+coef_floor = 0.0001              # the least coefficient the tolerance scales, in reflectance
+max_iter = 1000                  # coordinate descent sweeps at most
+tolerance = 0.0001               # a sweep's relative update at which it checks the duality gap
 
 # --- Preprocessing: which observations each procedure keeps -------------------------------
 
@@ -252,8 +252,8 @@ factor = 1.33
   observations).
 - **A range is a pair keyed by its unit**: `celsius = [-93.2, 70.7]`, `reflectance = [0.0,
   1.0]`, open at both ends unless `inclusive = [true, false]` (or another pair) says so.
-- **Comments from the code**: each table says what it decides and each value its unit, from
-  the registry's schemas. `to_toml()` leaves out a flag left off at its default (the
+- **Comments from the code**: each table says what it decides, each shared value what it is
+  and every other value its unit, from the registry's schemas. `to_toml()` leaves out a flag left off at its default (the
   `inclusive` pairs); `to_toml(full=True)` writes every value.
 
 A file may extend another and list only what differs:
@@ -297,8 +297,8 @@ strategy's defaults. A shared table changes the values it gives. A procedure the
 takes the file's `thermal` and `steps` where it gives them, each step's parameters from the
 step's defaults. A relative path in `extends` is the extending file's directory's. The shipped
 preset is `ccdc`; `python/ccdcpp/configs/ccdc.toml` is its `to_toml()` under a header comment.
-A file in the layout before 1.0 (`[<stage>.params]`, `thermal_transform`, the old names) is
-refused, naming what changed; [migration-1.0.md](migration-1.0.md#configuration-files) maps
+A file in the layout before 1.0 is refused, the message naming the key (a `[<stage>.params]`
+table, `thermal_transform`, an old stage, step or parameter name); [migration-1.0.md](migration-1.0.md#configuration-files) maps
 it.
 
 ## From C++

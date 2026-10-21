@@ -73,8 +73,10 @@ ConfigTree resolve_stages(const Registry& registry, const ConfigTree& stages,
                           const SectionContext& with)
 {
     ConfigTree out;
-    for (const auto& [stage, chosen] : stages)
+    for (const auto& entry : stages)
     {
+        const std::string& stage = entry.first;
+        const StageConfig& chosen = entry.second;
         if (std::none_of(STAGES.begin(), STAGES.end(),
                          [&](const StageInfo& s) { return stage == s.name; }))
         {

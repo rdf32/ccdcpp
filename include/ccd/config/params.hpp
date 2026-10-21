@@ -253,8 +253,10 @@ template<class P>
 void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
            const std::string& where)
 {
-    for (const auto& [name, value] : values)
+    for (const auto& entry : values)
     {
+        const std::string& name = entry.first;
+        const Value& value = entry.second;
         const Field<P>* field = nullptr;
         for (const auto& f : schema)
             if (name == f.name)

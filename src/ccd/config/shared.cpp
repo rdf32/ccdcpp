@@ -53,17 +53,16 @@ const std::vector<Field<Shared>>& shared_schema()
 {
     static const std::vector<Field<Shared>> s = {
         {"detection_bands", &Shared::detection_bands, Unit::Bands, any(),
-         "the bands of the change magnitude, in the order it sums them",
+         "the bands a change is tested on",
          Source::Own, nullptr, roles({"green", "red", "nir", "swir1", "swir2"})},
         {"change_probability", &Shared::change_probability, Unit::None, open_interval(0, 1),
-         "the probability of the change tests (change_test, stability_rule, lookback)"},
+         "the change tests' threshold is its chi-squared quantile"},
         {"outlier_probability", &Shared::outlier_probability, Unit::None, open_interval(0, 1),
-         "the probability of the outlier tests (outlier, lookback)"},
+         "the outlier tests' threshold is its chi-squared quantile"},
         {"min_observations", &Shared::min_observations, Unit::Observations, at_least(1),
-         "the fewest observations a curve is fitted on: a start window's size and what a start "
-         "needs after it, and a whole-series curve's least"},
+         "the fewest observations a curve is fitted on"},
         {"statistics_end", &Shared::statistics_end, Unit::Date, any(),
-         "the last date the series statistics read; \"none\" for the whole series",
+         "the last date the statistics read; \"none\": the whole series",
          Source::Own, nullptr, std::nullopt, Keyword{"none", NO_STATISTICS_END}},
     };
     return s;
@@ -73,11 +72,11 @@ const std::vector<Field<CoefficientRule>>& coefficients_schema()
 {
     static const std::vector<Field<CoefficientRule>> s = {
         {"min", &CoefficientRule::min, Unit::None, at_least(1),
-         "coefficients below mid * per observations; a start window's and an edge segment's"},
+         "coefficients below mid x per observations"},
         {"mid", &CoefficientRule::mid, Unit::None, at_least(1),
-         "coefficients below max * per observations"},
+         "coefficients below max x per observations"},
         {"max", &CoefficientRule::max, Unit::None, at_least(1),
-         "coefficients otherwise; the basis width"},
+         "coefficients otherwise: the basis width"},
         {"per", &CoefficientRule::per, Unit::None, at_least(1), "observations per coefficient"},
     };
     return s;
@@ -87,14 +86,14 @@ const std::vector<Field<LassoOptions>>& lasso_schema()
 {
     static const std::vector<Field<LassoOptions>> s = {
         {"alpha", &LassoOptions::alpha, Unit::ReflectanceDelta, at_least(0),
-         "the L1 penalty", Source::Own, nullptr, real(1e-4)},
+         "the L1 penalty, in reflectance", Source::Own, nullptr, real(1e-4)},
         {"coef_floor", &LassoOptions::coef_floor, Unit::ReflectanceDelta, at_least(0),
-         "the least coefficient size the tolerance scales", Source::Own, nullptr, real(1e-4)},
+         "the least coefficient the tolerance scales, in reflectance", Source::Own, nullptr,
+         real(1e-4)},
         {"max_iter", &LassoOptions::max_iter, Unit::None, at_least(0),
          "coordinate descent sweeps at most"},
         {"tolerance", &LassoOptions::tolerance, Unit::None, at_least(0),
-         "a sweep whose largest update is at most this times max(largest coefficient, "
-         "coef_floor) checks the duality gap"},
+         "a sweep's relative update at which it checks the duality gap"},
     };
     return s;
 }
