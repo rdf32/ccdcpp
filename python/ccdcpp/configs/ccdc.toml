@@ -116,5 +116,5 @@ factor = 1.33
 [segment_report]                 # the fit a finished segment reports
 strategy = "model-fit"
 
-[edge_segments]                  # the short segments at the series' start and end
+[edge_segments]                  # the Start and End segments, and the snow and insufficient-clear procedures' whole-series curve
 strategy = "lasso"

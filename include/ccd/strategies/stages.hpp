@@ -552,7 +552,9 @@ struct SegmentReport
 struct EdgeSegments
 {
     static constexpr const char* stage = "edge_segments";
-    static constexpr const char* purpose = "the short segments at the series' start and end";
+    static constexpr const char* purpose =
+        "the Start and End segments, and the snow and insufficient-clear procedures' "
+        "whole-series curve";
 
     virtual ~EdgeSegments() = default;
     virtual std::unique_ptr<Scratch> make_scratch() const = 0;
