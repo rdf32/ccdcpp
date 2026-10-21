@@ -17,12 +17,9 @@ void refit(Model& model, ArrayView<const std::int64_t, 1> dates,
            ArrayView<const scalar_t, 2> spectral, const Window& window, index_t q,
            index_t num_coef)
 {
-    BandList all_bands;
-    for (index_t band = 0; band < spectral.extent(0); ++band)
-        all_bands.push_back(band);
     model.fit(dates.slice(range(window.start, window.stop)),
               spectral.slice(all(), range(window.start, window.stop)), q,
-              std::max(q, num_coef), all_bands, KeepResiduals::No);
+              std::max(q, num_coef), every_band(spectral.extent(0)), KeepResiduals::No);
 }
 
 void band_fits(const Model& model, index_t num_bands, std::vector<BandFit>& bands)

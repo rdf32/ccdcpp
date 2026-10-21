@@ -70,7 +70,7 @@ void fit_bands(
     std::vector<LassoResult>& fits
 );
 
-// fit_bands() of every row of `spectral`, 0 to B - 1; fits is resized to B.
+// fit_bands() of every row of `spectral` (every_band()); fits is resized to B.
 void fit_bands(
     ArrayView<const std::int64_t, 1> dates,
     ArrayView<const scalar_t, 2> spectral,
@@ -113,14 +113,6 @@ void peek_residuals(
     ArrayView<const scalar_t, 2> peek_spectral,
     const std::vector<LassoResult>& models,
     const BandList& bands,
-    std::vector<std::vector<scalar_t>>& residuals
-);
-
-// peek_residuals() of every row of `peek_spectral`; residuals has B entries.
-void peek_residuals(
-    const HarmonicBasis& peek_basis,
-    ArrayView<const scalar_t, 2> peek_spectral,
-    const std::vector<LassoResult>& models,
     std::vector<std::vector<scalar_t>>& residuals
 );
 

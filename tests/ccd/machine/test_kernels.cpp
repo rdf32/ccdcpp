@@ -566,7 +566,7 @@ TEST(PeekResiduals, MatchesThePeekLoopForwardAndReversed)
                 peek_loop(pd, ps, models, all_bands, lworkspace, expected);
 
                 peek_basis.build(pd, 8);
-                ccd::peek_residuals(peek_basis, ps, models, got);
+                ccd::peek_residuals(peek_basis, ps, models, ccd::every_band(B), got);
                 for (index_t b = 0; b < B; ++b)
                     EXPECT_TRUE(same_bits(got[b], expected[b]));
             }

@@ -97,23 +97,9 @@ void fit_bands(
     std::vector<LassoResult>& fits
 )
 {
-    lworkspace.resize(dates.size());
-    lworkspace.build_basis(dates, num_coefficients);
-
-    const index_t num_bands = spectral.extent(0);
-    fits.resize(num_bands);
-
-    for (index_t band = 0; band < num_bands; ++band)
-    {
-        fit_band(
-            spectral.slice(fixed(band), all()),
-            num_coefficients,
-            keep,
-            lworkspace,
-            solver,
-            fits[band]
-        );
-    }
+    fits.resize(spectral.extent(0));
+    fit_bands(dates, spectral, num_coefficients, every_band(spectral.extent(0)), keep,
+              lworkspace, solver, fits);
 }
 
 ChangeModel catch_segment(
@@ -364,26 +350,6 @@ void peek_residuals(
     assert(peek_basis.samples() == peek_spectral.extent(1));
 
     for (const index_t band : bands)
-    {
-        peek_band_residuals(
-            peek_basis,
-            peek_spectral.slice(fixed(band), all()),
-            models[band].model,
-            residuals[band]
-        );
-    }
-}
-
-void peek_residuals(
-    const HarmonicBasis& peek_basis,
-    ArrayView<const scalar_t, 2> peek_spectral,
-    const std::vector<LassoResult>& models,
-    std::vector<std::vector<scalar_t>>& residuals
-)
-{
-    assert(peek_basis.samples() == peek_spectral.extent(1));
-
-    for (index_t band = 0; band < peek_spectral.extent(0); ++band)
     {
         peek_band_residuals(
             peek_basis,

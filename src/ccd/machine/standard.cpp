@@ -1043,15 +1043,12 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     extend.trained = true;
     extend.fit_window = Window(window.start, from.fit_stop);
     extend.fit_span = span(dates, extend.fit_window);
-    BandList bands;
-    for (index_t band = 0; band < spectral.extent(0); ++band)
-        bands.push_back(band);
     refit_model(context, extend).fit(
         dates.slice(range(extend.fit_window.start, extend.fit_window.stop)),
         spectral.slice(all(), range(extend.fit_window.start, extend.fit_window.stop)),
         state.coefficients.count(extend.fit_window.size()),
         state.coefficients.max,
-        bands,
+        every_band(spectral.extent(0)),
         KeepResiduals::Yes
     );
     extend.complete = true;
