@@ -497,9 +497,10 @@ rule; the result is taken from the record once the machine is done.
 
 A test builds a `State` by hand (a short synthetic series, a chosen cursor, models from
 `fit_bands`), calls one transition or one step function, and checks the outcome, the next phase
-and the record. `tests/ccd/machine/test_machine.cpp` does that for every row of the guard
-lists above (`StandardInitialize.*`, `StandardLookback.*`, `StandardExtend.*`), for the routing
-(`StandardRouting.*`, `StandardPrepare.*`) and for every `Exit` (`StandardExit.*`).
+and the record. `tests/ccd/machine/test_standard_steps.cpp` does that for every row of the
+guard lists above (`StandardInitialize.*`, `StandardLookback.*`, `StandardExtend.*`) and for
+the routing (`StandardRouting.*`, `StandardPrepare.*`), `test_standard_whole_pixel.cpp` for
+every `Exit` (`StandardExit.*`).
 `StandardMachine.EachStepIsOneDecision` steps whole pixels by hand and checks that every
 self-transition changes the window by one decision. The outputs themselves are pinned byte for
 byte by the golden fixtures (`tests/ccd/golden/`), including the transitions fixture, built from

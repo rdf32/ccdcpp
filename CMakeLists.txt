@@ -382,9 +382,17 @@ if(CCD_BUILD_TESTS)
     # tests/ccd/strategies/test_registry.cpp.
     ccd_add_gtest(test_registry SOURCES tests/ccd/strategies/test_registry.cpp)
 
-    # The Standard machine's routing from hand-built records, and its exit
-    # reasons on whole pixels. See tests/ccd/machine/test_machine.cpp.
-    ccd_add_gtest(test_machine INTERNAL SOURCES tests/ccd/machine/test_machine.cpp)
+    # The Standard machine: its routing and steps from hand-built records,
+    # its routes under test-only strategies, and its exit reasons on whole
+    # pixels. See tests/ccd/machine/test_standard_*.cpp.
+    ccd_add_gtest(
+        test_machine
+        INTERNAL
+        SOURCES
+            tests/ccd/machine/test_standard_steps.cpp
+            tests/ccd/machine/test_standard_hooks.cpp
+            tests/ccd/machine/test_standard_whole_pixel.cpp
+    )
 
     # The preprocessing plan: the "ccdc" plan (plan_of()) against the
     # hand-written chains, custom plans through detect(), and plan
