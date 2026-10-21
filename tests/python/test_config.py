@@ -25,8 +25,6 @@ from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 
-assert ccdcpp.__file__ == _INIT, ccdcpp.__file__
-
 
 def pixel(seed: int = 3,
           T: int = 420) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8]]:

@@ -25,20 +25,16 @@ import importlib.util
 import sys
 import types
 import unittest
-from typing import TYPE_CHECKING
 
-from _harness import use_extension
+from _harness import use_package
 
-use_extension()
+use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
 
-if TYPE_CHECKING:
-    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
-    from ccdcpp import ccdcpp
-else:
-    import ccdcpp
+# The extension module, which ccdcpp/ccdcpp.pyi types.
+from ccdcpp import ccdcpp as ext  # noqa: E402
 
 
 def nlcd_table() -> tuple[NDArray[np.uint8] | None, types.ModuleType | None, str | None]:
@@ -87,13 +83,13 @@ class NlcdC2(unittest.TestCase):
             self.skipTest(reason)
 
         # The plugin's codes are the Input's defaults.
-        h = ccdcpp.Input()
+        h = ext.Input()
         self.assertEqual(
             [science.QA_FILL, science.QA_CLEAR, science.QA_WATER,
              science.QA_SHADOW, science.QA_SNOW, science.QA_CLOUD],
             [h.qa_fill, h.qa_clear, h.qa_water, h.qa_shadow, h.qa_snow, h.qa_cloud])
 
-        ours = ccdcpp.qa_tables.landsat_c2_qa_pixel().codes
+        ours = ext.qa_tables.landsat_c2_qa_pixel().codes
         self.assertEqual(table.dtype, np.uint8)
         self.assertEqual(table.shape, (65536,))
         differ = np.flatnonzero(ours != table)
@@ -115,12 +111,12 @@ class PyccdC1(unittest.TestCase):
         params = types.SimpleNamespace(
             QA_FILL=0, QA_CLEAR=1, QA_WATER=2, QA_SHADOW=3, QA_SNOW=4,
             QA_CLOUD=5, QA_CIRRUS1=8, QA_CIRRUS2=9, QA_OCCLUSION=10)
-        h = ccdcpp.Input()
+        h = ext.Input()
         code_of_offset = {
             0: h.qa_fill, 1: h.qa_clear, 2: h.qa_water,
             3: h.qa_shadow, 4: h.qa_snow, 5: h.qa_cloud}
 
-        ours = ccdcpp.qa_tables.landsat_c1_pixel_qa().codes
+        ours = ext.qa_tables.landsat_c1_pixel_qa().codes
         rejected = 0
         for v in range(65536):
             try:

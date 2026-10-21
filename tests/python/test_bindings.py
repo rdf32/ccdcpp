@@ -15,20 +15,17 @@ import tempfile
 import tomllib
 import unittest
 from collections.abc import Callable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import Any, TypedDict
 
-from _harness import SOURCE_DIR, assemble, use_extension
+from _harness import SOURCE_DIR, assemble, use_package
 
-use_extension()
+use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import DTypeLike, NDArray  # noqa: E402
 
-if TYPE_CHECKING:
-    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
-    from ccdcpp import ccdcpp
-else:
-    import ccdcpp
+# The extension module, which ccdcpp/ccdcpp.pyi types.
+from ccdcpp import ccdcpp as ext  # noqa: E402
 
 START = 724276  # 1984-01-01
 
@@ -58,19 +55,19 @@ def cube(bands: int, timesteps: int, dtype: DTypeLike = np.float64, dates: int |
 
 
 class Options(TypedDict):
-    input: ccdcpp.Input
+    input: ext.Input
 
 
 def options() -> Options:
     """The default input, as the entry points' keyword."""
-    return {"input": ccdcpp.Input()}
+    return {"input": ext.Input()}
 
 
 def preset(**changes: object) -> dict[str, Any]:
     """The built-in ccdc preset as the extension takes it (a configuration's dict, laid out
     as its TOML file), with shared__name=value, stage__param=value and
     preprocess__step__param=value (every step of that type) changes."""
-    tree = ccdcpp._config_preset("ccdc")
+    tree = ext._config_preset("ccdc")
     for key, value in changes.items():
         stage, param = key.split("__", 1)
         if stage == "preprocess":
@@ -90,16 +87,16 @@ def preset(**changes: object) -> dict[str, Any]:
     return tree
 
 
-def algorithm(**changes: object) -> ccdcpp.Algorithm:
+def algorithm(**changes: object) -> ext.Algorithm:
     """preset(**changes) as the extension's config= takes it."""
-    return ccdcpp.Algorithm(preset(**changes))
+    return ext.Algorithm(preset(**changes))
 
 
 def resolved(config: Mapping[str, Any] | None = None,
-             input: ccdcpp.Input | None = None) -> dict[str, Any]:
+             input: ext.Input | None = None) -> dict[str, Any]:
     """The configuration resolved against the input (default Input())."""
-    return ccdcpp._config_resolve(preset() if config is None else config,
-                                  ccdcpp.Input() if input is None else input)
+    return ext._config_resolve(preset() if config is None else config,
+                               ext.Input() if input is None else input)
 
 
 class BandCount(unittest.TestCase):
@@ -114,18 +111,18 @@ class BandCount(unittest.TestCase):
         for bands in (6, 8):
             with self.subTest(bands=bands):
                 self.assert_band_error(
-                    lambda: ccdcpp.detect(*inputs(bands, 40), **options()), bands)
-        ccdcpp.detect(*inputs(7, 40), **options())
+                    lambda: ext.detect(*inputs(bands, 40), **options()), bands)
+        ext.detect(*inputs(7, 40), **options())
 
     def test_detect_cube(self):
         for dtype in (np.float64, np.float32, np.uint16):
             for bands in (6, 8):
                 with self.subTest(dtype=dtype, bands=bands):
                     self.assert_band_error(
-                        lambda: ccdcpp.detect_cube(
+                        lambda: ext.detect_cube(
                             *cube(bands, 40, dtype), **options(), threads=1),
                         bands)
-        out = ccdcpp.detect_cube(*cube(7, 40), **options(), threads=1)
+        out = ext.detect_cube(*cube(7, 40), **options(), threads=1)
         self.assertEqual(out["pixels_total"], 6)
         self.assertEqual(out["failures"], [])
         self.assertNotIn("processing_mask", out)
@@ -144,8 +141,8 @@ class BandCount(unittest.TestCase):
         qas[1, 2] = 255
         for threads in (1, 3):
             with self.subTest(threads=threads):
-                out = ccdcpp.detect_cube(d, spectral, qas, **options(), threads=threads,
-                                         masks=True)
+                out = ext.detect_cube(d, spectral, qas, **options(), threads=threads,
+                                      masks=True)
                 assert "processing_mask" in out
                 mask = out["processing_mask"]
                 self.assertEqual((mask.dtype, mask.shape), (np.uint8, (H, W, T)))
@@ -155,10 +152,10 @@ class BandCount(unittest.TestCase):
                 self.assertFalse(mask[1, 2].any())
                 for r in range(H):
                     for c in range(W):
-                        one = ccdcpp.detect(d, spectral[r, c], qas[r, c], **options())
+                        one = ext.detect(d, spectral[r, c], qas[r, c], **options())
                         np.testing.assert_array_equal(mask[r, c], one["processing_mask"])
                 # The columns are those without masks.
-                plain = ccdcpp.detect_cube(d, spectral, qas, **options(), threads=threads)
+                plain = ext.detect_cube(d, spectral, qas, **options(), threads=threads)
                 self.assertEqual(set(out) - set(plain), {"processing_mask"})
                 for key in plain:
                     if hasattr(plain[key], "dtype"):
@@ -170,7 +167,7 @@ class PixelLayouts(unittest.TestCase):
         d, s, q = noisy(7, 120, seed=3)
         q = q.copy()
         q[::7] = 4
-        base = ccdcpp.detect(d, s, q, **options())
+        base = ext.detect(d, s, q, **options())
         self.assertTrue(base["models"])
         wide = np.zeros((7, 240))
         wide[:, ::2] = s
@@ -184,7 +181,7 @@ class PixelLayouts(unittest.TestCase):
         }
         for name, (spectral, qas) in forms.items():
             with self.subTest(form=name):
-                out = ccdcpp.detect(d, spectral, qas, **options())
+                out = ext.detect(d, spectral, qas, **options())
                 self.assertEqual(repr(out["models"]), repr(base["models"]))
                 np.testing.assert_array_equal(out["processing_mask"], base["processing_mask"])
 
@@ -193,11 +190,11 @@ TEN_ROLES = ["blue","green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "n
              "other", "swir1", "swir2"]
 
 
-def ten_band_layout() -> ccdcpp.Input:
+def ten_band_layout() -> ext.Input:
     """A 10-band layout without thermal, which passes validation: the
     configuration's detection bands are rows 1, 2, 6, 8, 9 of it, its Tmask
     bands 1 and 8."""
-    return ccdcpp.Input(roles=TEN_ROLES)
+    return ext.Input(roles=TEN_ROLES)
 
 
 def ten_band_config(**changes: object) -> dict[str, Any]:
@@ -214,7 +211,7 @@ def noisy(bands: int, timesteps: int, seed: int = 1) -> Series:
 
 class BandLayout(unittest.TestCase):
     def test_defaults(self):
-        h = ccdcpp.Input()
+        h = ext.Input()
         self.assertEqual(h.bands(), 7)
         self.assertEqual(h.roles, ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
         self.assertEqual(preset()["shared"]["detection_bands"],
@@ -229,17 +226,17 @@ class BandLayout(unittest.TestCase):
                          [["blue", "green", "red", "nir", "swir1", "swir2"]])
         # The millworks nlcd plugin checks these.
         self.assertEqual([h.index(r) for r in h.roles], [0, 1, 2, 3, 4, 5, 6])
-        self.assertEqual(h.index("coastal"), ccdcpp.NO_BAND)
+        self.assertEqual(h.index("coastal"), ext.NO_BAND)
         self.assertEqual(
             [h.qa_fill, h.qa_clear, h.qa_water, h.qa_shadow, h.qa_snow,
              h.qa_cloud, h.qa_cirrus1, h.qa_cirrus2, h.qa_occlusion],
             [255, 0, 1, 2, 3, 4, 8, 9, 10])
         self.assertEqual(h.reflectance_scale, 10000.0)
-        self.assertEqual(ccdcpp.NO_BAND, 2**64 - 1)
-        self.assertEqual(ccdcpp.CCD_MAX_BANDS, 32)
+        self.assertEqual(ext.NO_BAND, 2**64 - 1)
+        self.assertEqual(ext.CCD_MAX_BANDS, 32)
 
     def test_immutable_by_keyword(self):
-        h = ccdcpp.Input(reflectance_scale=1.0, roles=["blue", "green", "red"], saturation_code=None)
+        h = ext.Input(reflectance_scale=1.0, roles=["blue", "green", "red"], saturation_code=None)
         self.assertEqual((h.reflectance_scale, h.roles, h.saturation_code), (1.0, ["blue", "green", "red"],
                                                                       None))
         for name in ("roles", "reflectance_scale", "qa_clear", "qa_table", "saturation_code"):
@@ -256,26 +253,26 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(r.replace(reflectance_scale=1.0, qa_snow=3), h)
         self.assertEqual(hash(r.replace(reflectance_scale=1.0, qa_snow=3)), hash(h))
         self.assertNotEqual(r, h)
-        self.assertEqual(ccdcpp.Input(), ccdcpp.Input().replace())
+        self.assertEqual(ext.Input(), ext.Input().replace())
         # Keywords only, each a field, each of its type.
         with self.assertRaises(TypeError):
-            ccdcpp.Input(1.0)  # pyright: ignore[reportCallIssue]  # positional, refused
+            ext.Input(1.0)  # pyright: ignore[reportCallIssue]  # positional, refused
         with self.assertRaisesRegex(TypeError, "Input\\(\\) has no field 'alpha'; the fields are qa_fill"):
-            ccdcpp.Input(alpha=1.0)  # pyright: ignore[reportCallIssue]  # no such field
+            ext.Input(alpha=1.0)  # pyright: ignore[reportCallIssue]  # no such field
         with self.assertRaisesRegex(TypeError, "Input.replace\\(\\) has no field 'saturation_bands'"):
             h.replace(saturation_bands=[0])  # pyright: ignore[reportCallIssue]  # no such field
         with self.assertRaisesRegex(TypeError, "qa_clear is 300, which it cannot hold"):
-            ccdcpp.Input(qa_clear=300)
+            ext.Input(qa_clear=300)
         with self.assertRaisesRegex(TypeError, "roles is 'green'"):
-            ccdcpp.Input(roles="green")
+            ext.Input(roles="green")
 
     def test_informational_codes_say_so(self):
         for name in ("qa_cirrus1", "qa_cirrus2", "qa_occlusion"):
             with self.subTest(name=name):
-                self.assertIn("Informational", getattr(ccdcpp.Input, name).__doc__)
+                self.assertIn("Informational", getattr(ext.Input, name).__doc__)
         for name in ("qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud"):
             with self.subTest(name=name):
-                self.assertNotIn("Informational", getattr(ccdcpp.Input, name).__doc__)
+                self.assertNotIn("Informational", getattr(ext.Input, name).__doc__)
 
     def test_lists_keep_their_order(self):
         cfg = preset(shared__detection_bands=[5, 1, 3])
@@ -290,28 +287,28 @@ class BandLayout(unittest.TestCase):
                     resolved(preset(preprocess__band_range__bands=bands))
 
     def test_explicit_landsat_layout_equals_default(self):
-        h = ccdcpp.Input(roles=["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
+        h = ext.Input(roles=["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
         args = noisy(7, 120)
         by_rows = algorithm(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5],
                             preprocess__band_range__bands=[0, 1, 2, 3, 4, 5])
         self.assertEqual(
-            repr(ccdcpp.detect(*args, input=h, config=by_rows)),
-            repr(ccdcpp.detect(*args, **options())))
+            repr(ext.detect(*args, input=h, config=by_rows)),
+            repr(ext.detect(*args, **options())))
 
     def test_outputs_follow_the_band_count(self):
-        h, cfg = ten_band_layout(), ccdcpp.Algorithm(ten_band_config())
+        h, cfg = ten_band_layout(), ext.Algorithm(ten_band_config())
         d, s, q = noisy(10, 120)
-        out = ccdcpp.detect(d, s, q, input=h, config=cfg)
+        out = ext.detect(d, s, q, input=h, config=cfg)
         self.assertEqual(out["num_bands"], 10)
         self.assertGreater(len(out["models"]), 0)
         for m in out["models"]:
             self.assertEqual(len(m["bands"]), 10)
 
-        self.assertEqual(ccdcpp.detect(*noisy(7, 120), **options())["num_bands"], 7)
+        self.assertEqual(ext.detect(*noisy(7, 120), **options())["num_bands"], 7)
 
         cube_s = np.broadcast_to(s, (2, 3, 10, 120)).copy()
         cube_q = np.zeros((2, 3, 120), dtype=np.uint8)
-        cols = ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=cfg)
+        cols = ext.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=cfg)
         n = len(cols["row"])
         self.assertGreater(n, 0)
         self.assertEqual(cols["num_bands"], 10)
@@ -327,22 +324,22 @@ class LayoutValidation(unittest.TestCase):
     """Each rule of ccd::validate() and of the configuration's schemas, as
     ValueError, before any pixel runs."""
 
-    def broken(self, **fields: Any) -> ccdcpp.Input:
+    def broken(self, **fields: Any) -> ext.Input:
         return ten_band_layout().replace(**fields)
 
-    def assert_rejected(self, h: ccdcpp.Input, bands: int, expected: str,
+    def assert_rejected(self, h: ext.Input, bands: int, expected: str,
                         config: Mapping[str, Any] | None = None) -> None:
         d, s, q = inputs(bands, 40)
         cube_s = np.broadcast_to(s, (2, 3, bands, 40)).copy()
         cube_q = np.zeros((2, 3, 40), dtype=np.uint8)
         # The configuration is built in the call: some refusals are its own.
-        def compiled() -> ccdcpp.Algorithm | None:
-            return None if config is None else ccdcpp.Algorithm(config)
+        def compiled() -> ext.Algorithm | None:
+            return None if config is None else ext.Algorithm(config)
         calls = {
-            "detect": lambda: ccdcpp.detect(d, s, q, input=h, config=compiled()),
+            "detect": lambda: ext.detect(d, s, q, input=h, config=compiled()),
             "detect_cube":
-                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1,
-                                           config=compiled()),
+                lambda: ext.detect_cube(d, cube_s, cube_q, input=h, threads=1,
+                                        config=compiled()),
         }
         for name, call in calls.items():
             with self.subTest(entry=name, expected=expected):
@@ -423,7 +420,7 @@ class LayoutValidation(unittest.TestCase):
             (dict(change_test__peek_size=1), chi2 + "'peek_size' is 1; it must be at least 2"),
         ]
         for changes, expected in cases:
-            self.assert_rejected(ccdcpp.Input(), 7, expected, config=preset(**changes))
+            self.assert_rejected(ext.Input(), 7, expected, config=preset(**changes))
 
 
 class CadenceParameters(unittest.TestCase):
@@ -471,8 +468,8 @@ class CadenceParameters(unittest.TestCase):
                 self.assertIs(type(self.value(tree, stage, name)), type(value))
 
     def test_the_registry_states_unit_and_default(self):
-        table = ccdcpp._strategies()
-        shared = {v["name"]: v for v in ccdcpp._shared()}
+        table = ext._strategies()
+        shared = {v["name"]: v for v in ext._shared()}
         tree = preset()
         for (stage, name), unit in self.UNITS.items():
             with self.subTest(stage=stage, name=name):
@@ -488,7 +485,7 @@ class CadenceParameters(unittest.TestCase):
     def test_the_input_describes_the_data_only(self):
         # The algorithm's parameters are the configuration's; the Input holds
         # the data's fields and takes no others.
-        h = ccdcpp.Input()
+        h = ext.Input()
         self.assertEqual({n for n in dir(h) if not n.startswith("_")}, self.INPUT_FIELDS)
         tree = preset()
         names = set(tree["shared"])
@@ -502,20 +499,20 @@ class CadenceParameters(unittest.TestCase):
 
     def test_input_equality_and_hash_agree(self):
         # -0 and +0 are one value: equal Inputs hash alike.
-        zero = ccdcpp.Input(reflectance_offset=0.0, saturation_code=0.0)
-        negative = ccdcpp.Input(reflectance_offset=-0.0, saturation_code=-0.0)
+        zero = ext.Input(reflectance_offset=0.0, saturation_code=0.0)
+        negative = ext.Input(reflectance_offset=-0.0, saturation_code=-0.0)
         self.assertEqual(zero, negative)
         self.assertEqual(hash(zero), hash(negative))
         self.assertEqual(len({zero, negative}), 1)
-        self.assertNotEqual(hash(zero), hash(ccdcpp.Input(reflectance_offset=1.0)))
+        self.assertNotEqual(hash(zero), hash(ext.Input(reflectance_offset=1.0)))
 
     def test_a_nan_saturation_code_is_refused(self):
         nan = float("nan")
-        for field, h in (("saturation_code", ccdcpp.Input(saturation_code=nan)),
-                         ("thermal_saturation_code", ccdcpp.Input(thermal_saturation_code=nan))):
+        for field, h in (("saturation_code", ext.Input(saturation_code=nan)),
+                         ("thermal_saturation_code", ext.Input(thermal_saturation_code=nan))):
             with self.subTest(field=field):
                 with self.assertRaisesRegex(ValueError, f"^{field} is nan; it is a number"):
-                    ccdcpp.detect(*noisy(7, 120), input=h)
+                    ext.detect(*noisy(7, 120), input=h)
 
     def test_chi2_quantile_is_the_change_threshold(self):
         tree = resolved()
@@ -524,22 +521,22 @@ class CadenceParameters(unittest.TestCase):
                 params = tree[stage]
                 # To the last bit.
                 self.assertEqual(
-                    ccdcpp.chi2_quantile(0.99, 5).hex(), params["change_threshold"].hex())
+                    ext.chi2_quantile(0.99, 5).hex(), params["change_threshold"].hex())
                 self.assertEqual(
-                    ccdcpp.chi2_quantile(p=params["change_probability"],
-                                         df=len(tree["shared"]["detection_bands"])),
+                    ext.chi2_quantile(p=params["change_probability"],
+                                      df=len(tree["shared"]["detection_bands"])),
                     params["change_threshold"])
-        self.assertGreater(ccdcpp.chi2_quantile(0.99, 8), ccdcpp.chi2_quantile(0.99, 5))
-        self.assertGreater(ccdcpp.chi2_quantile(0.999, 5), ccdcpp.chi2_quantile(0.99, 5))
-        self.assertIn("same boost call", ccdcpp.chi2_quantile.__doc__ or "")
+        self.assertGreater(ext.chi2_quantile(0.99, 8), ext.chi2_quantile(0.99, 5))
+        self.assertGreater(ext.chi2_quantile(0.999, 5), ext.chi2_quantile(0.99, 5))
+        self.assertIn("same boost call", ext.chi2_quantile.__doc__ or "")
 
     def test_defaults_spelled_out_equal_default(self):
         cfg = algorithm(**{f"{stage}__{name}": value
                            for (stage, name), value in self.DEFAULTS.items()})
         for args in (noisy(7, 120), noisy(7, 400, seed=3)):
             self.assertEqual(
-                repr(ccdcpp.detect(*args, input=ccdcpp.Input(), config=cfg)),
-                repr(ccdcpp.detect(*args, **options())))
+                repr(ext.detect(*args, input=ext.Input(), config=cfg)),
+                repr(ext.detect(*args, **options())))
 
     def test_peek_reference_days_reaches_the_procedure(self):
         # Eight disturbed observations fill the default peek window of 6 at a
@@ -553,8 +550,8 @@ class CadenceParameters(unittest.TestCase):
         s[1:6, 250:258] += 600.0
         q = np.zeros(500, dtype=np.uint8)
 
-        def breaks(config: ccdcpp.Algorithm | None) -> float:
-            out = ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=config)
+        def breaks(config: ext.Algorithm | None) -> float:
+            out = ext.detect(d, s, q, input=ext.Input(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
         self.assertEqual(breaks(None), 1)
@@ -570,7 +567,7 @@ class BoundFlags(unittest.TestCase):
     }
 
     def test_defaults_and_docstrings(self):
-        steps = ccdcpp._steps()
+        steps = ext._steps()
         for (step, name), value in self.FLAGS.items():
             with self.subTest(step=step, name=name):
                 (param,) = [p for p in steps[step] if p["name"] == name]
@@ -587,8 +584,8 @@ class BoundFlags(unittest.TestCase):
         d, s, q = inputs(7, 40)
         s[band, :len(values)] = values
         config = algorithm(**{"preprocess__" + k: v for k, v in flags.items()})
-        return ccdcpp.detect(d, s, q, input=ccdcpp.Input(),
-                             config=config)["processing_mask"][:len(values)].tolist()
+        return ext.detect(d, s, q, input=ext.Input(),
+                          config=config)["processing_mask"][:len(values)].tolist()
 
     def test_reflectance_bounds(self):
         values = [0.0, 10000.0, -1.0, 10001.0]
@@ -633,9 +630,9 @@ class GreenFilterScope(unittest.TestCase):
     def test_default_and_docstring(self):
         green = preset()["preprocess"]["insufficient_clear"]["steps"][4]
         self.assertEqual((green["step"], green["scope"]), ("green_median", "stat_window"))
-        self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
-        self.assertIn("statistics_end", ccdcpp.GreenFilterScope.__doc__ or "")
-        self.assertIn('"stat_window"', ccdcpp.GreenFilterScope.__doc__ or "")
+        self.assertEqual(sorted(ext.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
+        self.assertIn("statistics_end", ext.GreenFilterScope.__doc__ or "")
+        self.assertIn('"stat_window"', ext.GreenFilterScope.__doc__ or "")
 
     def pixel(self, first: int) -> Series:
         """An insufficient-clear pixel: one clear observation in five, green
@@ -650,18 +647,18 @@ class GreenFilterScope(unittest.TestCase):
         s[1, 10] = s[1, 150] = 3000.0
         return d, s, q
 
-    def detect_mask(self, pixel: Series, scope: ccdcpp.GreenFilterScope) -> NDArray[np.uint8]:
+    def detect_mask(self, pixel: Series, scope: ext.GreenFilterScope) -> NDArray[np.uint8]:
         config = algorithm(shared__statistics_end=self.STATISTICS_END,
                            preprocess__green_median__scope=self.NAMES[scope.name])
-        out = ccdcpp.detect(*pixel, input=ccdcpp.Input(), config=config)
+        out = ext.detect(*pixel, input=ext.Input(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]
 
     def test_spikes_before_and_after_statistics_end(self):
         pixel = self.pixel(self.STATISTICS_END - 16 * 99)   # t = 99 is statistics_end
-        for scope, kept in ((ccdcpp.GreenFilterScope.All, (0, 0)),
-                            (ccdcpp.GreenFilterScope.StatWindow, (0, 1)),
-                            (ccdcpp.GreenFilterScope.Off, (1, 1))):
+        for scope, kept in ((ext.GreenFilterScope.All, (0, 0)),
+                            (ext.GreenFilterScope.StatWindow, (0, 1)),
+                            (ext.GreenFilterScope.Off, (1, 1))):
             with self.subTest(scope=scope):
                 mask = self.detect_mask(pixel, scope)
                 self.assertEqual((mask[10], mask[150]), kept)
@@ -670,8 +667,8 @@ class GreenFilterScope(unittest.TestCase):
     def test_every_date_after_statistics_end(self):
         pixel = self.pixel(self.STATISTICS_END + 1)
         masks = [self.detect_mask(pixel, scope) for scope in (
-            ccdcpp.GreenFilterScope.All, ccdcpp.GreenFilterScope.StatWindow,
-            ccdcpp.GreenFilterScope.Off)]
+            ext.GreenFilterScope.All, ext.GreenFilterScope.StatWindow,
+            ext.GreenFilterScope.Off)]
         for mask in masks:
             np.testing.assert_array_equal(mask, masks[2])
         self.assertEqual((masks[0][10], masks[0][150]), (1, 1))
@@ -682,13 +679,13 @@ class TimestepMismatch(unittest.TestCase):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
             with self.subTest(dates=dates, qas=qas):
                 with self.assertRaises(ValueError):
-                    ccdcpp.detect(*inputs(7, 40, dates=dates, qas=qas), **options())
+                    ext.detect(*inputs(7, 40, dates=dates, qas=qas), **options())
 
     def test_cubes(self):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
             with self.subTest(dates=dates, qas=qas):
                 with self.assertRaises(ValueError):
-                    ccdcpp.detect_cube(*cube(7, 40, dates=dates, qas=qas), **options(), threads=1)
+                    ext.detect_cube(*cube(7, 40, dates=dates, qas=qas), **options(), threads=1)
 
 
 class DateOrder(unittest.TestCase):
@@ -702,7 +699,7 @@ class DateOrder(unittest.TestCase):
         for at in (0, 20, 38):
             with self.subTest(at=at):
                 with self.assertRaises(ValueError) as caught:
-                    ccdcpp.detect(self.swapped(d, at), s, q, **options())
+                    ext.detect(self.swapped(d, at), s, q, **options())
                 self.assertIn("dates must be non-decreasing", str(caught.exception))
                 self.assertIn(f"dates[{at + 1}] = {d[at]} follows dates[{at}] = {d[at + 1]}",
                               str(caught.exception))
@@ -710,25 +707,25 @@ class DateOrder(unittest.TestCase):
     def test_raw_qa(self):
         d, s, _ = inputs(7, 40)
         raw = np.zeros(40, dtype=np.uint16)
-        h = ccdcpp.Input(qa_table=ccdcpp.qa_tables.landsat_c2_qa_pixel())
+        h = ext.Input(qa_table=ext.qa_tables.landsat_c2_qa_pixel())
         with self.assertRaises(ValueError):
-            ccdcpp.detect(self.swapped(d, 5), s, raw, input=h)
+            ext.detect(self.swapped(d, 5), s, raw, input=h)
 
     def test_cubes(self):
         for dtype in (np.float64, np.float32, np.uint16):
             with self.subTest(dtype=dtype.__name__):
                 d, spectral, q = cube(7, 40, dtype=dtype)
                 with self.assertRaises(ValueError) as caught:
-                    ccdcpp.detect_cube(self.swapped(d, 7), spectral, q, **options(), threads=1)
+                    ext.detect_cube(self.swapped(d, 7), spectral, q, **options(), threads=1)
                 self.assertIn("dates must be non-decreasing", str(caught.exception))
 
     def test_equal_dates_are_deduplicated(self):
         d, s, q = inputs(7, 40)
         d[11] = d[12] = d[10]
-        mask = ccdcpp.detect(d, s, q, **options())["processing_mask"]
+        mask = ext.detect(d, s, q, **options())["processing_mask"]
         self.assertEqual(mask[10:13].tolist(), [1, 0, 0])
         _, spectral, qc = cube(7, 40)
-        out = ccdcpp.detect_cube(d, spectral, qc, **options(), threads=1)
+        out = ext.detect_cube(d, spectral, qc, **options(), threads=1)
         self.assertEqual(out["failures"], [])
 
 
@@ -738,7 +735,7 @@ class Version(unittest.TestCase):
             return tomllib.load(f)["project"]["version"]
 
     def test_extension_matches_pyproject(self):
-        self.assertEqual(ccdcpp.__version__, self.pyproject_version())
+        self.assertEqual(ext.__version__, self.pyproject_version())
 
     def test_package_exposes_it(self):
         # The wheel layout, in a fresh interpreter so the extension imported

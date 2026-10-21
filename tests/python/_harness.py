@@ -3,12 +3,11 @@
 A test runs as `python test_<name>.py <module_dir> <source_dir> [unittest args]`:
 <module_dir> holds the built extension (ccdcpp.*.so / .pyd), <source_dir> is the
 repository root. Importing this module reads the two and removes them from sys.argv,
-once however many modules import it. A test then imports `ccdcpp` as one of:
-
-  * the package, laid out as the wheel lays it out (python/ccdcpp with its configs, the
-    extension beside them) in <module_dir>/test_package_<tag> (use_package()), one
-    directory per test file so parallel runs do not share it;
-  * the bare extension module of <module_dir> (use_extension()).
+once however many modules import it. A test then calls use_package(), which lays out the
+package as the wheel lays it out (python/ccdcpp with its configs, the extension beside
+them) in <module_dir>/test_package_<tag>, one directory per test file so parallel runs do
+not share it, and imports `ccdcpp` from there. A test of the extension itself takes it from
+the package, as `from ccdcpp import ccdcpp as ext`.
 """
 from __future__ import annotations
 
@@ -42,16 +41,12 @@ def assemble(root: str) -> str:
 
 def use_package(tag: str = SCRIPT) -> str:
     """Puts the package, assembled in <module_dir>/test_package_<tag>, first on
-    sys.path, so `import ccdcpp` imports it. Returns its __init__.py, which the
-    caller checks ccdcpp.__file__ against."""
+    sys.path and imports it, so `import ccdcpp` is that package. Returns its
+    __init__.py."""
     root = os.path.join(MODULE_DIR, "test_package_" + tag)
     shutil.rmtree(root, ignore_errors=True)
     init = assemble(root)
     sys.path.insert(0, root)
+    import ccdcpp
+    assert ccdcpp.__file__ == init, ccdcpp.__file__
     return init
-
-
-def use_extension() -> None:
-    """Puts <module_dir> first on sys.path, so `import ccdcpp` imports the bare
-    extension module, which python/ccdcpp/ccdcpp.pyi types."""
-    sys.path.insert(0, MODULE_DIR)

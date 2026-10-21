@@ -15,22 +15,19 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from _harness import use_extension
+from _harness import use_package
 
-use_extension()
+use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
 
-if TYPE_CHECKING:
-    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
-    from ccdcpp import ccdcpp
-    from ccdcpp.results import (CubeColumns, CubeRecord, Model, PixelRecord, PixelResult,
-                                ResumeCounts, ResumeHeader)
-else:
-    import ccdcpp
+# The extension module, which ccdcpp/ccdcpp.pyi types.
+from ccdcpp import ccdcpp as ext  # noqa: E402
+from ccdcpp.results import (CubeColumns, CubeRecord, Model, PixelRecord,  # noqa: E402
+                            PixelResult, ResumeCounts, ResumeHeader)
 
 START = 724642          # 1985-01-01
 CUT_2010 = 733773       # 2010-01-01
@@ -56,12 +53,12 @@ def pixel(seed: int, step_at: int | None = None) -> Series:
     return dates, np.round(spectral), qas
 
 
-def capped(cut: int) -> ccdcpp.Algorithm:
+def capped(cut: int) -> ext.Algorithm:
     """The ccdc preset with its statistics cutoff capped at `cut`."""
-    config = ccdcpp._config_preset("ccdc")
+    config = ext._config_preset("ccdc")
     end = config["shared"]["statistics_end"]
     config["shared"]["statistics_end"] = cut if end == "none" else min(end, cut)
-    return ccdcpp.Algorithm(config)
+    return ext.Algorithm(config)
 
 
 def upto(dates: NDArray[np.int64], cut: int) -> int:
@@ -140,12 +137,12 @@ class OnePixel(unittest.TestCase):
             for cut in (CUT_2010, CUT_2019):
                 n = upto(dates, cut)
                 where = f"seed {seed} cut {cut}"
-                stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                                       input=ccdcpp.Input(), record=True)
+                stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
+                                    input=ext.Input(), record=True)
                 self.assertEqual(header_of(stored)["series_end"], dates[n - 1])
-                again = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(), resume=stored)
-                full = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
-                                     config=capped(dates[n - 1]), record=True)
+                again = ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored)
+                full = ext.detect(dates, spectral, qas, input=ext.Input(),
+                                  config=capped(dates[n - 1]), record=True)
 
                 self.assertEqual(status_of(again), "resumed", where)
                 assert_same_models(self, again["models"], full["models"], where)
@@ -156,47 +153,47 @@ class OnePixel(unittest.TestCase):
     def test_a_changed_observation_is_rerun(self):
         dates, spectral, qas = pixel(3)
         n = upto(dates, CUT_2019)
-        stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                               input=ccdcpp.Input(), record=True)
+        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
+                            input=ext.Input(), record=True)
         changed = spectral.copy()
         changed[3, int(np.flatnonzero(qas[:n] == 0)[50])] += 1.0
-        again = ccdcpp.detect(dates, changed, qas, input=ccdcpp.Input(), resume=stored)
-        full = ccdcpp.detect(dates, changed, qas, input=ccdcpp.Input(),
-                             config=capped(dates[n - 1]))
+        again = ext.detect(dates, changed, qas, input=ext.Input(), resume=stored)
+        full = ext.detect(dates, changed, qas, input=ext.Input(),
+                          config=capped(dates[n - 1]))
         self.assertEqual(status_of(again), "rerun_input_changed")
         assert_same_models(self, again["models"], full["models"], "changed")
 
     def test_refusals(self):
         dates, spectral, qas = pixel(1)
         n = upto(dates, CUT_2019)
-        stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                               input=ccdcpp.Input(), record=True)
+        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
+                            input=ext.Input(), record=True)
 
-        def call(h: ccdcpp.Input | None = None, header: Mapping[str, Any] | None = None,
+        def call(h: ext.Input | None = None, header: Mapping[str, Any] | None = None,
                  until: int | None = None,
-                 config: ccdcpp.Algorithm | None = None) -> PixelResult:
+                 config: ext.Algorithm | None = None) -> PixelResult:
             m = dates.size if until is None else until
-            return ccdcpp.detect(dates[:m], spectral[:, :m], qas[:m],
-                                 input=h or ccdcpp.Input(), config=config,
-                                 resume=dict(stored,
-                                             resume_header=header or header_of(stored)))
+            return ext.detect(dates[:m], spectral[:, :m], qas[:m],
+                              input=h or ext.Input(), config=config,
+                              resume=dict(stored,
+                                          resume_header=header or header_of(stored)))
 
-        other = ccdcpp.Input(qa_occlusion=ccdcpp.Input().qa_occlusion + 1)
+        other = ext.Input(qa_occlusion=ext.Input().qa_occlusion + 1)
         with self.assertRaisesRegex(ValueError, "another input or configuration"):
             call(h=other)
-        decoding = ccdcpp.Input(qa_table=ccdcpp.qa_tables.landsat_c1_pixel_qa())
+        decoding = ext.Input(qa_table=ext.qa_tables.landsat_c1_pixel_qa())
         with self.assertRaisesRegex(ValueError, "another input or configuration"):
             call(h=decoding)
-        stricter = ccdcpp._config_preset("ccdc")
+        stricter = ext._config_preset("ccdc")
         stricter["shared"]["change_probability"] = 0.995
         with self.assertRaises(ValueError):
-            call(config=ccdcpp.Algorithm(stricter))
+            call(config=ext.Algorithm(stricter))
         # The preset, given, is the default the record was made under.
-        call(config=ccdcpp.Algorithm(ccdcpp._config_preset("ccdc")))
+        call(config=ext.Algorithm(ext._config_preset("ccdc")))
         with self.assertRaises(ValueError):
-            call(header=dict(header_of(stored), results_version=ccdcpp.RESULTS_VERSION + 1))
+            call(header=dict(header_of(stored), results_version=ext.RESULTS_VERSION + 1))
         with self.assertRaises(ValueError):
-            call(header=dict(header_of(stored), format=ccdcpp.RESUME_FORMAT + 1))
+            call(header=dict(header_of(stored), format=ext.RESUME_FORMAT + 1))
         with self.assertRaises(ValueError):
             call(until=n - 1)
 
@@ -208,13 +205,13 @@ class OnePixel(unittest.TestCase):
                 if key == "magnitude":
                     bad["exit"] = 6   # SeriesEnd
                 with self.assertRaises(ValueError):
-                    ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
-                                  resume=dict(stored, resume=bad))
+                    ext.detect(dates, spectral, qas, input=ext.Input(),
+                               resume=dict(stored, resume=bad))
 
         # An output without a record.
-        plain = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], input=ccdcpp.Input())
+        plain = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input())
         with self.assertRaisesRegex(ValueError, "record=True"):
-            ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(), resume=plain)
+            ext.detect(dates, spectral, qas, input=ext.Input(), resume=plain)
 
 
 def cube(seeds: Sequence[int], rows: int, cols: int) -> Series:
@@ -255,14 +252,14 @@ class Cube(unittest.TestCase):
             n = upto(dates, cut)
             for threads in (1, 3):
                 where = f"cut {cut} threads {threads}"
-                stored = ccdcpp.detect_cube(
-                    dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
+                stored = ext.detect_cube(
+                    dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
                     threads=threads, record=True)
                 self.assertEqual(records_of(stored)["row"].size, 12)
-                again = ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(),
-                                           threads=threads, resume=stored)
-                full = ccdcpp.detect_cube(
-                    dates, spectral, qas, input=ccdcpp.Input(), threads=threads, record=True,
+                again = ext.detect_cube(dates, spectral, qas, input=ext.Input(),
+                                        threads=threads, resume=stored)
+                full = ext.detect_cube(
+                    dates, spectral, qas, input=ext.Input(), threads=threads, record=True,
                     config=capped(dates[n - 1]))
 
                 a, b = segment_columns(again), segment_columns(full)
@@ -278,15 +275,15 @@ class Cube(unittest.TestCase):
     def test_segments_stored_the_way_nlcd_stores_them(self):
         dates, spectral, qas = cube(range(20, 32), 3, 4)
         n = upto(dates, CUT_2019)
-        stored = ccdcpp.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
+        stored = ext.detect_cube(
+            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
             threads=2, record=True)
-        again = ccdcpp.detect_cube(
-            dates, spectral, qas, input=ccdcpp.Input(), threads=2,
+        again = ext.detect_cube(
+            dates, spectral, qas, input=ext.Input(), threads=2,
             resume={**nlcd_blanked(stored), "resume": records_of(stored),
                     "resume_header": header_of(stored)})
-        full = ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(), threads=2,
-                                  config=capped(dates[n - 1]))
+        full = ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=2,
+                               config=capped(dates[n - 1]))
         a, b = nlcd_blanked(again), nlcd_blanked(full)
         for key in SEGMENT_COLUMNS:
             np.testing.assert_array_equal(a[key], b[key], err_msg=key)
@@ -294,29 +291,29 @@ class Cube(unittest.TestCase):
     def test_a_changed_pixel_is_counted(self):
         dates, spectral, qas = cube(range(40, 46), 2, 3)
         n = upto(dates, CUT_2019)
-        stored = ccdcpp.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
+        stored = ext.detect_cube(
+            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
             threads=1, record=True)
         changed = spectral.copy()
         changed[1, 2, 2, int(np.flatnonzero(qas[1, 2, :n] == 0)[30])] += 5.0
-        again = ccdcpp.detect_cube(dates, changed, qas, input=ccdcpp.Input(), threads=1,
-                                   resume=stored)
+        again = ext.detect_cube(dates, changed, qas, input=ext.Input(), threads=1,
+                                resume=stored)
         self.assertEqual(counts_of(again), {"resumed": 5, "rerun_input_changed": 1, "failed": 0})
         self.assertEqual(int(statuses_of(again)[1 * 3 + 2]), 1)
 
     def test_columns_that_do_not_fit_are_refused(self):
         dates, spectral, qas = cube(range(50, 56), 2, 3)
         n = upto(dates, CUT_2019)
-        stored = ccdcpp.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
+        stored = ext.detect_cube(
+            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
             threads=1, record=True)
         segments = segment_columns(stored)
         records = columns(records_of(stored))
 
         def call(resume: Mapping[str, Any] | None = None,
                  segs: Mapping[str, Any] | None = None) -> CubeColumns:
-            return ccdcpp.detect_cube(
-                dates, spectral, qas, input=ccdcpp.Input(), threads=1,
+            return ext.detect_cube(
+                dates, spectral, qas, input=ext.Input(), threads=1,
                 resume={**(segs or segments), "resume": resume or records,
                         "resume_header": header_of(stored)})
 
@@ -357,30 +354,30 @@ class Cube(unittest.TestCase):
                     "statistics_end": header["statistics_end"]}
 
         message = (r"^the resume record's format is 1; this ccdcpp reads "
-                   rf"{ccdcpp.RESUME_FORMAT}$")
-        self.assertEqual((ccdcpp.RESUME_FORMAT, ccdcpp.RESULTS_VERSION), (2, 3))
+                   rf"{ext.RESUME_FORMAT}$")
+        self.assertEqual((ext.RESUME_FORMAT, ext.RESULTS_VERSION), (2, 3))
         dates, spectral, qas = pixel(1)
         n = upto(dates, CUT_2019)
-        stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n],
-                               input=ccdcpp.Input(), record=True)
+        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
+                            input=ext.Input(), record=True)
         with self.assertRaisesRegex(ValueError, message):
-            ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
-                          resume=dict(stored, resume_header=old(header_of(stored))))
+            ext.detect(dates, spectral, qas, input=ext.Input(),
+                       resume=dict(stored, resume_header=old(header_of(stored))))
 
         dates, spectral, qas = cube(range(50, 56), 2, 3)
-        stored_cube = ccdcpp.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ccdcpp.Input(),
+        stored_cube = ext.detect_cube(
+            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
             threads=1, record=True)
         with self.assertRaisesRegex(ValueError, message):
-            ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(), threads=1,
-                               resume=dict(stored_cube,
-                                           resume_header=old(header_of(stored_cube))))
+            ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=1,
+                            resume=dict(stored_cube,
+                                        resume_header=old(header_of(stored_cube))))
 
     def test_the_schema_names_the_columns(self):
         dates, spectral, qas = cube(range(2), 1, 2)
-        out = ccdcpp.detect_cube(dates, spectral, qas, input=ccdcpp.Input(),
-                                 threads=1, record=True)
-        schema = ccdcpp.resume_schema()
+        out = ext.detect_cube(dates, spectral, qas, input=ext.Input(),
+                              threads=1, record=True)
+        schema = ext.resume_schema()
         records = columns(records_of(out))
         self.assertEqual(set(records), set(schema) - {"status"})
         for key, array in records.items():

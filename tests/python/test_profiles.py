@@ -20,22 +20,19 @@ from datetime import date
 from typing import Any
 from unittest import mock
 
-# The package as the wheel lays it out, one per test file that imports this
-# one (test_preprocess.py and test_real_fixtures.py do).
 from _harness import SOURCE_DIR, use_package  # noqa: E402
 
-_INIT = use_package()
+use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
+# The extension module, which ccdcpp/ccdcpp.pyi types.
+from ccdcpp import ccdcpp as ext  # noqa: E402
 from ccdcpp import presets  # noqa: E402
 from ccdcpp.results import Model, PixelResult  # noqa: E402
 
-assert ccdcpp.__file__ == _INIT, ccdcpp.__file__
-
-EXT = ccdcpp.ccdcpp
 START = 724276  # 1984-01-01
 SCALE = 10000.0
 FILL, CLEAR, WATER, SHADOW, SNOW, CLOUD = 255, 0, 1, 2, 3, 4
@@ -240,7 +237,7 @@ def with_table(input: ccdcpp.Input, qa_table: ccdcpp.QaTable | None) -> ccdcpp.I
 class Corpus(unittest.TestCase):
     def test_corpus_runs_every_procedure(self):
         h = ccdcpp.Input()
-        out = EXT.detect_cube(DATES, CUBE_DN, CODES, input=h, threads=1)
+        out = ext.detect_cube(DATES, CUBE_DN, CODES, input=h, threads=1)
         self.assertEqual(out["failures"], [])
         # Standard, PermanentSnow and InsufficientClear.
         self.assertTrue({8, 54, 44} <= set(out["curve_qa"].tolist()), out["curve_qa"])
@@ -717,7 +714,7 @@ class ProfileAndConfig(unittest.TestCase):
         for cfg in (ccdcpp.config("ccdc"), cfg_phys):
             assert_same(self, without(ccdcpp.detect(DATES, s, q, input=profile, config=cfg),
                                       "band_names"),
-                        EXT.detect(DATES, s, q, input=h_phys, config=cfg._algorithm))
+                        ext.detect(DATES, s, q, input=h_phys, config=cfg._algorithm))
         # The default is "ccdc", whatever the profile.
         assert_same(self, ccdcpp.detect(DATES, s, q, input=profile),
                     ccdcpp.detect(DATES, s, q, input=profile, config=ccdcpp.config("ccdc")))
@@ -742,7 +739,7 @@ class Unprofiled(unittest.TestCase):
     def test_same_output_every_call_form(self):
         h = ccdcpp.Input()
         d, s, q = DATES, CUBE_DN, CODES
-        expected = without(EXT.detect_cube(d, s, q, input=h, threads=1), "threads")
+        expected = without(ext.detect_cube(d, s, q, input=h, threads=1), "threads")
         forms = {
             # The millworks nlcd plugin's call.
             "keywords": lambda: ccdcpp.detect_cube(
@@ -758,11 +755,11 @@ class Unprofiled(unittest.TestCase):
             with self.subTest(form=name):
                 assert_same(self, without(call(), "threads"), expected)
         assert_same(self, ccdcpp.detect(d, s[0, 0], q[0, 0], input=h),
-                    EXT.detect(d, s[0, 0], q[0, 0], input=h))
+                    ext.detect(d, s[0, 0], q[0, 0], input=h))
         raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(q)
         decoding = with_table(h, ccdcpp.qa_tables.landsat_c2_qa_pixel())
         assert_same(self, ccdcpp.detect(d, s[0, 0], raw[0, 0], input=decoding),
-                    EXT.detect(d, s[0, 0], raw[0, 0], input=decoding))
+                    ext.detect(d, s[0, 0], raw[0, 0], input=decoding))
 
     def test_signatures(self):
         positional = ["dates", "spectral", "qas"]

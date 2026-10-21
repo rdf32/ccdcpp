@@ -15,17 +15,13 @@ import os
 import re
 import unittest
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING
 
-from _harness import SOURCE_DIR, use_extension
+from _harness import SOURCE_DIR, use_package
 
-use_extension()
+use_package()
 
-if TYPE_CHECKING:
-    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
-    from ccdcpp import ccdcpp
-else:
-    import ccdcpp
+# The extension module, which ccdcpp/ccdcpp.pyi types.
+from ccdcpp import ccdcpp as ext  # noqa: E402
 
 STUBS = os.path.join(SOURCE_DIR, "python", "ccdcpp")
 
@@ -93,13 +89,13 @@ class TestStub(unittest.TestCase):
 
     def test_module_names(self):
         stub = stub_names(parse("ccdcpp.pyi").body)
-        runtime = runtime_names(ccdcpp)
+        runtime = runtime_names(ext)
         self.assertEqual(sorted(runtime - stub), [], "in the extension, not in ccdcpp.pyi")
         self.assertEqual(sorted(stub - runtime), [], "in ccdcpp.pyi, not in the extension")
 
     def test_qa_tables_names(self):
         stub = stub_names(parse("qa_tables.pyi").body)
-        runtime = runtime_names(ccdcpp.qa_tables)
+        runtime = runtime_names(ext.qa_tables)
         self.assertEqual(sorted(runtime - stub), [], "in qa_tables, not in qa_tables.pyi")
         self.assertEqual(sorted(stub - runtime), [], "in qa_tables.pyi, not in qa_tables")
 
@@ -109,10 +105,10 @@ class TestStub(unittest.TestCase):
                 continue
             with self.subTest(cls=name):
                 stub = {n for n in defined(node.body) if not n.startswith("_")}
-                self.assertEqual(stub, members(getattr(ccdcpp, name)))
+                self.assertEqual(stub, members(getattr(ext, name)))
 
     def test_parameters(self):
-        modules = (("ccdcpp.pyi", ccdcpp), ("qa_tables.pyi", ccdcpp.qa_tables))
+        modules = (("ccdcpp.pyi", ext), ("qa_tables.pyi", ext.qa_tables))
         for stub, module in modules:
             body = defined(parse(stub).body)
             for name, node in body.items():
@@ -135,7 +131,7 @@ class TestStub(unittest.TestCase):
 
     def test_input_fields(self):
         # Input(**fields) and replace(**fields) take every field the Input has.
-        fields = {n for n, v in vars(ccdcpp.Input).items()
+        fields = {n for n, v in vars(ext.Input).items()
                   if not n.startswith("_") and not inspect.isroutine(v)}
         (node,) = [n for n in parse("ccdcpp.pyi").body
                    if isinstance(n, ast.ClassDef) and n.name == "Input"]

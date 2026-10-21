@@ -12,20 +12,17 @@ import sys
 import tempfile
 import unittest
 from collections.abc import Callable, Iterator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from _harness import assemble, use_extension
+from _harness import assemble, use_package
 
-use_extension()
+use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
 
-if TYPE_CHECKING:
-    # The bare extension module, which ccdcpp/ccdcpp.pyi types.
-    from ccdcpp import ccdcpp
-else:
-    import ccdcpp
+# The extension module, which ccdcpp/ccdcpp.pyi types.
+from ccdcpp import ccdcpp as ext  # noqa: E402
 
 START = 724276  # 1984-01-01
 
@@ -71,8 +68,8 @@ SCHEMES = {
 NARROW = {"hls_fmask", "sentinel2_scl"}
 
 
-def build(name: str, options: ccdcpp.Input | None = None) -> ccdcpp.QaTable:
-    builder = getattr(ccdcpp.qa_tables, name)
+def build(name: str, options: ext.Input | None = None) -> ext.QaTable:
+    builder = getattr(ext.qa_tables, name)
     return builder() if options is None else builder(options)
 
 
@@ -127,13 +124,13 @@ def synthetic(H: int = 3, W: int = 4,
     return dates, spectral, codes
 
 
-def options() -> ccdcpp.Input:
-    return ccdcpp.Input()
+def options() -> ext.Input:
+    return ext.Input()
 
 
-def with_table(table: ccdcpp.QaTable | None) -> ccdcpp.Input:
+def with_table(table: ext.QaTable | None) -> ext.Input:
     """The default input decoding its raw QA through `table` (None: codes)."""
-    return ccdcpp.Input(qa_table=table)
+    return ext.Input(qa_table=table)
 
 
 def assert_same(test: unittest.TestCase, a: Any, b: Any, where: str = "out") -> None:
@@ -158,25 +155,25 @@ class Tables(unittest.TestCase):
         for name in SCHEMES:
             with self.subTest(name=name):
                 table = build(name)
-                self.assertIsInstance(table, ccdcpp.QaTable)
+                self.assertIsInstance(table, ext.QaTable)
                 codes = table.codes
                 self.assertEqual(codes.dtype, np.uint8)
-                self.assertEqual(codes.shape, (ccdcpp.QA_TABLE_SIZE,))
-                self.assertEqual(ccdcpp.QA_TABLE_SIZE, 65536)
+                self.assertEqual(codes.shape, (ext.QA_TABLE_SIZE,))
+                self.assertEqual(ext.QA_TABLE_SIZE, 65536)
                 self.assertTrue(set(np.unique(codes)) <= {FILL, CLEAR, WATER, SHADOW, SNOW, CLOUD})
                 for code, values in SCHEMES[name].items():
                     np.testing.assert_array_equal(codes[values], code, err_msg=f"{code}")
 
     def test_submodule_imports(self):
         import ccdcpp.qa_tables as q
-        self.assertIs(q, ccdcpp.qa_tables)
+        self.assertIs(q, ext.qa_tables)
         self.assertIn("Landsat", q.__doc__ or "")
 
     def test_docstrings(self):
         def flat(text: str | None) -> str:
             assert text is not None
             return " ".join(text.split())
-        q = ccdcpp.qa_tables
+        q = ext.qa_tables
         fmask, scl, module = flat(q.hls_fmask.__doc__), flat(q.sentinel2_scl.__doc__), flat(q.__doc__)
         # HLS v2.0 reserves Fmask bit 0; it is not cirrus.
         self.assertNotIn("cirrus)", fmask)
@@ -195,14 +192,14 @@ class Tables(unittest.TestCase):
         self.assertNotIn("not yet validated", module)
 
     def test_codes_is_a_copy(self):
-        table = ccdcpp.qa_tables.sentinel2_scl()
+        table = ext.qa_tables.sentinel2_scl()
         codes = table.codes
         codes[:] = 7
         self.assertEqual(table.codes[4], CLEAR)
 
     def test_renumbered_options(self):
-        h = ccdcpp.Input(qa_fill=200, qa_clear=10, qa_water=11, qa_shadow=12, qa_snow=13,
-                         qa_cloud=14)
+        h = ext.Input(qa_fill=200, qa_clear=10, qa_water=11, qa_shadow=12, qa_snow=13,
+                      qa_cloud=14)
         renumber = {FILL: 200, CLEAR: 10, WATER: 11, SHADOW: 12, SNOW: 13, CLOUD: 14}
         for name in SCHEMES:
             with self.subTest(name=name):
@@ -212,8 +209,8 @@ class Tables(unittest.TestCase):
                 np.testing.assert_array_equal(custom, expected)
 
     def test_hls_aerosol_is_opt_in(self):
-        plain = ccdcpp.qa_tables.hls_fmask().codes
-        strict = ccdcpp.qa_tables.hls_fmask(exclude_high_aerosol=True).codes
+        plain = ext.qa_tables.hls_fmask().codes
+        strict = ext.qa_tables.hls_fmask(exclude_high_aerosol=True).codes
         high = np.array([v for v in range(255) if v >> 6 == 3])
         self.assertEqual(plain[0xC0], CLEAR)
         self.assertEqual(strict[0xC0], CLOUD)
@@ -224,14 +221,14 @@ class Tables(unittest.TestCase):
     def test_custom_table(self):
         codes = np.full(65536, FILL, dtype=np.uint8)
         codes[0] = CLEAR
-        table = ccdcpp.QaTable(codes)
+        table = ext.QaTable(codes)
         np.testing.assert_array_equal(table.codes, codes)
         with self.assertRaises(ValueError):
-            ccdcpp.QaTable(codes[:256])
+            ext.QaTable(codes[:256])
         with self.assertRaises(ValueError):
-            ccdcpp.QaTable(codes.reshape(256, 256))
+            ext.QaTable(codes.reshape(256, 256))
         with self.assertRaises(TypeError):
-            ccdcpp.QaTable(codes.astype(np.float64))
+            ext.QaTable(codes.astype(np.float64))
 
 
 #: pyccd's qabitval (lcmap-pyccd 2021.7.19, ccd/qa.py), written out with the
@@ -267,13 +264,13 @@ NLCD_QA_BITS = ((0, FILL), (3, CLOUD), (1, CLOUD), (2, CLOUD), (4, SHADOW), (5, 
 
 class Precedence(unittest.TestCase):
     def test_c1_is_pyccd_qabitval(self):
-        codes = ccdcpp.qa_tables.landsat_c1_pixel_qa().codes
+        codes = ext.qa_tables.landsat_c1_pixel_qa().codes
         for v in range(65536):
             expected = pyccd_qabitval(v)
             self.assertEqual(codes[v], FILL if expected is None else expected, v)
 
     def test_c2_is_most_excluding_first(self):
-        codes = ccdcpp.qa_tables.landsat_c2_qa_pixel().codes
+        codes = ext.qa_tables.landsat_c2_qa_pixel().codes
         for v in range(65536):
             expected = next((code for b, code in NLCD_QA_BITS if v >> b & 1), CLEAR)
             self.assertEqual(codes[v], expected, v)
@@ -290,7 +287,7 @@ class DecodedEqualsCodes(unittest.TestCase):
     def setUpClass(cls):
         cls.dates, cls.spectral, cls.codes = synthetic()
         h = options()
-        cls.columns = ccdcpp.detect_cube(
+        cls.columns = ext.detect_cube(
             cls.dates, cls.spectral, cls.codes, input=h, threads=1)
         assert cls.columns["failures"] == []
         assert len(cls.columns["row"]) > cls.codes.shape[0] * cls.codes.shape[1]
@@ -315,7 +312,7 @@ class DecodedEqualsCodes(unittest.TestCase):
                 for threads in (1, 8):
                     with self.subTest(name=name, qas=kind, threads=threads):
                         before = raw.copy()
-                        out = ccdcpp.detect_cube(
+                        out = ext.detect_cube(
                             self.dates, self.spectral, raw, input=h, threads=threads)
                         out.pop("threads")
                         expected = dict(self.columns)
@@ -332,32 +329,32 @@ class DecodedEqualsCodes(unittest.TestCase):
             for r in range(H):
                 for c in range(W):
                     with self.subTest(name=name, pixel=(r, c)):
-                        expected = ccdcpp.detect(
+                        expected = ext.detect(
                             self.dates, self.spectral[r, c], self.codes[r, c], input=h)
-                        assert_same(self, ccdcpp.detect(
+                        assert_same(self, ext.detect(
                             self.dates, self.spectral[r, c], raw[r, c], input=decoding),
                             expected)
                         if name in NARROW:
-                            assert_same(self, ccdcpp.detect(
+                            assert_same(self, ext.detect(
                                 self.dates, self.spectral[r, c], raw[r, c].astype(np.uint8),
                                 input=decoding), expected)
 
     def test_uint16_spectral(self):
         h = options()
         spectral = np.clip(self.spectral, 0, 65535).astype(np.uint16)
-        reference = ccdcpp.detect_cube(
+        reference = ext.detect_cube(
             self.dates, spectral, self.codes, input=h, threads=2)
-        out = ccdcpp.detect_cube(
+        out = ext.detect_cube(
             self.dates, spectral, encode("landsat_c2_qa_pixel", self.codes),
-            input=with_table(ccdcpp.qa_tables.landsat_c2_qa_pixel()), threads=2)
+            input=with_table(ext.qa_tables.landsat_c2_qa_pixel()), threads=2)
         assert_same(self, out, reference)
 
     def test_uint8_codes_through_an_identity_table(self):
         identity = np.full(65536, FILL, dtype=np.uint8)
         identity[:256] = np.arange(256, dtype=np.uint8)
-        out = ccdcpp.detect_cube(
+        out = ext.detect_cube(
             self.dates, self.spectral, self.codes,
-            input=with_table(ccdcpp.QaTable(identity)), threads=2)
+            input=with_table(ext.QaTable(identity)), threads=2)
         out.pop("threads")
         expected = dict(self.columns)
         expected.pop("threads")
@@ -371,11 +368,11 @@ class Validation(unittest.TestCase):
         self.raw = encode("landsat_c2_qa_pixel", codes)
 
     def entries(self, qas: NDArray[np.integer[Any]],
-                table: ccdcpp.QaTable | None = None) -> dict[str, Callable[[], object]]:
+                table: ext.QaTable | None = None) -> dict[str, Callable[[], object]]:
         d, s, h = self.dates, self.spectral, with_table(table)
         return {
-            "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], input=h),
-            "detect_cube": lambda: ccdcpp.detect_cube(d, s, qas, input=h, threads=1),
+            "detect": lambda: ext.detect(d, s[0, 0], qas[0, 0], input=h),
+            "detect_cube": lambda: ext.detect_cube(d, s, qas, input=h, threads=1),
         }
 
     def test_uint16_without_a_table(self):
@@ -389,36 +386,36 @@ class Validation(unittest.TestCase):
     def test_table_of_the_wrong_type(self):
         wrong = (
             "landsat_c2_qa_pixel",
-            ccdcpp.qa_tables.landsat_c2_qa_pixel().codes,
-            ccdcpp.qa_tables.landsat_c2_qa_pixel,
-            ccdcpp.Input(),
+            ext.qa_tables.landsat_c2_qa_pixel().codes,
+            ext.qa_tables.landsat_c2_qa_pixel,
+            ext.Input(),
             1,
         )
         for value in wrong:
             with self.subTest(qa_table=type(value).__name__):
                 with self.assertRaises(TypeError):
-                    ccdcpp.Input(qa_table=value)  # pyright: ignore[reportArgumentType]  # not a QaTable, refused
+                    ext.Input(qa_table=value)  # pyright: ignore[reportArgumentType]  # not a QaTable, refused
 
     def test_the_input_is_keyword_only(self):
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(self.dates, self.spectral, self.raw, options())  # pyright: ignore[reportCallIssue]  # positional, refused
+            ext.detect_cube(self.dates, self.spectral, self.raw, options())  # pyright: ignore[reportCallIssue]  # positional, refused
         with self.assertRaises(TypeError):
-            ccdcpp.detect(self.dates, self.spectral[0, 0], self.raw[0, 0], options())  # pyright: ignore[reportCallIssue]  # positional, refused
+            ext.detect(self.dates, self.spectral[0, 0], self.raw[0, 0], options())  # pyright: ignore[reportCallIssue]  # positional, refused
 
     def test_the_table_is_part_of_the_input(self):
-        table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
+        table = ext.qa_tables.landsat_c2_qa_pixel()
         h = with_table(table)
-        self.assertEqual(h, with_table(ccdcpp.qa_tables.landsat_c2_qa_pixel()))
+        self.assertEqual(h, with_table(ext.qa_tables.landsat_c2_qa_pixel()))
         self.assertNotEqual(h, options())
         self.assertNotEqual(h.digest(), options().digest())
-        self.assertEqual(h.digest(), with_table(ccdcpp.QaTable(table.codes)).digest())
+        self.assertEqual(h.digest(), with_table(ext.QaTable(table.codes)).digest())
         changed = table.codes
         changed[21824] = CLOUD
-        self.assertNotEqual(h, with_table(ccdcpp.QaTable(changed)))
+        self.assertNotEqual(h, with_table(ext.QaTable(changed)))
         self.assertIsNone(options().qa_table)
 
     def test_unsafe_qa_dtype_with_a_table(self):
-        table = ccdcpp.qa_tables.landsat_c2_qa_pixel()
+        table = ext.qa_tables.landsat_c2_qa_pixel()
         for name, call in self.entries(self.raw.astype(np.int64), table).items():
             with self.subTest(entry=name):
                 with self.assertRaises(TypeError):

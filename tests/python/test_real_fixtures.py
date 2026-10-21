@@ -31,7 +31,7 @@ from typing import Any
 
 from _harness import SOURCE_DIR, use_package
 
-_INIT = use_package()
+use_package()
 
 import numpy as np  # noqa: E402
 from numpy.typing import NDArray  # noqa: E402
@@ -39,8 +39,6 @@ from numpy.typing import NDArray  # noqa: E402
 import ccdcpp  # noqa: E402
 from ccdcpp import presets  # noqa: E402
 from ccdcpp.results import PixelResult  # noqa: E402
-
-assert ccdcpp.__file__ == _INIT, ccdcpp.__file__
 
 WRITE = "--write-expected" in sys.argv
 if WRITE:
