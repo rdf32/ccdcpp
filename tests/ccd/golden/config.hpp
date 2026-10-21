@@ -22,6 +22,19 @@
 namespace golden
 {
 
+// The registry with the library's own strategies, without its extensions',
+// built once.
+inline const ccd::config::Registry& core_registry()
+{
+    static const ccd::config::Registry registry = []
+    {
+        ccd::config::Registry r;
+        ccd::strategies::register_core_strategies(r);
+        return r;
+    }();
+    return registry;
+}
+
 // The default configuration: pyccd's algorithm, in physical terms, with no
 // statistics cutoff.
 inline ccd::config::Config ccdc()

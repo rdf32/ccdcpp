@@ -378,63 +378,6 @@ ProcessingMask tmask(
     return outliers;
 }
 
-std::vector<index_t> find_closest_doy(
-    ArrayView<const std::int64_t, 1> dates,
-    index_t date_index,
-    const Window& window,
-    index_t count
-)
-{
-    //----------------------------------------------------------
-    // The seasonal distance of a day from the target is
-    // |round(delta / 365.25) * 365.25 - delta|, delta the days
-    // between them: a multiple of a quarter day. In quarter
-    // days it is the integer |1461 k - 4 |delta||, k the
-    // integer nearest 4 |delta| / 1461. That quotient is never
-    // a half (8 |delta| is even, 1461 (2k + 1) odd) and is at
-    // least 1 / 2922 from one, far beyond the double
-    // quotient's rounding, so k is the double formula's and
-    // the integer distance orders as the double one does. It
-    // is at most 730.
-    //----------------------------------------------------------
-    constexpr std::int64_t QUARTERS_PER_YEAR = 1461;
-    constexpr std::size_t MAX_DISTANCE = QUARTERS_PER_YEAR / 2;
-
-    const std::int64_t target = dates(date_index);
-    const index_t n = window.size();
-    count = std::min(count, n);
-
-    std::vector<std::uint16_t> distance(n);
-    std::array<index_t, MAX_DISTANCE + 2> at{};   // a count, then an offset
-    for (index_t i = 0; i < n; ++i)
-    {
-        const std::int64_t quarters = 4 * std::abs(dates(window.start + i) - target);
-        const std::int64_t k = (2 * quarters + QUARTERS_PER_YEAR) / (2 * QUARTERS_PER_YEAR);
-        const auto d = static_cast<std::uint16_t>(std::abs(QUARTERS_PER_YEAR * k - quarters));
-        distance[i] = d;
-        ++at[d + 1];
-    }
-
-    //----------------------------------------------------------
-    // The `count` nearest, nearest first, ties in window order:
-    // a counting sort by distance, which keeps window order
-    // within a distance, up to the distance the count reaches.
-    //----------------------------------------------------------
-    std::size_t last = 0;
-    for (index_t seen = 0; last <= MAX_DISTANCE && seen < count; ++last)
-        seen += at[last + 1];
-    for (std::size_t d = 1; d <= last; ++d)
-        at[d] += at[d - 1];
-
-    std::vector<index_t> indices(at[last]);
-    for (index_t i = 0; i < n; ++i)
-        if (distance[i] < last)
-            indices[at[distance[i]]++] = i;
-    indices.resize(count);
-
-    return indices;
-}
-
 namespace
 {
 
@@ -462,9 +405,11 @@ void SeasonalOrder::build(ArrayView<const std::int64_t, 1> dates, const Window& 
 void SeasonalOrder::closest(std::int64_t target_day, index_t count, std::vector<index_t>& out) const
 {
     //----------------------------------------------------------
-    // find_closest_doy()'s distance, in quarter days, is the
-    // distance from 4 |delta| to the nearest multiple of 1461:
-    // min(m, 1461 - m) for m the phase difference mod 1461.
+    // The seasonal distance, in quarter days, is the distance
+    // from 4 |delta| to the nearest multiple of 1461: an exact
+    // integer, at most 730, which orders as the double distance
+    // does; it is min(m, 1461 - m) for m the phase difference
+    // mod 1461.
     // Walking forward from the target's phase the forward
     // difference only grows, walking backward the backward one;
     // taking the nearer of the two walks each time reaches each

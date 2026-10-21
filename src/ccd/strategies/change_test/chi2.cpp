@@ -129,8 +129,8 @@ TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) c
     } else {
 
         LOG_DEBUG("closest day residuals and rmse");
-        // find_closest_doy(masked_dates, peek_window.stop - 1, fit_window,
-        // seasonal_count), by the fit window's SeasonalOrder.
+        // The seasonal_count fit-window observations nearest the peek's
+        // last in the year, by the fit window's SeasonalOrder.
         if (s.seasonal_fit != peek.fit)
         {
             s.seasonal.build(masked_dates, peek.fit_window);

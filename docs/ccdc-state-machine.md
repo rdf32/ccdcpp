@@ -372,7 +372,7 @@ record:
 | `Cursor`, `drive` | `src/ccd/machine/machine.hpp` |
 | `fit_bands` (the one per-band fit loop), `peek_residuals`, `change_magnitude`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/machine/kernels.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
-| `Variogram`, `adjusted_variogram`, `tmask`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/machine/fit.hpp` |
+| `Variogram`, `adjusted_variogram`, `tmask`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/machine/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
 (`src/ccd/machine/standard.hpp`): `initialize_criteria`, the phases,

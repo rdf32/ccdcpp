@@ -87,17 +87,6 @@ void register_core_strategies(config::Registry& registry)
     registry.add_preset("ccdc", std::move(ccdc));
 }
 
-const config::Registry& core_registry()
-{
-    static const config::Registry registry = []
-    {
-        config::Registry r;
-        register_core_strategies(r);
-        return r;
-    }();
-    return registry;
-}
-
 const config::Registry& library_registry()
 {
     static const config::Registry registry = []

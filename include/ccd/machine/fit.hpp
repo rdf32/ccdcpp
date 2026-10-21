@@ -247,25 +247,22 @@ ProcessingMask tmask(
     scalar_t t_const
 );
 
-std::vector<index_t> find_closest_doy(
-    ArrayView<const std::int64_t, 1> dates,
-    index_t date_index,
-    const Window& window,
-    index_t count
-);
-
-// find_closest_doy() over one window at many targets. build() orders the
-// window's observations by their phase in the year, once; closest() then
-// walks out from a target's phase, so a selection costs its count (and the
-// ties at its last distance) rather than the window's size. The selection
-// and its order are find_closest_doy()'s.
+// The observations of one window nearest a target in day of year, at many
+// targets: the seasonal RMSE's selection (pyccd's find_closest_doy(), with a
+// stable sort). The seasonal distance of an observation from the target is
+// |round(delta / 365.25) * 365.25 - delta|, delta the days between them.
+// build() orders the window's observations by their phase in the year,
+// once; closest() then walks out from a target's phase, so a selection
+// costs its count (and the ties at its last distance) rather than the
+// window's size.
 class SeasonalOrder
 {
 public:
     void build(ArrayView<const std::int64_t, 1> dates, const Window& window);
 
-    // find_closest_doy(dates, i, window, count) for dates(i) == target_day,
-    // with the dates and window build() was given.
+    // The `count` positions of build()'s window nearest target_day, nearest
+    // first, ties in window order (all of them when count exceeds the
+    // window's size).
     void closest(std::int64_t target_day, index_t count, std::vector<index_t>& out) const;
 
 private:

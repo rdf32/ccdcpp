@@ -54,6 +54,7 @@
 #include "ccd/strategies/register_core.hpp"
 
 #include "../golden/characterisation.hpp"
+#include "find_closest_doy.hpp"
 
 namespace
 {
@@ -818,7 +819,7 @@ TEST(StandardExtend, TheComparisonRmseIsTheModelsUpToRetrainMinObs)
     EXPECT_EQ(*e.result.find("change_magnitude"), magnitude_with(rmse));
 
     r.step();   // window (0, 25): seasonal
-    const auto closest = ccd::find_closest_doy(
+    const auto closest = reference::find_closest_doy(
         r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.count("change_test", "seasonal_count"));
     for (index_t i = 0; i < bands.size(); ++i)
         rmse[i] = ccd::seasonal_rmse(e.model->residuals(bands[i]), closest,
@@ -835,14 +836,14 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     Record r(80);
     auto tree = ccd::strategies::library_registry().preset("ccdc");
     tree.stages["change_test"].params["model_rmse_up_to"] = ccd::config::integer(10);
-    r.strategies = ccd::strategies::core_registry().resolve(tree, r.options).strategies;
+    r.strategies = golden::core_registry().resolve(tree, r.options).strategies;
     in_extend(r, 0, 24);
     r.step();
 
     const ccd::standard::Extension& e = r.state.extension;
     EXPECT_EQ(e.fit_window.stop, 24u);
     const auto& bands = r.shared.detection_bands;
-    const auto closest = ccd::find_closest_doy(
+    const auto closest = reference::find_closest_doy(
         r.state.series.dates(), e.peek.stop - 1, e.fit_window, r.count("change_test", "seasonal_count"));
     std::vector<double> rmse(bands.size());
     for (index_t i = 0; i < bands.size(); ++i)

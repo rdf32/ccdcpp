@@ -82,7 +82,7 @@ void expect_refused(F make, const std::string& fragment)
 
 TEST(Registry, ListsTheCoreStrategies)
 {
-    const auto names = ccd::strategies::core_registry().names();
+    const auto names = golden::core_registry().names();
     ASSERT_EQ(names.count("noise_floor"), 1u);
     EXPECT_EQ(names.at("noise_floor"), (std::vector<std::string>{"variogram"}));
     // The library's registry holds every core strategy (and its extensions').
@@ -126,7 +126,7 @@ TEST(Registry, BuildsByNameAndChecksTheParameters)
     using ccd::config::flag;
     using ccd::config::integer;
     using ccd::config::real;
-    const auto& r = ccd::strategies::core_registry();
+    const auto& r = golden::core_registry();
     const auto refit = [&](Values values)
     { return r.make<RefitSchedule>({"span-factor", std::move(values)}); };
 
@@ -473,7 +473,7 @@ TEST(Registry, AnEditedPresetBuildsItsStrategies)
     tree.stages["change_test"].params["model_rmse_up_to"] = most;
     EXPECT_TRUE(golden::strategies_of(tree).refit->due(1u << 20, 1.0, 12, 100.0));
 
-    expect_refused([&] { ccd::strategies::core_registry().build({}); },
+    expect_refused([&] { golden::core_registry().build({}); },
                    "the configuration has no 'mode' stage");
 }
 
@@ -541,7 +541,7 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     }
     EXPECT_TRUE(got[1].empty());   // band 1 was not fitted
 
-    const auto& r = ccd::strategies::core_registry();
+    const auto& r = golden::core_registry();
     expect_refused([&] { golden::strategies_of(golden::with_shared(tree, "alpha",
                                                                    ccd::config::real(NAN))); },
                    "shared parameter 'alpha' is nan");
@@ -743,14 +743,14 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
 TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
 {
     // A resolved stage's threshold, as the registry builds it.
-    const auto outlier = ccd::strategies::core_registry().make<ccd::OutlierRule>(
+    const auto outlier = golden::core_registry().make<ccd::OutlierRule>(
         {"floored", {{"threshold", ccd::config::real(10.0)}}});
 
     const std::int64_t day = 730000;
     const std::vector<std::vector<double>> residuals;
     const ccd::Variogram variogram;
     const ccd::BandList bands;
-    const auto model = ccd::strategies::core_registry()
+    const auto model = golden::core_registry()
                            .make<ccd::MonitoringModel>({"lasso", {}})
                            ->make_model();
     const double value = 0;
@@ -770,7 +770,7 @@ TEST(OutlierRule, FlooredJudgesTheStatisticAgainstItsThreshold)
     expect_refused(
         [&]
         {
-            ccd::strategies::core_registry().make<ccd::OutlierRule>(
+            golden::core_registry().make<ccd::OutlierRule>(
                 {"floored", {{"threshold", ccd::config::real(NAN)}}});
         },
         "outlier 'floored' parameter 'threshold' is nan");
@@ -1153,7 +1153,7 @@ TEST(ConfigDigest, EqualConfigurationsAndOnlyThem)
 
 TEST(Registry, BandListsAreCheckedAgainstTheInput)
 {
-    const auto& r = ccd::strategies::core_registry();
+    const auto& r = golden::core_registry();
     auto tree = golden::with(golden::ccdc(), "window_screen", "bands", ccd::config::bands({1, 4}));
     EXPECT_NO_THROW(r.resolve(tree, ccd::Input{}));
 

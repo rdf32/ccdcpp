@@ -11,9 +11,6 @@ namespace strategies
 // Registers every strategy of the public library.
 void register_core_strategies(config::Registry& registry);
 
-// The registry with the library's strategies, built once.
-const config::Registry& core_registry();
-
 // Registers the strategies of the extensions the library was built with
 // (CMake's CCD_EXTENSIONS; none by default).
 void register_extension_strategies(config::Registry& registry);

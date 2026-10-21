@@ -48,6 +48,7 @@
 #include "ccd/regression/lasso_solver.hpp"
 
 #include "../golden/golden.hpp"
+#include "find_closest_doy.hpp"
 
 namespace
 {
@@ -736,7 +737,7 @@ TEST(FindClosestDoy, EqualsTheSortByTheDoubleDistance)
                                         stop - start + 5, index_t(random() % 40)})
             {
                 const auto expected = closest_doy_by_double(view, target, window, count);
-                ASSERT_EQ(ccd::find_closest_doy(view, target, window, count), expected)
+                ASSERT_EQ(reference::find_closest_doy(view, target, window, count), expected)
                     << "trial " << trial << " window (" << start << ", " << stop << ") target "
                     << target << " count " << count;
                 order.closest(dates[target], count, walked);
