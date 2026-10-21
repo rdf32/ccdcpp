@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "ccd/core/array_view.hpp"
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/core/types.hpp"
@@ -177,5 +178,41 @@ inline bool operator!=(const Input& a, const Input& b) { return !(a == b); }
 // A digest of every field of `input`, its QA table's codes included: equal
 // for equal inputs, on any platform.
 std::uint64_t digest(const Input& input);
+
+//------------------------------------------------------------------------------
+//
+// The input check every entry point runs once per call, before any work.
+//
+// The procedures hold one fit per band and read bands by their rows in
+// `input`, so every row must be one of an array with `bands` bands. Throws
+// std::invalid_argument when:
+//
+//   * `bands` is not input.bands() (one role per row), or exceeds
+//     CCD_MAX_BANDS;
+//   * a role is not one of ROLES, or a role other than "other" is held
+//     twice;
+//   * the input has no "green" row;
+//   * reflectance_scale or thermal_at_100c is not a positive number, or
+//     reflectance_offset is not a finite one.
+//
+// The message names the field and the counts or the value. The algorithm's
+// parameters are the configuration's, checked by their schemas and against
+// the input when an Algorithm resolves them (RunSpec::algorithm).
+//
+//------------------------------------------------------------------------------
+
+void validate(const Input& input, index_t bands);
+
+//------------------------------------------------------------------------------
+//
+// The date check every entry point runs once per call, before any work.
+//
+// Throws std::invalid_argument unless `dates` is non-decreasing. Equal dates
+// are allowed: the filters keep the first observation of each date. The
+// message names the first position out of order and both dates.
+//
+//------------------------------------------------------------------------------
+
+void validate_dates(ArrayView<const std::int64_t, 1> dates);
 
 } // namespace ccd

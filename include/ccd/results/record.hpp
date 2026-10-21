@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "ccd/core/array_view.hpp"
+#include "ccd/core/types.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/machine/standard.hpp"
 
@@ -79,6 +81,19 @@ inline void check_version(const ResumeHeader& header)
             std::to_string(header.results_version) + "; this ccdcpp's is " +
             std::to_string(RESULTS_VERSION) + ": rerun in full");
 }
+
+// A fingerprint of one pixel's input up to `through`: of each observation
+// dated on or before it whose QA code is not `qa_fill`, its date, its QA
+// code and every band's value (the bits of the value as scalar_t), in date
+// order. Fill observations are left out, so a scene that does not cover the
+// pixel changes nothing.
+std::uint64_t input_fingerprint(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    ArrayView<const std::uint8_t, 1> qa_codes,
+    std::uint8_t qa_fill,
+    std::int64_t through
+);
 
 // One pixel's part of the record.
 struct PixelRecord

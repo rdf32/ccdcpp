@@ -183,7 +183,6 @@ add_library(
     src/ccd/machine/pixel_procedure.cpp
     src/ccd/machine/standard.cpp
 
-    src/ccd/ccd.cpp
     src/ccd/run/algorithm.cpp
     src/ccd/run/run.cpp
     src/ccd/config/params.cpp
@@ -207,6 +206,7 @@ add_library(
     src/ccd/input/qa_table.cpp
     src/ccd/input/qa_tables.cpp
     src/ccd/results/diagnostics.cpp
+    src/ccd/results/record.cpp
     ${PROJECT_BINARY_DIR}/generated/register_extensions.cpp
     ${CCD_EXTENSION_SOURCES}
 )
