@@ -24,6 +24,7 @@
 #include "ccd/input/masked_series.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/pmask.hpp"
+#include "ccd/input/procedure.hpp"
 #include "ccd/input/qa_statistics.hpp"
 #include "ccd/input/qa_table.hpp"
 #include "ccd/input/qa_tables.hpp"

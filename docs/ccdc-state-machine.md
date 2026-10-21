@@ -367,7 +367,8 @@ record:
 
 | Function or type | File |
 |---|---|
-| `PixelProcedure`, `PixelMode` | `include/ccd/machine/pixel_procedure.hpp` |
+| `PixelProcedure`, `PROCEDURES`, `name()` | `include/ccd/input/procedure.hpp` |
+| `PixelMode` | `include/ccd/machine/pixel_procedure.hpp` |
 | `MaskedSeries` | `include/ccd/input/masked_series.hpp` |
 | `Cursor`, `drive` | `src/ccd/machine/machine.hpp` |
 | `Window`, `span`, `count_through` | `include/ccd/core/window.hpp` |

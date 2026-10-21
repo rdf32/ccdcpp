@@ -117,14 +117,16 @@ config::Shared capped(const config::Shared& shared, std::int64_t end)
 preprocess::PreprocessPlan capped(const preprocess::PreprocessPlan& plan, std::int64_t end)
 {
     preprocess::PreprocessPlan out = plan;
-    for (preprocess::ProcedurePlan* procedure :
-         {&out.standard, &out.snow, &out.insufficient_clear})
-        for (index_t i = 0; i < procedure->chain.size(); ++i)
+    for (PixelProcedure procedure : PROCEDURES)
+    {
+        preprocess::Chain& chain = out.of(procedure).chain;
+        for (index_t i = 0; i < chain.size(); ++i)
         {
-            preprocess::Step& step = procedure->chain.steps[i];
+            preprocess::Step& step = chain.steps[i];
             if (step.kind == preprocess::StepKind::GreenMedian)
                 step.max_date = std::min(step.max_date, end);
         }
+    }
     return out;
 }
 
@@ -178,27 +180,6 @@ PixelMode choose_procedure(
 )
 {
     return mode.choose(qa_statistics(qas, dates, input, statistics_end));
-}
-
-// The plan of procedure `type`.
-const preprocess::ProcedurePlan& procedure_plan(
-    PixelProcedure type,
-    const preprocess::PreprocessPlan& plan
-)
-{
-    switch (type)
-    {
-        case PixelProcedure::InsufficientClear:
-            return plan.insufficient_clear;
-
-        case PixelProcedure::PermanentSnow:
-            return plan.snow;
-
-        case PixelProcedure::Standard:
-            break;
-    }
-
-    return plan.standard;
 }
 
 // Step 3. The pixel's (B, T) as contiguous scalar_t with the procedure's
@@ -345,7 +326,7 @@ FitResult run_steps(
         request.record->procedure = procedure;
     }
 
-    const preprocess::ProcedurePlan& steps = procedure_plan(procedure, plan);
+    const preprocess::ProcedurePlan& steps = plan.of(procedure);
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
     const PixelSeries pixel(dates, values, qas, input, shared);
     LOG_DEBUG("initial spectral: " << pixel.spectral());

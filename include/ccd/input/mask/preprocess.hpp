@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/constants.hpp"
@@ -15,6 +16,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/input/mask/filter.hpp"
+#include "ccd/input/procedure.hpp"
 
 namespace ccd
 {
@@ -32,7 +34,7 @@ namespace preprocess
 //
 //   PreprocessPlan     one ProcedurePlan per procedure (standard, snow,
 //                      insufficient_clear); Run::pixel picks the one of
-//                      the procedure it selected.
+//                      the procedure it selected (of()).
 //   ProcedurePlan      the transform and the chain of one procedure.
 //   Chain              up to CHAIN_CAPACITY steps, stored inline, run in
 //                      order by apply().
@@ -337,6 +339,30 @@ struct PreprocessPlan
     ProcedurePlan standard;
     ProcedurePlan snow;
     ProcedurePlan insufficient_clear;
+
+    // The plan of `procedure`: plan.of(PixelProcedure::PermanentSnow) is
+    // plan.snow.
+    const ProcedurePlan& of(PixelProcedure procedure) const
+    {
+        switch (procedure)
+        {
+            case PixelProcedure::InsufficientClear:
+                return insufficient_clear;
+
+            case PixelProcedure::PermanentSnow:
+                return snow;
+
+            case PixelProcedure::Standard:
+                break;
+        }
+
+        return standard;
+    }
+
+    ProcedurePlan& of(PixelProcedure procedure)
+    {
+        return const_cast<ProcedurePlan&>(std::as_const(*this).of(procedure));
+    }
 };
 
 

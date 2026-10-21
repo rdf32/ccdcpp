@@ -296,9 +296,8 @@ void validate_procedure(
 
 void validate(const PreprocessPlan& plan, index_t bands)
 {
-    validate_procedure("standard", plan.standard, bands);
-    validate_procedure("snow", plan.snow, bands);
-    validate_procedure("insufficient_clear", plan.insufficient_clear, bands);
+    for (PixelProcedure procedure : PROCEDURES)
+        validate_procedure(name(procedure), plan.of(procedure), bands);
 }
 
 void apply(
