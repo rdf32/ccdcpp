@@ -18,26 +18,35 @@ CCD_REFERENCE_PYTHONPATH cache variable for that test alone. A reference that
 is not importable skips its test and says why; when both are skipped the
 script exits 77, which ctest reports as skipped.
 """
+from __future__ import annotations
+
 import importlib
 import importlib.util
 import sys
 import types
 import unittest
+from typing import TYPE_CHECKING
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
 del sys.argv[1:3]
 sys.path.insert(0, MODULE_DIR)
 
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
-import ccdcpp  # noqa: E402
+if TYPE_CHECKING:
+    # MODULE_DIR's ccdcpp is the extension module itself, which ccdcpp/ccdcpp.pyi types.
+    from ccdcpp import ccdcpp
+else:
+    import ccdcpp
 
 
-def nlcd_table():
-    """The nlcd plugin's QA table, or the reason it is unavailable."""
+def nlcd_table() -> tuple[NDArray[np.uint8] | None, types.ModuleType | None, str | None]:
+    """The nlcd plugin's QA table and its science module, or the reason they are
+    unavailable."""
     try:
-        from nlcd.changedetection import io
-        from nlcd import science
+        from nlcd.changedetection import io  # pyright: ignore[reportMissingImports]  # optional reference
+        from nlcd import science  # pyright: ignore[reportMissingImports]  # optional reference
     except ImportError as e:
         return None, None, (
             f"millworks nlcd plugin not importable ({e}); run with "
@@ -45,7 +54,7 @@ def nlcd_table():
     return io._QA_TABLE(np), science, None
 
 
-def pyccd_qa():
+def pyccd_qa() -> tuple[types.ModuleType | None, str | None]:
     """pyccd's ccd.qa module, or the reason it is unavailable.
 
     ccd/__init__.py imports the whole of pyccd, scikit-learn included, and
@@ -74,7 +83,7 @@ def pyccd_qa():
 class NlcdC2(unittest.TestCase):
     def test_all_entries_equal_the_nlcd_table(self):
         table, science, reason = nlcd_table()
-        if table is None:
+        if table is None or science is None:
             self.skipTest(reason)
 
         # The plugin's codes are the Input's defaults.

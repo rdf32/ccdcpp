@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from ccd.models import robust_fit
-from ccd.models.tmask import tmask_coefficient_matrix
-from ccd.math_utils import calc_rmse
+from ccd.models import robust_fit  # pyright: ignore[reportMissingImports]  # pyccd, the reference
+from ccd.models.tmask import tmask_coefficient_matrix  # pyright: ignore[reportMissingImports]  # pyccd, the reference
+from ccd.math_utils import calc_rmse  # pyright: ignore[reportMissingImports]  # pyccd, the reference
 
 # num params / coef: 4
 dates = np.array([

@@ -7,37 +7,45 @@ as `python_stub`. Every name the extension module defines is in its stub and eve
 stub defines is in the extension; so are each class's members, each function's parameter names
 (as the extension's signature line gives them) and Input's fields.
 """
+from __future__ import annotations
+
 import ast
 import inspect
 import os
 import re
 import sys
 import unittest
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
 del sys.argv[1:3]
 sys.path.insert(0, MODULE_DIR)
 
-import ccdcpp  # noqa: E402
+if TYPE_CHECKING:
+    # MODULE_DIR's ccdcpp is the extension module itself, which ccdcpp/ccdcpp.pyi types.
+    from ccdcpp import ccdcpp
+else:
+    import ccdcpp
 
 STUBS = os.path.join(SOURCE_DIR, "python", "ccdcpp")
 
 
-def parse(name):
+def parse(name: str) -> ast.Module:
     with open(os.path.join(STUBS, name), encoding="utf-8") as f:
         return ast.parse(f.read())
 
 
-def is_alias(node):
+def is_alias(node: ast.stmt) -> bool:
     """A stub-only type alias: `_Name: TypeAlias = ...`."""
     return (isinstance(node, ast.AnnAssign) and isinstance(node.annotation, ast.Name)
             and node.annotation.id == "TypeAlias")
 
 
-def defined(body):
+def defined(body: Sequence[ast.stmt]) -> dict[str, ast.stmt]:
     """{name: node} of what a module or class body defines: functions, classes, annotated or
     assigned names and explicit re-exports (`from . import x as x`), without type aliases."""
-    out = {}
+    out: dict[str, ast.stmt] = {}
     for node in body:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
             out[node.name] = node
@@ -55,29 +63,29 @@ def defined(body):
     return out
 
 
-def runtime_names(module):
+def runtime_names(module: object) -> set[str]:
     """The module's names, the dunders other than __version__ left out."""
     return {n for n in dir(module)
             if not (n.startswith("__") and n.endswith("__")) or n == "__version__"}
 
 
-def stub_names(body):
+def stub_names(body: Sequence[ast.stmt]) -> set[str]:
     return {n for n in defined(body)
             if not (n.startswith("__") and n.endswith("__")) or n == "__version__"}
 
 
-def members(cls):
+def members(cls: type) -> set[str]:
     """A class's own public members."""
     return {n for n in vars(cls) if not n.startswith("_")}
 
 
-def doc_parameters(function):
+def doc_parameters(function: Callable[..., object]) -> list[str]:
     """The parameter names of a pybind11 function's first signature line."""
     first = (function.__doc__ or "").lstrip().split("\n", 1)[0]
     return re.findall(r"(?:\(|, )(?:\*, )?(\w+):", first)
 
 
-def stub_parameters(node):
+def stub_parameters(node: ast.FunctionDef) -> list[str]:
     args = node.args
     return [a.arg for a in args.posonlyargs + args.args + args.kwonlyargs]
 

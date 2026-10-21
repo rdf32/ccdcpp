@@ -7,6 +7,8 @@ The package is assembled as the wheel lays it out, python/ccdcpp/*.py next to
 the extension, in a temporary directory. ctest runs this as
 `python_profiles`.
 """
+from __future__ import annotations
+
 import copy
 import dataclasses
 import glob
@@ -17,8 +19,10 @@ import pydoc
 import shutil
 import sys
 import unittest
-from unittest import mock
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
+from typing import Any
+from unittest import mock
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
 del sys.argv[1:3]
@@ -38,9 +42,11 @@ shutil.copy(_extension, _PACKAGE)
 sys.path.insert(0, _ROOT)
 
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 from ccdcpp import presets  # noqa: E402
+from ccdcpp.results import Model, PixelResult  # noqa: E402
 
 assert ccdcpp.__file__ == os.path.join(_PACKAGE, "__init__.py"), ccdcpp.__file__
 
@@ -60,14 +66,17 @@ FMASK_RAW = {FILL: 255, CLEAR: 0, WATER: 32, SHADOW: 8, SNOW: 16, CLOUD: 2}
 LANDSAT_PRESETS = (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2)
 
 
-def fields(obj):
+Series = tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8]]
+
+
+def fields(obj: object) -> dict[str, Any]:
     return {
         name: getattr(obj, name) for name in dir(obj)
         if not name.startswith("_") and not callable(getattr(obj, name))
     }
 
 
-def assert_same(test, a, b, where="out"):
+def assert_same(test: unittest.TestCase, a: Any, b: Any, where: str = "out") -> None:
     """Exact, structural equality of entry point outputs."""
     if isinstance(a, dict):
         test.assertEqual(list(a), list(b), where)
@@ -87,14 +96,26 @@ def assert_same(test, a, b, where="out"):
         test.assertEqual(a, b, where)
 
 
-def without(out, *keys):
-    out = dict(out)
+def without(out: Mapping[str, Any], *keys: str) -> dict[str, Any]:
+    kept = dict(out)
     for k in keys:
-        out.pop(k)
-    return out
+        kept.pop(k)
+    return kept
 
 
-def reference_pixel():
+def qa_table_of(encoding: ccdcpp.Input) -> ccdcpp.QaTable:
+    """The QA table of an input that has one."""
+    assert encoding.qa_table is not None
+    return encoding.qa_table
+
+
+def doc_of(obj: object) -> str:
+    """The docstring of an object that has one."""
+    assert obj.__doc__ is not None, obj
+    return obj.__doc__
+
+
+def reference_pixel() -> Series:
     """pyccd's reference pixel: (dates, spectral (7, T) DN, qas)."""
     path = os.path.join(SOURCE_DIR, "tests", "ccd", "machine", "test_3657_3610_observations.csv")
     data = np.loadtxt(path, delimiter=",", dtype=np.int64)
@@ -102,7 +123,7 @@ def reference_pixel():
             data[:, 8].astype(np.uint8))
 
 
-def corpus_cube(H=2, W=3, seed=11):
+def corpus_cube(H: int = 2, W: int = 3, seed: int = 11) -> Series:
     """A (H, W, 7, T) DN cube on the reference pixel's dates: the reference
     pixel itself, a snow-dominated pixel (PermanentSnow), a cloud-dominated
     one (InsufficientClear), and clear pixels with a break (Standard).
@@ -135,7 +156,7 @@ def corpus_cube(H=2, W=3, seed=11):
     return dates, spectral, codes
 
 
-def to_physical(spectral):
+def to_physical(spectral: NDArray[np.float64]) -> NDArray[np.float64]:
     """DN -> the physical preset's units: reflectance, degrees Celsius / 100."""
     s = spectral.copy()
     s[..., :6, :] = s[..., :6, :] / SCALE
@@ -147,7 +168,7 @@ def to_physical(spectral):
 PYCCD = ccdcpp.config("ccdc").replace(shared__statistics_end=736694)
 
 
-def explicit_physical():
+def explicit_physical() -> tuple[ccdcpp.Input, ccdcpp.Config]:
     """The physical-unit input written out, as the golden tests write it, and the
     configuration it runs: (Input, Config)."""
     h = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0,
@@ -155,21 +176,21 @@ def explicit_physical():
     return h, PYCCD
 
 
-def resolved(cfg, encoding=None):
+def resolved(cfg: ccdcpp.Config, encoding: ccdcpp.Input | None = None) -> dict[str, Any]:
     """``cfg``'s stages resolved against ``encoding`` (default ccdcpp.Input())."""
     return cfg.resolve(ccdcpp.Input() if encoding is None else encoding)["stages"]
 
 
-def change_threshold(cfg, encoding=None):
+def change_threshold(cfg: ccdcpp.Config, encoding: ccdcpp.Input | None = None) -> float:
     return resolved(cfg, encoding)["change_test"]["params"]["change_threshold"]
 
 
-def outlier_threshold(cfg, encoding=None):
+def outlier_threshold(cfg: ccdcpp.Config, encoding: ccdcpp.Input | None = None) -> float:
     return resolved(cfg, encoding)["outlier"]["params"]["threshold"]
 
 
 # The parameters one shared value fills in, as a run resolves them.
-GROUPS = {
+GROUPS: dict[str, tuple[tuple[str, str], ...]] = {
     "alpha": (("model", "alpha"), ("stability_fit", "alpha"), ("edge_fit", "alpha")),
     "coef_floor": (("model", "coef_floor"), ("stability_fit", "coef_floor"),
                    ("edge_fit", "coef_floor")),
@@ -181,10 +202,12 @@ GROUPS = {
 }
 
 
-def option_params(cfg, name, encoding=None):
+def option_params(cfg: ccdcpp.Config, name: str,
+                  encoding: ccdcpp.Input | None = None) -> dict[tuple[str, str], Any]:
     """{(stage, parameter): value} of group ``name`` (GROUPS) in ``cfg`` resolved
     against ``encoding``, or of one ``stage__parameter``."""
-    pairs = GROUPS.get(name) or (tuple(name.split("__", 1)),)
+    stage, _, param = name.partition("__")
+    pairs = GROUPS.get(name) or ((stage, param),)
     stages = resolved(cfg, encoding)
     return {(stage, param): stages[stage]["params"][param]
             for stage, param in pairs
@@ -195,7 +218,8 @@ DATES, CUBE_DN, CODES = corpus_cube()
 CUBE_PHYS = to_physical(CUBE_DN)
 
 
-def every_entry(dates, spectral, qas, threads=8, **kw):
+def every_entry(dates: NDArray[np.int64], spectral: NDArray[Any], qas: NDArray[Any],
+                threads: int = 8, **kw: Any) -> dict[str, Any]:
     """{entry: output} for detect on every pixel and detect_cube (its columns,
     without the thread count)."""
     H, W = spectral.shape[:2]
@@ -207,23 +231,24 @@ def every_entry(dates, spectral, qas, threads=8, **kw):
     }
 
 
-def strip_band_names(outs):
+def strip_band_names(outs: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "detect": [without(o, "band_names") for o in outs["detect"]],
         "detect_cube": without(outs["detect_cube"], "band_names"),
     }
 
 
-def band_range_rows(encoding, config="ccdc"):
+def band_range_rows(encoding: ccdcpp.Input | ccdcpp.SensorProfile,
+                    config: ccdcpp.Config | str = "ccdc") -> list[int]:
     """The rows the Standard chain's band_range step tests on ``encoding``."""
     (step,) = [s for s in ccdcpp.plan_of(config, encoding).standard.chain
                if s.kind == ccdcpp.StepKind.BandRange]
     return step.bands
 
 
-def with_table(encoding, table):
-    """``encoding`` (a ccdcpp.Input) decoding its QA through ``table``."""
-    return encoding.replace(qa_table=table)
+def with_table(encoding: ccdcpp.Input, qa_table: ccdcpp.QaTable | None) -> ccdcpp.Input:
+    """``encoding`` (a ccdcpp.Input) decoding its QA through ``qa_table``."""
+    return encoding.replace(qa_table=qa_table)
 
 
 class Corpus(unittest.TestCase):
@@ -273,7 +298,7 @@ class LandsatPhysical(unittest.TestCase):
     def test_c2_raw_qa_pixel_is_the_decoded_codes(self):
         raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(CODES)
         profile = presets.landsat_c2()
-        np.testing.assert_array_equal(profile.input().qa_table.codes[raw], CODES)
+        np.testing.assert_array_equal(qa_table_of(profile.input()).codes[raw], CODES)
         decoded = every_entry(DATES, CUBE_PHYS, raw, encoding=profile)
         codes = every_entry(DATES, CUBE_PHYS, CODES, encoding=with_table(profile.input(), None))
         assert_same(self, strip_band_names(decoded), codes)
@@ -283,17 +308,17 @@ class LandsatPhysical(unittest.TestCase):
     def test_presets_state_units_and_band_order(self):
         for preset in LANDSAT_PRESETS:
             with self.subTest(preset=preset.__name__):
-                self.assertIn("Input:", preset.__doc__)
-                self.assertIn("QA:", preset.__doc__)
+                self.assertIn("Input:", doc_of(preset))
+                self.assertIn("QA:", doc_of(preset))
                 self.assertEqual(preset().band_names,
                                  ("blue", "green", "red", "nir", "swir1", "swir2", "thermal"))
                 self.assertEqual(preset().name, preset.__name__)
-        self.assertIn("blue, green, red, nir, swir1, swir2, thermal", presets.__doc__)
+        self.assertIn("blue, green, red, nir, swir1, swir2, thermal", doc_of(presets))
         self.assertEqual(presets.__all__, ["landsat_c1_dn", "landsat_c1_physical", "landsat_c2",
                                            "hls_l30", "hls_s30", "hls", "sentinel2_l2a"])
 
 
-def permuted(profile, order):
+def permuted(profile: ccdcpp.SensorProfile, order: Sequence[int]) -> ccdcpp.SensorProfile:
     return dataclasses.replace(
         profile,
         band_names=tuple(profile.band_names[i] for i in order),
@@ -301,11 +326,11 @@ def permuted(profile, order):
     )
 
 
-def unpermute(outs, order):
+def unpermute(outs: Mapping[str, Any], order: Sequence[int]) -> dict[str, Any]:
     """Outputs of a run on rows `order` -> the outputs of the run in row order."""
     inv = np.argsort(order)
 
-    def models(ms):
+    def models(ms: Sequence[Model]) -> list[dict[str, Any]]:
         return [dict(m, bands=[m["bands"][i] for i in inv]) for m in ms]
 
     cols = dict(outs["detect_cube"])
@@ -377,7 +402,8 @@ class Check(unittest.TestCase):
 
     def test_not_a_profile(self):
         with self.assertRaises(TypeError):
-            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0], encoding="landsat_c1_dn")
+            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0],
+                          encoding="landsat_c1_dn")  # pyright: ignore[reportArgumentType]  # a name, refused
 
     def test_construction(self):
         base = presets.landsat_c1_dn()
@@ -435,7 +461,7 @@ ALL_VALUES = np.arange(65536)
 
 
 class QaTableOptionsField(unittest.TestCase):
-    def hls(self, **kw):
+    def hls(self, **kw: Any) -> ccdcpp.SensorProfile:
         return dataclasses.replace(presets.landsat_c1_physical(), qa_table_builder="hls_fmask",
                                    **kw)
 
@@ -443,7 +469,7 @@ class QaTableOptionsField(unittest.TestCase):
         for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
             with self.subTest(preset=preset.__name__):
                 self.assertEqual(preset().qa_table_options, ())
-        np.testing.assert_array_equal(self.hls().input().qa_table.codes,
+        np.testing.assert_array_equal(qa_table_of(self.hls().input()).codes,
                                       ccdcpp.qa_tables.hls_fmask().codes)
 
     def test_builder_arguments_reach_the_builder(self):
@@ -452,13 +478,13 @@ class QaTableOptionsField(unittest.TestCase):
                 p = self.hls(qa_table_options={"exclude_high_aerosol": aerosol})
                 h = p.input()
                 expected = ccdcpp.qa_tables.hls_fmask(h, exclude_high_aerosol=aerosol).codes
-                got = p.input().qa_table.codes
+                got = qa_table_of(p.input()).codes
                 self.assertEqual(got.shape, ALL_VALUES.shape)
                 np.testing.assert_array_equal(got, expected)
         # The two tables differ exactly where the aerosol bits are 11 and no
         # higher-precedence bit (fill, cloud, adjacent, cirrus) is set.
-        on = self.hls(qa_table_options={"exclude_high_aerosol": True}).input().qa_table.codes
-        off = self.hls().input().qa_table.codes
+        on = qa_table_of(self.hls(qa_table_options={"exclude_high_aerosol": True}).input()).codes
+        off = qa_table_of(self.hls().input()).codes
         differs = np.flatnonzero(on != off)
         self.assertTrue(len(differs) > 0)
         self.assertTrue(((differs >> 6) == 3).all())
@@ -478,7 +504,7 @@ class QaTableOptionsField(unittest.TestCase):
         self.assertEqual(p.qa_table_options, (("exclude_high_aerosol", True),))
         q = pickle.loads(pickle.dumps(p))
         self.assertEqual(q, p)
-        np.testing.assert_array_equal(q.input().qa_table.codes, p.input().qa_table.codes)
+        np.testing.assert_array_equal(qa_table_of(q.input()).codes, qa_table_of(p.input()).codes)
 
     def test_entry_points_use_the_profile_table(self):
         # Raw Fmask, with high aerosol on every third clear observation:
@@ -543,7 +569,7 @@ class QaTableOptionsField(unittest.TestCase):
         self.assertEqual(sorted(ccdcpp.QA_TABLE_OPTIONS), builders)
         for builder, declared in ccdcpp.QA_TABLE_OPTIONS.items():
             with self.subTest(builder=builder):
-                signature = getattr(ccdcpp.qa_tables, builder).__doc__.splitlines()[0]
+                signature = doc_of(getattr(ccdcpp.qa_tables, builder)).splitlines()[0]
                 self.assertEqual(signature.count(": "), 1 + len(declared), signature)
                 self.assertIn(f"{builder}(encoding: ", signature)
                 for name, (kind, default) in declared.items():
@@ -598,7 +624,9 @@ class QaTableOptionsField(unittest.TestCase):
             pass
 
         p = self.hls(qa_table_options={Name("exclude_high_aerosol"): True})
-        self.assertIs(type(p.qa_table_options[0][0]), str)
+        options = p.qa_table_options
+        assert isinstance(options, tuple)
+        self.assertIs(type(options[0][0]), str)
 
     def test_numpy_scalar_hint(self):
         with self.assertRaises(ValueError) as caught:
@@ -774,19 +802,20 @@ class Unprofiled(unittest.TestCase):
         h = ccdcpp.Input()
         d, s, q = DATES, CUBE_DN, CODES
         with self.assertRaises(TypeError):
-            ccdcpp.detect(d, s[0, 0], q[0, 0], h)
+            ccdcpp.detect(d, s[0, 0], q[0, 0], h)  # pyright: ignore[reportCallIssue]  # encoding positional, refused
         with self.assertRaisesRegex(ValueError, "no configuration 'cdcc'"):
             ccdcpp.detect(d, s[0, 0], q[0, 0], encoding=h, config="cdcc")
         with self.assertRaises(TypeError):
-            ccdcpp.detect(d, s[0, 0], q[0, 0], encoding=h, config=ccdcpp.config("ccdc").to_dict())
+            ccdcpp.detect(d, s[0, 0], q[0, 0], encoding=h,
+                          config=ccdcpp.config("ccdc").to_dict())  # pyright: ignore[reportArgumentType]  # a dict, refused
 
     def test_input_required(self):
         with self.assertRaises(TypeError):
-            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0])
+            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0])  # pyright: ignore[reportCallIssue]  # no encoding, refused
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, config="ccdc")
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, config="ccdc")  # pyright: ignore[reportCallIssue]  # no encoding, refused
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, encoding=None)
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, encoding=None)  # pyright: ignore[reportArgumentType]  # None, refused
         # encoding= alone is a whole call: the configuration defaults to "ccdc".
         self.assertEqual(ccdcpp.detect_cube(DATES, CUBE_DN, CODES, encoding=ccdcpp.Input(),
                                             threads=1)["failures"], [])
@@ -795,12 +824,14 @@ class Unprofiled(unittest.TestCase):
         H, W = CUBE_DN.shape[:2]
         out = ccdcpp.detect_cube(DATES, CUBE_DN, CODES, encoding=presets.landsat_c1_dn(),
                                  threads=2, masks=True)
+        assert "processing_mask" in out
         self.assertEqual(out["processing_mask"].shape, (H, W, len(DATES)))
         pixels = ccdcpp.to_pixels(out)
         self.assertGreater(len(pixels), 0)
         for p in pixels:
             one = ccdcpp.detect(DATES, CUBE_DN[p["row"], p["col"]], CODES[p["row"], p["col"]],
                                 encoding=presets.landsat_c1_dn())
+            assert "processing_mask" in p
             np.testing.assert_array_equal(p["processing_mask"], one["processing_mask"])
             self.assertEqual(p["models"], one["models"])
         self.assertNotIn("processing_mask", ccdcpp.to_pixels(
@@ -841,14 +872,14 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(q, p)
                 self.assertEqual(fields(q.input()), fields(p.input()))
                 with self.assertRaises(dataclasses.FrozenInstanceError):
-                    p.saturation_code = 2.0
+                    p.saturation_code = 2.0  # pyright: ignore[reportAttributeAccessIssue]  # frozen, refused
 
     def test_input_is_built_once_and_immutable(self):
         p = presets.landsat_c1_dn()
         self.assertIs(p.input(), p.input())
         self.assertIs(p.input(), presets.landsat_c1_dn().input())
         with self.assertRaises(AttributeError):
-            p.input().reflectance_scale = 99.0
+            p.input().reflectance_scale = 99.0  # pyright: ignore[reportAttributeAccessIssue]  # immutable, refused
         h = p.input().replace(reflectance_scale=99.0)
         self.assertEqual(h.reflectance_scale, 99.0)
         self.assertEqual(p.input().reflectance_scale, 10000.0)
@@ -895,7 +926,8 @@ class Profiles(unittest.TestCase):
         for name in ("saturation_code", "thermal_saturation_code"):
             for value in (20000.0, 65535.0):
                 with self.subTest(name=name, value=value):
-                    other = ccdcpp.Input(**{name: value})
+                    changed: dict[str, Any] = {name: value}
+                    other = ccdcpp.Input(**changed)
                     self.assertEqual(getattr(other, name), value)
                     self.assertNotEqual(other, h)
                     self.assertNotEqual(other.digest(), h.digest())
@@ -947,7 +979,7 @@ class DetectionCount(unittest.TestCase):
 # a Sentinel-2-like layout in reflectance with SCL QA.
 #------------------------------------------------------------------------------
 
-def ten_band_profile():
+def ten_band_profile() -> ccdcpp.SensorProfile:
     return ccdcpp.SensorProfile(
         name="test_ten_band",
         band_names=("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"),
@@ -971,7 +1003,7 @@ TEN_BAND_CONFIG = ccdcpp.config("ccdc").replace(
 SCL_VALUES = np.array([4, 5, 6, 8, 9, 3, 0], dtype=np.uint8)
 
 
-def ten_band_inputs(H=2, W=2, seed=5):
+def ten_band_inputs(H: int = 2, W: int = 2, seed: int = 5) -> Series:
     """(dates, spectral (H, W, 10, T) reflectance, raw SCL (H, W, T)): a 5-day
     series from 2018, after the Landsat statistics_end, with a break per pixel."""
     rng = np.random.default_rng(seed)
@@ -997,6 +1029,7 @@ class TenBand(unittest.TestCase):
                                  config=TEN_BAND_CONFIG)
         self.assertEqual(out["failures"], [])
         self.assertEqual(out["num_bands"], 10)
+        assert "band_names" in out
         self.assertEqual(out["band_names"], profile.band_names)
         n = len(out["row"])
         self.assertGreater(n, 4)  # every pixel breaks
@@ -1005,6 +1038,7 @@ class TenBand(unittest.TestCase):
         self.assertTrue(np.isfinite(out["rmse"]).all())
 
         one = ccdcpp.detect(dates, cube[1, 0], scl[1, 0], encoding=profile, config=TEN_BAND_CONFIG)
+        assert "band_names" in one
         self.assertEqual(one["band_names"], profile.band_names)
         self.assertTrue(all(len(m["bands"]) == 10 for m in one["models"]))
 
@@ -1033,9 +1067,9 @@ class TenBand(unittest.TestCase):
 
     def test_documented_example_runs(self):
         # The profile in ccdcpp.profiles' docstring, which is not shipped.
-        doc = ccdcpp.profiles.__doc__
-        self.assertIn("NOT SHIPPED", doc)
-        code = doc.split("::\n", 1)[1].split("\n\nThe configuration names its detection", 1)[0]
+        text = doc_of(ccdcpp.profiles)
+        self.assertIn("NOT SHIPPED", text)
+        code = text.split("::\n", 1)[1].split("\n\nThe configuration names its detection", 1)[0]
         namespace = {}
         exec(compile(inspect.cleandoc("\n" + code), "<profiles docstring>", "exec"), namespace)
         profile = namespace["landsat_oli_c2"]()
@@ -1083,7 +1117,8 @@ S2_START = date(2015, 7, 4).toordinal()
 S2_OFFSET_DATE = date(2022, 1, 25).toordinal()  # processing baseline 04.00
 
 
-def optical_cube(dates, bands, H, W, rng, breaks=True):
+def optical_cube(dates: NDArray[np.int64], bands: int, H: int, W: int, rng: np.random.Generator,
+                 breaks: bool = True) -> NDArray[np.float64]:
     """(H, W, bands, T) reflectance: a seasonal curve per band, a level
     change per pixel past the middle when ``breaks``."""
     T = dates.size
@@ -1098,7 +1133,9 @@ def optical_cube(dates, bands, H, W, rng, breaks=True):
     return cube
 
 
-def hls_inputs(bands, thermal=False, step=8, start=L30_START, years=7, H=2, W=2, seed=3):
+def hls_inputs(bands: int, thermal: bool = False, step: int = 8, start: int = L30_START,
+               years: float = 7, H: int = 2, W: int = 2, seed: int = 3
+               ) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8], NDArray[np.int16]]:
     """(dates, spectral, fmask, raw): an HLS series as the preset takes it,
     every layer the int16 the product stores times 0.0001. ``raw`` is the
     int16 cube; with ``thermal`` the last row is B10, degrees Celsius x 100.
@@ -1116,7 +1153,8 @@ def hls_inputs(bands, thermal=False, step=8, start=L30_START, years=7, H=2, W=2,
     return dates, raw * 1e-4, fmask, raw
 
 
-def s2_inputs(H=2, W=2, seed=9, breaks=True, years=8):
+def s2_inputs(H: int = 2, W: int = 2, seed: int = 9, breaks: bool = True, years: float = 8
+              ) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8], NDArray[np.uint16]]:
     """(dates, spectral, scl, dn): a Sentinel-2 L2A series, 5-day, from
     2015-07, as the preset takes it: offset-corrected reflectance, the DN
     stored with BOA_ADD_OFFSET -1000 from baseline 04.00 and 0 before."""
@@ -1135,7 +1173,7 @@ PHYSICAL = dict(reflectance_scale=1.0)
 _MSI = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir_broad", "nir",
         "swir1", "swir2"]
 _HLS = ["coastal", "blue", "green", "red", "nir", "swir1", "swir2"]
-EXPECTED = {
+EXPECTED: dict[str, dict[str, Any]] = {
     "hls_l30": dict(
         PHYSICAL, roles=_HLS + ["thermal"],
         thermal_scale=1.0, thermal_offset=0.0, thermal_at_100c=1.0),
@@ -1159,13 +1197,13 @@ BUILDERS = {"hls_l30": "hls_fmask", "hls_s30": "hls_fmask", "hls": "hls_fmask",
 NEW_PRESETS = (presets.hls_l30, presets.hls_s30, presets.hls, presets.sentinel2_l2a)
 
 
-def hand_built(name):
+def hand_built(name: str) -> tuple[ccdcpp.Input, ccdcpp.QaTable]:
     """(Input, QaTable) of preset ``name``, by hand."""
     h = ccdcpp.Input(**EXPECTED[name])
     return h, getattr(ccdcpp.qa_tables, BUILDERS[name])(h)
 
 
-def preset_inputs(name):
+def preset_inputs(name: str) -> Series:
     """(dates, spectral, raw QA) for preset ``name``, in its units."""
     if name == "hls_l30":
         return hls_inputs(8, thermal=True)[:3]
@@ -1176,7 +1214,7 @@ def preset_inputs(name):
     return s2_inputs()[:3]
 
 
-def models(out):
+def models(out: PixelResult) -> dict[str, Any]:
     """The fitted models of a detect output, without the per-date mask."""
     return without(out, "processing_mask")
 
@@ -1201,7 +1239,7 @@ class SensorPresets(unittest.TestCase):
                 self.assertEqual(preset().qa_table_options,
                                  dict(sentinel2_l2a=()).get(
                                      name, (("exclude_high_aerosol", False),)))
-                np.testing.assert_array_equal(preset().input().qa_table.codes, table.codes)
+                np.testing.assert_array_equal(qa_table_of(preset().input()).codes, table.codes)
 
     def test_band_range_tests_the_rows_the_profiles_listed(self):
         # Each shipped profile listed the rows a saturated value can appear
@@ -1235,27 +1273,28 @@ class SensorPresets(unittest.TestCase):
     def test_docstrings(self):
         for preset in NEW_PRESETS:
             with self.subTest(preset=preset.__name__):
-                doc = preset.__doc__
-                self.assertNotIn("not validated", doc.lower())
-                self.assertIn("Input:", doc)
-                self.assertIn("QA:", doc)
-                self.assertIn(BUILDERS[preset.__name__], doc)
+                text = doc_of(preset)
+                self.assertNotIn("not validated", text.lower())
+                self.assertIn("Input:", text)
+                self.assertIn("QA:", text)
+                self.assertIn(BUILDERS[preset.__name__], text)
                 self.assertEqual(preset().name, preset.__name__)
                 for band in BAND_NAMES[preset.__name__]:
-                    self.assertIn(band, doc)
-        self.assertNotIn("not validated", presets.__doc__.lower())
-        self.assertIn("BOA_ADD_OFFSET", presets.sentinel2_l2a.__doc__)
-        self.assertIn("put L30 before S30", presets.hls.__doc__)
+                    self.assertIn(band, text)
+        self.assertNotIn("not validated", doc_of(presets).lower())
+        self.assertIn("BOA_ADD_OFFSET", doc_of(presets.sentinel2_l2a))
+        self.assertIn("put L30 before S30", doc_of(presets.hls))
         # S30 detects on bands HLS adjusts to OLI, but B01 and B02 are
         # adjusted too, and Sentinel-2C is part of the cadence.
         self.assertIn("HLS\n    adjusts these, and B01 and B02, to the OLI bandpasses",
-                      presets.hls_s30.__doc__)
+                      doc_of(presets.hls_s30))
         for preset in (presets.hls_s30, presets.sentinel2_l2a):
             with self.subTest(preset=preset.__name__):
-                self.assertIn("2C from 2024", preset.__doc__)
+                self.assertIn("2C from 2024", doc_of(preset))
 
     def test_docstrings_state_the_validation(self):
-        def flat(text):
+        def flat(text: str | None) -> str:
+            assert text is not None
             return " ".join(text.split())
         # The record every one was validated on.
         for preset in NEW_PRESETS:
@@ -1266,7 +1305,7 @@ class SensorPresets(unittest.TestCase):
         self.assertIn("2020-2023, read from Planetary Computer, four years of one cell",
                       flat(presets.__doc__))
         # hls_l30 is promoted outright; the summary line carries no caveat.
-        self.assertEqual(presets.hls_l30.__doc__.splitlines()[0],
+        self.assertEqual(doc_of(presets.hls_l30).splitlines()[0],
                          "HLS v2.0 L30 (Landsat 8/9 OLI/TIRS at 30 m).")
         self.assertIn("kappa 0.44", flat(presets.hls_l30.__doc__))
         # S30 and hls: the Fmask-over-bright-surfaces caveat, with numbers.
@@ -1306,7 +1345,7 @@ class SensorPresets(unittest.TestCase):
     def test_docstrings_are_wrapped(self):
         for obj in [presets] + [getattr(presets, name) for name in presets.__all__]:
             with self.subTest(name=obj.__name__):
-                lines = obj.__doc__.splitlines()
+                lines = doc_of(obj).splitlines()
                 for line in lines:
                     self.assertLessEqual(len(line), 79, line)
                 # Prose is filled: a line is not broken where the next word,
@@ -1351,7 +1390,7 @@ class SensorPresets(unittest.TestCase):
         for preset, values, codes in ((presets.hls_l30, FMASK_VALUES, FMASK_CODES),
                                       (presets.sentinel2_l2a, SCL_ALL, SCL_CODES)):
             with self.subTest(preset=preset.__name__):
-                np.testing.assert_array_equal(preset().input().qa_table.codes[values], codes)
+                np.testing.assert_array_equal(qa_table_of(preset().input()).codes[values], codes)
                 dates, cube, qa = preset_inputs(preset.__name__)
                 lookup = dict(zip(values.tolist(), codes.tolist()))
                 decoded = np.vectorize(lookup.get, otypes=[np.uint8])(qa)
@@ -1380,7 +1419,8 @@ class BandNamesCheck(unittest.TestCase):
     """band_names= on the entry points: the stack's row names, which must be
     the profile's in the profile's order."""
 
-    def entries(self, dates, cube, qa, **kw):
+    def entries(self, dates: NDArray[np.int64], cube: NDArray[np.float64], qa: NDArray[np.uint8],
+                **kw: Any) -> dict[str, Callable[[], object]]:
         return {
             "detect": lambda: ccdcpp.detect(dates, cube[0, 0], qa[0, 0], **kw),
             "detect_cube": lambda: ccdcpp.detect_cube(dates, cube, qa, threads=2, **kw),
@@ -1447,7 +1487,7 @@ class BandNamesCheck(unittest.TestCase):
             with self.subTest(given=given):
                 with self.assertRaises(TypeError):
                     ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], encoding=profile,
-                                  band_names=given)
+                                  band_names=given)  # pyright: ignore[reportArgumentType]  # not names, refused
 
     def test_needs_a_profile(self):
         h = ccdcpp.Input()
@@ -1473,7 +1513,9 @@ class BandNamesCheck(unittest.TestCase):
 class HlsInput(unittest.TestCase):
     """The HLS presets take every int16 layer times 0.0001."""
 
-    def run_pixel(self, profile, dates, cube, fmask, keep=None):
+    def run_pixel(self, profile: ccdcpp.SensorProfile, dates: NDArray[np.int64],
+                  cube: NDArray[np.float64], fmask: NDArray[np.uint8],
+                  keep: NDArray[np.intp] | None = None) -> PixelResult:
         if keep is not None:
             dates, cube, fmask = dates[keep], cube[..., keep], fmask[..., keep]
         return ccdcpp.detect(dates, np.ascontiguousarray(cube), fmask, encoding=profile)

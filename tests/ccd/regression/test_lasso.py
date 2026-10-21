@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
-from sklearn import linear_model
+from sklearn import linear_model  # pyright: ignore[reportMissingImports]  # scikit-learn, the reference
 
-from ccd.models.lasso import coefficient_matrix
-from ccd.math_utils import calc_rmse
+from ccd.models.lasso import coefficient_matrix  # pyright: ignore[reportMissingImports]  # pyccd, the reference
+from ccd.math_utils import calc_rmse  # pyright: ignore[reportMissingImports]  # pyccd, the reference
 
 # num params / coef: 4
 dates = np.array([

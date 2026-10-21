@@ -5,6 +5,8 @@ usage: python test_qa_tables.py <module_dir> <source_dir> [unittest args]
 ctest runs this as `python_qa_tables`. The comparisons against the millworks
 nlcd table and against pyccd itself are in test_qa_references.py.
 """
+from __future__ import annotations
+
 import glob
 import os
 import shutil
@@ -12,14 +14,21 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
 del sys.argv[1:3]
 sys.path.insert(0, MODULE_DIR)
 
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
-import ccdcpp  # noqa: E402
+if TYPE_CHECKING:
+    # MODULE_DIR's ccdcpp is the extension module itself, which ccdcpp/ccdcpp.pyi types.
+    from ccdcpp import ccdcpp
+else:
+    import ccdcpp
 
 START = 724276  # 1984-01-01
 
@@ -65,12 +74,12 @@ SCHEMES = {
 NARROW = {"hls_fmask", "sentinel2_scl"}
 
 
-def build(name, options=None):
+def build(name: str, options: ccdcpp.Input | None = None) -> ccdcpp.QaTable:
     builder = getattr(ccdcpp.qa_tables, name)
     return builder() if options is None else builder(options)
 
 
-def encode(name, codes):
+def encode(name: str, codes: NDArray[np.uint8]) -> NDArray[np.uint16]:
     """Raw values of product `name` for an array of class codes, cycling
     through each class's raw values by position. Code 8 is encoded as shadow;
     see DecodedEqualsCodes."""
@@ -85,7 +94,8 @@ def encode(name, codes):
     return raw.reshape(codes.shape)
 
 
-def synthetic(H=3, W=4, seed=7):
+def synthetic(H: int = 3, W: int = 4,
+              seed: int = 7) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8]]:
     """(dates, spectral (H, W, 7, T) DN, codes (H, W, T)).
 
     Pixel 0 is snow-dominated (PermanentSnow), pixel 1 cloud-dominated
@@ -120,16 +130,16 @@ def synthetic(H=3, W=4, seed=7):
     return dates, spectral, codes
 
 
-def options():
+def options() -> ccdcpp.Input:
     return ccdcpp.Input()
 
 
-def with_table(table):
+def with_table(table: ccdcpp.QaTable | None) -> ccdcpp.Input:
     """The default input decoding its raw QA through `table` (None: codes)."""
     return ccdcpp.Input(qa_table=table)
 
 
-def assert_same(test, a, b, where="out"):
+def assert_same(test: unittest.TestCase, a: Any, b: Any, where: str = "out") -> None:
     """Exact, structural equality of entry point outputs."""
     if isinstance(a, dict):
         test.assertEqual(set(a), set(b), where)
@@ -163,10 +173,11 @@ class Tables(unittest.TestCase):
     def test_submodule_imports(self):
         import ccdcpp.qa_tables as q
         self.assertIs(q, ccdcpp.qa_tables)
-        self.assertIn("Landsat", q.__doc__)
+        self.assertIn("Landsat", q.__doc__ or "")
 
     def test_docstrings(self):
-        def flat(text):
+        def flat(text: str | None) -> str:
+            assert text is not None
             return " ".join(text.split())
         q = ccdcpp.qa_tables
         fmask, scl, module = flat(q.hls_fmask.__doc__), flat(q.sentinel2_scl.__doc__), flat(q.__doc__)
@@ -230,8 +241,9 @@ class Tables(unittest.TestCase):
 #: bit offsets of its ccd/parameters.py: fill 0, clear 1, water 2, shadow 3,
 #: snow 4, cloud 5, cirrus 8 and 9, occlusion 10. pyccd raises where this
 #: returns None. test_qa_references.py runs pyccd itself when it is importable.
-def pyccd_qabitval(v):
-    bit = lambda o: (v >> o) & 1  # noqa: E731
+def pyccd_qabitval(v: int) -> int | None:
+    def bit(o: int) -> int:
+        return (v >> o) & 1
     if bit(0):
         return FILL
     if bit(5):
@@ -290,7 +302,7 @@ class DecodedEqualsCodes(unittest.TestCase):
         # Shadow and code 8 are read alike; everything else is a class.
         cls.classes = np.where(cls.codes == 8, SHADOW, cls.codes)
 
-    def raw_inputs(self, name):
+    def raw_inputs(self, name: str) -> Iterator[tuple[str, NDArray[np.uint8] | NDArray[np.uint16]]]:
         raw = encode(name, self.codes)
         np.testing.assert_array_equal(build(name).codes[raw], self.classes)
         yield "uint16", raw
@@ -361,7 +373,8 @@ class Validation(unittest.TestCase):
         self.codes = codes
         self.raw = encode("landsat_c2_qa_pixel", codes)
 
-    def entries(self, qas, table=None):
+    def entries(self, qas: NDArray[np.integer[Any]],
+                table: ccdcpp.QaTable | None = None) -> dict[str, Callable[[], object]]:
         d, s, h = self.dates, self.spectral, with_table(table)
         return {
             "detect": lambda: ccdcpp.detect(d, s[0, 0], qas[0, 0], encoding=h),
@@ -387,13 +400,13 @@ class Validation(unittest.TestCase):
         for value in wrong:
             with self.subTest(qa_table=type(value).__name__):
                 with self.assertRaises(TypeError):
-                    ccdcpp.Input(qa_table=value)
+                    ccdcpp.Input(qa_table=value)  # pyright: ignore[reportArgumentType]  # not a QaTable, refused
 
     def test_the_input_is_keyword_only(self):
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(self.dates, self.spectral, self.raw, options())
+            ccdcpp.detect_cube(self.dates, self.spectral, self.raw, options())  # pyright: ignore[reportCallIssue]  # positional, refused
         with self.assertRaises(TypeError):
-            ccdcpp.detect(self.dates, self.spectral[0, 0], self.raw[0, 0], options())
+            ccdcpp.detect(self.dates, self.spectral[0, 0], self.raw[0, 0], options())  # pyright: ignore[reportCallIssue]  # positional, refused
 
     def test_the_table_is_part_of_the_input(self):
         table = ccdcpp.qa_tables.landsat_c2_qa_pixel()

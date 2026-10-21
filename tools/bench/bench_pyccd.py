@@ -59,7 +59,7 @@ for alias, builtin in (("bool", bool), ("int", int), ("float", float)):
     setattr(np, alias, builtin)
 warnings.filterwarnings("ignore")
 if only != "ccdcpp":
-    import ccd  # noqa: E402
+    import ccd  # noqa: E402  # pyright: ignore[reportMissingImports]  # pyccd, optional
 
 PARAMS = {"QA_BITPACKED": False, "QA_FILL": 255, "QA_CLEAR": 0, "QA_WATER": 1,
           "QA_SHADOW": 2, "QA_SNOW": 3, "QA_CLOUD": 4}

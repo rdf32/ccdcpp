@@ -6,6 +6,8 @@ usage: python test_bindings.py <module_dir> <source_dir> [unittest args]
 <module_dir> holds the built extension (ccdcpp.*.so / .pyd); <source_dir> is
 the repository root. ctest runs this as `python_bindings`.
 """
+from __future__ import annotations
+
 import glob
 import os
 import shutil
@@ -14,19 +16,30 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from collections.abc import Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, TypedDict
 
 MODULE_DIR, SOURCE_DIR = sys.argv[1], sys.argv[2]
 del sys.argv[1:3]
 sys.path.insert(0, MODULE_DIR)
 
 import numpy as np  # noqa: E402
+from numpy.typing import DTypeLike, NDArray  # noqa: E402
 
-import ccdcpp  # noqa: E402
+if TYPE_CHECKING:
+    # MODULE_DIR's ccdcpp is the extension module itself, which ccdcpp/ccdcpp.pyi types.
+    from ccdcpp import ccdcpp
+else:
+    import ccdcpp
 
 START = 724276  # 1984-01-01
 
 
-def inputs(bands, timesteps, dates=None, qas=None):
+Series = tuple[NDArray[np.int64], NDArray[Any], NDArray[np.uint8]]
+
+
+def inputs(bands: int, timesteps: int, dates: int | None = None,
+           qas: int | None = None) -> Series:
     """(dates, spectral (B, T), qas) of in-range DN, clear QA."""
     d = START + 16 * np.arange(timesteps if dates is None else dates, dtype=np.int64)
     s = np.empty((bands, timesteps), dtype=np.float64)
@@ -37,7 +50,8 @@ def inputs(bands, timesteps, dates=None, qas=None):
     return d, s, q
 
 
-def cube(bands, timesteps, dtype=np.float64, dates=None, qas=None):
+def cube(bands: int, timesteps: int, dtype: DTypeLike = np.float64, dates: int | None = None,
+         qas: int | None = None) -> Series:
     """(dates, spectral (2, 3, B, T), qas (2, 3, T))."""
     d, s, _ = inputs(bands, timesteps, dates=dates)
     spectral = np.broadcast_to(s, (2, 3, bands, timesteps)).astype(dtype)
@@ -45,12 +59,16 @@ def cube(bands, timesteps, dtype=np.float64, dates=None, qas=None):
     return d, spectral, q
 
 
-def options():
+class Options(TypedDict):
+    encoding: ccdcpp.Input
+
+
+def options() -> Options:
     """The default input, as the entry points' keyword."""
     return {"encoding": ccdcpp.Input()}
 
 
-def preset(**changes):
+def preset(**changes: object) -> dict[str, Any]:
     """The built-in ccdc preset as the extension takes it (a dict {"shared",
     "stages", "preprocess"}), with shared__name=value, stage__param=value and
     preprocess__step__param=value (every step of that type) changes."""
@@ -74,14 +92,15 @@ def preset(**changes):
     return tree
 
 
-def resolved(config=None, encoding=None):
+def resolved(config: Mapping[str, Any] | None = None,
+             encoding: ccdcpp.Input | None = None) -> dict[str, Any]:
     """The configuration resolved against the encoding (default Input())."""
     return ccdcpp._config_resolve(preset() if config is None else config,
                                   ccdcpp.Input() if encoding is None else encoding)
 
 
 class BandCount(unittest.TestCase):
-    def assert_band_error(self, call, bands):
+    def assert_band_error(self, call: Callable[[], object], bands: int) -> None:
         with self.assertRaises(ValueError) as caught:
             call()
         message = str(caught.exception)
@@ -124,6 +143,7 @@ class BandCount(unittest.TestCase):
             with self.subTest(threads=threads):
                 out = ccdcpp.detect_cube(d, spectral, qas, **options(), threads=threads,
                                          masks=True)
+                assert "processing_mask" in out
                 mask = out["processing_mask"]
                 self.assertEqual((mask.dtype, mask.shape), (np.uint8, (H, W, T)))
                 # The run's own (H, W, T) array, not a view of another ndarray.
@@ -146,19 +166,19 @@ TEN_ROLES = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "
              "other", "swir1", "swir2"]
 
 
-def ten_band_layout():
+def ten_band_layout() -> ccdcpp.Input:
     """A 10-band layout without thermal, which passes validation: the
     configuration's detection bands are rows 1, 2, 6, 8, 9 of it, its Tmask
     bands 1 and 8."""
     return ccdcpp.Input(roles=TEN_ROLES)
 
 
-def ten_band_config(**changes):
+def ten_band_config(**changes: object) -> dict[str, Any]:
     """The configuration for ten_band_layout(): the preset."""
     return preset(**changes)
 
 
-def noisy(bands, timesteps, seed=1):
+def noisy(bands: int, timesteps: int, seed: int = 1) -> Series:
     """inputs() with noise, so every band gets a non-trivial fit."""
     d, s, q = inputs(bands, timesteps)
     s = s + np.random.default_rng(seed).normal(0.0, 20.0, s.shape).round()
@@ -211,11 +231,11 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(ccdcpp.Input(), ccdcpp.Input().replace())
         # Keywords only, each a field, each of its type.
         with self.assertRaises(TypeError):
-            ccdcpp.Input(1.0)
+            ccdcpp.Input(1.0)  # pyright: ignore[reportCallIssue]  # positional, refused
         with self.assertRaisesRegex(TypeError, "Input\\(\\) has no field 'alpha'; the fields are qa_fill"):
-            ccdcpp.Input(alpha=1.0)
+            ccdcpp.Input(alpha=1.0)  # pyright: ignore[reportCallIssue]  # no such field
         with self.assertRaisesRegex(TypeError, "Input.replace\\(\\) has no field 'saturation_bands'"):
-            h.replace(saturation_bands=[0])
+            h.replace(saturation_bands=[0])  # pyright: ignore[reportCallIssue]  # no such field
         with self.assertRaisesRegex(TypeError, "qa_clear is 300, which it cannot hold"):
             ccdcpp.Input(qa_clear=300)
         with self.assertRaisesRegex(TypeError, "roles is 'green'"):
@@ -279,10 +299,11 @@ class LayoutValidation(unittest.TestCase):
     """Each rule of ccd::validate() and of the configuration's schemas, as
     ValueError, before any pixel runs."""
 
-    def broken(self, **fields):
+    def broken(self, **fields: Any) -> ccdcpp.Input:
         return ten_band_layout().replace(**fields)
 
-    def assert_rejected(self, h, bands, expected, config=None):
+    def assert_rejected(self, h: ccdcpp.Input, bands: int, expected: str,
+                        config: Mapping[str, Any] | None = None) -> None:
         d, s, q = inputs(bands, 40)
         cube_s = np.broadcast_to(s, (2, 3, bands, 40)).copy()
         cube_q = np.zeros((2, 3, 40), dtype=np.uint8)
@@ -298,7 +319,7 @@ class LayoutValidation(unittest.TestCase):
                 self.assertIn(expected, str(caught.exception))
 
     def test_rules(self):
-        def roles(**at):
+        def roles(**at: str) -> list[str]:
             out = list(TEN_ROLES)
             for row, role in at.items():
                 out[int(row[1:])] = role
@@ -408,7 +429,7 @@ class CadenceParameters(unittest.TestCase):
         "thermal_scale", "thermal_offset", "thermal_at_100c",
     }
 
-    def value(self, tree, stage, name):
+    def value(self, tree: Mapping[str, Any], stage: str, name: str) -> Any:
         return tree["shared"][name] if stage == "shared" else tree["stages"][stage]["params"][name]
 
     def test_defaults(self):
@@ -461,7 +482,7 @@ class CadenceParameters(unittest.TestCase):
                     params["change_threshold"])
         self.assertGreater(ccdcpp.chi2_quantile(0.99, 8), ccdcpp.chi2_quantile(0.99, 5))
         self.assertGreater(ccdcpp.chi2_quantile(0.999, 5), ccdcpp.chi2_quantile(0.99, 5))
-        self.assertIn("same boost call", ccdcpp.chi2_quantile.__doc__)
+        self.assertIn("same boost call", ccdcpp.chi2_quantile.__doc__ or "")
 
     def test_defaults_spelled_out_equal_default(self):
         cfg = preset(**{f"{stage}__{name}": value
@@ -483,7 +504,7 @@ class CadenceParameters(unittest.TestCase):
         s[1:6, 250:258] += 600.0
         q = np.zeros(500, dtype=np.uint8)
 
-        def breaks(config):
+        def breaks(config: Mapping[str, Any] | None) -> float:
             out = ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
@@ -513,7 +534,7 @@ class BoundFlags(unittest.TestCase):
                         if s["step"] == step:
                             self.assertIs(s[name], value)
 
-    def mask(self, values, band, **flags):
+    def mask(self, values: Sequence[float], band: int, **flags: object) -> list[int]:
         """processing_mask of detect on a pixel whose `band` holds `values` at
         its first observations, with the steps' flags (step__name=value)."""
         d, s, q = inputs(7, 40)
@@ -568,10 +589,10 @@ class GreenFilterScope(unittest.TestCase):
         green = preset()["preprocess"]["insufficient_clear"]["steps"][3]
         self.assertEqual((green["step"], green["scope"]), ("green_median", "stat_window"))
         self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
-        self.assertIn("statistics_end", ccdcpp.GreenFilterScope.__doc__)
-        self.assertIn('"stat_window"', ccdcpp.GreenFilterScope.__doc__)
+        self.assertIn("statistics_end", ccdcpp.GreenFilterScope.__doc__ or "")
+        self.assertIn('"stat_window"', ccdcpp.GreenFilterScope.__doc__ or "")
 
-    def pixel(self, first):
+    def pixel(self, first: int) -> Series:
         """An insufficient-clear pixel: one clear observation in five, green
         spikes at t = 10 and t = 150 among the clear ones."""
         T = 200
@@ -584,7 +605,7 @@ class GreenFilterScope(unittest.TestCase):
         s[1, 10] = s[1, 150] = 3000.0
         return d, s, q
 
-    def detect_mask(self, pixel, scope):
+    def detect_mask(self, pixel: Series, scope: ccdcpp.GreenFilterScope) -> NDArray[np.uint8]:
         config = preset(shared__statistics_end=self.STATISTICS_END,
                         preprocess__green_median__scope=self.NAMES[scope.name])
         out = ccdcpp.detect(*pixel, encoding=ccdcpp.Input(), config=config)
@@ -626,7 +647,7 @@ class TimestepMismatch(unittest.TestCase):
 
 
 class DateOrder(unittest.TestCase):
-    def swapped(self, d, at):
+    def swapped(self, d: NDArray[np.int64], at: int) -> NDArray[np.int64]:
         d = d.copy()
         d[at], d[at + 1] = d[at + 1], d[at]
         return d
@@ -667,7 +688,7 @@ class DateOrder(unittest.TestCase):
 
 
 class Version(unittest.TestCase):
-    def pyproject_version(self):
+    def pyproject_version(self) -> str:
         with open(os.path.join(SOURCE_DIR, "pyproject.toml"), "rb") as f:
             return tomllib.load(f)["project"]["version"]
 

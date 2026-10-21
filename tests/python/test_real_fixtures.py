@@ -17,6 +17,8 @@ Pixel `481_393` is named 1-based (column, row), as the production CCD table
 names it (px=481, py=393): 0-based chunk row 392, column 480. Its tests say
 so in their names.
 """
+from __future__ import annotations
+
 import csv
 import dataclasses
 import datetime as dt
@@ -24,14 +26,18 @@ import json
 import os
 import sys
 import unittest
+from collections.abc import Callable
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import test_profiles as tp  # noqa: E402  (reads and removes argv[1:3])
 
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 from ccdcpp import presets  # noqa: E402
+from ccdcpp.results import PixelResult  # noqa: E402
 
 WRITE = "--write-expected" in sys.argv
 if WRITE:
@@ -72,7 +78,9 @@ S2_OFFSET = -1000
 RTOL, ATOL = 1e-7, 1e-12
 
 
-def read_product(product, pixel):
+def read_product(product: str, pixel: str) -> tuple[
+        NDArray[np.int64], NDArray[np.int64], NDArray[np.uint8], NDArray[np.int64] | None,
+        tuple[str, ...]]:
     """(dates, raw (B, T) int64, qa (T,) uint8, offset (T,) int64 or None,
     band IDs) of one fixture CSV."""
     path = os.path.join(FIXTURES, f"{product}_{pixel}_{PIXELS[pixel][0]}.csv")
@@ -90,7 +98,8 @@ def read_product(product, pixel):
     return data[:, 0], data[:, 1:-1].T, data[:, -1].astype(np.uint8), offset, tuple(header[1:-1 if offset is None else -2])
 
 
-def preset_input(preset, pixel, apply_offset=True):
+def preset_input(preset: str, pixel: str, apply_offset: bool = True) -> tuple[
+        NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8], tuple[str, ...]]:
     """(dates, spectral (B, T) float64, raw QA, band names in row order): the
     fixture pixel as `preset` takes it. HLS: every int16 layer times 0.0001.
     Sentinel-2: (DN + offset_to_apply) * 0.0001, per scene. hls(): L30 and S30
@@ -100,6 +109,7 @@ def preset_input(preset, pixel, apply_offset=True):
         return dates, raw * 1e-4, qa, names
     if preset == "sentinel2_l2a":
         dates, raw, qa, offset, names = read_product("s2_l2a", pixel)
+        assert offset is not None   # Sentinel-2 holds one per scene
         dn = raw + offset[None, :] if apply_offset else raw
         return dates, dn * 1e-4, qa, names
     assert preset == "hls", preset
@@ -115,13 +125,13 @@ def preset_input(preset, pixel, apply_offset=True):
     return dates[order], spectral * 1e-4, qa, presets.hls().band_names
 
 
-def run(preset, pixel, **kw):
-    dates, spectral, qa, names = preset_input(preset, pixel, **kw)
+def run(preset: str, pixel: str, apply_offset: bool = True) -> PixelResult:
+    dates, spectral, qa, names = preset_input(preset, pixel, apply_offset)
     return ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
                          encoding=getattr(presets, preset)(), band_names=names)
 
 
-def as_stored(out):
+def as_stored(out: PixelResult) -> dict[str, Any]:
     """A detect output as expected_<preset>.json holds it."""
     return {
         "processing_mask": "".join(str(int(x)) for x in out["processing_mask"]),
@@ -135,27 +145,27 @@ def as_stored(out):
     }
 
 
-def expected_path(preset):
+def expected_path(preset: str) -> str:
     return os.path.join(FIXTURES, f"expected_{preset}.json")
 
 
-def load_expected(preset):
+def load_expected(preset: str) -> dict[str, Any]:
     with open(expected_path(preset)) as f:
         return json.load(f)
 
 
-def breaks(out):
+def breaks(out: PixelResult) -> list[str]:
     """Break dates (ISO) of the segments that end in a change."""
     return [dt.date.fromordinal(m["break_day"]).isoformat()
             for m in out["models"] if m["change_probability"] >= 1.0]
 
 
-def pixels_of(preset):
+def pixels_of(preset: str) -> list[str]:
     """The fixture pixels a preset has input for."""
     return [p for p in PIXELS if preset != "sentinel2_l2a" or p not in HLS_ONLY]
 
 
-def write_expected():
+def write_expected() -> None:
     for preset in PRODUCTS:
         stored = {pixel: as_stored(run(preset, pixel)) for pixel in pixels_of(preset)}
         # One pixel per line: small, and a change shows which pixel moved.
@@ -169,7 +179,7 @@ def write_expected():
 class Pinned(unittest.TestCase):
     """Each preset on each pixel gives the stored output."""
 
-    def check(self, preset, pixel):
+    def check(self, preset: str, pixel: str) -> None:
         got = as_stored(run(preset, pixel))
         want = load_expected(preset)[pixel]
         self.assertEqual(got["processing_mask"], want["processing_mask"])
@@ -186,8 +196,8 @@ class Pinned(unittest.TestCase):
                                                    err_msg=f"band {b} {key}")
 
 
-def _pinned_test(preset, pixel):
-    def test(self):
+def _pinned_test(preset: str, pixel: str) -> Callable[[Pinned], None]:
+    def test(self: Pinned) -> None:
         self.check(preset, pixel)
     test.__doc__ = f"{preset} on pixel {pixel}, against expected_{preset}.json."
     return test
@@ -202,7 +212,7 @@ for _preset in PRODUCTS:
 class Fixtures(unittest.TestCase):
     """The fixture files agree with each other and with the products."""
 
-    def scenes(self, product):
+    def scenes(self, product: str) -> list[dict[str, str]]:
         with open(os.path.join(FIXTURES, f"scenes_{product}.csv"), newline="") as f:
             return list(csv.DictReader(f))
 

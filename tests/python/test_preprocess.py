@@ -6,19 +6,25 @@ usage: python test_preprocess.py <module_dir> <source_dir> [unittest args]
 The package, the corpus cube and the comparison helpers are test_profiles'
 (imported from beside this file). ctest runs this as `python_preprocess`.
 """
+from __future__ import annotations
+
 import os
 import sys
 import tomllib
 import unittest
+from collections.abc import Mapping
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import test_profiles as tp  # noqa: E402  (reads and removes argv[1:3])
 
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 from ccdcpp import presets  # noqa: E402
+from ccdcpp.results import PixelResult  # noqa: E402
 
 from ccdcpp import (  # noqa: E402
     AddQa,
@@ -37,11 +43,11 @@ assert_same, every_entry, without = tp.assert_same, tp.every_entry, tp.without
 CCDC = ccdcpp.config("ccdc")
 
 
-def strip(outs):
+def strip(outs: Mapping[str, Any]) -> dict[str, Any]:
     return tp.strip_band_names(outs)
 
 
-def keeps_snow(base=CCDC):
+def keeps_snow(base: ccdcpp.Config = CCDC) -> ccdcpp.Config:
     """`base` with the Standard procedure keeping snow observations, by name."""
     return base.replace(preprocess__standard=ProcedureChain(
         steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), Dedupe()),
@@ -49,7 +55,7 @@ def keeps_snow(base=CCDC):
     ))
 
 
-def written_default():
+def written_default() -> Preprocess:
     """pyccd's chain, written out step by step with every field left to its default."""
     common = (KeepQa(), BandRange(), Dedupe())
     return Preprocess(
@@ -60,7 +66,7 @@ def written_default():
     )
 
 
-def written_default_explicit():
+def written_default_explicit() -> Preprocess:
     """pyccd's chain with every value spelled out, in physical terms."""
     sat = ("blue", "green", "red", "nir", "swir1", "swir2")
     keep = KeepQa(("clear", "water"))
@@ -78,7 +84,7 @@ def written_default_explicit():
     )
 
 
-def snow_kept(out, codes):
+def snow_kept(out: PixelResult, codes: NDArray[np.uint8]) -> int:
     return int(np.sum((out["processing_mask"] == 1) & (codes == SNOW)))
 
 
@@ -94,6 +100,7 @@ class Plans(unittest.TestCase):
         self.assertEqual([s.kind for s in plan.insufficient_clear.chain],
                          common + [K.GreenMedian, K.Dedupe])
         t = plan.standard.transform
+        assert t is not None
         self.assertEqual((t.band, t.scale, t.offset), (6, 10.0, -27315.0))
         self.assertIsNone(plan.snow.transform)
         self.assertIsNone(plan.insufficient_clear.transform)
@@ -347,17 +354,17 @@ class Replace(unittest.TestCase):
 class Validation(unittest.TestCase):
     def test_refused_when_built(self):
         # Building a Config compiles it (Registry::check()) and refuses it there.
-        def without_snow():
+        def without_snow() -> ccdcpp.Config:
             tree = CCDC.to_dict()
             del tree["preprocess"]["snow"]
             return ccdcpp.Config(tree)
 
-        def with_codes():
+        def with_codes() -> ccdcpp.Config:
             tree = CCDC.to_dict()
             tree["preprocess"]["snow"]["steps"][0]["codes"] = ["clear", "cirrus"]
             return ccdcpp.Config(tree)
 
-        def with_max_date():
+        def with_max_date() -> ccdcpp.Config:
             tree = CCDC.to_dict()
             tree["preprocess"]["insufficient_clear"]["steps"][3]["max_date"] = 1
             return ccdcpp.Config(tree)
@@ -394,13 +401,13 @@ class Validation(unittest.TestCase):
         with self.assertRaises(ValueError):
             AddQa((300,))
         with self.assertRaises(ValueError):
-            ThermalRange(inclusive=(True,))
+            ThermalRange(inclusive=(True,))  # pyright: ignore[reportArgumentType]  # one flag, refused
         with self.assertRaises(TypeError):
             ProcedureChain(steps=(object(),))
         with self.assertRaises(TypeError):
-            ProcedureChain(thermal_transform=1)
+            ProcedureChain(thermal_transform=1)  # pyright: ignore[reportArgumentType]  # not a bool, refused
         with self.assertRaises(TypeError):
-            Preprocess(standard=(KeepQa(),))
+            Preprocess(standard=(KeepQa(),))  # pyright: ignore[reportArgumentType]  # not a chain, refused
         self.assertEqual(KeepQa().to_dict(), {"step": "keep_qa"})
         self.assertEqual(ThermalRange(min=-80.0, inclusive=(True, False)).to_dict(),
                          {"step": "thermal_range", "min": -80.0, "min_inclusive": True,

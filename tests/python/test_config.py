@@ -7,6 +7,7 @@ The package is assembled as the wheel lays it out (python/ccdcpp/*.py and
 python/ccdcpp/configs next to the extension) in <module_dir>/test_config_package.
 ctest runs this as `python_config`.
 """
+from __future__ import annotations
 
 import glob
 import os
@@ -28,13 +29,15 @@ shutil.copy(_extension, _PACKAGE)
 sys.path.insert(0, _ROOT)
 
 import numpy as np  # noqa: E402
+from numpy.typing import NDArray  # noqa: E402
 
 import ccdcpp  # noqa: E402
 
 assert ccdcpp.__file__ == os.path.join(_PACKAGE, "__init__.py"), ccdcpp.__file__
 
 
-def pixel(seed=3, T=420):
+def pixel(seed: int = 3,
+          T: int = 420) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.uint8]]:
     """A pixel of T observations 16 days apart: an annual cycle in every band
     with a level change two thirds of the way, and noise."""
     rng = np.random.default_rng(seed)
@@ -217,7 +220,7 @@ class Replace(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not fit a 64-bit integer"):
             ccdcpp.config().replace(refit__min_obs=2**70).check()
         with self.assertRaises(TypeError):
-            ccdcpp.ccdcpp._config_digest(None)
+            ccdcpp.ccdcpp._config_digest(None)  # pyright: ignore[reportArgumentType]  # None, refused
 
     def test_immutable_printable_picklable(self):
         cfg = ccdcpp.config()
@@ -265,7 +268,8 @@ class Runs(unittest.TestCase):
     def test_config_is_a_config_or_a_preset_name(self):
         d, s, q = pixel()
         with self.assertRaisesRegex(TypeError, "a ccdcpp.Config or a preset's name"):
-            ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(), config=ccdcpp.config().to_dict())
+            ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(),
+                          config=ccdcpp.config().to_dict())  # pyright: ignore[reportArgumentType]  # a dict, refused
         path = os.path.join(_PACKAGE, "configs", "ccdc.toml")
         with self.assertRaisesRegex(TypeError, "not a path; pass ccdcpp.config"):
             ccdcpp.detect(d, s, q, encoding=ccdcpp.Input(), config=path)
@@ -308,6 +312,7 @@ class Runs(unittest.TestCase):
         plain = ccdcpp.detect(d, s, q, encoding=h)
         traced = ccdcpp.detect(d, s, q, encoding=h, trace=True)
         self.assertEqual(plain["models"], traced["models"])
+        assert "trace" in traced
         rows = traced["trace"]
         if not rows:
             self.skipTest("built with CCD_OBSERVE=OFF")
@@ -320,6 +325,7 @@ class Runs(unittest.TestCase):
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
         out = ccdcpp.detect_cube(d, cube, qc, encoding=h, threads=2, trace_pixels=[(1, 0)])
+        assert "traces" in out
         self.assertEqual(list(out["traces"]), [(1, 0)])
         self.assertEqual(out["traces"][(1, 0)], rows)
 
