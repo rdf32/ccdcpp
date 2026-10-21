@@ -294,8 +294,8 @@ struct Chain
 //
 //     value <- value * scale + offset
 //
-// Run::pixel applies it to its private scalar_t copy; the caller's buffer is
-// never written.
+// Run::pixel applies it (apply()) to its private scalar_t copy; the caller's
+// buffer is never written.
 //
 //------------------------------------------------------------------------------
 
@@ -305,6 +305,26 @@ struct Affine
     scalar_t scale = 1.0;
     scalar_t offset = 0.0;
 };
+
+// One value through `affine`: the one expression the transform pass and
+// stored_range() evaluate.
+inline scalar_t apply(const Affine& affine, scalar_t value)
+{
+    return value * affine.scale + affine.offset;
+}
+
+// The range of stored values whose transform lies in `range`: for every
+// double v, in_range(v, stored_range(range, affine)) is
+// in_range(apply(affine, v), range), NaN included (a NaN stays NaN through
+// the transform). For a positive finite scale and a finite offset apply() is
+// non-decreasing in v, so each end is the first or last double on its side
+// of the bound, found by bisection over the doubles in order; another scale
+// or offset is refused (std::invalid_argument). A thermal_range step of a
+// procedure that does not transform its thermal row tests the stored row
+// with it, so its bounds are degrees Celsius on every input (docs/units.md).
+// On Collection-1 DN (Kelvin x 10, the default transform) -93.2 and 70.7
+// degrees are 1799.5 and 3438.5 exactly: 179.95 and 343.85 kelvin.
+Range stored_range(const Range& range, const Affine& affine);
 
 struct ProcedurePlan
 {
@@ -334,8 +354,10 @@ struct PreprocessPlan
 //
 // A procedure whose configuration sets thermal_transform reads its thermal
 // row through it: "ccdc" sets it for Standard only, matching pyccd, where
-// kelvin_to_celsius() is called inside standard_procedure(), and tests the
-// thermal range there only (docs/units.md).
+// kelvin_to_celsius() is called inside standard_procedure(). The thermal
+// range of the procedures that do not read it transformed tests the stored
+// row against the bounds taken back through it (stored_range()), so every
+// procedure's range is in degrees Celsius (docs/units.md).
 //
 //------------------------------------------------------------------------------
 std::optional<Affine> thermal_transform(const Input& input);

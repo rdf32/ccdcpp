@@ -75,13 +75,20 @@ const std::vector<Field<ThermalRange::Params>>& ThermalRange::schema()
     return s;
 }
 
-std::optional<Step> ThermalRange::make(const Params& params, const Input& input, const config::StepContext&)
+std::optional<Step> ThermalRange::make(const Params& params, const Input& input,
+                                       const config::StepContext& context)
 {
     const index_t thermal = input.index("thermal");
     if (thermal == NO_BAND)
         return std::nullopt;
-    return Step::thermal_range(
-        thermal, range_of(params.min, params.min_inclusive, params.max, params.max_inclusive));
+    const Range range =
+        range_of(params.min, params.min_inclusive, params.max, params.max_inclusive);
+    // A procedure that does not transform its thermal row tests the stored row
+    // against the bounds taken back through the transform.
+    const std::optional<Affine> transform = thermal_transform(input);
+    if (context.thermal_transform || !transform)
+        return Step::thermal_range(thermal, range);
+    return Step::thermal_range(thermal, stored_range(range, *transform));
 }
 
 const std::vector<Field<BandRange::Params>>& BandRange::schema()

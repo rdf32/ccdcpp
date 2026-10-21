@@ -49,12 +49,13 @@ void register_core_strategies(config::Registry& registry)
     // statistics cutoff), each strategy's, and pyccd's preprocessing, each
     // step at its defaults (clear and water kept, the thermal range -93.2 to
     // 70.7 degrees Celsius, reflectance in (0, 1), the green median 0.04
-    // above). Standard keeps clear and water, tests the thermal range on the
-    // thermal row through the input's transform and the reflectance range,
-    // and dedupes. PermanentSnow and InsufficientClear read no transformed
-    // thermal row, so they test no thermal range: each keeps clear and water,
-    // tests the reflectance range and dedupes, then PermanentSnow adds snow
-    // back and InsufficientClear runs the green median, each deduping again.
+    // above). Every procedure's chain begins with the same four steps,
+    // keep_qa, thermal_range, band_range and dedupe; Standard then ends,
+    // reading thermal through the input's transform; PermanentSnow adds snow
+    // back and dedupes; InsufficientClear runs the green median and dedupes.
+    // The thermal range is in degrees Celsius in all three: Standard tests
+    // the transformed row, the other two the stored row against the bounds
+    // taken back through the transform.
     config::Config ccdc;
     ccdc.shared = config::shared_defaults();
     for (const auto& [stage, strategy] : std::initializer_list<std::pair<const char*, const char*>>{
@@ -66,18 +67,19 @@ void register_core_strategies(config::Registry& registry)
              {OutlierRule::stage, "floored"}, {SegmentFit::stage, "model-fit"},
              {EdgeFit::stage, "lasso"}})
         ccdc.stages[stage] = {strategy, registry.defaults(stage, strategy)};
-    const auto chain = [&](bool thermal_transform, std::initializer_list<const char*> steps)
+    const auto chain = [&](bool thermal_transform, std::initializer_list<const char*> after)
     {
         config::ProcedureConfig procedure;
         procedure.thermal_transform = thermal_transform;
-        for (const char* step : steps)
+        for (const char* step : {"keep_qa", "thermal_range", "band_range", "dedupe"})
+            procedure.steps.push_back({step, registry.step_defaults(step)});
+        for (const char* step : after)
             procedure.steps.push_back({step, registry.step_defaults(step)});
         return procedure;
     };
-    ccdc.preprocess["standard"] = chain(true, {"keep_qa", "thermal_range", "band_range", "dedupe"});
-    ccdc.preprocess["snow"] = chain(false, {"keep_qa", "band_range", "dedupe", "add_qa", "dedupe"});
-    ccdc.preprocess["insufficient_clear"] =
-        chain(false, {"keep_qa", "band_range", "dedupe", "green_median", "dedupe"});
+    ccdc.preprocess["standard"] = chain(true, {});
+    ccdc.preprocess["snow"] = chain(false, {"add_qa", "dedupe"});
+    ccdc.preprocess["insufficient_clear"] = chain(false, {"green_median", "dedupe"});
     registry.add_preset("ccdc", std::move(ccdc));
 }
 

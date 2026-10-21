@@ -72,10 +72,11 @@ struct AddQa
 };
 
 // thermal_range: keep only the observations whose thermal row lies within
-// (min, max), in degrees Celsius resolved to the row's unit after the
-// input's transform; a procedure without the transform tests the row as the
-// input holds it (see docs/units.md). An input without a
-// "thermal" row skips it.
+// (min, max), in degrees Celsius, on every input: resolved to the row's unit
+// after the input's transform, and in a procedure that does not transform
+// its thermal row taken back through the transform (stored_range()), so the
+// stored row is tested as its transform would be (docs/units.md). An input
+// without a "thermal" row skips it.
 struct ThermalRange
 {
     struct Params

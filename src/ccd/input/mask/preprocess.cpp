@@ -1,6 +1,9 @@
 #include "ccd/input/mask/preprocess.hpp"
 
 #include <cassert>
+#include <cmath>
+#include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -37,6 +40,98 @@ void Chain::push_back(const Step& step)
         );
     }
     steps[count++] = step;
+}
+
+namespace
+{
+
+// The doubles in order as integers, NaN aside: key(a) < key(b) exactly when
+// a < b, -0 and +0 both 0, -inf and +inf the ends.
+std::int64_t key_of(scalar_t value)
+{
+    std::uint64_t bits;
+    std::memcpy(&bits, &value, sizeof bits);
+    const auto magnitude = static_cast<std::int64_t>(bits & ~(std::uint64_t(1) << 63));
+    return (bits >> 63) ? -magnitude : magnitude;
+}
+
+scalar_t value_of(std::int64_t key)
+{
+    std::uint64_t bits = key < 0 ? static_cast<std::uint64_t>(-key) | (std::uint64_t(1) << 63)
+                                 : static_cast<std::uint64_t>(key);
+    scalar_t value;
+    std::memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
+// The first double (-inf to +inf) at which `holds`, false and then true
+// along the doubles in order, is true; none if it is nowhere true.
+template<typename Holds>
+std::optional<std::int64_t> first_key(const Holds& holds)
+{
+    std::int64_t lo = key_of(-std::numeric_limits<scalar_t>::infinity());
+    std::int64_t hi = key_of(std::numeric_limits<scalar_t>::infinity());
+    if (!holds(value_of(hi)))
+        return std::nullopt;
+    while (lo < hi)   // holds(hi); not holds below lo
+    {
+        const std::int64_t mid = lo + static_cast<std::int64_t>(
+            (static_cast<std::uint64_t>(hi) - static_cast<std::uint64_t>(lo)) / 2);
+        if (holds(value_of(mid)))
+            hi = mid;
+        else
+            lo = mid + 1;
+    }
+    return lo;
+}
+
+} // namespace
+
+Range stored_range(const Range& range, const Affine& affine)
+{
+    if (!(affine.scale > 0) || !std::isfinite(affine.scale) || !std::isfinite(affine.offset))
+        throw std::invalid_argument(
+            "a thermal range is taken back through a thermal transform of a positive "
+            "finite thermal_scale and a finite thermal_offset only");
+    const auto f = [&](scalar_t v) { return apply(affine, v); };
+    const scalar_t lo = range.lo.value;
+    const scalar_t hi = range.hi.value;
+
+    // Each end as in_range() tests it: an exclusive low end keeps f(v) > lo,
+    // an inclusive one !(f(v) < lo); an exclusive high end keeps f(v) < hi,
+    // an inclusive one !(f(v) > hi). Each kept side begins (or the other side
+    // ends) at the first double where the comparison turns.
+    const std::int64_t lowest = key_of(-std::numeric_limits<scalar_t>::infinity());
+    Range out;
+    if (!range.lo.inclusive)
+    {
+        // f(v) > lo from the first such v on: v > the double before it.
+        const auto first = first_key([&](scalar_t v) { return f(v) > lo; });
+        out.lo = !first ? Bound{std::numeric_limits<scalar_t>::infinity(), false}
+                 : *first == lowest ? Bound{value_of(lowest), true}
+                 : Bound{value_of(*first - 1), false};
+    }
+    else
+    {
+        // !(f(v) < lo) from the first such v on (+inf always is one).
+        const auto first = first_key([&](scalar_t v) { return !(f(v) < lo); });
+        out.lo = Bound{value_of(*first), true};
+    }
+    if (!range.hi.inclusive)
+    {
+        // f(v) < hi below the first v where it is not (+inf always is one).
+        const auto first = first_key([&](scalar_t v) { return !(f(v) < hi); });
+        out.hi = Bound{value_of(*first), false};
+    }
+    else
+    {
+        // !(f(v) > hi) up to the double before the first v where f(v) > hi.
+        const auto first = first_key([&](scalar_t v) { return f(v) > hi; });
+        out.hi = !first ? Bound{std::numeric_limits<scalar_t>::infinity(), true}
+                 : *first == lowest ? Bound{value_of(lowest), false}
+                 : Bound{value_of(*first - 1), true};
+    }
+    return out;
 }
 
 std::optional<Affine> thermal_transform(const Input& input)

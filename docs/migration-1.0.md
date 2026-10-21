@@ -72,18 +72,20 @@ print([m["break_day"] for m in whole["models"]])
 [738095, 738751]
 ```
 
-**(b) pyccd's thermal check on untransformed data is gone.** pyccd's PermanentSnow and
-InsufficientClear filters, and 0.10.0's default plan with them, test the thermal band against
-the Celsius bounds without converting it. On Collection-1 DN that compares Kelvin x 10 (about
-2200 to 3300) with -9320 to 7070 and drops nothing; on any other encoding it is a test of the
-wrong unit, dropping clear observations of snow and insufficient-clear pixels that the DN run
-keeps. `ccdc` tests the thermal range in the Standard procedure only, on the transformed band.
-On Collection-1 DN nothing changes. On reflectance inputs (`landsat_c1_physical`, `landsat_c2`,
-HLS, Sentinel-2) snow and insufficient-clear pixels can change, and the physical-unit run's
-segmentation now equals the DN run's: on the synthetic physical-unit corpus 210 of 2,900
-pixels change, and its segment count becomes the DN run's (3,168 to 3,210); on the Atlanta cell
-(Collection 2) no pixel changes. A configuration that wants the old test adds a `thermal_range`
-step to the `snow` and `insufficient_clear` chains ([config.md](config.md#preprocessing)).
+**(b) The snow and insufficient-clear thermal check compares in degrees Celsius on every
+input.** pyccd's PermanentSnow and InsufficientClear filters, and 0.10.0's default plan with
+them, test the thermal band against the Celsius bounds without converting it. On Collection-1
+DN that compares Kelvin x 10 with -9320 to 7070: it drops saturated (20000) and NaN values and
+keeps every temperature below 707 K; on any other input it is a test of the wrong unit. `ccdc`
+tests those two chains' stored thermal band against the bounds taken back through the input's
+thermal transform, 1799.5 to 3438.5 on Collection-1 DN (179.95 to 343.85 K), so every
+procedure keeps -93.2 to 70.7 °C, the values whose transform Standard's range keeps. On
+Collection-1 DN it drops, besides 20000 and NaN as before, the implausible temperatures 0.10.0
+kept in those fits: none on the 1,500 reference Collection-1 pixels; 218 of the synthetic
+corpus's 2,900 pixels change (snow and insufficient-clear pixels, and 8 without a segment),
+whose thermal values range far beyond the bounds. Physical-unit outputs are 0.10.0's, and the
+DN run segments as the physical-unit run does. On the Atlanta cell (Collection 2) no pixel
+changes.
 
 ## Resume records
 
@@ -364,10 +366,11 @@ print(plan.standard.chain[2], plan.snow.chain[1])
 ```
 
 ```text
-<Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000> <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000>
+<Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000> <Step ThermalRange band 6, 1799.5 < x < 3438.5>
 ```
 
-The snow chain no longer tests the thermal range ([change (b)](#what-changes-in-the-outputs)).
+The snow chain tests the stored thermal band against the same degrees Celsius as Standard's
+transformed one ([change (b)](#what-changes-in-the-outputs)).
 
 ### Other names
 

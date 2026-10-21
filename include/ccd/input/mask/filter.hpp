@@ -106,10 +106,9 @@ void remove_duplicate_dates(
 //
 // An observation is kept when its thermal value is in_range() of `range`
 // (the thermal_range step's bounds, exclusive on both ends by default). The
-// bounds are in the unit of the thermal row after the input's transform; the
-// row is tested as `spectral` holds it AT THE POINT THIS RUNS, so a chain
-// tests it after its procedure's transform ("ccdc" tests it in Standard
-// only; docs/units.md).
+// row is tested as `spectral` holds it AT THE POINT THIS RUNS: transformed in
+// a procedure that transforms it, as stored in one that does not, the
+// step's bounds made for each (ThermalRange::make(); docs/units.md).
 //
 //------------------------------------------------------------------------------
 

@@ -6,6 +6,8 @@
 //              themselves and at NaN, with each end inclusive or exclusive.
 //              The saturation bound is tested in DN (0, 10000) and in
 //              reflectance (0.0, 1.0): the flags mean the same in both units.
+//              stored_range() keeps a stored value exactly when the range
+//              keeps its transform, every flag, NaN and the infinities.
 //   GreenScope.*
 //              the InsufficientClear chain's green median step under each
 //              GreenFilterScope, on a series with green spikes before and
@@ -16,7 +18,9 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -24,6 +28,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/input/mask/filter.hpp"
+#include "ccd/input/mask/preprocess.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/pmask.hpp"
 
@@ -236,6 +241,77 @@ TEST(Bounds, ThermalFilterAtTheBounds)
     }
 }
 
+// stored_range(): a stored value is in the stored range exactly when its
+// transform is in the range, for every pair of flags, at and around each
+// end, on whole numbers across the uint16 range, at NaN, the infinities and
+// both zeros, for bounds that are NaN or infinite too. Collection-1 DN's
+// transform takes -93.2 and 70.7 degrees (-9320, 7070) to 1799.5 and 3438.5;
+// another scale or offset is refused.
+TEST(Bounds, TheStoredThermalRangeIsTheTransformedOne)
+{
+    namespace pp = ccd::preprocess;
+    constexpr ccd::scalar_t inf = std::numeric_limits<ccd::scalar_t>::infinity();
+
+    const pp::Range dn = pp::stored_range(range(-9320.0, false, 7070.0, false),
+                                          pp::Affine{6, 10.0, -27315.0});
+    EXPECT_EQ(dn.lo.value, 1799.5);
+    EXPECT_EQ(dn.hi.value, 3438.5);
+    EXPECT_FALSE(dn.lo.inclusive);
+    EXPECT_FALSE(dn.hi.inclusive);
+
+    const std::vector<pp::Affine> transforms = {
+        {6, 10.0, -27315.0},                 // Kelvin x 10 to Celsius x 100
+        {6, 0.341802, 14900.0 - 27315.0},    // Collection-2 ST DN to Celsius x 100
+        {6, 3.7, 1e-3}, {6, 1e-6, 5.0}, {6, 1e9, -1e12}, {6, 1.0, 0.0}};
+    const std::vector<std::pair<ccd::scalar_t, ccd::scalar_t>> bounds = {
+        {-9320.0, 7070.0}, {-0.932, 0.707}, {0.1, 0.1}, {7070.0, -9320.0},
+        {-inf, inf}, {NaN, 7070.0}, {-9320.0, NaN}, {inf, -inf}};
+
+    std::vector<ccd::scalar_t> values = {NaN, inf, -inf, 0.0, -0.0,
+                                         std::numeric_limits<ccd::scalar_t>::max(),
+                                         std::numeric_limits<ccd::scalar_t>::denorm_min()};
+    for (int v = -1000; v <= 66000; v += 7)
+        values.push_back(v);
+    for (const pp::Affine& a : transforms)
+        for (const auto& [lo, hi] : bounds)
+            for (const ccd::scalar_t b : {lo, hi})
+            {
+                // Around the stored image of each bound: v with apply(a, v) near b.
+                ccd::scalar_t v = (b - a.offset) / a.scale;
+                if (!std::isfinite(v))
+                    continue;
+                for (int i = 0; i < 40; ++i)
+                    v = std::nextafter(v, -inf);
+                for (int i = 0; i < 80; ++i, v = std::nextafter(v, inf))
+                    values.push_back(v);
+            }
+
+    std::size_t checked = 0;
+    for (const pp::Affine& a : transforms)
+        for (const auto& [lo, hi] : bounds)
+            for (const auto& mode : MODES)
+            {
+                const ccd::filter::Range r = range(lo, mode.lo_inclusive, hi, mode.hi_inclusive);
+                const ccd::filter::Range stored = pp::stored_range(r, a);
+                for (const ccd::scalar_t v : values)
+                {
+                    ASSERT_EQ(ccd::filter::in_range(v, stored),
+                              ccd::filter::in_range(pp::apply(a, v), r))
+                        << "v " << v << " scale " << a.scale << " offset " << a.offset
+                        << " bounds " << lo << " " << hi << " flags " << mode.lo_inclusive
+                        << mode.hi_inclusive;
+                    ++checked;
+                }
+            }
+    EXPECT_GT(checked, 1000000u);
+
+    for (const pp::Affine& bad : {pp::Affine{6, 0.0, 0.0}, pp::Affine{6, -10.0, 0.0},
+                                  pp::Affine{6, NaN, 0.0}, pp::Affine{6, inf, 0.0},
+                                  pp::Affine{6, 10.0, inf}, pp::Affine{6, 10.0, NaN}})
+        EXPECT_THROW(pp::stored_range(range(-9320.0, false, 7070.0, false), bad),
+                     std::invalid_argument);
+}
+
 // The Standard chain reads the flags from the configuration's steps.
 TEST(Bounds, TheStandardChainReadsTheFlags)
 {
@@ -364,7 +440,7 @@ struct Series
 
 TEST(GreenScope, DefaultIsStatWindow)
 {
-    EXPECT_EQ(golden::plan_of(golden::ccdc()).insufficient_clear.chain[3].scope,
+    EXPECT_EQ(golden::plan_of(golden::ccdc()).insufficient_clear.chain[4].scope,
               ccd::GreenFilterScope::StatWindow);
 }
 

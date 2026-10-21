@@ -80,6 +80,22 @@ void validate(const Input& input, index_t bands)
         );
     }
 
+    if (!(input.thermal_scale > 0) || !std::isfinite(input.thermal_scale))
+    {
+        throw std::invalid_argument(
+            "thermal_scale is " + config::number(input.thermal_scale) +
+            "; it must be a positive number"
+        );
+    }
+
+    if (!std::isfinite(input.thermal_offset))
+    {
+        throw std::invalid_argument(
+            "thermal_offset is " + config::number(input.thermal_offset) +
+            "; it must be a finite number"
+        );
+    }
+
     if (!(input.thermal_at_100c > 0) || !std::isfinite(input.thermal_at_100c))
     {
         throw std::invalid_argument(

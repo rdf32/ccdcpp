@@ -586,7 +586,7 @@ class GreenFilterScope(unittest.TestCase):
     NAMES = {"All": "all", "StatWindow": "stat_window", "Off": "off"}
 
     def test_default_and_docstring(self):
-        green = preset()["preprocess"]["insufficient_clear"]["steps"][3]
+        green = preset()["preprocess"]["insufficient_clear"]["steps"][4]
         self.assertEqual((green["step"], green["scope"]), ("green_median", "stat_window"))
         self.assertEqual(sorted(ccdcpp.GreenFilterScope.__members__), ["All", "Off", "StatWindow"])
         self.assertIn("statistics_end", ccdcpp.GreenFilterScope.__doc__ or "")

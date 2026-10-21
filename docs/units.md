@@ -155,15 +155,41 @@ physical units there is no collection branch.
 
 ## The thermal range
 
-`thermal_range`'s bounds are in the transformed unit, and `ccdc` tests them in the Standard
-procedure only, the one whose chain applies the thermal transform. The PermanentSnow and
-InsufficientClear chains read the thermal row as the input holds it and test no thermal range.
+`thermal_range`'s bounds are degrees Celsius, and `ccdc` tests them in every procedure's chain,
+on every input. The Standard procedure applies the thermal transform first and tests the
+transformed row against the bounds in the transformed unit (`-9320 < x < 7070` on Collection-1
+DN). The PermanentSnow and InsufficientClear chains read the thermal row as the input holds it,
+so their step tests the stored row against the same bounds taken back through the inverse of
+the transform: each end is the first or last stored value whose transform passes it (the
+transform is non-decreasing; `ccd::preprocess::stored_range()`), so the stored test keeps
+exactly the values whose transform Standard's test keeps, NaN included, for every flag. On
+Collection-1 DN -93.2 and 70.7 °C are 1799.5 and 3438.5 (179.95 and 343.85 K); with the
+identity transform (`landsat_c1_physical`, `landsat_c2`) the bounds are the transformed ones.
+The snow chain tests the clear and water observations it keeps before it adds the snow ones
+back, as pyccd does.
+
+```python
+for input in (ccdcpp.Input(), physical):
+    print(ccdcpp.plan_of("ccdc", input).snow.chain[1])
+```
+
+```text
+<Step ThermalRange band 6, 1799.5 < x < 3438.5>
+<Step ThermalRange band 6, -0.932 < x < 0.707>
+```
+
 pyccd tests those two procedures' untransformed thermal band against the Celsius bounds
-(`snow_procedure_filter()` applies `filter_thermal_celsius()` to values nothing converted):
-on Collection-1 DN that compares Kelvin x 10, about 2200..3300, with [-9320, 7070] and rejects
-nothing, so leaving the step out changes no DN output; on any other encoding it would drop
-clear and water observations by a meaningless test. A configuration that wants the range there
-adds the step to those chains with `thermal_transform`.
+(`snow_procedure_filter()` applies `filter_thermal_celsius()` to values nothing converted): on
+Collection-1 DN it compares Kelvin x 10 with -9320 and 7070, so it drops saturated (20000) and
+NaN values but keeps any temperature below 7070 (707 K), and on any other input it tests the
+wrong unit. ccdcpp 0.10.0 did the same. Against 0.10.0, `ccdc` drops besides those the
+implausible temperatures, at or below 179.95 K or at or above 343.85 K, which 0.10.0 kept in
+those two procedures' fits: on the 1,500 reference Collection-1 pixels nothing changes; on the
+synthetic Collection-1 corpus, whose thermal values range far beyond the bounds, 218 of 2,900
+pixels change (117 snow, 93 insufficient-clear, 8 without a segment), and the DN run segments
+as the physical-unit run does. On the Atlanta cell (Collection 2, 250,000 pixels) no pixel
+changes. A thermal transform's `thermal_scale` is a positive number and its `thermal_offset` a
+finite one.
 
 ## The guards
 

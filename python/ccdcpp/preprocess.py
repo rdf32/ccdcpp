@@ -110,9 +110,10 @@ class AddQa:
 class ThermalRange:
     """thermal_range: keep only the observations whose thermal row lies in ``(min, max)``,
     degrees Celsius; an inclusive end also keeps a value equal to it. None: pyccd's -93.2 and
-    70.7, exclusive. The bounds are in the unit of the row after the input's transform: a
-    procedure without ``thermal_transform`` tests the row as the input holds it. An input
-    without a ``"thermal"`` row skips the step."""
+    70.7, exclusive. A procedure with ``thermal_transform`` tests the transformed row; one
+    without it tests the row as the input holds it against the bounds taken back through the
+    input's transform, so the range is in degrees Celsius on every input. An input without a
+    ``"thermal"`` row skips the step."""
 
     min: float | None = None
     max: float | None = None

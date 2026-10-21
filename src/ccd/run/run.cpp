@@ -239,9 +239,7 @@ ArrayView<const scalar_t, 2> pixel_values(
         const preprocess::Affine& affine = *transform;
         const index_t band = affine.band;
         for (index_t t = 0; t < T; ++t) {
-            buffer[band * T + t] =
-                buffer[band * T + t] * affine.scale
-                + affine.offset;
+            buffer[band * T + t] = preprocess::apply(affine, buffer[band * T + t]);
         }
     }
 
