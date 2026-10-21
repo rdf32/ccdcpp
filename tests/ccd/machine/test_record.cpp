@@ -206,7 +206,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         ccd::MaskedSeries series;
         const ccd::PixelSeries ws(
             dates_of(p), ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
-            qas_of(p), p.h, shared);
+            qas_of(p));
         series.reset(ws, r.result.mask);
         // The model's solver, and its coefficient rule as configured.
         const ccd::Strategies strategies = golden::strategies_of(p.config);

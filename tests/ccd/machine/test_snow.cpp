@@ -265,13 +265,10 @@ TEST(CCD, DetectSnow)
     );
 
     const ccd::Input input;
-    const ccd::config::Shared hshared;
     ccd::PixelSeries series(
         dates,
         spectral,
-        qas,
-        input,
-        hshared
+        qas
     );
 
     ccd::LassoOptions solver_options;
@@ -281,7 +278,7 @@ TEST(CCD, DetectSnow)
     ccd::FitResult result = ccd::fit_whole_series(
         ccd::PixelProcedure::PermanentSnow,
         series,
-        golden::chain_mask(series, "snow", golden::ccdc()),
+        golden::chain_mask(series, input, "snow", golden::ccdc()),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(

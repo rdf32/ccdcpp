@@ -265,13 +265,10 @@ TEST(CCD, DetectClear)
     );
 
     const ccd::Input input;
-    const ccd::config::Shared hshared;
     ccd::PixelSeries series(
         dates,
         spectral,
-        qas,
-        input,
-        hshared
+        qas
     );
 
     ccd::LassoOptions solver_options;
@@ -281,7 +278,7 @@ TEST(CCD, DetectClear)
     ccd::FitResult result = ccd::fit_whole_series(
         ccd::PixelProcedure::InsufficientClear,
         series,
-        golden::chain_mask(series, "insufficient_clear", golden::ccdc()),
+        golden::chain_mask(series, input, "insufficient_clear", golden::ccdc()),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(golden::resolved().stages, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(

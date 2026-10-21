@@ -124,10 +124,9 @@ struct MaskedPixel
         const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(pixel.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(pixel.spectral.data(), {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(pixel.qas.data(), {T}),
-            options, shared
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(pixel.qas.data(), {T})
         );
-        series.reset(workspace, golden::chain_mask(workspace, "standard", config));
+        series.reset(workspace, golden::chain_mask(workspace, options, "standard", config));
     }
 };
 

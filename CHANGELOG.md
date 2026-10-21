@@ -75,7 +75,11 @@ its replacement.
   pyccd's peek statistics in `strategies/pyccd/peek_statistics.hpp`, the segments in
   `results/segment.hpp`, `Window` in `core/window.hpp`, `Variogram` in `strategies/stages.hpp`
   and `chi2_quantile()` in `core/maths.hpp`; 0.10.0's `procedure/fit.hpp` and
-  `procedure/kernels.hpp` are gone. `HarmonicWorkspace` is `PixelSeries`.
+  `procedure/kernels.hpp` are gone. `PixelProcedure` is in `input/procedure.hpp` (with
+  `PROCEDURES`, `name()` and `PreprocessPlan::of()`) and `PixelMode` in `strategies/stages.hpp`;
+  `procedure/pixel_procedure.hpp` is gone. `MaskedData` and `apply_mask()` are in
+  `input/masked_series.hpp`. `HarmonicWorkspace` is `PixelSeries`, views of the pixel's dates,
+  values and QA codes only.
 
 ### Added
 

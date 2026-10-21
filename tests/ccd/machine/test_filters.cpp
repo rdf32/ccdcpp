@@ -346,10 +346,9 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {B, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h, shared);
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}));
 
-        EXPECT_EQ(kept(golden::chain_mask(workspace, "standard", config)), mode.expected);
+        EXPECT_EQ(kept(golden::chain_mask(workspace, h, "standard", config)), mode.expected);
     }
 
     // The thermal flags, with the optical bands mid-range.
@@ -373,10 +372,9 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {B, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h, shared);
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}));
 
-        EXPECT_EQ(kept(golden::chain_mask(workspace, "standard", config)), mode.expected);
+        EXPECT_EQ(kept(golden::chain_mask(workspace, h, "standard", config)), mode.expected);
     }
 }
 
@@ -429,10 +427,9 @@ struct Series
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 spectral.data(), {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            h, shared);
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}));
 
-        return kept(golden::chain_mask(workspace, "insufficient_clear", config));
+        return kept(golden::chain_mask(workspace, h, "insufficient_clear", config));
     }
 };
 
@@ -514,9 +511,8 @@ TEST(GreenScope, StandardFilterIgnoresIt)
             ccd::ArrayView<const std::int64_t, 1>::contiguous(s.dates.data(), {s.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
                 s.spectral.data(), {7, s.T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(s.qas.data(), {s.T}),
-            h, shared);
-        masks.push_back(kept(golden::chain_mask(workspace, "standard", config)));
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(s.qas.data(), {s.T}));
+        masks.push_back(kept(golden::chain_mask(workspace, h, "standard", config)));
     }
 
     EXPECT_EQ(masks[0], std::vector<int>(20, 1));

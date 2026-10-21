@@ -306,7 +306,7 @@ ccd::FitResult run_insufficient_clear(
         obs.qas.data(), {obs.T});
 
     const ccd::config::Shared shared = golden::shared_of(config, h);
-    ccd::PixelSeries series(dates, spec, qas, h, shared);
+    ccd::PixelSeries series(dates, spec, qas);
     const ccd::config::ConfigTree tree = golden::resolved().stages;
 
     ccd::LassoSolver solver(lo);
@@ -315,7 +315,7 @@ ccd::FitResult run_insufficient_clear(
     return ccd::fit_whole_series(
         ccd::PixelProcedure::InsufficientClear,
         series,
-        golden::chain_mask(series, "insufficient_clear", config),
+        golden::chain_mask(series, h, "insufficient_clear", config),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(tree, "edge_fit", "min_observations")),
         static_cast<ccd::index_t>(
@@ -480,9 +480,8 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
         const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.T}),
             ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.T}),
-            h, shared);
-        return golden::chain_mask(workspace, "standard", config);
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.T}));
+        return golden::chain_mask(workspace, h, "standard", config);
     };
 
     const auto physical = to_physical(obs.spectral, obs.T);

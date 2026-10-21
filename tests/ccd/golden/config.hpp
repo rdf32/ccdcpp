@@ -171,13 +171,14 @@ inline const ccd::preprocess::ProcedurePlan& procedure_of(
 }
 
 // The processing mask of procedure `procedure`'s chain in `config`, resolved
-// against the workspace's input, over its spectral block as it is (no
+// against `input`, over the workspace's spectral block as it is (no
 // transform applied).
 inline ccd::ProcessingMask chain_mask(const ccd::PixelSeries& workspace,
+                                      const ccd::Input& input,
                                       const std::string& procedure,
                                       const ccd::config::Config& config = pyccd())
 {
-    const ccd::preprocess::PreprocessPlan plan = golden::plan_of(config, workspace.input());
+    const ccd::preprocess::PreprocessPlan plan = golden::plan_of(config, input);
     ccd::ProcessingMask mask;
     ccd::preprocess::apply(procedure_of(plan, procedure).chain, workspace.dates(),
                            workspace.spectral(), workspace.qas(), mask);

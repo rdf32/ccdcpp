@@ -10,16 +10,12 @@
 //     mask().count(); each drop moves the caller's window by the one rule
 //     (a bound above the dropped position moves down by one); a rejected
 //     Tmask removal changes nothing.
-//   * PixelSeries: refers to the caller's input and shared values and
-//     gives only const access to them.
 //
 //==============================================================================
 
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <type_traits>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -43,8 +39,6 @@ struct Pixel
     std::vector<std::int64_t> dates;
     std::vector<double> spectral;
     std::vector<std::uint8_t> qas;
-    ccd::Input options;
-    ccd::config::Shared shared;
 
     explicit Pixel(index_t T_) : T(T_), dates(T_), spectral(B * T_), qas(T_, 0)
     {
@@ -60,8 +54,7 @@ struct Pixel
         return ccd::PixelSeries(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {B, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}),
-            options, shared
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T})
         );
     }
 };
@@ -282,26 +275,3 @@ TEST(Variogram, ReadsAndUsable)
     EXPECT_FALSE(nan.usable());
 }
 
-// The workspace refers to the caller's input and shared values, cannot be
-// built from a temporary, and gives only const access: nothing below
-// Run::pixel can write them.
-TEST(PixelSeries, RefersToTheCallersInputConstOnly)
-{
-    const Pixel px(10);
-    const auto ws = px.workspace();
-    EXPECT_EQ(&ws.input(), &px.options);
-    EXPECT_EQ(&ws.shared(), &px.shared);
-
-    using Dates = ccd::ArrayView<const std::int64_t, 1>;
-    using Spectral = ccd::ArrayView<const double, 2>;
-    using Qas = ccd::ArrayView<const std::uint8_t, 1>;
-    static_assert(!std::is_constructible_v<ccd::PixelSeries,
-        Dates, Spectral, Qas, ccd::Input&&, const ccd::config::Shared&>);
-    static_assert(!std::is_constructible_v<ccd::PixelSeries,
-        Dates, Spectral, Qas, const ccd::Input&, ccd::config::Shared&&>);
-    static_assert(std::is_same_v<
-        decltype(std::declval<ccd::PixelSeries&>().input()), const ccd::Input&>);
-    static_assert(std::is_same_v<
-        decltype(std::declval<ccd::PixelSeries&>().shared()),
-        const ccd::config::Shared&>);
-}

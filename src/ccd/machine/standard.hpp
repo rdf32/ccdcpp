@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "ccd/config/shared.hpp"
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/window.hpp"
 #include "ccd/machine/suspended.hpp"
@@ -567,13 +568,14 @@ public:
     //----------------------------------------------------------------------
     // Fits the observations of series that `mask` keeps (the Standard
     // procedure's processing mask over its series, built by the caller:
-    // Run::pixel builds it with the procedure's filter chain), through
-    // standard::run(). The result carries the mask, after an early exit
-    // too.
+    // Run::pixel builds it with the procedure's filter chain), under the
+    // run's `shared` values, through standard::run(). The result carries
+    // the mask, after an early exit too.
     //----------------------------------------------------------------------
     FitResult run(
         const PixelSeries& series,
         ProcessingMask mask,
+        const config::Shared& shared,
         const Strategies& strategies,
         Observe observe = {},
         index_t max_coefficients = 0
@@ -583,6 +585,7 @@ public:
     FitResult resume(
         const PixelSeries& series,
         ProcessingMask mask,
+        const config::Shared& shared,
         const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days,
@@ -620,11 +623,13 @@ public:
 
     // Fits the observations of `series` that `mask` keeps (with the
     // mode's extra mask steps applied) with the mode's procedure:
-    // Procedure::run() with its cap, or the edge fit's whole_series().
+    // Procedure::run() with its cap under the run's `shared` values, or the
+    // edge fit's whole_series().
     FitResult fit(
         const PixelMode& mode,
         const PixelSeries& series,
         ProcessingMask mask,
+        const config::Shared& shared,
         const Strategies& strategies,
         Observe observe = {}
     );
@@ -634,6 +639,7 @@ public:
     FitResult resume(
         const PixelSeries& series,
         ProcessingMask mask,
+        const config::Shared& shared,
         const Strategies& strategies,
         const Suspended& from,
         const std::vector<std::int64_t>& excluded_days,

@@ -327,7 +327,7 @@ FitResult run_steps(
 
     const preprocess::ProcedurePlan& steps = plan.of(procedure);
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
-    const PixelSeries pixel(dates, values, qas, input, shared);
+    const PixelSeries pixel(dates, values, qas);
     LOG_DEBUG("initial spectral: " << pixel.spectral());
 
     ProcessingMask mask = build_mask(steps.chain, pixel);
@@ -339,7 +339,7 @@ FitResult run_steps(
     standard::Detector& detector = worker.standard;
 
     if (!request.record && !request.continue_from)
-        return detector.fit(mode, pixel, std::move(mask), strategies,
+        return detector.fit(mode, pixel, std::move(mask), shared, strategies,
                             worker.observe);
 
     // A pixel its mode filters or caps is fitted again, as a whole-series
@@ -351,10 +351,10 @@ FitResult run_steps(
         drops_unambiguous(request.continue_from->excluded_days, dates, mask);
 
     FitResult result = continues
-        ? detector.resume(pixel, std::move(mask), strategies,
+        ? detector.resume(pixel, std::move(mask), shared, strategies,
                           request.continue_from->standard, request.continue_from->excluded_days,
                           worker.observe, request.carried_change)
-        : detector.fit(mode, pixel, std::move(mask), strategies,
+        : detector.fit(mode, pixel, std::move(mask), shared, strategies,
                        worker.observe);
     continued = continues;
 

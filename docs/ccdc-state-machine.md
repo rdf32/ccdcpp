@@ -154,7 +154,7 @@ A transition is a function of two arguments, `(const Context&, State&)`. What it
 in the `State`. What it reads but never changes is in the `Context`.
 
 **`standard::Context`** holds the run's resolved shared values (never written below
-`Run::pixel`), the pixel's `PixelSeries` (its dates, spectral and QA, with the run's `Input`),
+`Run::pixel`), the pixel's `PixelSeries` (views of its dates, spectral and QA),
 the run's strategies, the observer and the pixel mode's coefficient cap. It holds no solver: each strategy
 that fits holds its own. The catch segments (StartCatch, EndCatch) fit with the edge fit's,
 Initialize with the stability fit's and Extend with the monitoring model's (the `edge_fit`,

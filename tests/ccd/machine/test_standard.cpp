@@ -260,9 +260,7 @@ TEST(CCD, DetectStandard)
     ccd::PixelSeries series(
         dates,
         spectral,
-        qas,
-        input,
-        hshared
+        qas
     );
 
     const ccd::index_t T = dates.size();
@@ -275,7 +273,8 @@ TEST(CCD, DetectStandard)
     ccd::standard::Procedure fit_procedure;
     ccd::FitResult result = fit_procedure.run(
         series,
-        golden::chain_mask(series, "standard", golden::ccdc()),
+        golden::chain_mask(series, input, "standard", golden::ccdc()),
+        hshared,
         golden::strategies_of()
     );
 

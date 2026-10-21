@@ -1308,13 +1308,14 @@ FitResult resume(
 FitResult Procedure::resume(
     const PixelSeries& series,
     ProcessingMask mask,
+    const config::Shared& shared,
     const Strategies& strategies,
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days,
     Observe observe,
     bool carried_change
 ) {
-    const Context context{series.shared(), series, strategies, observe};
+    const Context context{shared, series, strategies, observe};
     return standard::resume(context, state_, std::move(mask), from, excluded_days,
                             carried_change);
 }
@@ -1322,6 +1323,7 @@ FitResult Procedure::resume(
 FitResult Detector::resume(
     const PixelSeries& series,
     ProcessingMask mask,
+    const config::Shared& shared,
     const Strategies& strategies,
     const Suspended& from,
     const std::vector<std::int64_t>& excluded_days,
@@ -1329,19 +1331,20 @@ FitResult Detector::resume(
     bool carried_change
 )
 {
-    return procedure_.resume(series, std::move(mask), strategies, from,
+    return procedure_.resume(series, std::move(mask), shared, strategies, from,
                              excluded_days, observe, carried_change);
 }
 
 FitResult Procedure::run(
     const PixelSeries& series,
     ProcessingMask mask,
+    const config::Shared& shared,
     const Strategies& strategies,
     Observe observe,
     index_t max_coefficients
 ) {
     const Context context{
-        series.shared(),
+        shared,
         series,
         strategies,
         observe,
@@ -1361,6 +1364,7 @@ FitResult Detector::fit(
     const PixelMode& mode,
     const PixelSeries& series,
     ProcessingMask mask,
+    const config::Shared& shared,
     const Strategies& strategies,
     Observe observe
 )
@@ -1368,7 +1372,7 @@ FitResult Detector::fit(
     if (mode.procedure == PixelProcedure::Standard)
     {
         LOG_DEBUG("Standard");
-        return procedure_.run(series, std::move(mask), strategies, observe,
+        return procedure_.run(series, std::move(mask), shared, strategies, observe,
                               mode.max_coefficients);
     }
 

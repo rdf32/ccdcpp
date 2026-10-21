@@ -99,8 +99,7 @@ struct Record
           workspace(
               ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {n}),
               ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, n}),
-              ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {n}),
-              options, shared),
+              ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {n})),
           solver(lasso_options),
           strategies(resolved.strategies),
           context{shared, workspace, strategies}
@@ -1300,19 +1299,19 @@ TEST(StandardHooks, ARunTheRecordCannotContinueStoresNoSuspension)
         mask.set(i, true);
     auto test = std::make_shared<HookTest>(r.strategies.change_test);
     ccd::standard::Procedure plain;
-    plain.run(r.workspace, mask, r.strategies);
+    plain.run(r.workspace, mask, r.shared, r.strategies);
     EXPECT_NE(plain.suspended().exit, Exit::None);
 
     test->full = false;
     r.strategies.change_test = test;
     ccd::standard::Procedure shortened;
-    shortened.run(r.workspace, mask, r.strategies);
+    shortened.run(r.workspace, mask, r.shared, r.strategies);
     EXPECT_EQ(shortened.suspended().exit, Exit::None);
 
     // A mode's cap.
     r.strategies = golden::strategies_of(r.config);
     ccd::standard::Procedure capped;
-    capped.run(r.workspace, mask, r.strategies, {}, 4);
+    capped.run(r.workspace, mask, r.shared, r.strategies, {}, 4);
     EXPECT_EQ(capped.suspended().exit, Exit::None);
 }
 
@@ -1348,8 +1347,7 @@ MachineRun run_machine(const golden::CharPixel& p)
     const ccd::PixelSeries workspace(
         ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
         ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-        p.h, resolved.shared
+        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})
     );
 
     ccd::ProcessingMask mask;
@@ -1485,8 +1483,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
         const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-            p.h, resolved.shared
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})
         );
         ccd::ProcessingMask mask;
         ccd::preprocess::apply(
@@ -1572,8 +1569,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
         const ccd::PixelSeries workspace(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T}),
-            p.h, resolved.shared
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})
         );
         ccd::ProcessingMask mask;
         ccd::preprocess::apply(
@@ -1581,8 +1577,8 @@ TEST(StandardMachine, OneStateServesManyPixels)
 
         ccd::standard::Procedure fresh;
         const ccd::Strategies strategies = golden::strategies_of(p.config);
-        const ccd::FitResult once = fresh.run(workspace, mask, strategies);
-        const ccd::FitResult again = reused.run(workspace, mask, strategies);
+        const ccd::FitResult once = fresh.run(workspace, mask, resolved.shared, strategies);
+        const ccd::FitResult again = reused.run(workspace, mask, resolved.shared, strategies);
         expect_same(again, once, p.name);
     }
 }
@@ -1630,16 +1626,16 @@ TEST(StandardDetector, FitsStandardWithTheMachineAndTheRestWholeSeries)
     ccd::standard::Detector detector;
     ccd::standard::Procedure standard;
     expect_same(
-        detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask,
+        detector.fit(ccd::PixelProcedure::Standard, r.workspace, mask, r.shared,
                      r.strategies),
-        standard.run(r.workspace, mask, r.strategies),
+        standard.run(r.workspace, mask, r.shared, r.strategies),
         "standard");
 
     for (const auto procedure :
          {ccd::PixelProcedure::PermanentSnow, ccd::PixelProcedure::InsufficientClear})
     {
         const ccd::FitResult fit =
-            detector.fit(procedure, r.workspace, mask, r.strategies);
+            detector.fit(procedure, r.workspace, mask, r.shared, r.strategies);
         expect_same(
             fit,
             ccd::fit_whole_series(procedure, r.workspace, mask,
