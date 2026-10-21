@@ -3,6 +3,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -109,8 +110,8 @@ struct RecordColumn
 };
 
 // The record columns, in the order record_columns() writes them and
-// resume_schema() lists them, indexed by the enum below;
-// records_from_columns() reads them by name.
+// resume_schema() lists them; records_from_columns() reads them by name.
+// Each is reached by the index record_column() finds for its name.
 constexpr std::tuple RECORD_COLUMNS{
     RecordColumn<std::int32_t>{"row"},
     RecordColumn<std::int32_t>{"col"},
@@ -130,13 +131,39 @@ constexpr std::tuple RECORD_COLUMNS{
     RecordColumn<std::uint8_t>{"status"},
 };
 
-enum : std::size_t
+template<std::size_t... I>
+constexpr std::size_t find_record_column(std::string_view name, std::index_sequence<I...>)
 {
-    ROW, COL, INPUT_FINGERPRINT, PROCEDURE, EXIT, WINDOW_START, WINDOW_STOP, PREV_BREAK,
-    FIT_STOP, GROW, NUM_COEF, MAGNITUDE, FINAL_SEGMENTS, EXCLUDED_OFFSETS, EXCLUDED_DAYS,
-    STATUS, RECORD_COLUMN_COUNT
-};
-static_assert(std::tuple_size_v<decltype(RECORD_COLUMNS)> == RECORD_COLUMN_COUNT);
+    std::size_t at = sizeof...(I);
+    ((std::string_view(std::get<I>(RECORD_COLUMNS).name) == name ? (at = I, 0) : 0), ...);
+    return at;
+}
+
+// The index of the record column `name`; a name the table does not hold
+// does not compile.
+constexpr std::size_t record_column(std::string_view name)
+{
+    constexpr std::size_t count = std::tuple_size_v<decltype(RECORD_COLUMNS)>;
+    const std::size_t at = find_record_column(name, std::make_index_sequence<count>{});
+    return at < count ? at : throw std::logic_error("no record column of that name");
+}
+
+constexpr std::size_t ROW = record_column("row");
+constexpr std::size_t COL = record_column("col");
+constexpr std::size_t INPUT_FINGERPRINT = record_column("input_fingerprint");
+constexpr std::size_t PROCEDURE = record_column("procedure");
+constexpr std::size_t EXIT = record_column("exit");
+constexpr std::size_t WINDOW_START = record_column("window_start");
+constexpr std::size_t WINDOW_STOP = record_column("window_stop");
+constexpr std::size_t PREV_BREAK = record_column("prev_break");
+constexpr std::size_t FIT_STOP = record_column("fit_stop");
+constexpr std::size_t GROW = record_column("grow");
+constexpr std::size_t NUM_COEF = record_column("num_coef");
+constexpr std::size_t MAGNITUDE = record_column("magnitude");
+constexpr std::size_t FINAL_SEGMENTS = record_column("final_segments");
+constexpr std::size_t EXCLUDED_OFFSETS = record_column("excluded_offsets");
+constexpr std::size_t EXCLUDED_DAYS = record_column("excluded_days");
+constexpr std::size_t STATUS = record_column("status");
 
 template<std::size_t I>
 constexpr const char* name_of()
@@ -265,19 +292,19 @@ std::vector<ccd::ChangeModel> models_from_python(const py::list& models)
 py::dict record_to_python(const ccd::PixelRecord& r)
 {
     py::dict d;
-    d["input_fingerprint"] = r.input_fingerprint;
-    d["procedure"] = static_cast<std::uint8_t>(r.procedure);
-    d["exit"] = static_cast<std::uint8_t>(r.standard.exit);
-    d["window_start"] = static_cast<std::int64_t>(r.standard.window.start);
-    d["window_stop"] = static_cast<std::int64_t>(r.standard.window.stop);
-    d["prev_break"] = static_cast<std::int64_t>(r.standard.prev_break);
-    d["fit_stop"] = static_cast<std::int64_t>(r.standard.fit_stop);
-    d["grow"] = r.standard.grow;
-    d["num_coef"] = static_cast<std::uint8_t>(r.standard.num_coef);
-    d["magnitude"] = py::array_t<ccd::scalar_t>(
+    d[name_of<INPUT_FINGERPRINT>()] = r.input_fingerprint;
+    d[name_of<PROCEDURE>()] = static_cast<std::uint8_t>(r.procedure);
+    d[name_of<EXIT>()] = static_cast<std::uint8_t>(r.standard.exit);
+    d[name_of<WINDOW_START>()] = static_cast<std::int64_t>(r.standard.window.start);
+    d[name_of<WINDOW_STOP>()] = static_cast<std::int64_t>(r.standard.window.stop);
+    d[name_of<PREV_BREAK>()] = static_cast<std::int64_t>(r.standard.prev_break);
+    d[name_of<FIT_STOP>()] = static_cast<std::int64_t>(r.standard.fit_stop);
+    d[name_of<GROW>()] = r.standard.grow;
+    d[name_of<NUM_COEF>()] = static_cast<std::uint8_t>(r.standard.num_coef);
+    d[name_of<MAGNITUDE>()] = py::array_t<ccd::scalar_t>(
         static_cast<py::ssize_t>(r.standard.magnitude.size()), r.standard.magnitude.data());
-    d["final_segments"] = static_cast<std::int64_t>(r.standard.final_segments);
-    d["excluded_days"] = py::array_t<std::int64_t>(
+    d[name_of<FINAL_SEGMENTS>()] = static_cast<std::int64_t>(r.standard.final_segments);
+    d[name_of<EXCLUDED_DAYS>()] = py::array_t<std::int64_t>(
         static_cast<py::ssize_t>(r.excluded_days.size()), r.excluded_days.data());
     return d;
 }
@@ -286,19 +313,23 @@ ccd::PixelRecord record_from_python(const py::dict& d)
 {
     const char* what = "the resume record";
     ccd::PixelRecord r;
-    r.input_fingerprint = bits_of(d, "input_fingerprint", what);
-    r.procedure = static_cast<ccd::PixelProcedure>(count_of<std::uint8_t>(d, "procedure", what));
-    r.standard.exit = static_cast<ccd::standard::Exit>(count_of<std::uint8_t>(d, "exit", what));
+    r.input_fingerprint = bits_of(d, name_of<INPUT_FINGERPRINT>(), what);
+    r.procedure = static_cast<ccd::PixelProcedure>(
+        count_of<std::uint8_t>(d, name_of<PROCEDURE>(), what));
+    r.standard.exit = static_cast<ccd::standard::Exit>(
+        count_of<std::uint8_t>(d, name_of<EXIT>(), what));
     r.standard.window = ccd::Window(
-        count_of<std::uint32_t>(d, "window_start", what),
-        count_of<std::uint32_t>(d, "window_stop", what));
-    r.standard.prev_break = count_of<std::uint32_t>(d, "prev_break", what);
-    r.standard.fit_stop = count_of<std::uint32_t>(d, "fit_stop", what);
-    r.standard.grow = field(d, "grow", what).cast<bool>();
-    r.standard.num_coef = count_of<std::uint8_t>(d, "num_coef", what);
-    r.standard.magnitude = field(d, "magnitude", what).cast<std::vector<ccd::scalar_t>>();
-    r.standard.final_segments = count_of<std::uint32_t>(d, "final_segments", what);
-    r.excluded_days = field(d, "excluded_days", what).cast<std::vector<std::int64_t>>();
+        count_of<std::uint32_t>(d, name_of<WINDOW_START>(), what),
+        count_of<std::uint32_t>(d, name_of<WINDOW_STOP>(), what));
+    r.standard.prev_break = count_of<std::uint32_t>(d, name_of<PREV_BREAK>(), what);
+    r.standard.fit_stop = count_of<std::uint32_t>(d, name_of<FIT_STOP>(), what);
+    r.standard.grow = field(d, name_of<GROW>(), what).cast<bool>();
+    r.standard.num_coef = count_of<std::uint8_t>(d, name_of<NUM_COEF>(), what);
+    r.standard.magnitude =
+        field(d, name_of<MAGNITUDE>(), what).cast<std::vector<ccd::scalar_t>>();
+    r.standard.final_segments = count_of<std::uint32_t>(d, name_of<FINAL_SEGMENTS>(), what);
+    r.excluded_days =
+        field(d, name_of<EXCLUDED_DAYS>(), what).cast<std::vector<std::int64_t>>();
     return r;
 }
 
