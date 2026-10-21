@@ -1318,7 +1318,7 @@ struct MachineRun
     Exit exit;
 };
 
-MachineRun run_machine(const golden::CharPixel& p)
+MachineRun run_machine(const golden::Series& p)
 {
     const index_t T = p.dates.size();
     const ccd::config::Resolved resolved = golden::resolved(p.config, p.h);
@@ -1352,16 +1352,6 @@ MachineRun run_machine(const golden::CharPixel& p)
     return out;
 }
 
-ccd::FitResult run_detect(const golden::CharPixel& p)
-{
-    const std::size_t T = p.dates.size();
-    return ccd::detect(
-        golden::spec_of(p.h, p.config),
-        ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {T}),
-        ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, T}),
-        ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {T})).result;
-}
-
 void expect_same(const ccd::FitResult& a, const ccd::FitResult& b, const std::string& name)
 {
     ASSERT_EQ(a.models.size(), b.models.size()) << name;
@@ -1390,21 +1380,13 @@ void expect_same(const ccd::FitResult& a, const ccd::FitResult& b, const std::st
         EXPECT_EQ(a.mask[i], b.mask[i]) << name << " mask " << i;
 }
 
-const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const std::string& name)
-{
-    for (const auto& p : all)
-        if (p.name == name)
-            return p;
-    throw std::runtime_error("no characterization pixel " + name);
-}
-
 TEST(StandardExit, EachWayTheMachineStops)
 {
     const auto all = golden::characterization_pixels();
 
     // Two random pixels for the routes after a change: Restart with no room
     // left, and an Initialize that finds no stable window after a segment.
-    std::vector<golden::CharPixel> pixels = all;
+    std::vector<golden::Series> pixels = all;
     pixels.push_back(golden::sparse_random("restart_no_room", 12));
     pixels.push_back(golden::sparse_random("exhausted_after_a_change", 8));
 
@@ -1422,10 +1404,10 @@ TEST(StandardExit, EachWayTheMachineStops)
 
     for (const auto& [name, exit] : expected)
     {
-        const golden::CharPixel& p = pixel(pixels, name);
+        const golden::Series& p = golden::named(pixels, name);
         const MachineRun run = run_machine(p);
         EXPECT_EQ(run.exit, exit) << name << ": " << ccd::standard::to_string(run.exit);
-        expect_same(run.result, run_detect(p), name);
+        expect_same(run.result, golden::detect(p), name);
     }
 }
 
@@ -1434,7 +1416,7 @@ TEST(StandardExit, TheEarlyExitsReturnTheMask)
     const auto all = golden::characterization_pixels();
     for (const char* name : {"standard_too_few", "variogram_nan"})
     {
-        const auto& p = pixel(all, name);
+        const auto& p = golden::named(all, name);
         const MachineRun run = run_machine(p);
         EXPECT_TRUE(run.result.models.empty()) << name;
         EXPECT_EQ(run.result.mask.size(), p.dates.size()) << name;

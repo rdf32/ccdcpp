@@ -26,17 +26,14 @@
 //==============================================================================
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
 #include <cstdint>
-#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -50,6 +47,7 @@
 #include "ccd/input/mask/chain.hpp"
 
 #include "dump.hpp"
+#include "series.hpp"
 #include "units.hpp"
 #include "synthetic.hpp"
 #include "synthetic_bands.hpp"
@@ -380,50 +378,6 @@ std::string variation_label(const Options& h)
 // Fixture inputs
 //------------------------------------------------------------------------------
 
-struct Pixel
-{
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;   // (7, T)
-    std::vector<std::uint8_t> qas;
-};
-
-Pixel read_csv(const std::string& filename)
-{
-    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
-    if (!file)
-        throw std::runtime_error("Unable to open " + filename);
-
-    std::array<std::vector<double>, 7> bands;
-    Pixel out;
-
-    std::string line;
-    std::getline(file, line);
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string value;
-
-        std::getline(ss, value, ',');
-        out.dates.push_back(static_cast<std::int64_t>(std::stod(value)));
-
-        for (std::size_t b = 0; b < 7; ++b)
-        {
-            std::getline(ss, value, ',');
-            bands[b].push_back(std::stod(value));
-        }
-
-        std::getline(ss, value, ',');
-        out.qas.push_back(static_cast<std::uint8_t>(std::stod(value)));
-    }
-
-    const std::size_t T = out.dates.size();
-    out.spectral.resize(7 * T);
-    for (std::size_t b = 0; b < 7; ++b)
-        std::copy(bands[b].begin(), bands[b].end(), out.spectral.begin() + b * T);
-
-    return out;
-}
-
 // A cube as flat arrays, B rows per pixel.
 struct Series
 {
@@ -456,7 +410,7 @@ Series to_physical(Series s)
     return s;
 }
 
-Series from_pixel(const std::string& name, const Pixel& p, const Options& h)
+Series from_pixel(const std::string& name, const golden::Series& p, const Options& h)
 {
     return {name, p.dates, p.spectral, p.qas, 1, 7, p.dates.size(), h};
 }
@@ -467,16 +421,16 @@ std::vector<Series> fixture_inputs()
     std::vector<Series> out;
 
     {
-        const Pixel p = read_csv("test_3657_3610_observations.csv");
+        const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
         out.push_back(from_pixel("pyccd", p, Options{}));
         out.push_back(to_physical(out.back()));
 
-        Pixel bounds = p;
+        golden::Series bounds = p;
         golden::put_bound_values(bounds.spectral.data(), bounds.qas.data(), bounds.dates.size());
         out.push_back(from_pixel("bounds", bounds, Options{}));
         out.push_back(to_physical(out.back()));
 
-        out.push_back(from_pixel("c2", read_csv("test002_c2.csv"),
+        out.push_back(from_pixel("c2", golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true),
                                  Options{golden::c2_input(), golden::c2_config()}));
     }
 
@@ -880,7 +834,7 @@ TEST(CcdcPlan, MatchesReferenceOnRandomSeries)
 // apply() resizes and resets the mask it is given.
 TEST(CcdcPlan, ApplyResetsTheMask)
 {
-    const Pixel p = read_csv("test_3657_3610_observations.csv");
+    const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
     const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
     const pp::PreprocessPlan plan = plan_of(Options{});
 
@@ -968,7 +922,7 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
 // snow observation; this one does, and the fit changes.
 TEST(CustomPlan, StandardKeepsSnow)
 {
-    const Pixel p = read_csv("test_3657_3610_observations.csv");
+    const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
     const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
     const ccd::Input h;
 
@@ -1230,7 +1184,7 @@ TEST(PlanValidation, EntryPointsReject)
 // the masks agree.
 TEST(Microbench, ApplyCcdcChain)
 {
-    const Pixel p = read_csv("test_3657_3610_observations.csv");
+    const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
     const PixelView px = view(p.dates, p.spectral.data(), 7, p.qas.data());
     const Options h;
     const pp::PreprocessPlan plan = plan_of(h);

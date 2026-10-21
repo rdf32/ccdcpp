@@ -26,21 +26,12 @@
 #include "ccd/ccd.hpp"
 
 #include "config.hpp"
+#include "series.hpp"
 
 #include "synthetic.hpp"
 
 namespace golden
 {
-
-struct CharPixel
-{
-    std::string name;
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;      // (7, T), band-major
-    std::vector<std::uint8_t> qas;     // (T)
-    ccd::Input h;
-    ccd::config::Config config = golden::pyccd();
-};
 
 // What a pixel's spectral series is made of.
 struct SeriesSpec
@@ -116,13 +107,13 @@ inline std::vector<double> make_series(
     return out;
 }
 
-inline CharPixel make_char_pixel(
+inline Series make_char_pixel(
     std::string name,
     std::vector<std::int64_t> dates,
     const SeriesSpec& spec
 )
 {
-    CharPixel p;
+    Series p;
     p.name = std::move(name);
     p.spectral = make_series(dates, spec);
     p.qas.assign(dates.size(), 0);
@@ -147,7 +138,7 @@ inline CharPixel make_char_pixel(
 // gaps of 4-6 days. A break at observation 13 with a decaying transient after
 // it, so the second Initialize shifts and its Lookback starts at or below
 // peek_size with prev_break = 13.
-inline CharPixel lookback_near_break(std::uint64_t seed, std::int64_t gap)
+inline Series lookback_near_break(std::uint64_t seed, std::int64_t gap)
 {
     Rng r(seed * 7919 + 17);
     std::vector<std::int64_t> d;
@@ -169,7 +160,7 @@ inline CharPixel lookback_near_break(std::uint64_t seed, std::int64_t gap)
 // 243 observations 3 days apart (2010-2012), then 45 30 days apart: the
 // median gap is 3 days, so the peek is 32 (>= 26). No break; spikes among the
 // last 31 observations, which the forward search never reaches.
-inline CharPixel dense_series_end(std::uint64_t seed)
+inline Series dense_series_end(std::uint64_t seed)
 {
     Rng r(seed * 104729 + 5);
     std::vector<std::int64_t> d;
@@ -190,7 +181,7 @@ inline CharPixel dense_series_end(std::uint64_t seed)
 
 // 400 observations 5 days apart (peek 19), a break 80-99 observations before
 // the end: the Initialize after it ends within peek_size of the series end.
-inline CharPixel peek_guard_tail(std::uint64_t seed)
+inline Series peek_guard_tail(std::uint64_t seed)
 {
     Rng r(seed * 15485863 + 3);
     std::vector<std::int64_t> d;
@@ -208,7 +199,7 @@ inline CharPixel peek_guard_tail(std::uint64_t seed)
 
 // 16-day cadence, 2000-2010, with a spike on observation n - 6 - back: the
 // forward search drops it as an outlier on its last step.
-inline CharPixel series_end_after_outlier(std::uint64_t seed, std::size_t back)
+inline Series series_end_after_outlier(std::uint64_t seed, std::size_t back)
 {
     std::vector<std::int64_t> d;
     append_dates(d, 730120, 228, 16);
@@ -226,7 +217,7 @@ inline CharPixel series_end_after_outlier(std::uint64_t seed, std::size_t back)
 // One clear observation dated up to statistics_end (2017-12-31), 60 after it: the
 // QA statistics see 1 of 1 clear, so Standard runs, and the variogram over the
 // statistics window of one observation is NaN.
-inline CharPixel variogram_nan()
+inline Series variogram_nan()
 {
     std::vector<std::int64_t> d;
     d.push_back(736600);
@@ -239,14 +230,14 @@ inline CharPixel variogram_nan()
 
 // Red (a detection band, not a Tmask band) constant: its variogram is 0, and
 // the initialization model fits it exactly.
-inline CharPixel constant_detection_band()
+inline Series constant_detection_band()
 {
     std::vector<std::int64_t> d;
     append_dates(d, 730120, 228, 16);
 
     SeriesSpec s;
     s.seed = 43;
-    CharPixel p = make_char_pixel("constant_detection_band", d, s);
+    Series p = make_char_pixel("constant_detection_band", d, s);
     const std::size_t T = p.dates.size();
     for (std::size_t t = 0; t < T; ++t)
         p.spectral[2 * T + t] = 650.0;
@@ -257,14 +248,14 @@ inline CharPixel constant_detection_band()
 // (QA 0) spread evenly, then of the others the first `snow` snow (QA 3) and
 // the rest cloud (QA 4). The clear percentage is clear / n and the snow
 // percentage snow / (clear + snow + 0.01).
-inline CharPixel qa_pattern(const char* name, std::size_t n, std::size_t clear, std::size_t snow)
+inline Series qa_pattern(const char* name, std::size_t n, std::size_t clear, std::size_t snow)
 {
     std::vector<std::int64_t> d;
     append_dates(d, 731000, n, 16);
 
     SeriesSpec s;
     s.seed = 47;
-    CharPixel p = make_char_pixel(name, d, s);
+    Series p = make_char_pixel(name, d, s);
 
     std::size_t placed_clear = 0, other = 0;
     for (std::size_t t = 0; t < n; ++t)
@@ -285,7 +276,7 @@ inline CharPixel qa_pattern(const char* name, std::size_t n, std::size_t clear, 
 
 // 16-day cadence, 2000-2010, with a level shift 8-17 observations in: the
 // first stable window starts after it, and Lookback stops on change.
-inline CharPixel start_catch(std::uint64_t seed)
+inline Series start_catch(std::uint64_t seed)
 {
     Rng r(seed * 2654435761u + 11);
     std::vector<std::int64_t> d;
@@ -304,7 +295,7 @@ inline CharPixel start_catch(std::uint64_t seed)
 // 3-5 days apart (peek 19-32); a break near the cadence change, up to two
 // more, up to two transients (a run of 1-30 observations offset together)
 // and up to five spikes.
-inline CharPixel dense_random(const char* name, std::uint64_t seed)
+inline Series dense_random(const char* name, std::uint64_t seed)
 {
     Rng r(seed * 6364136223846793005ull + 1442695040888963407ull);
     std::vector<std::int64_t> d;
@@ -341,7 +332,7 @@ inline CharPixel dense_random(const char* name, std::uint64_t seed)
 
 // Random 16-day pixels: 300-599 observations from 1991; up to three breaks,
 // one to three transients of 3-8 observations, up to five spikes.
-inline CharPixel sparse_random(const char* name, std::uint64_t seed)
+inline Series sparse_random(const char* name, std::uint64_t seed)
 {
     Rng r(seed * 2862933555777941757ull + 3037000493ull);
     std::vector<std::int64_t> d;
@@ -376,9 +367,9 @@ inline CharPixel sparse_random(const char* name, std::uint64_t seed)
 //------------------------------------------------------------------------------
 // The pixels test_transitions.cpp pins, in fixture order.
 //------------------------------------------------------------------------------
-inline std::vector<CharPixel> characterization_pixels()
+inline std::vector<Series> characterization_pixels()
 {
-    std::vector<CharPixel> out;
+    std::vector<Series> out;
     out.push_back(qa_pattern("select_clear_at_threshold", 100, 25, 0));
     out.push_back(qa_pattern("select_clear_below_threshold", 100, 24, 0));
     out.push_back(qa_pattern("select_snow_at_threshold", 100, 20, 61));
@@ -392,7 +383,7 @@ inline std::vector<CharPixel> characterization_pixels()
     {
         // The fewest coefficients raised to 6: Initialize, Extend's
         // coefficient schedule and the Start/End fits all read it.
-        CharPixel p = sparse_random("coefficient_min_6", 3);
+        Series p = sparse_random("coefficient_min_6", 3);
         p.config.shared["coefficients.min"] = ccd::config::integer(6);
 
         out.push_back(std::move(p));

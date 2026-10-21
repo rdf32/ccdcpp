@@ -82,16 +82,15 @@
 //
 //==============================================================================
 
-#include <array>
 #include <cmath>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "config.hpp"
+#include "series.hpp"
+#include "units.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/core/types.hpp"
@@ -106,111 +105,7 @@
 namespace {
 
 // The one divisor. Every band of the input and every absolute threshold.
-constexpr ccd::scalar_t SCALE = 10000.0;
-
-struct Observations
-{
-    std::vector<std::int64_t> dates;
-    std::vector<std::uint8_t> qas;
-    std::vector<ccd::scalar_t> spectral;   // (7, T) row-major, as numpy gives
-    ccd::index_t T = 0;
-};
-
-Observations read_observations(const std::string& filename)
-{
-    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
-
-    if (!file)
-        throw std::runtime_error("Unable to open " + filename);
-
-    std::vector<std::int64_t> dates;
-    std::vector<std::uint8_t> qas;
-    std::array<std::vector<ccd::scalar_t>, 7> bands;
-
-    std::string line;
-
-    while (std::getline(file, line))
-    {
-        if (line.empty())
-            continue;
-
-        std::stringstream ss(line);
-        std::string value;
-
-        std::getline(ss, value, ',');
-        dates.push_back(std::stoll(value));
-
-        for (ccd::index_t b = 0; b < 7; ++b)
-        {
-            std::getline(ss, value, ',');
-            bands[b].push_back(std::stod(value));
-        }
-
-        std::getline(ss, value, ',');
-        qas.push_back(static_cast<std::uint8_t>(std::stoi(value)));
-    }
-
-    Observations out;
-    out.dates = dates;
-    out.qas = qas;
-    out.T = static_cast<ccd::index_t>(dates.size());
-    out.spectral.resize(7 * out.T);
-
-    for (ccd::index_t b = 0; b < 7; ++b)
-        for (ccd::index_t t = 0; t < out.T; ++t)
-            out.spectral[b * out.T + t] = bands[b][t];
-
-    return out;
-}
-
-//------------------------------------------------------------------------------
-// Collection-1 DN -> the preset's units.
-//
-// The thermal row applies the transform detect() would otherwise have applied
-// itself, THEN divides by the same 10,000 as every other band. That second
-// division is the whole trick: it puts thermal on the same scale factor as the
-// optical bands, which is what lets one `alpha` serve all seven fits. Leaving
-// thermal in plain Celsius -- the obvious choice -- makes it a 100x factor
-// against the optical bands' 10,000x and breaks thermal alone.
-//------------------------------------------------------------------------------
-
-std::vector<ccd::scalar_t> to_physical(
-    const std::vector<ccd::scalar_t>& dn,
-    ccd::index_t T
-)
-{
-    std::vector<ccd::scalar_t> out(dn.size());
-
-    for (std::size_t i = 0; i < dn.size(); ++i)
-        out[i] = dn[i] / SCALE;
-
-    const ccd::index_t thermal = 6;
-
-    for (ccd::index_t t = 0; t < T; ++t)
-    {
-        out[thermal * T + t] =
-            (dn[thermal * T + t] * ccd::KELVIN_SCALE - ccd::KELVIN_OFFSET)
-            / SCALE;
-    }
-
-    return out;
-}
-
-// The physical-unit input: reflectance its unit, the thermal transform the
-// identity (the caller already applied it). The configuration's bounds
-// resolve against it to the DN ones divided by SCALE.
-ccd::Input physical_input()
-{
-    ccd::Input h;
-
-    h.reflectance_scale = 1.0;
-
-    h.thermal_scale = 1.0;
-    h.thermal_offset = 0.0;
-    h.thermal_at_100c = 1.0;
-
-    return h;
-}
+using golden::SCALE;
 
 // "ccdc" with every step of type `step` given bounds `lo` and `hi` and the
 // inclusive flags `inclusive`.
@@ -244,20 +139,20 @@ ccd::LassoOptions physical_solver()
 }
 
 ccd::FitResult run(
-    const Observations& obs,
+    const golden::Series& obs,
     std::vector<ccd::scalar_t> spectral,
     const ccd::Input& h,
     const ccd::config::Config& config = golden::pyccd()
 )
 {
     auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
-        obs.dates.data(), {obs.T});
+        obs.dates.data(), {obs.size()});
 
     auto spec = ccd::ArrayView<ccd::scalar_t, 2>::contiguous(
-        spectral.data(), {7, obs.T});
+        spectral.data(), {7, obs.size()});
 
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
-        obs.qas.data(), {obs.T});
+        obs.qas.data(), {obs.size()});
 
     return ccd::detect(golden::spec_of(h, config), dates, spec, qas).result;
 }
@@ -289,7 +184,7 @@ std::vector<ccd::scalar_t> plain_divide(const std::vector<ccd::scalar_t>& dn)
 }
 
 ccd::FitResult run_insufficient_clear(
-    const Observations& obs,
+    const golden::Series& obs,
     const std::vector<ccd::scalar_t>& spectral,   // const: nothing writes to it
     const ccd::Input& h,
     const ccd::config::Config& config,
@@ -297,20 +192,20 @@ ccd::FitResult run_insufficient_clear(
 )
 {
     auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
-        obs.dates.data(), {obs.T});
+        obs.dates.data(), {obs.size()});
 
     auto spec = ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(
-        spectral.data(), {7, obs.T});
+        spectral.data(), {7, obs.size()});
 
     auto qas = ccd::ArrayView<const std::uint8_t, 1>::contiguous(
-        obs.qas.data(), {obs.T});
+        obs.qas.data(), {obs.size()});
 
     const ccd::config::Shared shared = golden::shared_of(config, h);
     ccd::PixelSeries series(dates, spec, qas);
     const ccd::config::ConfigTree tree = golden::resolved().stages;
 
     ccd::LassoSolver solver(lo);
-    ccd::LassoWorkspace lworkspace(obs.T);
+    ccd::LassoWorkspace lworkspace(obs.size());
 
     return ccd::fit_whole_series(
         ccd::PixelProcedure::InsufficientClear,
@@ -376,7 +271,7 @@ double worst_relative(const ccd::FitResult& dn, const ccd::FitResult& phys)
     return worst;
 }
 
-const char* OBSERVATIONS = "test_3657_3610_observations.csv";
+const char* OBSERVATIONS = CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv";
 
 } // namespace
 
@@ -387,7 +282,7 @@ const char* OBSERVATIONS = "test_3657_3610_observations.csv";
 
 TEST(Units, PhysicalUnitsAreEquivalent)
 {
-    const auto obs = read_observations(OBSERVATIONS);
+    const auto obs = golden::read_csv(OBSERVATIONS, false);
 
     const auto dn = run(
         obs, obs.spectral,
@@ -395,8 +290,8 @@ TEST(Units, PhysicalUnitsAreEquivalent)
     );
 
     const auto phys = run(
-        obs, to_physical(obs.spectral, obs.T),
-        physical_input()
+        obs, golden::to_physical(obs).spectral,
+        golden::physical_input()
     );
 
     // Structure first: if the segmentation moved, comparing coefficients is
@@ -448,29 +343,29 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 
 TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 {
-    auto obs = read_observations(OBSERVATIONS);
+    auto obs = golden::read_csv(OBSERVATIONS, false);
     const auto original = run(obs, obs.spectral, ccd::Input{});
 
     std::vector<ccd::index_t> moved;
-    for (ccd::index_t t = 0; t < obs.T && moved.size() < 5; t += 37)
+    for (ccd::index_t t = 0; t < obs.size() && moved.size() < 5; t += 37)
     {
         if (!original.mask[t])
             continue;
         // Alternate the band and the bound.
         const ccd::index_t band = moved.size() % 6;
-        obs.spectral[band * obs.T + t] = moved.size() % 2 ? 10000.0 : 0.0;
+        obs.spectral[band * obs.size() + t] = moved.size() % 2 ? 10000.0 : 0.0;
         moved.push_back(t);
     }
     ASSERT_EQ(moved.size(), 5u);
 
     const ccd::Input dn_h;
-    const ccd::Input phys_h = physical_input();
+    const ccd::Input phys_h = golden::physical_input();
     const ccd::config::Config inclusive = with_bounds("band_range", 0.0, 1.0, true);
 
     const auto dn_inclusive = run(obs, obs.spectral, dn_h, inclusive);
 
     const auto dn = run(obs, obs.spectral, dn_h);
-    const auto phys = run(obs, to_physical(obs.spectral, obs.T), phys_h);
+    const auto phys = run(obs, golden::to_physical(obs).spectral, phys_h);
 
     // The filter mask, before any fitting: the inclusive bound keeps the
     // moved observations, the exclusive one drops them, in both units.
@@ -478,13 +373,13 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
                                     const ccd::Input& h, const ccd::config::Config& config) {
         const ccd::config::Shared shared = golden::shared_of(config, h);
         const ccd::PixelSeries workspace(
-            ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.T}),
-            ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.T}));
+            ccd::ArrayView<const std::int64_t, 1>::contiguous(obs.dates.data(), {obs.size()}),
+            ccd::ArrayView<const ccd::scalar_t, 2>::contiguous(spectral.data(), {7, obs.size()}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(obs.qas.data(), {obs.size()}));
         return golden::chain_mask(workspace, h, "standard", config);
     };
 
-    const auto physical = to_physical(obs.spectral, obs.T);
+    const auto physical = golden::to_physical(obs).spectral;
     const auto inclusive_mask = filter_mask(obs.spectral, dn_h, inclusive);
     const auto exclusive_mask = filter_mask(obs.spectral, dn_h, golden::pyccd());
     const auto physical_exclusive_mask = filter_mask(physical, phys_h, golden::pyccd());
@@ -496,7 +391,7 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
         EXPECT_FALSE(dn.mask[t]) << "exclusive bound kept " << t;
     }
 
-    for (ccd::index_t i = 0; i < obs.T; ++i)
+    for (ccd::index_t i = 0; i < obs.size(); ++i)
         EXPECT_EQ(exclusive_mask.test(i), physical_exclusive_mask.test(i))
             << "filter mask differs at " << i;
 
@@ -527,13 +422,13 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 
 TEST(Units, ReflectanceUnitIsTheUnit)
 {
-    const auto obs = read_observations(OBSERVATIONS);
+    const auto obs = golden::read_csv(OBSERVATIONS, false);
 
     const auto dn = run(obs, obs.spectral, ccd::Input{});
 
-    ccd::Input h = physical_input();
+    ccd::Input h = golden::physical_input();
     h.reflectance_scale = 10000.0;
-    const auto bad = run(obs, to_physical(obs.spectral, obs.T), h);
+    const auto bad = run(obs, golden::to_physical(obs).spectral, h);
 
     ASSERT_GT(count_nonzero(dn), 0u);
     EXPECT_LT(count_nonzero(bad) * 4, count_nonzero(dn));
@@ -546,7 +441,7 @@ TEST(Units, ReflectanceUnitIsTheUnit)
 
 TEST(Units, AlphaIsAUnitConstant)
 {
-    const auto obs = read_observations(OBSERVATIONS);
+    const auto obs = golden::read_csv(OBSERVATIONS, false);
 
     const auto dn = run(
         obs, obs.spectral,
@@ -557,8 +452,8 @@ TEST(Units, AlphaIsAUnitConstant)
     const ccd::config::Config config = with_lasso(1.0, 1.0 / SCALE);
 
     const auto bad = run(
-        obs, to_physical(obs.spectral, obs.T),
-        physical_input(), config
+        obs, golden::to_physical(obs).spectral,
+        golden::physical_input(), config
     );
 
     const std::size_t reference = count_nonzero(dn);
@@ -587,7 +482,7 @@ TEST(Units, AlphaIsAUnitConstant)
 
 TEST(Units, CoefFloorIsAUnitConstant)
 {
-    const auto obs = read_observations(OBSERVATIONS);
+    const auto obs = golden::read_csv(OBSERVATIONS, false);
 
     const auto dn = run(
         obs, obs.spectral,
@@ -598,8 +493,8 @@ TEST(Units, CoefFloorIsAUnitConstant)
     const ccd::config::Config config = with_lasso(1.0 / SCALE, 1.0);
 
     const auto quiet = run(
-        obs, to_physical(obs.spectral, obs.T),
-        physical_input(), config
+        obs, golden::to_physical(obs).spectral,
+        golden::physical_input(), config
     );
 
     ASSERT_EQ(dn.models.size(), quiet.models.size());
@@ -639,7 +534,7 @@ TEST(Units, CoefFloorIsAUnitConstant)
 
 TEST(Units, BoundsAreUnitConstants)
 {
-    const auto obs = read_observations(OBSERVATIONS);
+    const auto obs = golden::read_csv(OBSERVATIONS, false);
 
     const auto dn = run(
         obs, obs.spectral,
@@ -720,7 +615,7 @@ TEST(Units, Collection2DnResolvesReflectanceZeroToOne)
 
 TEST(Units, GreenMedianFilterIsAUnitConstant)
 {
-    const auto obs = read_observations(OBSERVATIONS);
+    const auto obs = golden::read_csv(OBSERVATIONS, false);
     const auto scaled = plain_divide(obs.spectral);
 
     const auto dn = run_insufficient_clear(
@@ -731,7 +626,7 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
     // Thermal is K x 10 / SCALE here, not Celsius -- see plain_divide's
     // comment -- inside the thermal bounds, -0.932..0.707, as K x 10 is
     // inside -9320..7070.
-    const ccd::Input h = physical_input();
+    const ccd::Input h = golden::physical_input();
     ASSERT_EQ(golden::plan_of(golden::pyccd(), h).insufficient_clear.chain[4].green_offset, 0.04);
 
     const auto phys =

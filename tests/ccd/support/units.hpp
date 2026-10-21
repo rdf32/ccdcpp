@@ -34,7 +34,12 @@ inline ccd::Input physical_input()
     return h;
 }
 
-// DN (7, T) block -> the preset's units, in place.
+// DN (7, T) block -> the preset's units, in place. The thermal row takes the
+// transform detect() would otherwise have applied itself, THEN the same
+// division by 10,000 as every other band. That second division puts thermal
+// on the optical bands' scale factor, which is what lets one `alpha` serve
+// all seven fits; thermal in plain Celsius would be a 100x factor against
+// the optical bands' 10,000x and break thermal alone.
 inline void to_physical(double* block, std::size_t T)
 {
     for (std::size_t b = 0; b < 6; ++b)

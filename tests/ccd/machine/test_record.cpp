@@ -34,6 +34,7 @@
 #include "ccd/strategies/model/lasso.hpp"
 
 #include "characterization.hpp"
+#include "series_corpus.hpp"
 #include "dump.hpp"
 #include "units.hpp"
 
@@ -43,33 +44,13 @@ namespace
 using ccd::index_t;
 using Exit = ccd::standard::Exit;
 
-ccd::ArrayView<const std::int64_t, 1> dates_of(const golden::CharPixel& p)
-{
-    return ccd::ArrayView<const std::int64_t, 1>::contiguous(p.dates.data(), {p.dates.size()});
-}
-
-ccd::ArrayView<const double, 2> spectral_of(const golden::CharPixel& p)
-{
-    return ccd::ArrayView<const double, 2>::contiguous(p.spectral.data(), {7, p.dates.size()});
-}
-
-ccd::ArrayView<const std::uint8_t, 1> qas_of(const golden::CharPixel& p)
-{
-    return ccd::ArrayView<const std::uint8_t, 1>::contiguous(p.qas.data(), {p.qas.size()});
-}
-
-ccd::PixelOutput recorded(const golden::CharPixel& p)
+ccd::PixelOutput recorded(const golden::Series& p)
 {
     return ccd::detect(
         golden::spec_of(p.h, p.config, true),
-        dates_of(p),
-        spectral_of(p),
-        qas_of(p));
-}
-
-ccd::FitResult detected(const golden::CharPixel& p)
-{
-    return ccd::detect(golden::spec_of(p.h, p.config), dates_of(p), spectral_of(p), qas_of(p)).result;
+        p.date_view(),
+        p.spectral_view(),
+        p.qa_view());
 }
 
 std::string dump(const ccd::FitResult& r)
@@ -80,34 +61,13 @@ std::string dump(const ccd::FitResult& r)
 }
 
 // The dates of the observations a mask keeps, in order: masked coordinates.
-std::vector<std::int64_t> kept_dates(const golden::CharPixel& p, const ccd::ProcessingMask& mask)
+std::vector<std::int64_t> kept_dates(const golden::Series& p, const ccd::ProcessingMask& mask)
 {
     std::vector<std::int64_t> out;
     for (index_t t = 0; t < mask.size(); ++t)
         if (mask[t])
             out.push_back(p.dates[t]);
     return out;
-}
-
-// The leading segments no longer series can rewrite, read from the output
-// as test_prefix.cpp reads them.
-std::size_t final_count(const ccd::FitResult& r)
-{
-    std::size_t n = 0;
-    for (std::size_t i = 0; i < r.models.size(); ++i)
-        if (r.models[i].change_probability == 1.0)
-            n = i + 1;
-    if (n == 0 && !r.models.empty() && r.models[0].curve_qa == ccd::CurveQA::Start)
-        n = 1;
-    return n;
-}
-
-const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const std::string& name)
-{
-    for (const auto& p : all)
-        if (p.name == name)
-            return p;
-    throw std::runtime_error("no characterization pixel " + name);
 }
 
 } // namespace
@@ -119,13 +79,13 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
 TEST(Record, TheResultIsDetects)
 {
     for (const auto& p : golden::characterization_pixels())
-        EXPECT_EQ(dump(recorded(p).result), dump(detected(p))) << p.name;
+        EXPECT_EQ(dump(recorded(p).result), dump(golden::detect(p))) << p.name;
 }
 
 TEST(Record, TheHeaderNamesTheRun)
 {
     const auto all = golden::characterization_pixels();
-    const golden::CharPixel& p = all.front();
+    const golden::Series& p = all.front();
     const ccd::PixelOutput r = recorded(p);
 
     EXPECT_EQ(r.header.format, ccd::RESUME_FORMAT);
@@ -149,10 +109,10 @@ TEST(Record, EachExitAndItsSuspension)
         {"series_end_after_outlier", Exit::SeriesEnd},
     };
     for (const auto& [name, exit] : expected)
-        EXPECT_EQ(recorded(pixel(all, name)).record.standard.exit, exit) << name;
+        EXPECT_EQ(recorded(golden::named(all, name)).record.standard.exit, exit) << name;
 
     // Not Standard: nothing for the machine to resume.
-    const ccd::PixelOutput snow = recorded(pixel(all, "select_snow_at_threshold"));
+    const ccd::PixelOutput snow = recorded(golden::named(all, "select_snow_at_threshold"));
     EXPECT_EQ(snow.record.procedure, ccd::PixelProcedure::PermanentSnow);
     EXPECT_EQ(snow.record.standard.exit, Exit::None);
     EXPECT_TRUE(snow.record.excluded_days.empty());
@@ -168,7 +128,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
             continue;
 
         // The segments written before the guard are the final ones.
-        EXPECT_EQ(s.final_segments, final_count(r.result)) << p.name;
+        EXPECT_EQ(s.final_segments, golden::final_count(r.result)) << p.name;
 
         if (s.exit != Exit::SeriesEnd)
         {
@@ -206,8 +166,8 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
         }
         ccd::MaskedSeries series;
         const ccd::PixelSeries ws(
-            dates_of(p), ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
-            qas_of(p));
+            p.date_view(), ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
+            p.qa_view());
         series.reset(ws, r.result.mask);
         // The model's solver, and its coefficient rule as configured.
         const ccd::Strategies strategies = golden::strategies_of(p.config);
@@ -257,8 +217,8 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
     // After a grow the peek reached the last observation; after a drop it
     // fell short of it.
     const auto all = golden::characterization_pixels();
-    EXPECT_TRUE(recorded(pixel(all, "start_catch")).record.standard.grow);
-    EXPECT_FALSE(recorded(pixel(all, "series_end_after_outlier")).record.standard.grow);
+    EXPECT_TRUE(recorded(golden::named(all, "start_catch")).record.standard.grow);
+    EXPECT_FALSE(recorded(golden::named(all, "series_end_after_outlier")).record.standard.grow);
 }
 
 TEST(Record, TheExcludedDaysAreTheMachinesDrops)
@@ -284,9 +244,9 @@ TEST(Record, TheExcludedDaysAreTheMachinesDrops)
         ccd::ProcessingMask filtered;
         ccd::preprocess::apply(
             plan.standard.chain,
-            dates_of(p),
+            p.date_view(),
             ccd::ArrayView<const double, 2>::contiguous(block.data(), {7, T}),
-            qas_of(p),
+            p.qa_view(),
             filtered);
 
         std::vector<std::int64_t> dropped;
@@ -298,8 +258,8 @@ TEST(Record, TheExcludedDaysAreTheMachinesDrops)
 
     // The pixels built to drop observations do.
     const auto all = golden::characterization_pixels();
-    EXPECT_FALSE(recorded(pixel(all, "series_end_after_outlier")).record.excluded_days.empty());
-    EXPECT_FALSE(recorded(pixel(all, "lookback_near_break")).record.excluded_days.empty());
+    EXPECT_FALSE(recorded(golden::named(all, "series_end_after_outlier")).record.excluded_days.empty());
+    EXPECT_FALSE(recorded(golden::named(all, "lookback_near_break")).record.excluded_days.empty());
 }
 
 //------------------------------------------------------------------------------
@@ -543,9 +503,9 @@ TEST(Digest, TheInputIsTheOneItWasWrittenFor)
 namespace
 {
 
-std::uint64_t fingerprint(const golden::CharPixel& p, std::int64_t through)
+std::uint64_t fingerprint(const golden::Series& p, std::int64_t through)
 {
-    return ccd::input_fingerprint(dates_of(p), spectral_of(p), qas_of(p), p.h.qa_fill, through);
+    return ccd::input_fingerprint(p.date_view(), p.spectral_view(), p.qa_view(), p.h.qa_fill, through);
 }
 
 } // namespace
@@ -553,7 +513,7 @@ std::uint64_t fingerprint(const golden::CharPixel& p, std::int64_t through)
 TEST(InputFingerprint, ReadsEveryKeptValueUpToTheDate)
 {
     const auto all = golden::characterization_pixels();
-    const golden::CharPixel base = pixel(all, "start_catch");
+    const golden::Series base = golden::named(all, "start_catch");
     const std::int64_t through = base.dates[150];
     const std::uint64_t f = fingerprint(base, through);
 
@@ -562,25 +522,25 @@ TEST(InputFingerprint, ReadsEveryKeptValueUpToTheDate)
 
     // One ulp of one value, one QA code, one date: different.
     {
-        golden::CharPixel p = base;
+        golden::Series p = base;
         const index_t T = p.dates.size();
         p.spectral[3 * T + 40] = std::nextafter(p.spectral[3 * T + 40], 1e9);
         EXPECT_NE(fingerprint(p, through), f);
     }
     {
-        golden::CharPixel p = base;
+        golden::Series p = base;
         p.qas[40] = p.h.qa_cloud;
         EXPECT_NE(fingerprint(p, through), f);
     }
     {
-        golden::CharPixel p = base;
+        golden::Series p = base;
         p.dates[40] += 1;
         EXPECT_NE(fingerprint(p, through), f);
     }
 
     // After the date: the same.
     {
-        golden::CharPixel p = base;
+        golden::Series p = base;
         const index_t T = p.dates.size();
         p.spectral[2 * T + 151] += 100.0;
         p.qas[160] = p.h.qa_cloud;
@@ -591,7 +551,7 @@ TEST(InputFingerprint, ReadsEveryKeptValueUpToTheDate)
 TEST(InputFingerprint, LeavesOutFill)
 {
     const auto all = golden::characterization_pixels();
-    golden::CharPixel base = pixel(all, "start_catch");
+    golden::Series base = golden::named(all, "start_catch");
     const index_t T = base.dates.size();
     base.qas[40] = base.h.qa_fill;
     const std::int64_t through = base.dates[150];
@@ -599,7 +559,7 @@ TEST(InputFingerprint, LeavesOutFill)
 
     // A fill observation's values are not read.
     {
-        golden::CharPixel p = base;
+        golden::Series p = base;
         for (index_t b = 0; b < 7; ++b)
             p.spectral[b * T + 40] = -9999.0;
         EXPECT_EQ(fingerprint(p, through), f);
@@ -608,7 +568,7 @@ TEST(InputFingerprint, LeavesOutFill)
     // A fill observation added between two others (a scene that does not
     // cover the pixel) changes nothing.
     {
-        golden::CharPixel p = base;
+        golden::Series p = base;
         const index_t at = 60;
         p.dates.insert(p.dates.begin() + at, p.dates[at - 1] + 1);
         p.qas.insert(p.qas.begin() + at, p.h.qa_fill);

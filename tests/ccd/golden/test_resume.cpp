@@ -137,14 +137,6 @@ void report(const std::string& corpus, const Counts& c)
               << " continued from the record\n";
 }
 
-const Series& named(const std::vector<Series>& all, const std::string& name)
-{
-    for (const auto& s : all)
-        if (s.name == name)
-            return s;
-    throw std::runtime_error("no series " + name);
-}
-
 } // namespace
 
 //------------------------------------------------------------------------------
@@ -161,7 +153,7 @@ TEST_P(ResumeEqualsTheFullRun, CharacterizationPixelsEveryCut)
 {
     Counts c;
     std::size_t ordinal = 0;
-    for (const auto& s : golden::characterization_series())
+    for (const auto& s : golden::characterization_pixels())
         sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), c);
     report("characterization", c);
     EXPECT_GT(c.continued, c.splits / 2);
@@ -192,7 +184,7 @@ TEST_P(ResumeEqualsTheFullRun, SyntheticCubesTwelveCuts)
 TEST(ResumeEqualsTheFullRun, AChainOfResumes)
 {
     std::size_t chains = 0;
-    for (const auto& s : golden::characterization_series())
+    for (const auto& s : golden::characterization_pixels())
     {
         const std::size_t T = s.size();
         for (std::size_t k = 1; k <= 6; ++k)
@@ -307,10 +299,10 @@ INSTANTIATE_TEST_SUITE_P(Shards, ResumeEqualsTheFullRun,
 
 TEST(ResumeOfChangedInput, AReprocessedObservationIsRerun)
 {
-    const auto all = golden::characterization_series();
+    const auto all = golden::characterization_pixels();
     for (const char* name : {"start_catch", "lookback_near_break", "series_end_after_outlier"})
     {
-        const Series& s = named(all, name);
+        const Series& s = golden::named(all, name);
         const std::size_t last = 2 * s.size() / 3;
         const std::int64_t T = s.dates[last];
         const ccd::PixelOutput stored = golden::recorded_at(s.prefix(last + 1), s.statistics_end());
@@ -330,8 +322,8 @@ TEST(ResumeOfChangedInput, AReprocessedObservationIsRerun)
 
 TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
 {
-    const auto all = golden::characterization_series();
-    const Series& s = named(all, "start_catch");
+    const auto all = golden::characterization_pixels();
+    const Series& s = golden::named(all, "start_catch");
     const std::size_t last = 2 * s.size() / 3;
     const std::int64_t T = s.dates[last];
     const ccd::PixelOutput stored = golden::recorded_at(s.prefix(last + 1), s.statistics_end());
@@ -377,7 +369,7 @@ TEST(ResumeOfChangedInput, AFillSceneBeforeTheCutIsNotAChange)
 TEST(ResumeWithNothingNew, TheStoredOutputAgain)
 {
     std::size_t seen_series_end = 0;
-    for (const auto& s : golden::characterization_series())
+    for (const auto& s : golden::characterization_pixels())
     {
         for (const std::size_t last : golden::spread(s.size(), 8))
         {
@@ -411,8 +403,8 @@ TEST(ResumeWithNothingNew, TheStoredOutputAgain)
 
 TEST(ResumeRefuses, WhatItCannotContinue)
 {
-    const auto all = golden::characterization_series();
-    const Series& s = named(all, "start_catch");
+    const auto all = golden::characterization_pixels();
+    const Series& s = golden::named(all, "start_catch");
     const Series cut = s.prefix(2 * s.size() / 3);
     const ccd::PixelOutput stored = golden::recorded_at(cut, s.statistics_end());
     ASSERT_GT(stored.record.standard.final_segments, 0u);

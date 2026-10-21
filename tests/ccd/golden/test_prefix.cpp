@@ -60,20 +60,6 @@ namespace
 
 using golden::Series;
 
-// The number of leading final segments of `r` (see the header).
-std::size_t final_count(const ccd::FitResult& r)
-{
-    std::size_t n = 0;
-    for (std::size_t i = 0; i < r.models.size(); ++i)
-        if (r.models[i].change_probability == 1.0)
-            n = i + 1;
-
-    if (n == 0 && !r.models.empty() && r.models[0].curve_qa == ccd::CurveQA::Start)
-        n = 1;
-
-    return n;
-}
-
 std::string dump_leading(const ccd::FitResult& r, std::size_t n)
 {
     ccd::FitResult leading;
@@ -121,7 +107,7 @@ void sweep(const Series& s, const std::vector<std::size_t>& ends, Sweep& out)
         ++out.splits;
 
         const std::string at = s.name + " split after " + std::to_string(split_day);
-        const std::size_t n = final_count(shorter);
+        const std::size_t n = golden::final_count(shorter);
 
         // The resume record names the same final segments.
         const std::size_t recorded_final =
@@ -172,7 +158,7 @@ TEST_P(PrefixStability, CharacterizationPixelsEverySplit)
 {
     Sweep total;
     std::size_t ordinal = 0;
-    for (const auto& s : golden::characterization_series())
+    for (const auto& s : golden::characterization_pixels())
         sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), total);
     report("characterization", total);
     EXPECT_GT(total.with_final, 0u);

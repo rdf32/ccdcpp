@@ -42,8 +42,6 @@
 
 #include <algorithm>
 #include <array>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -54,6 +52,7 @@
 #include "ccd/ccd.hpp"
 
 #include "dump.hpp"
+#include "series.hpp"
 #include "fixture.hpp"
 #include "units.hpp"
 #include "synthetic.hpp"
@@ -64,50 +63,6 @@
 
 namespace
 {
-
-struct Pixel
-{
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;   // (7, T)
-    std::vector<std::uint8_t> qas;
-};
-
-Pixel read_csv(const std::string& filename)
-{
-    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
-    if (!file)
-        throw std::runtime_error("Unable to open " + filename);
-
-    std::array<std::vector<double>, 7> bands;
-    Pixel out;
-
-    std::string line;
-    std::getline(file, line);
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string value;
-
-        std::getline(ss, value, ',');
-        out.dates.push_back(static_cast<std::int64_t>(std::stod(value)));
-
-        for (std::size_t b = 0; b < 7; ++b)
-        {
-            std::getline(ss, value, ',');
-            bands[b].push_back(std::stod(value));
-        }
-
-        std::getline(ss, value, ',');
-        out.qas.push_back(static_cast<std::uint8_t>(std::stod(value)));
-    }
-
-    const std::size_t T = out.dates.size();
-    out.spectral.resize(7 * T);
-    for (std::size_t b = 0; b < 7; ++b)
-        std::copy(bands[b].begin(), bands[b].end(), out.spectral.begin() + b * T);
-
-    return out;
-}
 
 ccd::FitResult run_detect(
     const std::vector<std::int64_t>& dates,
@@ -163,7 +118,7 @@ std::string run_corpus()
     // Reference pixels
     //--------------------------------------------------------------------------
     {
-        const Pixel p = read_csv("test_3657_3610_observations.csv");
+        const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
         const std::size_t T = p.dates.size();
 
         golden::dump_pixel(dump, "pyccd:dn",
@@ -179,7 +134,7 @@ std::string run_corpus()
     {
         // The reference pixel with saturation-band values on the bounds and a
         // NaN: the reflectance filter's default exclusive ends drop all five.
-        Pixel p = read_csv("test_3657_3610_observations.csv");
+        golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
         const std::size_t T = p.dates.size();
         golden::put_bound_values(p.spectral.data(), p.qas.data(), T);
 
@@ -194,7 +149,7 @@ std::string run_corpus()
                 golden::physical_input(), golden::pyccd()));
     }
     {
-        const Pixel p = read_csv("test002_c2.csv");
+        const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true);
         golden::dump_pixel(dump, "c2:c2",
             run_detect(p.dates, p.spectral.data(), p.qas.data(),
                 golden::c2_input(), golden::c2_config()));
@@ -385,7 +340,7 @@ TEST(Golden, CubeDtypesAndLayouts)
 
 TEST(Golden, DetectDoesNotWriteItsInput)
 {
-    const Pixel p = read_csv("test_3657_3610_observations.csv");
+    const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
     const std::size_t T = p.dates.size();
 
     std::vector<double> buffer = p.spectral;

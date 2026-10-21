@@ -24,13 +24,10 @@
 //==============================================================================
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
 #include <random>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -51,6 +48,7 @@
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/regression/lasso_solver.hpp"
 
+#include "series.hpp"
 #include "units.hpp"
 #include "find_closest_doy.hpp"
 
@@ -64,61 +62,17 @@ using ccd::scalar_t;
 // The CSV pixels
 //------------------------------------------------------------------------------
 
-struct Pixel
-{
-    std::vector<std::int64_t> dates;
-    std::vector<double> spectral;   // (7, T)
-    std::vector<std::uint8_t> qas;
-};
-
-Pixel read_csv(const std::string& path)
-{
-    std::ifstream file(path);
-    if (!file)
-        throw std::runtime_error("Unable to open " + path);
-
-    std::array<std::vector<double>, 7> bands;
-    Pixel out;
-
-    std::string line;
-    std::getline(file, line);   // header (the golden test skips it too)
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string value;
-
-        std::getline(ss, value, ',');
-        out.dates.push_back(static_cast<std::int64_t>(std::stod(value)));
-
-        for (std::size_t b = 0; b < 7; ++b)
-        {
-            std::getline(ss, value, ',');
-            bands[b].push_back(std::stod(value));
-        }
-
-        std::getline(ss, value, ',');
-        out.qas.push_back(static_cast<std::uint8_t>(std::stod(value)));
-    }
-
-    const std::size_t T = out.dates.size();
-    out.spectral.resize(7 * T);
-    for (std::size_t b = 0; b < 7; ++b)
-        std::copy(bands[b].begin(), bands[b].end(), out.spectral.begin() + b * T);
-
-    return out;
-}
-
 // A pixel's Standard-filter masked series, as the procedures see it.
 struct MaskedPixel
 {
-    Pixel pixel;
+    golden::Series pixel;
     ccd::Input options;
     ccd::config::Shared shared;
     ccd::MaskedSeries series;
 
     MaskedPixel(const std::string& path, ccd::Input options_,
                 const ccd::config::Config& config)
-        : pixel(read_csv(path)), options(options_)
+        : pixel(golden::read_csv(path, true)), options(options_)
     {
         const index_t T = pixel.dates.size();
         const ccd::PixelSeries workspace(
