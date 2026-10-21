@@ -30,7 +30,7 @@
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/pixel_series.hpp"
-#include "ccd/input/pmask.hpp"
+#include "ccd/input/processing_mask.hpp"
 
 #include "../golden/config.hpp"
 

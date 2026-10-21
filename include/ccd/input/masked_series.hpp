@@ -7,7 +7,7 @@
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
-#include "ccd/input/pmask.hpp"
+#include "ccd/input/processing_mask.hpp"
 
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/core/window.hpp"

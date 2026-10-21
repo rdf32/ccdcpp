@@ -8,7 +8,7 @@
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/core/types.hpp"
-#include "ccd/input/pmask.hpp"
+#include "ccd/input/processing_mask.hpp"
 
 namespace ccd
 {

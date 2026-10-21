@@ -8,7 +8,7 @@
 
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/band_list.hpp"
-#include "ccd/input/pmask.hpp"
+#include "ccd/input/processing_mask.hpp"
 #include "ccd/core/types.hpp"
 
 #include "ccd/core/window.hpp"
