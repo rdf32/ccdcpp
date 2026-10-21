@@ -2,17 +2,26 @@
 
 Each script puts its own directory first on sys.path before `import _common`, since `python -I`
 leaves it off.
+
+A script that compares sides (implementations, call forms or phases) runs each side in its own
+interpreter with `--only <side>` (run_sides), so that each side's peak memory is its own. The
+side prints its report line and hands its numbers back on one `result <json>` line (emit).
 """
 import datetime as dt
+import json
 import os
 import resource
+import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
+
+T = TypeVar("T")
 
 #: pyccd's statistics cutoff, 2017-12-31, as an ordinal day.
 PYCCD_STATISTICS_END = 736694
@@ -86,14 +95,17 @@ def c2_strip(cell: Cell, r0: int, r1: int) -> tuple[NDArray[np.float64], NDArray
     return sp, np.ascontiguousarray(cell.sr[r0:r1, :, 6])
 
 
-def best_of(reps: int, call: Callable[[], object]) -> float:
-    """The shortest wall time of `reps` calls, in seconds."""
-    best = float("inf")
-    for _ in range(reps):
+def best_of(reps: int, call: Callable[[], T]) -> tuple[float, T]:
+    """The shortest wall time of `reps` calls (at least one), in seconds, and the last call's
+    result."""
+    t0 = time.perf_counter()
+    result = call()
+    best = time.perf_counter() - t0
+    for _ in range(reps - 1):
         t0 = time.perf_counter()
-        call()
+        result = call()
         best = min(best, time.perf_counter() - t0)
-    return best
+    return best, result
 
 
 def peak_mb() -> float:
@@ -101,3 +113,37 @@ def peak_mb() -> float:
     ru_maxrss is bytes on macOS and kilobytes on Linux."""
     r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return r / 1e6 if sys.platform == "darwin" else r * 1024 / 1e6
+
+
+def report(side: str, timing: str, peak: float, base: float, base_is: str = "the input") -> str:
+    """One side's line: its timing, its peak memory, and how far the peak is above `base`, the
+    peak once the side held its input (`base_is` says when it was taken)."""
+    return f"{side}: {timing}; peak {peak:.0f} MB, {peak - base:.1f} MB above {base_is} ({base:.0f} MB)"
+
+
+_RESULT = "result "
+
+
+def emit(result: dict[str, Any]) -> None:
+    """Hands a side's numbers to run_sides: one `result <json>` line on stdout."""
+    print(_RESULT + json.dumps(result), flush=True)
+
+
+def run_sides(script: str, argv: Sequence[str], sides: Sequence[str]) -> dict[str, dict[str, Any]]:
+    """Runs `script argv --only <side>` once per side, each in a fresh interpreter with this one's
+    -W options, echoing its output as it comes; returns each side's emitted result. Exits if a
+    side fails."""
+    results: dict[str, dict[str, Any]] = {}
+    for side in sides:
+        cmd = [sys.executable, "-I", *(f"-W{w}" for w in sys.warnoptions), script, *argv,
+               "--only", side]
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True) as p:
+            assert p.stdout is not None
+            for line in p.stdout:
+                if line.startswith(_RESULT):
+                    results[side] = json.loads(line[len(_RESULT):])
+                else:
+                    print(line, end="", flush=True)
+        if p.returncode != 0 or side not in results:
+            sys.exit(f"{os.path.basename(script)} --only {side} failed (exit {p.returncode})")
+    return results

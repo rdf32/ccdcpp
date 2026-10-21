@@ -2,7 +2,8 @@
 
 The corpus of `golden_driver gen` (c16.bin) tiled 2x2 (8000 pixels), through ccdcpp.detect_cube
 with the default input, `threads` threads, best of `reps` calls. Prints the best wall time of
-the call and its time per pixel, and the file `import ccdcpp` loaded.
+the call and its time per pixel, the process's peak memory, also above the peak with the input
+built, and the file `import ccdcpp` loaded.
 
 `module_dir` is a directory from which `import ccdcpp` loads the build under test: the build
 directory (it holds the bare extension) or a package directory. Input conversion and copying
@@ -43,7 +44,7 @@ def main(argv: list[str]) -> int:
     del corpus
 
     h = ccdcpp.Input()
-    rss0 = _common.peak_mb()
+    base = _common.peak_mb()
     best = float("inf")
     for _ in range(args.reps):
         # A fresh float64 input per call, as a caller's buffer would be.
@@ -54,9 +55,10 @@ def main(argv: list[str]) -> int:
         del r, s
 
     npx = qas.shape[0] * qas.shape[1]
-    print(f"cube {args.dtype} t{args.threads}: {best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
-          f"input {src.nbytes / 1e6:.0f} MB, maxrss_before_call {rss0:.0f} MB, "
-          f"ccdcpp {ccdcpp.__file__}")
+    print(_common.report(f"cube {args.dtype} t{args.threads}",
+                         f"{best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
+                         f"input {src.nbytes / 1e6:.0f} MB", _common.peak_mb(), base))
+    print(f"ccdcpp {ccdcpp.__file__}")
     return 0
 
 

@@ -16,7 +16,8 @@ The cell is read once (uint16) before any timing. Each strip is converted to lan
 is the number reported. The outputs of every strip are hashed in key order, so two builds that
 print the same fingerprint gave byte-identical results on all 250,000 pixels.
 
-Run with a Python that has zarr 3 and numpy. `package_dir` is a directory holding a `ccdcpp`
+Prints the process's peak memory at the end, also above the peak once the cell is read (the
+input's share). Run with a Python that has zarr 3 and numpy. `package_dir` is a directory holding a `ccdcpp`
 package: python/ccdcpp/*.py of the tree under test plus the extension built from it.
 """
 import argparse
@@ -57,8 +58,8 @@ def main(argv: list[str]) -> int:
     t0 = time.perf_counter()
     cell = _common.read_cell(args.cube, N)
     print(f"read {cell.sr.nbytes / 1e9 + cell.st.nbytes / 1e9:.2f} GB in "
-          f"{time.perf_counter() - t0:.1f} s; T={cell.dates.size}; "
-          f"maxrss after reading {_common.peak_mb() / 1e3:.1f} GB")
+          f"{time.perf_counter() - t0:.1f} s; T={cell.dates.size}")
+    base = _common.peak_mb()
 
     profile = presets.landsat_c2()
     digest = hashlib.sha256()
@@ -87,9 +88,9 @@ def main(argv: list[str]) -> int:
 
     px = N * N
     print(f"strip loop {time.perf_counter() - t_loop:.1f} s")
-    print(f"cell detect t{args.threads} strip{args.strip}: {t_det:.1f} s, "
-          f"{t_det / px * 1e3:.3f} ms/px, segments {segments}, failures {failures}, "
-          f"maxrss {_common.peak_mb() / 1e3:.1f} GB")
+    print(_common.report(f"cell detect t{args.threads} strip{args.strip}",
+                         f"{t_det:.1f} s, {t_det / px * 1e3:.3f} ms/px, segments {segments}, "
+                         f"failures {failures}", _common.peak_mb(), base, "the cell read"))
     print("fingerprint", digest.hexdigest())
     return 0
 

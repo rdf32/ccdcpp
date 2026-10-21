@@ -12,8 +12,9 @@ on one machine:
   statistics cutoff as 0.10.0 ran it), or `input=presets.landsat_c2()` for the real cell.
 - The machine was not otherwise idle: the 1-minute load is given with each table. A
   comparison is only made between runs of the same session.
-- Memory is the peak resident set size of the process (`/usr/bin/time -l`), which includes the
-  interpreter and the input it holds; each section says how much of it the input is.
+- Memory is the peak resident set size of the process, as each bench prints it (the number
+  `/usr/bin/time -l` reports), which includes the interpreter and the input it holds; each
+  section says how much of it the input is.
 
 ## The workloads
 

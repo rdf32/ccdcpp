@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+#include <sys/resource.h>
+
 #include "ccd/ccd.hpp"
 #include "synthetic.hpp"
 #include "golden.hpp"
@@ -124,6 +126,19 @@ static double now_ms()
 {
     return std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// The process's peak resident set size in MB of 10^6 bytes: ru_maxrss is bytes
+// on macOS, kilobytes on Linux.
+static double peak_mb()
+{
+    struct rusage u {};
+    getrusage(RUSAGE_SELF, &u);
+#ifdef __APPLE__
+    return static_cast<double>(u.ru_maxrss) / 1e6;
+#else
+    return static_cast<double>(u.ru_maxrss) * 1024.0 / 1e6;
+#endif
 }
 
 int main(int argc, char** argv)
@@ -253,6 +268,7 @@ int main(int argc, char** argv)
         }
     }
 
-    std::fprintf(stderr, "detect: %zu px, %.1f ms, %.4f ms/px\n", detect_px, detect_ms, detect_ms / detect_px);
+    std::fprintf(stderr, "detect: %zu px, %.1f ms, %.4f ms/px; peak %.0f MB\n",
+        detect_px, detect_ms, detect_ms / detect_px, peak_mb());
     return 0;
 }
