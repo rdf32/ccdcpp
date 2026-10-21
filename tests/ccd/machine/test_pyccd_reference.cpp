@@ -19,15 +19,13 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <fstream>
-#include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "config.hpp"
+#include "reference.hpp"
 #include "series.hpp"
 
 #include "ccd/ccd.hpp"
@@ -59,53 +57,32 @@ struct ExpectedModel
     std::array<ExpectedBand, 7> bands;
 };
 
-std::ifstream open_reference(const std::string& filename)
-{
-    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
-    if (!file)
-        throw std::runtime_error("Unable to open " + filename);
-    return file;
-}
-
-// pyccd's segments, one per row after the header: the days, the count, the
-// change probability and curve_qa, then per band its rmse, intercept,
-// magnitude and seven coefficients.
+// pyccd's segments, one per row: the days, the count, the change probability
+// and curve_qa, then per band its rmse, intercept, magnitude and seven
+// coefficients.
 std::vector<ExpectedModel> read_models_reference(const std::string& filename)
 {
-    std::ifstream file = open_reference(filename);
-
-    std::string line;
-    std::getline(file, line);   // header
-
     std::vector<ExpectedModel> models;
-    while (std::getline(file, line))
+    for (const auto& row : golden::read_reference_rows(filename))
     {
-        if (line.empty())
-            continue;
-
-        std::stringstream ss(line);
-        std::string value;
-        auto next = [&]()
-        {
-            std::getline(ss, value, ',');
-            return value;
-        };
+        std::size_t at = 0;
+        auto next = [&]() { return row.at(at++); };
 
         ExpectedModel m{};
-        m.start_day = std::stoi(next());
-        m.end_day = std::stoi(next());
-        m.break_day = std::stoi(next());
-        m.observation_count = std::stoi(next());
-        m.change_probability = std::stod(next());
-        m.curve_qa = std::stoi(next());
+        m.start_day = static_cast<int>(next());
+        m.end_day = static_cast<int>(next());
+        m.break_day = static_cast<int>(next());
+        m.observation_count = static_cast<int>(next());
+        m.change_probability = next();
+        m.curve_qa = static_cast<int>(next());
 
         for (auto& band : m.bands)
         {
-            band.rmse = std::stod(next());
-            band.intercept = std::stod(next());
-            band.magnitude = std::stod(next());
+            band.rmse = next();
+            band.intercept = next();
+            band.magnitude = next();
             for (int i = 0; i < 7; ++i)
-                band.coefficients.push_back(std::stod(next()));
+                band.coefficients.push_back(next());
         }
 
         models.push_back(std::move(m));
@@ -113,18 +90,12 @@ std::vector<ExpectedModel> read_models_reference(const std::string& filename)
     return models;
 }
 
-// pyccd's processing mask, one 0 or 1 per row after the header.
+// pyccd's processing mask, one 0 or 1 per row.
 std::vector<int> read_mask_reference(const std::string& filename)
 {
-    std::ifstream file = open_reference(filename);
-
-    std::string line;
-    std::getline(file, line);   // header
-
     std::vector<int> mask;
-    while (std::getline(file, line))
-        if (!line.empty())
-            mask.push_back(std::stoi(line));
+    for (const auto& row : golden::read_reference_rows(filename))
+        mask.push_back(static_cast<int>(row.at(0)));
     return mask;
 }
 

@@ -1,12 +1,15 @@
-#include <fstream>
-#include <sstream>
+#include <array>
+#include <string>
 #include <vector>
+
 #include <Eigen/Dense>
 #include <gtest/gtest.h>
 
 #include "ccd/core/types.hpp"
 #include "ccd/core/array_view.hpp"
 #include "ccd/regression/robust_solver.hpp"
+
+#include "reference.hpp"
 
 
 using namespace ccd;
@@ -21,46 +24,21 @@ struct RobustReference
     std::vector<scalar_t> residuals;
 };
 
+// scikit-learn's fit of each band: test_robust.py's columns.
 std::vector<RobustReference> load_reference(const std::string& filename)
 {
-    std::ifstream file(std::string(CCD_TEST_DATA_DIR "/") + filename);
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open: " + filename);
-    }
-
-    std::string line;
-    std::getline(file, line); // skip header
-
     std::vector<RobustReference> refs;
-
-    while (std::getline(file, line))
+    for (const auto& row : golden::read_reference_rows(filename))
     {
-        std::stringstream ss(line);
-        std::string field;
-
         RobustReference ref;
-
-        std::getline(ss, field, ',');
-        ref.band = std::stoi(field);
-
-        for (int i = 0; i < 5; ++i)
-        {
-            std::getline(ss, field, ',');
-            ref.coefficients[i] = std::stod(field);
-        }
-
-        std::getline(ss, field, ',');
-        ref.nonzero = std::stoi(field);
-
-        std::getline(ss, field, ',');
-        ref.rmse = std::stod(field);
-
-        while (std::getline(ss, field, ','))
-            ref.residuals.push_back(std::stod(field));
-
+        ref.band = static_cast<index_t>(row.at(0));
+        for (std::size_t i = 0; i < 5; ++i)
+            ref.coefficients[i] = row.at(1 + i);
+        ref.nonzero = static_cast<index_t>(row.at(6));
+        ref.rmse = row.at(7);
+        ref.residuals.assign(row.begin() + 8, row.end());
         refs.push_back(ref);
     }
-
     return refs;
 }
 
