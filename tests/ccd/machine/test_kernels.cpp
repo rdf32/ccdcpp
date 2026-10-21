@@ -40,11 +40,11 @@
 #include "ccd/core/constants.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/pixel_series.hpp"
-#include "ccd/machine/fit.hpp"
 #include "ccd/core/window.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/edge_fit/lasso.hpp"
 #include "ccd/strategies/model/lasso.hpp"
+#include "ccd/strategies/noise_floor/variogram.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)

@@ -7,6 +7,30 @@ namespace ccd
 namespace strategies
 {
 
+namespace
+{
+
+// Whether the dates of a window span at least day_delta days.
+bool enough_time(
+    ArrayView<const std::int64_t, 1> dates_window,
+    std::int64_t day_delta
+) {
+    const auto first_date = dates_window(0);
+    const auto last_date = dates_window(dates_window.size() - 1);
+
+    return (last_date - first_date) >= day_delta;
+}
+
+// Whether a window holds at least meow_size observations.
+bool enough_samples(
+    ArrayView<const std::int64_t, 1> dates_window,
+    index_t meow_size
+) {
+    return dates_window.size() >= meow_size;
+}
+
+} // namespace
+
 const std::vector<config::Field<PyccdSearch::Params>>& PyccdSearch::schema()
 {
     using config::Unit;

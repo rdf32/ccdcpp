@@ -181,7 +181,6 @@ add_library(
     src/ccd/input/mask/preprocess.cpp
     src/ccd/input/mask/steps.cpp
 
-    src/ccd/machine/fit.cpp
     src/ccd/input/masked_series.cpp
     src/ccd/machine/standard.cpp
 

@@ -1,9 +1,85 @@
 #include "ccd/strategies/window_screen/tmask.hpp"
 
+#include <cmath>
 #include <stdexcept>
+
+#include "ccd/regression/robust_solver.hpp"
 
 namespace ccd
 {
+
+ProcessingMask tmask(
+    ArrayView<const std::int64_t, 1> dates_window,
+    ArrayView<const scalar_t, 2> spect_window,
+    const Variogram& variogram,
+    const BandList& bands,
+    scalar_t t_const
+) {
+    const index_t n =
+        spect_window.extent(1);
+    //----------------------------------------------------------
+    // Output mask
+    // true = outlier
+    //----------------------------------------------------------
+    ProcessingMask outliers(n);
+
+    Eigen::MatrixXd X =
+        tmask_basis(dates_window);
+    
+    Eigen::VectorXd y(n);
+    
+    RobustOptions options;
+    options.max_iter = 5;
+    RobustSolver solver(options);
+
+    // Every band is fitted against the same X.
+    RobustDesign design(X);
+
+    //----------------------------------------------------------
+    // Test each spectral band
+    //----------------------------------------------------------
+    for(const auto band : bands)
+    {
+
+        for (index_t i = 0; i < n; ++i)
+        {
+            y(i) = spect_window(band, i);
+        }
+        //------------------------------------------------------
+        // Fit
+        //------------------------------------------------------
+        RobustModel model = solver.fit(
+            design,
+            y
+        );
+
+        //------------------------------------------------------
+        // Residual threshold
+        //------------------------------------------------------
+        const scalar_t threshold =
+            variogram[band] * t_const;
+
+        auto preds = model.predict(X);
+
+        for(index_t i = 0; i < n; ++i)
+        {
+            const scalar_t residual = std::abs(preds[i] - y(i));
+
+            if(
+                residual
+                >
+                threshold
+            )
+            {
+                outliers.set(i,true);
+            }
+        }
+        
+    }
+
+    return outliers;
+}
+
 namespace strategies
 {
 

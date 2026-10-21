@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -13,7 +14,6 @@
 #include "ccd/core/window.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/qa_statistics.hpp"
-#include "ccd/machine/fit.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/capabilities.hpp"
@@ -29,7 +29,7 @@ class Model;   // strategies/model.hpp
 //
 // The stages of the algorithm
 //
-// The machine (procedure/standard.hpp) is the CCDC family's fixed skeleton:
+// The machine (src/ccd/machine/standard.hpp) is the CCDC family's fixed skeleton:
 // its phases and routes. What each phase decides is a stage, decided by the
 // strategy the run's configuration names for it (config/registry.hpp). A
 // strategy returns its decision; only the machine routes.
@@ -100,6 +100,36 @@ struct NoiseFloor
     virtual ~NoiseFloor() = default;
     virtual std::vector<scalar_t> estimate(ArrayView<const std::int64_t, 1> dates,
                                            ArrayView<const scalar_t, 2> spectral) const = 0;
+};
+
+//------------------------------------------------------------------------------
+// Variogram
+//
+// One pixel's per-band noise floor: the noise floor's estimate() of its
+// statistics-window observations, one value per spectral row, in row order.
+// Computed once per pixel and read, never written, by Tmask, the stability
+// check and the change magnitudes. Not tied to a procedure.
+//------------------------------------------------------------------------------
+struct Variogram
+{
+    std::vector<scalar_t> bands;
+
+    scalar_t operator[](index_t band) const
+    {
+        return bands[band];
+    }
+
+    // No band is NaN. A procedure stops without segments on a variogram
+    // that is not usable.
+    bool usable() const
+    {
+        for (const scalar_t band : bands)
+        {
+            if (std::isnan(band))
+                return false;
+        }
+        return true;
+    }
 };
 
 //------------------------------------------------------------------------------

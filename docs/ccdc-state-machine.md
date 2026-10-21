@@ -172,7 +172,7 @@ input (`strategies::library_registry().resolve(config, input).strategies`), as `
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
 | `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | Standard's |
-| `variogram` (`Variogram`, `include/ccd/machine/fit.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
+| `variogram` (`Variogram`, `include/ccd/strategies/stages.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
 | `init_model`, `stability`, `lookback` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's and the lookback's per-pixel scratch, each a `PerThread` of its strategy | Standard's |
 | `extend` (`ExtendState`) | what Extend carries from one peek test to the next | Standard's |
@@ -372,7 +372,7 @@ record:
 | `Cursor`, `drive` | `src/ccd/machine/machine.hpp` |
 | `Window`, `span`, `count_through` | `include/ccd/core/window.hpp` |
 | `ChangeModel`, `BandFit`, `FitResult`, `CurveQA` | `include/ccd/results/segment.hpp` |
-| `Variogram`, `adjusted_variogram`, `tmask` | `include/ccd/machine/fit.hpp` |
+| `Variogram`, with the stage interfaces | `include/ccd/strategies/stages.hpp` |
 | `KeepResiduals`, with the `Model` contract | `include/ccd/strategies/model.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
 
@@ -382,6 +382,8 @@ Each strategy holds its own code, beside its class:
 |---|---|---|
 | `fit_bands` (the one per-band fit loop), `peek_residuals`, `band_fit` | the Lasso model and stability fit | `include/ccd/strategies/model/lasso.hpp` |
 | `catch_segment`, `fit_whole_series` | the Lasso edge fit | `include/ccd/strategies/edge_fit/lasso.hpp` |
+| `adjusted_variogram` | the variogram noise floor | `include/ccd/strategies/noise_floor/variogram.hpp` |
+| `tmask` | the Tmask window screen | `include/ccd/strategies/window_screen/tmask.hpp` |
 | `adjust_peek`, `adjust_change_threshold`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse` | pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`

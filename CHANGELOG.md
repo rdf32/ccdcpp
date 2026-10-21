@@ -69,7 +69,13 @@ its replacement.
 - **The source layout**: `include/ccd/` and `src/ccd/` in `core/`, `input/`, `regression/`,
   `config/`, `strategies/`, `machine/`, `results/` and `run/`; `ccd/ccd.hpp` includes every
   public header. The run (`Run`, `Worker`) and the Standard machine (`machine/standard.hpp`,
-  `machine/machine.hpp`) are internal, under `src/ccd/`. `HarmonicWorkspace` is `PixelSeries`.
+  `machine/machine.hpp`) are internal, under `src/ccd/`. Each strategy's functions are in its
+  own header (the Lasso fits in `strategies/model/lasso.hpp`, the catch and whole-series fits in
+  `strategies/edge_fit/lasso.hpp`, `adjusted_variogram()` and `tmask()` with their strategies),
+  pyccd's peek statistics in `strategies/pyccd/peek_statistics.hpp`, the segments in
+  `results/segment.hpp`, `Window` in `core/window.hpp`, `Variogram` in `strategies/stages.hpp`
+  and `chi2_quantile()` in `core/maths.hpp`; 0.10.0's `procedure/fit.hpp` and
+  `procedure/kernels.hpp` are gone. `HarmonicWorkspace` is `PixelSeries`.
 
 ### Added
 
