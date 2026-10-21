@@ -6,9 +6,9 @@
 //   * Whole pixels stepped by hand: every self-transition is one decision,
 //     and the result is the driven machine's.
 //   * Exits: Detector::fit() on the characterization pixels that end the
-//     segment loop each way, with the same preprocessing ccd::detect() runs,
-//     against the Exit the run leaves in the record. The result of each run
-//     is also checked against detect()'s, field for field.
+//     segment loop each way, one test per pixel, with the same preprocessing
+//     ccd::detect() runs, against the Exit the run leaves in the record. The
+//     result of each run is also checked against detect()'s, field for field.
 //   * the mode's choose(): the clear percentage first, then the snow
 //     percentage, each threshold on its >= side; Detector::fit(): the
 //     machine for Standard, the shared whole-series fit for the others.
@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -100,36 +101,58 @@ MachineRun run_machine(const golden::Series& p)
     return out;
 }
 
-TEST(StandardExit, EachWayTheMachineStops)
+// A pixel and the way the machine stops on it.
+struct Stop
 {
-    const auto all = golden::characterization_pixels();
+    const char* pixel;
+    Exit exit;
+};
 
-    // Two random pixels for the routes after a change: Restart with no room
-    // left, and an Initialize that finds no stable window after a segment.
-    std::vector<golden::Series> pixels = all;
-    pixels.push_back(golden::sparse_random("restart_no_room", 12));
-    pixels.push_back(golden::sparse_random("exhausted_after_a_change", 8));
-
-    const std::vector<std::pair<std::string, Exit>> expected{
-        {"standard_too_few", Exit::TooFewObservations},
-        {"variogram_nan", Exit::VariogramNaN},
-        {"standard_no_room", Exit::NoRoomToInitialize},         // from Prepare
-        {"restart_no_room", Exit::NoRoomToInitialize},          // from Restart
-        {"constant_detection_band", Exit::InitializeExhausted}, // no segment
-        {"exhausted_after_a_change", Exit::InitializeExhausted},  // after one
-        {"peek_guard_tail", Exit::PeekBeyondEnd},
-        {"start_catch", Exit::SeriesEnd},                       // after a grow
-        {"series_end_after_outlier", Exit::SeriesEnd},          // after a drop
-    };
-
-    for (const auto& [name, exit] : expected)
-    {
-        const golden::Series& p = golden::named(pixels, name);
-        const MachineRun run = run_machine(p);
-        EXPECT_EQ(run.exit, exit) << name << ": " << ccd::standard::to_string(run.exit);
-        expect_same(run.result, golden::detect(p), name);
-    }
+void PrintTo(const Stop& stop, std::ostream* os)
+{
+    *os << stop.pixel << ": " << ccd::standard::to_string(stop.exit);
 }
+
+const Stop STOPS[] = {
+    {"standard_too_few", Exit::TooFewObservations},
+    {"variogram_nan", Exit::VariogramNaN},
+    {"standard_no_room", Exit::NoRoomToInitialize},         // from Prepare
+    {"restart_no_room", Exit::NoRoomToInitialize},          // from Restart
+    {"constant_detection_band", Exit::InitializeExhausted}, // no segment
+    {"exhausted_after_a_change", Exit::InitializeExhausted},  // after one
+    {"peek_guard_tail", Exit::PeekBeyondEnd},
+    {"start_catch", Exit::SeriesEnd},                       // after a grow
+    {"series_end_after_outlier", Exit::SeriesEnd},          // after a drop
+};
+
+class EachWayTheMachineStops : public ::testing::TestWithParam<Stop>
+{
+};
+
+// One test per pixel, named for it: the exit Detector::fit() leaves, and the
+// run's result against detect()'s.
+TEST_P(EachWayTheMachineStops, Pixel)
+{
+    // The characterization pixels, and two random pixels for the routes after
+    // a change: Restart with no room left, and an Initialize that finds no
+    // stable window after a segment.
+    static const std::vector<golden::Series> pixels = []
+    {
+        std::vector<golden::Series> all = golden::characterization_pixels();
+        all.push_back(golden::sparse_random("restart_no_room", 12));
+        all.push_back(golden::sparse_random("exhausted_after_a_change", 8));
+        return all;
+    }();
+
+    const auto& [name, exit] = GetParam();
+    const golden::Series& p = golden::named(pixels, name);
+    const MachineRun run = run_machine(p);
+    EXPECT_EQ(run.exit, exit) << name << ": " << ccd::standard::to_string(run.exit);
+    expect_same(run.result, golden::detect(p), name);
+}
+
+INSTANTIATE_TEST_SUITE_P(StandardExit, EachWayTheMachineStops, ::testing::ValuesIn(STOPS),
+                         [](const auto& info) { return std::string(info.param.pixel); });
 
 TEST(StandardExit, TheEarlyExitsReturnTheMask)
 {

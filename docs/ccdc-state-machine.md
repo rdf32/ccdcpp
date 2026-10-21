@@ -500,7 +500,7 @@ A test builds a `State` by hand (a short synthetic series, a chosen cursor, mode
 and the record. `tests/ccd/machine/test_standard_steps.cpp` does that for every row of the
 guard lists above (`StandardInitialize.*`, `StandardLookback.*`, `StandardExtend.*`) and for
 the routing (`StandardRouting.*`, `StandardPrepare.*`), `test_standard_whole_pixel.cpp` for
-every `Exit` (`StandardExit.*`).
+every `Exit` (`StandardExit/EachWayTheMachineStops.*`, one test per pixel).
 `StandardMachine.EachStepIsOneDecision` steps whole pixels by hand and checks that every
 self-transition changes the window by one decision. The outputs themselves are pinned byte for
 byte by the golden fixtures (`tests/ccd/golden/`), including the transitions fixture, built from
