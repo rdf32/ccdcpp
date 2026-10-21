@@ -163,7 +163,9 @@ its replacement.
   ("it must be a finite number at least 0"); the thermal and reflectance bounds, which take any
   number, still take an infinity.
 - Shape and length mismatches of `dates`, `spectral` and `qas` raise `ValueError` (they raised
-  `RuntimeError`).
+  `RuntimeError`), with the run's message, which names both lengths ("qas has 39 timesteps;
+  spectral has 40"); in C++, `detect_cube` throws `std::invalid_argument` on a QA cube that is
+  not (H, W, T), as on every other shape mismatch (it threw `std::runtime_error`).
 - A `min_observations` at or below `coefficients.min` is refused when the configuration is
   built, naming both values: its fits had no degree of freedom (a NaN RMSE, an assertion in
   a debug build).

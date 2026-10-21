@@ -297,22 +297,12 @@ static py::dict detect_wrapper(
     if (qas_buf.ndim != 1)
         throw std::invalid_argument("qas must have shape (time)");
 
-    const auto timesteps = static_cast<ccd::index_t>(dates_buf.shape[0]);
+    const auto timesteps = static_cast<ccd::index_t>(spectral_buf.shape[1]);
     const auto bands = static_cast<ccd::index_t>(spectral_buf.shape[0]);
-
-    if (static_cast<ccd::index_t>(qas_buf.shape[0]) != timesteps)
-        throw std::invalid_argument("qas length must match dates length");
-    if (static_cast<ccd::index_t>(spectral_buf.shape[1]) != timesteps)
-        throw std::invalid_argument("spectral time dimension must match dates");
-
-    // ValueError, raised here, before the GIL is released.
-    ccd::validate(input, bands);
+    const auto qa_timesteps = static_cast<ccd::index_t>(qas_buf.shape[0]);
 
     const auto dates_view = ccd::ArrayView<const std::int64_t, 1>::contiguous(
-        static_cast<std::int64_t*>(dates_buf.ptr), {timesteps});
-
-    // ValueError, as above.
-    ccd::validate_dates(dates_view);
+        static_cast<std::int64_t*>(dates_buf.ptr), {static_cast<ccd::index_t>(dates_buf.shape[0])});
 
     std::optional<ccd::Resume> from;
     if (!resume.is_none())
@@ -347,12 +337,12 @@ static py::dict detect_wrapper(
         if (raw16)
             run = ccd::detect(spec, dates_view, spectral_view,
                               ccd::ArrayView<const std::uint16_t, 1>::contiguous(
-                                  static_cast<const std::uint16_t*>(qas_buf.ptr), {timesteps}),
+                                  static_cast<const std::uint16_t*>(qas_buf.ptr), {qa_timesteps}),
                               prior);
         else
             run = ccd::detect(spec, dates_view, spectral_view,
                               ccd::ArrayView<const std::uint8_t, 1>::contiguous(
-                                  static_cast<const std::uint8_t*>(qas_buf.ptr), {timesteps}),
+                                  static_cast<const std::uint8_t*>(qas_buf.ptr), {qa_timesteps}),
                               prior);
     }
 
@@ -445,18 +435,6 @@ static CubeInput check_cube(
     const auto B = static_cast<ccd::index_t>(spectral.shape(2));
     const auto T = static_cast<ccd::index_t>(spectral.shape(3));
 
-    if (static_cast<ccd::index_t>(dates.shape(0)) != T)
-        throw std::invalid_argument("dates length must equal spectral time dimension");
-
-    if (static_cast<ccd::index_t>(qas.shape(0)) != H ||
-        static_cast<ccd::index_t>(qas.shape(1)) != W ||
-        static_cast<ccd::index_t>(qas.shape(2)) != T)
-        throw std::invalid_argument("qas must have shape (height,width,timesteps)");
-
-    // ValueError, raised here, before the GIL is released.
-    ccd::validate(input, B);
-    ccd::validate_dates(ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}));
-
     const SpectralType spectral_type =
         takes_as_is<std::uint16_t>(spectral) ? SpectralType::UInt16 :
         takes_as_is<float>(spectral)         ? SpectralType::Float32 :
@@ -482,7 +460,8 @@ static ccd::CubeOutput detect_views(
     const ccd::Resume* from
 )
 {
-    const auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(in.dates.data(), {in.T});
+    const auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(
+        in.dates.data(), {static_cast<ccd::index_t>(in.dates.shape(0))});
 
     const ccd::CubeSpectral spectral =
         in.spectral_type == SpectralType::UInt16

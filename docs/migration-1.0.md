@@ -422,6 +422,7 @@ stage that reads them, and a role against the input when the configuration is re
 | a band past the input in `TMASK_BANDS` | `window_screen 'tmask' parameter 'bands' holds band 12; the input has 7 bands` |
 | a detection band the input lacks | `shared value 'detection_bands' holds 'coastal', which the input does not have; its rows are blue, green, red, nir, swir1, swir2, thermal` |
 | (none: one field held it) | `start_search 'pyccd' parameter 'min_observations' is the shared value 'min_observations'; set shared 'min_observations' instead` |
+| `RuntimeError: qas length must match dates length`, `spectral time dimension must match dates` | `ValueError: qas has 39 timesteps; spectral has 40`, `dates has 39 timesteps; spectral has 40` |
 
 ```python
 for bad in (dict(change_test__peek_size=1), dict(shared__coefficients__max=9),
@@ -457,6 +458,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `HarmonicWorkspace` | `PixelSeries` (`ccd/input/pixel_series.hpp`): views of the pixel's dates, values and QA codes; `MaskedData` and `apply_mask()` are in `ccd/input/masked_series.hpp`, with `MaskedSeries` |
 | `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`ccd/regression/coefficients.hpp`) |
 | `Clock`, `elapsed_ms`, `print_change_model(s)` | none |
+| `detect_cube`'s `std::runtime_error` on a QA cube that is not (H, W, T) | `std::invalid_argument`, as on every other shape mismatch (`ValueError` in Python, as before) |
 | `ccd/types.hpp`, `ccd/pmask.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, `ccd/harmonic/...`, `ccd/preprocess/...` | `ccd/core/types.hpp`, `ccd/input/processing_mask.hpp`, none (the machine is internal; `ccd/machine/suspended.hpp` holds the record's `Suspended`), `ccd/results/record.hpp`, `ccd/input/...`, `ccd/input/mask/...` (`preprocess/preprocess.hpp` is `input/mask/chain.hpp`, the plans and their chains; `ccd/ccd.hpp` includes every public header) |
 | `filter::remove_duplicate_dates`, `apply_thermal_filter`, `apply_saturation_filter`, `apply_green_median_filter(..., filter_range, ...)` | `filter::apply_one_per_date`, `apply_thermal_range`, `apply_band_range`, `apply_green_median(..., green_offset, ...)` (`ccd/input/mask/filter.hpp`), each named for its preprocess step |
 | `ccd/procedure/pixel_procedure.hpp` | `ccd/input/procedure.hpp` (`PixelProcedure`, with `PROCEDURES` and `name()`; `PreprocessPlan::of()` is a procedure's plan); `fit_whole_series` is in `ccd/strategies/edge_segments/lasso.hpp`, the `mode` stage's `PixelMode` in `ccd/strategies/stages.hpp` |

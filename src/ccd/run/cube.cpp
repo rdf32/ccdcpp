@@ -261,7 +261,7 @@ CubeOutput detect_cube(
             const index_t W = s.extent(1);
             const index_t T = s.extent(3);
             if (q.extent(0) != H || q.extent(1) != W || q.extent(2) != T)
-                throw std::runtime_error("qas shape must be (height, width, timesteps)");
+                throw std::invalid_argument("qas shape must be (height, width, timesteps)");
 
             const Run run(spec, dates, s.extent(2), T, q.extent(2),
                           std::is_same_v<Qa, std::uint16_t>, resume);

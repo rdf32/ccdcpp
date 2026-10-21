@@ -237,9 +237,9 @@ inline PixelOutput detect(
 // count, and CubeOutput::threads says 1.
 //
 // This never throws on account of a pixel; see CubeOutput::failures. It
-// throws, before any pixel runs, std::runtime_error on a QA cube that is not
-// (H, W, T), and std::invalid_argument on what detect() throws on before its
-// pixel runs and for a resume on records or segment lists that are not H x W.
+// throws std::invalid_argument, before any pixel runs, on a QA cube that is
+// not (H, W, T), on what detect() throws on before its pixel runs and for a
+// resume on records or segment lists that are not H x W.
 //
 // The cube is read, never written, in any strides, as float64, float32 or
 // uint16. Each pixel is converted to scalar_t in a per-thread buffer --
