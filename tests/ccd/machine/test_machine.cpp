@@ -53,7 +53,7 @@
 #include "ccd/strategies/edge_fit/lasso.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/strategies/library.hpp"
 
 #include "../golden/characterisation.hpp"
 #include "find_closest_doy.hpp"

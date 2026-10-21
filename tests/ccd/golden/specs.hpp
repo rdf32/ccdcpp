@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "ccd/ccd.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/strategies/library.hpp"
 
 #include "config.hpp"
 

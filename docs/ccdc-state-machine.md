@@ -351,7 +351,7 @@ Algorithm bad(config);
 
 A run's configuration is `RunSpec::algorithm`, a compiled `config::Config`. It names its
 strategies and preprocessing steps in
-`ccd::strategies::library_registry()`: the library's own (`register_core_strategies()`, which
+`ccd::strategies::library_registry()` (`include/ccd/strategies/library.hpp`): the library's own (`register_core_strategies()`, which
 also registers the `ccdc` preset) and those of the extensions it was built with, which may
 register presets and preprocessing step types of their own (`Registry::add_preset()`; `preset()`, `presets()`; `Registry::add_step()`, a step beyond the built-in kinds being a `preprocess::CustomStep`). An extension is a
 directory in CMake's `CCD_EXTENSIONS` whose `extension.cmake` adds its sources, include

@@ -49,7 +49,7 @@ namespace config
 //     };
 //
 // and is registered once, by name, in its module's registration function
-// (register_core_strategies(), strategies/register_core.cpp):
+// (register_core_strategies(), strategies/library.cpp):
 //
 //     registry.add<I, S>("span-factor");
 //

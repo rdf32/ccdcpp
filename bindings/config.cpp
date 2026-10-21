@@ -12,7 +12,7 @@
 #include "ccd/config/shared.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/run/algorithm.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/strategies/library.hpp"
 
 #include "config.hpp"
 

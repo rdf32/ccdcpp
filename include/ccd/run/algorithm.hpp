@@ -12,7 +12,7 @@
 
 #include "ccd/config/registry.hpp"
 #include "ccd/input/input.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/strategies/library.hpp"
 
 namespace ccd
 {

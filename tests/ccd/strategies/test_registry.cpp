@@ -61,7 +61,7 @@
 #include "../golden/specs.hpp"
 #include "../golden/golden.hpp"
 #include "../golden/synthetic.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/strategies/library.hpp"
 
 namespace
 {

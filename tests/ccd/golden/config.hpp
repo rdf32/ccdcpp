@@ -17,7 +17,7 @@
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/run/algorithm.hpp"
-#include "ccd/strategies/register_core.hpp"
+#include "ccd/strategies/library.hpp"
 
 namespace golden
 {
