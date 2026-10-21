@@ -1,23 +1,17 @@
-// python/
-//     module.cpp          // PYBIND11_MODULE + detect wrapper
-//     input.cpp           // Input, GreenFilterScope
-//     regression.cpp      // LassoModel, LassoScore, LassoResult
-//     fit.cpp             // ChangeModel, FitResult, CurveQA
-//     pmask.cpp           // ProcessingMask
-//     quality.cpp         // QaStatistics
-//     qa_tables.cpp       // QaTable, ccdcpp.qa_tables
-//     preprocess.cpp      // PreprocessPlan and its parts, plan_of
-//     config.cpp          // Algorithm, the configuration helpers
+// bindings/
+//     module.cpp          // PYBIND11_MODULE: each bind_* below
+//     input.cpp           // bind_input: Input, GreenFilterScope
+//     qa_tables.cpp       // bind_qa_tables: QaTable, ccdcpp.qa_tables
+//     preprocess.cpp      // bind_preprocess: PreprocessPlan and its parts, plan_of
+//     detect.cpp          // bind_detect: detect, detect_cube, resume_schema
+//     resume.cpp          // the resume record and segments as Python data (resume.hpp)
+//     config.cpp          // bind_config: Algorithm, the configuration helpers
 
 #include <pybind11/pybind11.h>
 
 namespace py = pybind11;
 
 void bind_input(py::module_& m);
-// void bind_regression(py::module_& m);
-// void bind_fit(py::module_& m);
-// void bind_processing_mask(py::module_& m);
-// void bind_quality(py::module_& m);
 void bind_qa_tables(py::module_& m);
 void bind_preprocess(py::module_& m);
 void bind_detect(py::module_& m);
@@ -30,15 +24,8 @@ PYBIND11_MODULE(ccdcpp, m)
     m.attr("__version__") = CCD_VERSION;
 
     bind_input(m);
-    // bind_regression(m);
-    // bind_fit(m);
-    // bind_processing_mask(m);
-    // bind_quality(m);
     bind_qa_tables(m);
     bind_preprocess(m);
     bind_detect(m);
     bind_config(m);
 }
-
-
-

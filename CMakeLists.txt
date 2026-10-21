@@ -1151,10 +1151,6 @@ if(CCD_BUILD_PYTHON)
         bindings/module.cpp
         bindings/config.cpp
         bindings/input.cpp
-        bindings/regression.cpp
-        bindings/fit.cpp
-        bindings/pmask.cpp
-        bindings/quality.cpp
         bindings/qa_tables.cpp
         bindings/preprocess.cpp
         bindings/detect.cpp
