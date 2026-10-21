@@ -197,7 +197,7 @@ struct Field
 // (an integer is accepted for a real), a whole number its member cannot
 // hold, a value outside the field's bounds, a band list with an index below 0
 // or not below CCD_MAX_BANDS, or longer than CCD_MAX_BANDS, and a band list
-// by role (Registry::resolve() maps roles to rows first).
+// by role (config::resolve() maps roles to rows first).
 //------------------------------------------------------------------------------
 template<class P>
 void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
@@ -331,6 +331,54 @@ Values to_values(const std::vector<Field<P>>& schema, const P& params)
             f.member);
     return out;
 }
+
+// One parameter of a schema, as listings show it (the registry's schemas(),
+// the Python binding, the docs). A parameter its stage cannot set (a Shared
+// or Chi2 source) has no default.
+struct ParameterInfo
+{
+    std::string name;
+    Unit unit;
+    std::string bounds;   // describe() of its bounds
+    std::string doc;
+    Source source;
+    std::string from;     // the shared value it reads; empty for Own
+    std::optional<Value> default_value;
+};
+
+// The parameters of `schema`, each Own one with its configuration default
+// (its default_value, or else its member's in P{}).
+template<class P>
+std::vector<ParameterInfo> info_of(const std::vector<Field<P>>& schema)
+{
+    std::vector<ParameterInfo> info;
+    const Values members = to_values(schema, P{});
+    for (const auto& field : schema)
+    {
+        std::optional<Value> fallback;
+        if (field.source == Source::Own)
+            fallback = field.default_value ? *field.default_value : members.at(field.name);
+        info.push_back(ParameterInfo{field.name, field.unit, describe(field.bounds), field.doc,
+                                     field.source, field.from ? field.from : "", fallback});
+    }
+    return info;
+}
+
+// Throws std::invalid_argument, naming `where`, when `list` names a band an
+// input of `bands` bands does not have, or repeats one.
+void check_band_list(const BandList& list, index_t bands, const std::string& where);
+
+// check_band_list() of every band list of `params` ("<where> parameter
+// '<name>'").
+template<class P>
+void check_band_lists(const std::vector<Field<P>>& schema, const P& params, index_t bands,
+                      const std::string& where)
+{
+    for (const auto& field : schema)
+        if (const auto* m = std::get_if<BandList P::*>(&field.member))
+            check_band_list(params.**m, bands, where + " parameter '" + field.name + "'");
+}
+
 
 } // namespace config
 } // namespace ccd

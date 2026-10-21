@@ -22,7 +22,7 @@ namespace ccd
 // QA, the role of each row of the spectral array, and its units. It holds no
 // algorithm parameter: those are the configuration's (config/registry.hpp),
 // written in physical terms and resolved against an Input when a run is
-// built (Registry::resolve()).
+// built (config::resolve()).
 //
 // This struct contains no computation; validate() (ccd.hpp) checks it
 // against the input's band count once per call.
@@ -96,7 +96,7 @@ struct Input
     //
     // How the data encodes physical quantities, and nothing else: the
     // configuration says what to do with them, in physical units, and a run
-    // translates once (Registry::resolve()).
+    // translates once (config::resolve()).
     //
     // Reflectance r is held as r x reflectance_scale + reflectance_offset:
     // 10000 and 0 for Collection-1 DN (the default), 1 and 0 for

@@ -838,7 +838,7 @@ TEST(StandardExtend, TheTestsModelRmseWindowIsItsOwnParameter)
     Record r(80);
     auto tree = ccd::strategies::library_registry().preset("ccdc");
     tree.stages["change_test"].params["model_rmse_up_to"] = ccd::config::integer(10);
-    r.strategies = golden::core_registry().resolve(tree, r.options).strategies;
+    r.strategies = ccd::config::resolve(golden::core_registry(), tree, r.options).strategies;
     in_extend(r, 0, 24);
     r.step();
 

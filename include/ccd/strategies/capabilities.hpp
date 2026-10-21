@@ -13,7 +13,7 @@ namespace ccd
 // What one stage's strategy gives the stages after it at an Extend peek, and
 // what a strategy needs from the ones before it. The model provides its
 // fits' residuals and RMSE; the change test provides the peek's comparison
-// RMSE (PeekResult). Registry::build() refuses a configuration in which a
+// RMSE (PeekResult). config::build_strategies() refuses a configuration in which a
 // strategy needs what no earlier stage's strategy provides, naming both. The
 // per-observation statistics a change test provides and an outlier rule
 // reads go by name (ChangeTest::statistics(), OutlierRule::statistics()).

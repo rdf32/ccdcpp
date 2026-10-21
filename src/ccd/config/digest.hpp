@@ -1,11 +1,11 @@
 #pragma once
 
 // Internal to the library: the digest of a resolution (config::Resolved),
-// which config::Registry::resolve() records.
+// which config::resolve() records.
 
 #include <cstdint>
 
-#include "ccd/config/registry.hpp"
+#include "ccd/config/config.hpp"
 #include "ccd/input/input.hpp"
 
 namespace ccd

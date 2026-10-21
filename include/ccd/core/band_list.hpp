@@ -30,7 +30,7 @@ namespace ccd
 // full list, throws std::invalid_argument. Whether an index is below the
 // actual band count, and whether a list repeats a band, is checked per call
 // where the list is used: ccd::validate() for the input's, the configuration's
-// resolution (Registry::resolve()) for its lists.
+// resolution (config::resolve()) for its lists.
 //
 //==============================================================================
 

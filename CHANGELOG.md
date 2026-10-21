@@ -82,7 +82,10 @@ its replacement.
   values and QA codes only. The preprocessing plans and their chains are in
   `input/mask/chain.hpp` (0.10.0's `preprocess/preprocess.hpp`), `ProcessingMask` in
   `input/processing_mask.hpp` (`pmask.hpp`), and `library_registry()` with the library's
-  registration functions in `strategies/library.hpp`. The mask filters are named for their preprocess steps:
+  registration functions in `strategies/library.hpp`. A configuration is `config::Config` (`config/config.hpp`); the registry
+  (`config/registry.hpp`) is the catalogue of strategies, steps and presets, and
+  `config::check()`, `config::resolve()` and `config::build_strategies()` (`config/resolve.hpp`)
+  check a configuration and resolve it against an input. The mask filters are named for their preprocess steps:
   `filter::apply_dedupe`, `apply_thermal_range`, `apply_band_range` and `apply_green_median`
   (its `green_offset`) replace `remove_duplicate_dates`, `apply_thermal_filter`,
   `apply_saturation_filter` and `apply_green_median_filter` (`filter_range`).

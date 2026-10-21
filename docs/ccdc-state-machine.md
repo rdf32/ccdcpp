@@ -191,8 +191,8 @@ OpenMP thread.
 The machine's phases and routes are fixed; what a phase decides is a **stage**, decided by the
 **strategy** the run's configuration names for it (`include/ccd/strategies/stages.hpp`). A
 strategy returns its decision and the machine routes on it; a strategy never steers the machine.
-The run's `ccd::Algorithm` builds its strategies once per input, through the registry
-(`include/ccd/config/registry.hpp`, `ccd::strategies::library_registry()`), from a configuration
+The run's `ccd::Algorithm` builds its strategies once per input (`config::resolve()`, `include/ccd/config/resolve.hpp`), by
+name in the registry (`include/ccd/config/registry.hpp`, `ccd::strategies::library_registry()`), from a configuration
 of shared values and one `{strategy, parameters}` per stage resolved against the input, and the
 run hands them to the machine in `Context::strategies`. Each strategy declares its parameters
 once, as a schema (`include/ccd/config/params.hpp`), which checks a configuration's values
@@ -307,7 +307,7 @@ has more):
 using namespace ccd;
 
 // The configuration a run uses by default: the shared values, the stages and the
-// preprocessing, in physical terms (config::Config, config/registry.hpp).
+// preprocessing, in physical terms (config::Config, config/config.hpp).
 config::Config config = strategies::library_registry().preset("ccdc");
 // config.shared holds detection_bands {"green", "red", "nir", "swir1", "swir2"},
 //   change_probability 0.99, outlier_probability 0.999999, alpha and coef_floor 1e-4

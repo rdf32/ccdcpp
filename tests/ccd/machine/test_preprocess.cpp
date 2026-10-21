@@ -825,7 +825,7 @@ pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double th
 TEST(CcdcPlan, IsWrittenOutStepByStep)
 {
     const ccd::Input dn;
-    EXPECT_EQ(fields(ccd::strategies::library_registry().resolve(golden::pyccd(), dn).plan),
+    EXPECT_EQ(fields(ccd::config::resolve(ccd::strategies::library_registry(), golden::pyccd(), dn).plan),
               fields(ccdc_plan(dn, -9320.0, 7070.0, 1799.5, 3438.5, 10000.0, 400.0,
                                pp::Affine{6, 10.0, -27315.0})));
 

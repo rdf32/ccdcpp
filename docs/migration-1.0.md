@@ -436,7 +436,7 @@ window_screen 'tmask' parameter 'bands' is empty
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `HarmonicOptions` (`ccd/harmonic/harmonic.hpp`) | `ccd::Input` (`ccd/input/input.hpp`, how to read the data) and `config::Config` (`ccd/config/registry.hpp`, the algorithm) |
+| `HarmonicOptions` (`ccd/harmonic/harmonic.hpp`) | `ccd::Input` (`ccd/input/input.hpp`, how to read the data) and `config::Config` (`ccd/config/config.hpp`, the algorithm) |
 | `LassoOptions` in a call | the shared `alpha`, `coef_floor`, `max_iter`, `tolerance` (`LassoOptions` remains the solver's own options type, inside the `lasso` strategies) |
 | `detect(d, s, q, h, l, table, plan)` (8 overloads) | `detect(spec, d, s, q).result`; `spec.input` holds its `qa_table`, the configuration its preprocessing |
 | `detect_recorded(...)` | `detect` with `RunSpec::record = true` |

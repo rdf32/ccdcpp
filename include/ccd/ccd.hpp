@@ -12,9 +12,11 @@
 #include "ccd/core/types.hpp"
 #include "ccd/core/window.hpp"
 
+#include "ccd/config/config.hpp"
 #include "ccd/config/params.hpp"
 #include "ccd/config/preprocess.hpp"
 #include "ccd/config/registry.hpp"
+#include "ccd/config/resolve.hpp"
 #include "ccd/config/shared.hpp"
 
 #include "ccd/input/input.hpp"

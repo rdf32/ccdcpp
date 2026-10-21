@@ -20,4 +20,12 @@ const char* name(PixelProcedure procedure)
     return "standard";
 }
 
+std::optional<PixelProcedure> procedure_named(const std::string& name)
+{
+    for (const PixelProcedure procedure : PROCEDURES)
+        if (name == ccd::name(procedure))
+            return procedure;
+    return std::nullopt;
+}
+
 } // namespace ccd

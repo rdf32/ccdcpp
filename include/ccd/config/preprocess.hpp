@@ -21,7 +21,7 @@ namespace config
 // the steps in order, each a step type by name (Registry::add_step()) with its
 // parameters in physical terms -- QA codes by name, bands by role, bounds in
 // reflectance and degrees Celsius. A run resolves it with the rest of the
-// configuration (Registry::resolve()) into a preprocess::PreprocessPlan in the
+// configuration (config::resolve()) into a preprocess::PreprocessPlan in the
 // input's codes, rows and units.
 //
 // The library's step types are keep_qa, add_qa, thermal_range, band_range,

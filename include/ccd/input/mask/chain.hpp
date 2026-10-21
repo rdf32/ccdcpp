@@ -41,7 +41,7 @@ namespace preprocess
 //   Step               one filter: a StepKind and the parameters it reads.
 //
 // A plan is the configuration's preprocess section resolved against an
-// input (config::Registry::resolve(), plan_of() in run/algorithm.hpp): the
+// input (config::resolve(), plan_of() in run/algorithm.hpp): the
 // steps by name with their parameters in physical units, as data units,
 // rows and codes. It is checked against the band count by validate() when it
 // is resolved, never per pixel.

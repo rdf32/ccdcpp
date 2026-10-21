@@ -123,7 +123,7 @@ void expect_config_error(const ccd::config::Config& config, const ccd::Input& in
 {
     try
     {
-        ccd::strategies::library_registry().resolve(config, input);
+        ccd::config::resolve(ccd::strategies::library_registry(), config, input);
         FAIL() << "no exception for " << where;
     }
     catch (const std::invalid_argument& e)

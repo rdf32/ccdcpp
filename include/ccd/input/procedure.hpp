@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <optional>
+#include <string>
 
 namespace ccd
 {
@@ -40,5 +42,9 @@ constexpr std::array<PixelProcedure, 3> PROCEDURES = {
 // The procedure's name in a preprocess section: "standard", "snow",
 // "insufficient_clear".
 const char* name(PixelProcedure procedure);
+
+// The procedure of a preprocess section's name, none for another:
+// procedure_named("snow") is PixelProcedure::PermanentSnow.
+std::optional<PixelProcedure> procedure_named(const std::string& name);
 
 } // namespace ccd

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ccd/config/registry.hpp"
+#include "ccd/config/resolve.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/strategies/library.hpp"
 
@@ -22,7 +23,7 @@ namespace ccd
 // Algorithm
 //
 // A compiled configuration: a config::Config checked once, at construction,
-// by its schemas (Registry::check(): the strategies, every parameter and
+// by its schemas (config::check(): the strategies, every parameter and
 // shared value as written, what each strategy needs), and resolved against
 // each input it runs on once. Immutable, so one Algorithm serves every call
 // and thread.
@@ -48,7 +49,7 @@ public:
     // The inputs whose resolutions an Algorithm keeps.
     static constexpr std::size_t CACHE_CAPACITY = 16;
 
-    // Throws std::invalid_argument for what Registry::check() refuses.
+    // Throws std::invalid_argument for what config::check() refuses.
     // `registry` must outlive the Algorithm (the library's does).
     explicit Algorithm(config::Config config,
                        const config::Registry& registry = strategies::library_registry());
@@ -61,8 +62,8 @@ public:
 
     const config::Registry& registry() const { return *registry_; }
 
-    // The configuration resolved against `input` (Registry::resolve()),
-    // cached per input, the CACHE_CAPACITY used last. Throws what Registry::resolve() throws; `input` must
+    // The configuration resolved against `input` (config::resolve()),
+    // cached per input, the CACHE_CAPACITY used last. Throws what config::resolve() throws; `input` must
     // pass validate() (ccd.hpp).
     std::shared_ptr<const config::Resolved> for_input(const Input& input) const;
 
@@ -88,8 +89,8 @@ private:
 using AlgorithmPtr = std::shared_ptr<const Algorithm>;
 
 // The preprocessing plan `config` runs on `input`: its preprocess section
-// resolved against the input (Registry::resolve()), for inspection. Throws
-// what Registry::resolve() throws; `input` must pass validate() (ccd.hpp).
+// resolved against the input (config::resolve()), for inspection. Throws
+// what config::resolve() throws; `input` must pass validate() (ccd.hpp).
 preprocess::PreprocessPlan plan_of(
     const config::Config& config,
     const Input& input,

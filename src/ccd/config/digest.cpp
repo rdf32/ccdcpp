@@ -1,4 +1,4 @@
-#include "ccd/config/registry.hpp"
+#include "ccd/config/config.hpp"
 
 #include <type_traits>
 

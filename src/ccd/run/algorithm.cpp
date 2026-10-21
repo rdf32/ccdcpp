@@ -6,7 +6,7 @@ namespace ccd
 Algorithm::Algorithm(config::Config config, const config::Registry& registry)
     : config_(std::move(config)), registry_(&registry)
 {
-    registry_->check(config_);
+    config::check(*registry_, config_);
 }
 
 std::shared_ptr<const Algorithm> Algorithm::preset(const std::string& name)
@@ -37,7 +37,7 @@ std::shared_ptr<const config::Resolved> Algorithm::for_input(const Input& input)
         }
 
     auto resolved =
-        std::make_shared<const config::Resolved>(registry_->resolve(config_, input));
+        std::make_shared<const config::Resolved>(config::resolve(*registry_, config_, input));
     resolved_.push_front(Cached{key, input, resolved});
     if (resolved_.size() > CACHE_CAPACITY)
         resolved_.pop_back();
@@ -49,7 +49,7 @@ preprocess::PreprocessPlan plan_of(
     const Input& input,
     const config::Registry& registry)
 {
-    return registry.resolve(config, input).plan;
+    return config::resolve(registry, config, input).plan;
 }
 
 } // namespace ccd

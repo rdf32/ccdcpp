@@ -9,6 +9,7 @@
 #include <pybind11/stl.h>
 
 #include "ccd/config/registry.hpp"
+#include "ccd/config/resolve.hpp"
 #include "ccd/config/shared.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/run/algorithm.hpp"
@@ -378,9 +379,9 @@ void bind_config(py::module_& m)
         [](const py::dict& config, const std::optional<ccd::Input>& input)
         {
             const ccd::config::Config c = config_from_python(config);
-            registry().check(c);
+            ccd::config::check(registry(), c);
             if (input)
-                registry().resolve(c, *input);
+                ccd::config::resolve(registry(), c, *input);
         },
         py::arg("config"), py::arg("input") = py::none(),
         "Raises ValueError for what a run would refuse in the configuration; with `input`, "
@@ -388,7 +389,7 @@ void bind_config(py::module_& m)
     m.def(
         "_config_resolve",
         [](const py::dict& config, const ccd::Input& input)
-        { return resolved_to_python(registry().resolve(config_from_python(config), input)); },
+        { return resolved_to_python(ccd::config::resolve(registry(), config_from_python(config), input)); },
         py::arg("config"), py::arg("input"),
         "The configuration resolved against `input`: {\"stages\", \"shared\", \"digest\"}.");
     m.def(

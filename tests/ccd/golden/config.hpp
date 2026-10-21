@@ -13,6 +13,7 @@
 #include <variant>
 
 #include "ccd/config/registry.hpp"
+#include "ccd/config/resolve.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/input.hpp"
@@ -114,7 +115,7 @@ inline ccd::config::Config pyccd()
 inline ccd::config::Resolved resolved(const ccd::config::Config& config = pyccd(),
                                       const ccd::Input& input = ccd::Input{})
 {
-    return ccd::strategies::library_registry().resolve(config, input);
+    return ccd::config::resolve(ccd::strategies::library_registry(), config, input);
 }
 
 // The strategies of `config` on `input`.
@@ -163,11 +164,7 @@ inline ccd::preprocess::PreprocessPlan plan_of(const ccd::config::Config& config
 inline const ccd::preprocess::ProcedurePlan& procedure_of(
     const ccd::preprocess::PreprocessPlan& plan, const std::string& procedure)
 {
-    if (procedure == "standard")
-        return plan.standard;
-    if (procedure == "snow")
-        return plan.snow;
-    return plan.insufficient_clear;
+    return plan.of(*ccd::procedure_named(procedure));
 }
 
 // The processing mask of procedure `procedure`'s chain in `config`, resolved

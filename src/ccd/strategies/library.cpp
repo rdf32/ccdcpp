@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "ccd/config/shared.hpp"
 #include "ccd/input/mask/steps.hpp"
 #include "ccd/strategies/change_test/chi2.hpp"
 #include "ccd/strategies/edge_fit/lasso.hpp"
