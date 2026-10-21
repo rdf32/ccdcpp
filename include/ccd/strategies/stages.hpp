@@ -40,7 +40,7 @@ class Model;   // strategies/model.hpp
 // one per file under strategies/<stage>/. Strategy objects are immutable and
 // shared by every thread of a call.
 //
-// The stages so far (the others are still decided inside the machine):
+// The stages (STAGES, below, lists them with their purposes):
 //
 //   mode             the pixel's procedure: change detection, or one curve
 //                    over the whole series

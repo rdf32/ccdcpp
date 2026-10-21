@@ -27,8 +27,11 @@ enum class Capability : std::uint8_t
     InWindowResiduals = 1 << 2,   // Model::residuals()
     ComparisonRmse = 1 << 3,      // PeekResult::comparison_rmse
     PredictionCovariance = 1 << 4 // the model is a least-squares fit whose
-                                  // factor gives its predictions' covariance
-                                  // (a test reading it downcasts to it)
+                                  // factor gives its predictions' covariance.
+                                  // Model has no call for the factor: the
+                                  // capability stands for the one Model type
+                                  // that declares it, which a strategy
+                                  // needing it downcasts to
 };
 
 // A set of capabilities.
