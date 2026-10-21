@@ -646,6 +646,39 @@ if(CCD_BUILD_PYTHON)
             )
         endforeach()
 
+        # tools/new_strategy.py's scaffold of every stage, generated from
+        # include/ccd/strategies/stages.hpp at build time and compiled, so the
+        # scaffold follows the interfaces. See
+        # tests/ccd/strategies/test_scaffold.cpp, which lists the same stages.
+        set(scaffold_dir ${PROJECT_BINARY_DIR}/scaffold)
+        set(scaffold_sources "")
+        set(scaffold_commands "")
+        foreach(
+            stage
+
+            mode noise start_search window_screen stability_fit stability_rule lookback
+            refit model change_test outlier segment_report edge_segments
+        )
+            string(REPLACE "_" "-" name "scaffold-${stage}")
+            list(APPEND scaffold_sources ${scaffold_dir}/${stage}/scaffold_${stage}.cpp)
+            list(
+                APPEND scaffold_commands
+                COMMAND ${Python_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/new_strategy.py
+                    ${stage} ${name} --into ${scaffold_dir}
+            )
+        endforeach()
+        add_custom_command(
+            OUTPUT ${scaffold_sources}
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${scaffold_dir}
+            ${scaffold_commands}
+            DEPENDS
+                ${PROJECT_SOURCE_DIR}/tools/new_strategy.py
+                ${PROJECT_SOURCE_DIR}/include/ccd/strategies/stages.hpp
+            COMMENT "Scaffolding a strategy of every stage (tools/new_strategy.py)"
+            VERBATIM
+        )
+        ccd_add_gtest(test_scaffold SOURCES tests/ccd/strategies/test_scaffold.cpp ${scaffold_sources})
+
         # The Landsat QA tables against the millworks nlcd plugin's table and
         # pyccd's qabitval. Both are found through PYTHONPATH, set for this
         # test alone from CCD_REFERENCE_PYTHONPATH (os.pathsep-separated, e.g.
