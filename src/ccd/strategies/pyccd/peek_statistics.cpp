@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdlib>
 
-#include "../../core/logger.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/strategies/stages.hpp"
 
@@ -128,7 +127,6 @@ void change_magnitude(
             magnitude[j] += value * value;
         }
     }
-    LOG_DEBUG("Magnitudes of change: " << magnitude);
 }
 
 //----------------------------------------------------------------------

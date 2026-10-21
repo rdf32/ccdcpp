@@ -406,7 +406,7 @@ phases, the transitions and the routing. A function moves to the shared list onc
 while (state.phase != Phase::Done)
 {
     const Phase next = step(context, state);
-    // the observer's transition (CCD_OBSERVE) and the DEBUG trace line
+    // the observer's transition (CCD_OBSERVE)
     report_transition(context, state, state.phase, next);
     state.phase = next;
 }
@@ -417,21 +417,23 @@ is reset, drive, take the result. A resume reports its Prepare through the same
 `report_transition` before it puts the cursor back.
 
 An observer (`RunSpec::observer`, [diagnostics.md](diagnostics.md)) is told each transition with
-the cursor as the step left it. The log trace is one DEBUG line per transition through the
-library's logger, so the log level is its only switch; below DEBUG (the default) it compiles to nothing. A build with
-`-DMAX_LOG_LEVEL=0` prints, for each pixel, lines such as:
+what the step decided (an Initialize, Lookback or Extend step's outcome) and the cursor as the
+step left it, each drop with its reason code, each Extend test, each segment and the exit. For
+debugging in C++, `ccd::TextObserver` prints them, one line each; built with
+`-DCCD_OBSERVE=OFF` the hooks compile to nothing. The pixel `lookback_near_break` of
+`tests/ccd/golden/test_transitions.cpp`, around its second segment's start:
 
 ```
-[DEBUG] Initialize: stable
-[DEBUG] standard: Initialize -> Lookback | window (18, 92), prev_break 13, 512 observations, 1 segments, exit None
-[DEBUG] Lookback: included
-[DEBUG] standard: Lookback -> Lookback | window (17, 92), prev_break 13, 512 observations, 1 segments, exit None
-[DEBUG] Lookback: change
-[DEBUG] standard: Lookback -> Extend | window (17, 92), prev_break 13, 512 observations, 1 segments, exit None
+pixel 0: transition Initialize -> Initialize (Tmask drop rejected, grown) window (13, 88) prev_break 13 n 513
+pixel 0: drop 730423 window_screen
+pixel 0: transition Initialize -> Initialize (Tmask outliers dropped, unstable, shifted) window (14, 88) prev_break 13 n 512
+...
+pixel 0: transition Initialize -> Lookback (stable) window (18, 92) prev_break 13 n 512
+pixel 0: transition Lookback -> Lookback (included) window (17, 92) prev_break 13 n 512
+pixel 0: transition Lookback -> Extend (change) window (17, 92) prev_break 13 n 512
 ```
 
-The outcome line comes from the transition, the arrow line from `report_transition`, after the
-step: the summary shows the record as the decision left it.
+Each line is reported after its step: the cursor is the record as the decision left it.
 
 ## 6. Resuming a stopped machine
 

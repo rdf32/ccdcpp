@@ -6,7 +6,6 @@
 #include <limits>
 #include <unordered_map>
 
-#include "../../core/logger.hpp"
 #include "ccd/core/maths.hpp"
 
 namespace ccd
@@ -121,16 +120,12 @@ std::vector<scalar_t> adjusted_variogram(
     {
         const std::int64_t majority_value = majority_separation(dates, lag);
 
-        LOG_DEBUG("lag = " << lag << ", majority = " << majority_value);
-
         if (majority_value <= min_lag_days) {
             continue;
         }
         //------------------------------------------------------------------
         // Recompute variogram using only pairs more than min_lag_days apart.
         //------------------------------------------------------------------
-        LOG_DEBUG("SELECTED LAG: " << lag);
-
         std::vector<scalar_t> scratch;
         for (index_t band = 0; band < bands; ++band)
         {

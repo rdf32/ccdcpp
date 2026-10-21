@@ -235,6 +235,6 @@ Where each decision lived in 0.10.0, and where it lives now:
 | the Start, End and whole-series curves | `catch_segment()` (`kernels.cpp`), `fit_whole_series()` (`pixel_procedure.cpp`) | `edge_segments` `lasso` |
 | the preprocessing | `default_plan(HarmonicOptions)` (`src/ccd/preprocess/preprocess.cpp`), the filters (`src/ccd/harmonic/filter.cpp`) | the configuration's `preprocess` section; the step types (`include/ccd/input/mask/steps.hpp`) |
 | the units | each profile's own option values (DN constants on DN inputs) | `Unit` on each field, converted at resolve (`src/ccd/config/convert.cpp`) |
-| debugging | `LOG_DEBUG` (`include/ccd/logger.hpp`) | the observer (`include/ccd/results/diagnostics.hpp`) |
+| debugging | `LOG_DEBUG` (`include/ccd/logger.hpp`) | the observer and `ccd::TextObserver` (`include/ccd/results/diagnostics.hpp`) |
 
 The 0.10.0 paths are in the `v0.10.0` tag: `git show v0.10.0:src/ccd/procedure/standard.cpp`.

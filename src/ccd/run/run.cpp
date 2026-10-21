@@ -11,7 +11,6 @@
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/qa_statistics.hpp"
-#include "../core/logger.hpp"
 #include "ccd/strategies/library.hpp"
 
 #include "../core/fnv.hpp"
@@ -271,7 +270,6 @@ PreparedPixel Run::prepare(
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
     PreparedPixel pixel{std::move(mode), PixelSeries(dates_, values, qas), ProcessingMask(), {}};
     const PixelSeries& series = pixel.series;
-    LOG_DEBUG("initial spectral: " << series.spectral());
 
     std::vector<std::uint8_t>* reasons = spec_.reasons ? &pixel.reasons : nullptr;
     preprocess::apply(steps.chain, series.dates(), series.spectral(), series.qas(), pixel.mask,

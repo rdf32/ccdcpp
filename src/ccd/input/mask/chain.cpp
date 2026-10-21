@@ -8,8 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "../../core/logger.hpp"
-
 namespace ccd
 {
 
@@ -424,11 +422,6 @@ void apply_steps(
         }
         if (reasons)
             note_step(step.kind, mask, *reasons);
-
-        LOG_DEBUG(
-            "Processing Mask after " << name(step.kind) << ": "
-            << mask.as_ints()
-        );
     }
 }
 

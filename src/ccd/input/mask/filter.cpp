@@ -6,7 +6,6 @@
 #include <optional>
 
 #include "ccd/core/constants.hpp"
-#include "../../core/logger.hpp"
 
 namespace ccd
 {

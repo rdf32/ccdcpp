@@ -23,8 +23,11 @@ void TextObserver::event(index_t pixel, const ObserverEvent& e)
     switch (e.kind)
     {
         case ObserverEvent::Kind::Transition:
-            out_ << " " << e.phase << " -> " << e.next << " window (" << e.window_start << ", "
-                 << e.window_stop << ") prev_break " << e.prev_break << " n " << e.observations;
+            out_ << " " << e.phase << " -> " << e.next;
+            if (!e.outcome.empty())
+                out_ << " (" << e.outcome << ")";
+            out_ << " window (" << e.window_start << ", " << e.window_stop << ") prev_break "
+                 << e.prev_break << " n " << e.observations;
             break;
         case ObserverEvent::Kind::Test:
         case ObserverEvent::Kind::Drop:

@@ -25,7 +25,6 @@ int omp_get_thread_num() { return 0; }
 #include <vector>
 
 #include "ccd/run/run.hpp"
-#include "../core/logger.hpp"
 
 namespace ccd
 {
@@ -199,13 +198,6 @@ CubeOutput cube_loop(
 
             const index_t col =
                 static_cast<index_t>(pixel) % W;
-
-            LOG_DEBUG(
-                "thread "
-                << omp_get_thread_num()
-                << " pixel "
-                << row << "," << col
-            );
 
             //------------------------------------------------------------------
             // The try/catch is load-bearing, not defensive habit: an

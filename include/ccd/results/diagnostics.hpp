@@ -83,7 +83,9 @@ struct ObserverEvent
 {
     enum class Kind : std::uint8_t
     {
-        Transition,   // phase -> next; window, prev_break, observations
+        Transition,   // phase -> next; outcome (what an Initialize, Lookback
+                      // or Extend step decided), window, prev_break,
+                      // observations
         Test,         // an Extend change test: day (the peek's first), outcome, values
                       // (the change test's first statistic, chi2's change_magnitude)
         Drop,         // an observation dropped: day, outcome (its reason code's
@@ -128,9 +130,10 @@ struct Observe
     index_t pixel = 0;
 };
 
-// Prints one line per event, serialised across threads:
+// Prints one line per event, serialised across threads, for debugging in C++
+// (it compiles away with CCD_OBSERVE=OFF):
 //
-//     pixel 0: transition Initialize -> Lookback window (4, 16) prev_break 0 n 230
+//     pixel 0: transition Initialize -> Lookback (stable) window (4, 16) prev_break 0 n 230
 //     pixel 0: test 731203 no change [3.1, 2.7, 4.0, 1.2, 0.9, 2.2]
 class TextObserver final : public Observer
 {

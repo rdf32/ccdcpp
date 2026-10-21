@@ -3,7 +3,6 @@
 #include <cassert>
 #include <utility>
 
-#include "../../core/logger.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 
@@ -20,14 +19,6 @@ ChangeModel catch_segment(
     LassoSolver& solver
 )
 {
-    LOG_DEBUG(
-        "Catching observations: ("
-        << window.start
-        << ", "
-        << window.stop
-        << ")"
-    );
-
     std::vector<LassoResult> fits;
     fit_bands(
         dates.slice(range(window.start, window.stop)),
@@ -70,8 +61,6 @@ FitResult fit_whole_series(
 )
 {
     assert(procedure != PixelProcedure::Standard);
-
-    LOG_DEBUG((procedure == PixelProcedure::PermanentSnow ? "Snow" : "Clear"));
 
     //----------------------------------------------------------
     // Not enough observations: no segment, and the mask

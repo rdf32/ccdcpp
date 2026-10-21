@@ -2,7 +2,6 @@
 
 #include <cassert>
 
-#include "../../core/logger.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/model.hpp"
 
@@ -191,7 +190,6 @@ LookbackJudgement PyccdLookback::judge(Model& model, ArrayView<const std::int64_
     //--------------------------------------------------------------------------
     if (detect_change(magnitude, s.change_threshold))
     {
-        LOG_DEBUG("Change before " << window.start);
         return LookbackJudgement{LookbackVerdict::Change, before};
     }
     //--------------------------------------------------------------------------
@@ -199,13 +197,11 @@ LookbackJudgement PyccdLookback::judge(Model& model, ArrayView<const std::int64_
     //--------------------------------------------------------------------------
     else if (detect_outlier(magnitude[0], p_.outlier_threshold))
     {
-        LOG_DEBUG("Outlier dropped at " << peek_window.start);
         return LookbackJudgement{LookbackVerdict::Drop, before};
     }
     //--------------------------------------------------------------------------
     // Otherwise it joins the window
     //--------------------------------------------------------------------------
-    LOG_DEBUG("Included " << peek_window.start);
     return LookbackJudgement{LookbackVerdict::Include, before};
 }
 

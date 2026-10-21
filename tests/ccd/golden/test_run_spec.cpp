@@ -153,6 +153,15 @@ TEST(Diagnostics, AnObserverSeesTheRunAndChangesNothing)
             EXPECT_EQ(pixel, 0u);
             if (e.kind == ccd::ObserverEvent::Kind::Segment)
                 ++segments;
+            // A transition says what an Initialize, Lookback or Extend step
+            // decided.
+            if (e.kind == ccd::ObserverEvent::Kind::Transition)
+            {
+                const std::string from = e.phase;
+                EXPECT_EQ(e.outcome.empty(),
+                          from != "Initialize" && from != "Lookback" && from != "Extend")
+                    << s.name << " " << from;
+            }
         }
         EXPECT_EQ(segments, plain.result.models.size()) << s.name;
 #endif
@@ -193,6 +202,9 @@ TEST(Diagnostics, AnObserverSeesTheRunAndChangesNothing)
         printer.event(pixel, e);
 #if CCD_OBSERVE
     EXPECT_NE(text.str().find("pixel 1: transition Prepare -> "), std::string::npos) << text.str();
+    EXPECT_NE(text.str().find("pixel 1: transition Initialize -> Extend (stable) window (0, 12)"),
+              std::string::npos)
+        << text.str();
 #endif
 }
 

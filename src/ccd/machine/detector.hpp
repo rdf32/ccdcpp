@@ -273,6 +273,10 @@ struct State
     // Where the segment loop stopped (set with every Exit).
     Suspended suspended;
 
+    // What the last step decided (its outcome's to_string()), kept for the
+    // observer's transition until it is reported; set only with an observer.
+    const char* outcome = "";
+
     // Makes the objects of the run's `strategies` the State holds: each
     // PerThread's of its strategy, kept when that strategy made it and made
     // again when another did (another run's). The phases read them

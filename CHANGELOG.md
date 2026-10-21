@@ -129,7 +129,7 @@ its replacement.
   `ccdcpp.to_pixels()` reads the columns per pixel.
 - Diagnostics ([docs/diagnostics.md](docs/diagnostics.md)): `ccd::Observer`,
   `ccd::TextObserver`, `detect(trace=True)` and `detect_cube(trace_pixels=)`, compiled out with
-  `CCD_OBSERVE=OFF`.
+  `CCD_OBSERVE=OFF`. A transition says what its Initialize, Lookback or Extend step decided.
 - Reason codes: `reasons=True` (`RunSpec::reasons`) returns `"mask_reasons"`, one code per
   observation saying why it is where the run left it: kept in a segment, kept after a model that
   could not be fitted (`no_fit`) or in no segment, or the preprocessing step (`qa`, `thermal`,
@@ -166,8 +166,10 @@ its replacement.
   `Quality` (`QaStatistics` and `qa_statistics()`, `ccd/input/qa_statistics.hpp`; the `mode`
   stage's `choose()` takes a `QaStatistics`),
   `options_digest()`, `default_plan()`, `PreprocessPlanPtr`, `select_procedure()`,
-  `standard::measure_cadence()`, `standard::coefficient_count()`, `Clock`, `elapsed_ms` and
-  `print_change_model(s)`.
+  `standard::measure_cadence()`, `standard::coefficient_count()`, `Clock`, `elapsed_ms`,
+  `print_change_model(s)`, and the logger (`LOG_DEBUG`, `LOG_INFO`, `LOG_ERROR`,
+  `MAX_LOG_LEVEL`) with `ProcessingMask::as_ints()`: `ccd::TextObserver` prints each step,
+  what it decided included, and compiles away with `CCD_OBSERVE=OFF`.
 
 ### Fixed
 

@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "ccd/core/maths.hpp"
-#include "../core/logger.hpp"
 
 namespace ccd
 {
@@ -61,6 +60,19 @@ void drop(const Context& context, State& state, index_t position, Window& window
                                                  state.series.dates()(position), name(why)));
     state.series.drop(position, window, why);
     ++state.work.dropped;
+}
+
+// What the step decided, for the observer's transition (report_transition()).
+void note(const Context& context, State& state, const char* outcome)
+{
+#if CCD_OBSERVE
+    if (context.observe.observer)
+        state.outcome = outcome;
+#else
+    (void)context;
+    (void)state;
+    (void)outcome;
+#endif
 }
 
 // A segment written: the work on it is its own, and counting starts again.
@@ -172,6 +184,7 @@ void State::reset(const PixelSeries& pixel, ProcessingMask mask,
     resumable = true;
     carried_change = false;
     suspended = Suspended{};
+    outcome = "";
 }
 
 void State::bind(const Strategies& strategies)
@@ -329,8 +342,6 @@ void prepare_stages(const Context& context, State& state,
         plan, detection_bands, *state.lookback);
     state.stability_coefficients = context.strategies.stability_fit->coefficients();
     state.coefficients = context.strategies.model->coefficients();
-
-    LOG_DEBUG("Peek size: " << state.peek_plan.peek);
 }
 
 } // namespace
@@ -340,15 +351,11 @@ Phase prepare(const Context& context, State& state)
     const config::Shared& shared = context.shared;
     MaskedSeries& series = state.series;
 
-    LOG_DEBUG("num obs: " << context.pixel.dates().size());
-    LOG_DEBUG("Processing mask initial count: " << series.size());
     //----------------------------------------------------------
     // Not enough observations
     //----------------------------------------------------------
     if (context.strategies.start_search->too_few(series.size()))
     {
-        LOG_DEBUG("Processing Mask: " << series.mask().data());
-        LOG_DEBUG("mask count < meow size" << series.size());
         return done_because(state, Exit::TooFewObservations);
     }
 
@@ -357,15 +364,12 @@ Phase prepare(const Context& context, State& state)
     // (views, no copy)
     //----------------------------------------------------------
     const index_t stat_count = series.count_until(shared.statistics_end);
-    LOG_DEBUG("Stat mask count: " << stat_count);
 
     const auto stat_dates =
         series.dates().slice(range(index_t{0}, stat_count));
 
     const auto stat_spectral =
         series.spectral().slice(all(), range(index_t{0}, stat_count));
-
-    LOG_DEBUG("stat dates: " << stat_dates);
 
     //----------------------------------------------------------
     // The pixel's peek plan and variogram, read by every step
@@ -377,10 +381,8 @@ Phase prepare(const Context& context, State& state)
 
     if (!state.noise.usable())
     {
-        LOG_DEBUG("variogram has nans");
         return done_because(state, Exit::VariogramNaN);
     }
-    LOG_DEBUG("Band noise: " << state.noise.bands);
 
     state.cursor = Cursor{context.strategies.start_search->first(0), 0};
 
@@ -428,7 +430,6 @@ Screened screen_window(const Context& context, State& state,
     Window& window = state.cursor.window;
 
     auto outliers = context.strategies.window_screen->screen(dates, spectral, state.noise);
-    LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
     //--------------------------------------------------------------------------
     // The screen removed everything
     //--------------------------------------------------------------------------
@@ -515,7 +516,6 @@ InitializeOutcome initialize_step(const Context& context, State& state)
         : count_through(series.dates(), last_day);
     if (search.exhausted(window, seen))
     {
-        LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
         return InitializeOutcome::Exhausted;
     }
 
@@ -534,13 +534,6 @@ InitializeOutcome initialize_step(const Context& context, State& state)
         return InitializeOutcome::ShortSpan;
     }
 
-    LOG_DEBUG(
-        "Checking window ("
-        << window.start
-        << ", "
-        << window.stop
-        << ")"
-    );
     //--------------------------------------------------------------------------
     // The window screen (Tmask)
     //--------------------------------------------------------------------------
@@ -562,34 +555,23 @@ InitializeOutcome initialize_step(const Context& context, State& state)
         spectral = series.spectral().slice(all(), range(window.start, window.stop));
     }
 
-    LOG_DEBUG("Generating models to check for stability");
-    LOG_DEBUG(
-        "window for stability: ("
-        << window.start
-        << ", "
-        << window.stop
-        << ")"
-    );
     //--------------------------------------------------------------------------
     // Fit the detection bands, and the stability check
     //--------------------------------------------------------------------------
     if (fit_stable(context, state, dates, spectral))
     {
-        LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
         return dropped ? InitializeOutcome::DroppedThenStable : InitializeOutcome::Stable;
     }
 
     window.shift();
-    LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
     return dropped ? InitializeOutcome::DroppedThenUnstable : InitializeOutcome::Unstable;
 }
 
 Phase initialize(const Context& context, State& state)
 {
-    LOG_DEBUG("Initialize for change model #: " << state.segments.size());
     const InitializeOutcome outcome = initialize_step(context, state);
     ++state.work.initialize_steps;
-    LOG_DEBUG("Initialize: " << to_string(outcome));
+    note(context, state, to_string(outcome));
 
     switch (outcome)
     {
@@ -658,7 +640,7 @@ Phase lookback(const Context& context, State& state)
 {
     const LookbackOutcome outcome = lookback_step(context, state);
     ++state.work.lookback_steps;
-    LOG_DEBUG("Lookback: " << to_string(outcome));
+    note(context, state, to_string(outcome));
 
     if (outcome != LookbackOutcome::Change &&
         state.cursor.window.start > state.cursor.prev_break)
@@ -863,7 +845,6 @@ bool refit_if_due(const Context& context, State& state)
     extend.trained = true;
     extend.fit_window = window;
     extend.fit_span = span(masked_dates, extend.fit_window);
-    LOG_DEBUG("Retrain models");
 
     // The detection bands: seasonal_rmse() reads their residuals; the
     // magnitude is set from the peek residuals when the segment is
@@ -935,8 +916,6 @@ ExtendOutcome after_no_change(const Context& context, State& state, const Peek& 
     //--------------------------------------------------------------------------
     if (judged == OutlierOutcome::Drop)
     {
-        LOG_DEBUG("Outlier detected at: " << peek_window.start);
-        LOG_DEBUG("Updating processing mask extend");
         // A drop that leaves no full peek ends the curve at this test: its
         // other bands are this test's, before the drop moves the peek.
         if (window.stop + shortest > series.size() - 1)
@@ -984,11 +963,6 @@ ExtendOutcome extend_step(const Context& context, State& state)
     if (window.size() < state.peek_plan.min_window)
         return grow_untested(state);
 
-    if (!extend.trained)
-    {
-        LOG_DEBUG("initial model window extend: " << window.start << ", " << window.stop);
-    }
-
     // Indexed by band.
     extend.residuals.resize(series.spectral().extent(0));
 
@@ -997,8 +971,6 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // The next `peek` observations, fewer at the series end.
     const Window& peek_window = extend.peek =
         Window(window.stop, std::min(window.stop + state.peek_plan.peek, series.size()));
-
-    LOG_DEBUG("detecting change for: " << peek_window.start << ", " << peek_window.stop);
 
     //--------------------------------------------------------------------------
     // The refit schedule
@@ -1024,7 +996,6 @@ ExtendOutcome extend_step(const Context& context, State& state)
     //--------------------------------------------------------------------------
     if (outcome == TestOutcome::Change)
     {
-        LOG_DEBUG("Change detected at: " << peek_window.start);
         return ExtendOutcome::Change;
     }
     // A shortened peek that decides nothing: the curve ends at the window
@@ -1095,7 +1066,7 @@ Phase on_series_end(const Context& context, State& state, bool grow)
 Phase extend(const Context& context, State& state)
 {
     const ExtendOutcome outcome = extend_step(context, state);
-    LOG_DEBUG("Extend: " << to_string(outcome));
+    note(context, state, to_string(outcome));
 
     if (outcome == ExtendOutcome::Change)
         return on_change(context, state);
@@ -1176,14 +1147,10 @@ Phase step(const Context& context, State& state)
 namespace
 {
 
-// Reports the transition from `from` to `to`, the record as the step left
-// it: to the context's observer with the cursor and the series length
-// (CCD_OBSERVE), and as one DEBUG line through the logger, so the log level
-// is the trace's only switch, and below DEBUG it compiles to nothing:
-//
-//     [DEBUG] standard: <phase> -> <next phase> | <cursor, observations,
-//                                                  segments, exit>
-void report_transition(const Context& context, const State& state, Phase from, Phase to)
+// Reports the transition from `from` to `to` to the context's observer
+// (CCD_OBSERVE), the record as the step left it: what the step decided
+// (state.outcome, which it clears), the cursor and the series length.
+void report_transition(const Context& context, State& state, Phase from, Phase to)
 {
 #if CCD_OBSERVE
     if (context.observe.observer)
@@ -1192,6 +1159,8 @@ void report_transition(const Context& context, const State& state, Phase from, P
         e.machine = "standard";
         e.phase = to_string(from);
         e.next = to_string(to);
+        e.outcome = state.outcome;
+        state.outcome = "";
         e.window_start = state.cursor.window.start;
         e.window_stop = state.cursor.window.stop;
         e.prev_break = state.cursor.prev_break;
@@ -1204,14 +1173,6 @@ void report_transition(const Context& context, const State& state, Phase from, P
     (void)from;
     (void)to;
 #endif
-
-    LOG_DEBUG(
-        "standard: " << to_string(from) << " -> " << to_string(to)
-        << " | window (" << state.cursor.window.start << ", " << state.cursor.window.stop
-        << "), prev_break " << state.cursor.prev_break << ", " << state.series.size()
-        << " observations, " << state.segments.size() << " segments, exit "
-        << to_string(state.exit)
-    );
 }
 
 // Reports the pixel's exit (state.exit) to the context's observer, if any.
@@ -1268,7 +1229,6 @@ FitResult Detector::fit(
         return result;
     }
 
-    LOG_DEBUG("Standard");
     const Context context{shared, series, strategies, observe, mode.max_coefficients};
     State& state = state_;
 

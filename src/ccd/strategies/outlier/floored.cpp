@@ -2,7 +2,6 @@
 
 #include <cassert>
 
-#include "../../core/logger.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 
 namespace ccd
@@ -41,7 +40,6 @@ OutlierOutcome Floored::judge(const Peek&, const PeekResult& result) const
     assert(statistic && !statistic->empty());
     if (detect_outlier((*statistic)[0], p_.threshold))
     {
-        LOG_DEBUG("mag: " << (*statistic)[0] << " thresh: " << p_.threshold);
         return OutlierOutcome::Drop;
     }
     return OutlierOutcome::Keep;

@@ -2,7 +2,6 @@
 
 #include <cassert>
 
-#include "../../core/logger.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/model.hpp"
@@ -121,14 +120,12 @@ TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) c
     std::vector<scalar_t>& comp_rmses = result.comparison_rmse;
     comp_rmses.resize(detection_bands.size());
     if (window.stop - window.start <= p_.model_rmse_up_to) {
-        LOG_DEBUG("normal residuals and rmse");
         for (index_t i = 0; i < detection_bands.size(); ++i)
         {
             comp_rmses[i] = peek.model.rmse(detection_bands[i]);
         }
     } else {
 
-        LOG_DEBUG("closest day residuals and rmse");
         // The seasonal_count fit-window observations nearest the peek's
         // last in the year, by the fit window's SeasonalOrder.
         if (s.seasonal_fit != peek.fit)
@@ -139,11 +136,6 @@ TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) c
         std::vector<index_t>& closest_indexes = s.closest;
         s.seasonal.closest(
             masked_dates(peek_window.stop - 1), p_.seasonal_count, closest_indexes);
-
-        LOG_DEBUG("period: " << masked_dates);
-        LOG_DEBUG("peek window: (" << peek_window.start << ", " << peek_window.stop << ")");
-        LOG_DEBUG("fit window: (" << peek.fit_window.start << ", " << peek.fit_window.stop << ")");
-        LOG_DEBUG("closest inds: " << closest_indexes);
 
         for (index_t i = 0; i < detection_bands.size(); ++i)
         {
