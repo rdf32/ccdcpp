@@ -12,7 +12,6 @@
 #include "ccd/ccd.hpp"
 
 #include "config.hpp"
-#include "specs.hpp"
 #include "synthetic.hpp"
 #include "synthetic_bands.hpp"
 
@@ -21,11 +20,6 @@ namespace golden
 
 namespace bands
 {
-
-inline ccd::BandList band_list(const std::vector<ccd::index_t>& bands)
-{
-    return ccd::BandList(bands);
-}
 
 inline std::vector<ccd::index_t> iota(ccd::index_t n)
 {

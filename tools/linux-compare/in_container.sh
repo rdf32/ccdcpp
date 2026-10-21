@@ -34,7 +34,7 @@ CXX=$(ls /opt/env/bin/x86_64-conda-linux-gnu-g++)
 "$CXX" --version | head -1 | tee /out/compiler.txt
 N=$(nproc)
 
-# The platform header a fixture written in this container carries (tests/ccd/golden/golden.hpp
+# The platform header a fixture written in this container carries (tests/ccd/support/dump.hpp
 # platform()): this GCC, x86-64, Linux. The trees' committed fixtures are the Mac's, so a
 # write that did not happen leaves a header that fails this.
 platform_re="^# platform: gcc $(sed -n 's/.*) \([0-9][0-9.]*\).*/\1/p' /out/compiler.txt) / x86_64 / linux / "

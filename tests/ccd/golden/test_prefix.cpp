@@ -27,7 +27,7 @@
 // PrefixStability.* split each pixel at many dates T and check, for each:
 //
 //   * the shorter run's final segments equal the full run's leading
-//     segments, every field bit for bit (the hexfloat dump of golden.hpp);
+//     segments, every field bit for bit (the hexfloat dump of dump.hpp);
 //   * its processing mask equals the full run's below the last final
 //     segment's break day;
 //   * its resume record (record.hpp) names the same number of final
@@ -52,7 +52,7 @@
 
 #include "ccd/ccd.hpp"
 
-#include "golden.hpp"
+#include "dump.hpp"
 #include "series_corpus.hpp"
 
 namespace
@@ -165,7 +165,7 @@ class PrefixStability : public ::testing::TestWithParam<std::size_t>
 {
 };
 
-// The characterization pixels (characterisation.hpp), every split: they take
+// The characterization pixels (characterization.hpp), every split: they take
 // every reachable transition, Lookback near the break and the series end at
 // a dense cadence among them.
 TEST_P(PrefixStability, CharacterizationPixelsEverySplit)

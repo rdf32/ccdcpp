@@ -22,11 +22,11 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
+#include "config.hpp"
 
 #include "ccd/ccd.hpp"
 
-#include "characterisation.hpp"
+#include "characterization.hpp"
 
 namespace
 {
@@ -432,7 +432,7 @@ TEST(Validation, DetectRejectsACadenceParameter)
 // runs every transition the characterization pixels take.
 TEST(Validation, PeekSizeAtLeastTwoThroughDetect)
 {
-    for (auto p : golden::characterisation_pixels())
+    for (auto p : golden::characterization_pixels())
     {
         const std::size_t T = p.dates.size();
         const auto run = [&]()
@@ -458,7 +458,7 @@ TEST(Validation, CoefficientExtremesThroughDetect)
 {
     for (const std::int64_t count : {1, 8})
     {
-        for (auto p : golden::characterisation_pixels())
+        for (auto p : golden::characterization_pixels())
         {
             const std::size_t T = p.dates.size();
             p.config = with_coefficients(p.config, count);

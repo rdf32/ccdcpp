@@ -91,7 +91,7 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
+#include "config.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/core/types.hpp"

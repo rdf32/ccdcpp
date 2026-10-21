@@ -50,11 +50,12 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
+#include "config.hpp"
 
 #include "ccd/ccd.hpp"
 
-#include "golden.hpp"
+#include "dump.hpp"
+#include "units.hpp"
 #include "synthetic.hpp"
 
 #ifndef CCD_GOLDEN_FIXTURE

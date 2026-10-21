@@ -44,11 +44,12 @@
 #include <boost/math/distributions/chi_squared.hpp>
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
+#include "config.hpp"
 
 #include "ccd/ccd.hpp"
 
-#include "golden.hpp"
+#include "dump.hpp"
+#include "units.hpp"
 #include "synthetic.hpp"
 #include "synthetic_bands.hpp"
 #include "band_profiles.hpp"

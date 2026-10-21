@@ -574,7 +574,7 @@ changes only; the Python API is unchanged, except that a `PEEK_SIZE` below
 ### Tests
 
 - `tests/ccd/golden/test_transitions.cpp` (ctest `Transitions.*`): 17
-  characterization pixels (`characterisation.hpp`) built for the Standard
+  characterization pixels (`characterization.hpp`) built for the Standard
   procedure's transitions, guards and pyccd quirks that the golden corpus
   misses or only Python reaches: Lookback reading below the previous break
   and Lookback's `PEEK_SIZE - 1` peek each deciding an output, the re-entry

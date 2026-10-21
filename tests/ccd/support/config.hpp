@@ -2,8 +2,8 @@
 
 // The configurations the tests run: the library's "ccdc" preset, edits of it
 // by stage and parameter or by shared value (the C++ counterpart of Python's
-// Config.replace), and their resolution against an input. Not part of the
-// library.
+// Config.replace), their resolution against an input, and a run's RunSpec
+// with the processing masks the dumps hold. Not part of the library.
 
 #include <cstdint>
 #include <memory>
@@ -12,6 +12,7 @@
 #include <utility>
 #include <variant>
 
+#include "ccd/ccd.hpp"
 #include "ccd/config/registry.hpp"
 #include "ccd/config/resolve.hpp"
 #include "ccd/input/pixel_series.hpp"
@@ -92,14 +93,6 @@ inline ccd::config::Config with_steps(ccd::config::Config config, const std::str
     return config;
 }
 
-// `config` with procedure `procedure`'s chain replaced by `chain`.
-inline ccd::config::Config with_chain(ccd::config::Config config, const std::string& procedure,
-                                      ccd::config::ProcedureConfig chain)
-{
-    config.preprocess.at(procedure) = std::move(chain);
-    return config;
-}
-
 // pyccd's statistics cutoff, 2017-12-31: the pyccd references and the golden
 // fixtures ran with it.
 constexpr std::int64_t PYCCD_STATISTICS_END = 736694;
@@ -160,16 +153,9 @@ inline ccd::preprocess::PreprocessPlan plan_of(const ccd::config::Config& config
     return ccd::plan_of(config, input);
 }
 
-// The plan of procedure `procedure` ("standard", "snow", "insufficient_clear").
-inline const ccd::preprocess::ProcedurePlan& procedure_of(
-    const ccd::preprocess::PreprocessPlan& plan, const std::string& procedure)
-{
-    return plan.of(*ccd::procedure_named(procedure));
-}
-
-// The processing mask of procedure `procedure`'s chain in `config`, resolved
-// against `input`, over the workspace's spectral block as it is (no
-// transform applied).
+// The processing mask of procedure `procedure`'s chain ("standard", "snow",
+// "insufficient_clear") in `config`, resolved against `input`, over the
+// workspace's spectral block as it is (no transform applied).
 inline ccd::ProcessingMask chain_mask(const ccd::PixelSeries& workspace,
                                       const ccd::Input& input,
                                       const std::string& procedure,
@@ -177,9 +163,36 @@ inline ccd::ProcessingMask chain_mask(const ccd::PixelSeries& workspace,
 {
     const ccd::preprocess::PreprocessPlan plan = golden::plan_of(config, input);
     ccd::ProcessingMask mask;
-    ccd::preprocess::apply(procedure_of(plan, procedure).chain, workspace.dates(),
+    ccd::preprocess::apply(plan.of(*ccd::procedure_named(procedure)).chain, workspace.dates(),
                            workspace.spectral(), workspace.qas(), mask);
     return mask;
+}
+
+// A run's RunSpec: `input`, `algorithm`, `record`, and the processing masks.
+inline ccd::RunSpec spec_of(const ccd::Input& input,
+                            ccd::AlgorithmPtr algorithm = pyccd_algorithm(),
+                            bool record = false)
+{
+    ccd::RunSpec spec;
+    spec.input = input;
+    spec.algorithm = std::move(algorithm);
+    spec.record = record;
+    spec.masks = true;
+    return spec;
+}
+
+// The same, of a configuration (compiled here, once per call).
+inline ccd::RunSpec spec_of(const ccd::Input& input, ccd::config::Config config,
+                            bool record = false)
+{
+    return spec_of(input, algorithm(std::move(config)), record);
+}
+
+// `input` decoding its raw QA through `table`.
+inline ccd::Input with_table(ccd::Input input, ccd::QaTablePtr table)
+{
+    input.qa_table = std::move(table);
+    return input;
 }
 
 } // namespace golden

@@ -7,7 +7,7 @@
 // dates, (7, T) spectral and QA codes with the options and configuration it
 // runs under:
 //
-//   * characterization_series(): the pixels of characterisation.hpp;
+//   * characterization_series(): the pixels of characterization.hpp;
 //   * csv_series(dir): the pyccd reference pixel, the Atlanta pixel with a
 //     half-day median gap, and the Collection-2 pixel under c2_input();
 //   * synthetic_series(): every pixel of the golden cubes (synthetic.hpp)
@@ -26,9 +26,8 @@
 
 #include "ccd/ccd.hpp"
 
-#include "characterisation.hpp"
-#include "golden.hpp"
-#include "specs.hpp"
+#include "characterization.hpp"
+#include "units.hpp"
 #include "synthetic.hpp"
 
 namespace golden
@@ -145,7 +144,7 @@ inline Series read_csv(const std::string& name, const std::string& path, bool he
 inline std::vector<Series> characterization_series()
 {
     std::vector<Series> out;
-    for (const auto& p : characterisation_pixels())
+    for (const auto& p : characterization_pixels())
         out.push_back(Series{p.name, p.dates, p.spectral, p.qas, p.h, p.config});
     return out;
 }

@@ -4,7 +4,7 @@
 //
 // The golden corpus (test_golden.cpp) is broad but random: it takes most of
 // the Standard procedure's transitions many times and a few never. The pixels
-// of characterisation.hpp are built for the transitions, guards and rules
+// of characterization.hpp are built for the transitions, guards and rules
 // that the corpus misses, and for the boundaries of the procedure
 // choice. Their detect() output is pinned, byte for byte, in
 // transitions_fixture.txt. A change meant to keep the output reproduces it
@@ -183,12 +183,12 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
+#include "config.hpp"
 
 #include "ccd/ccd.hpp"
 
-#include "characterisation.hpp"
-#include "golden.hpp"
+#include "characterization.hpp"
+#include "dump.hpp"
 
 #ifndef CCD_TRANSITIONS_FIXTURE
 #define CCD_TRANSITIONS_FIXTURE "transitions_fixture.txt"
@@ -307,7 +307,7 @@ TEST(Transitions, InputsAreTheSameOnEveryPlatform)
         {"dense_series_end", 0x2b119249d8626b0full},
     };
 
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     ASSERT_EQ(all.size(), std::size(expected));
     for (std::size_t i = 0; i < all.size(); ++i)
     {
@@ -320,7 +320,7 @@ TEST(Transitions, InputsAreTheSameOnEveryPlatform)
 TEST(Transitions, BitIdenticalToFixture)
 {
     std::string dump;
-    for (const auto& p : golden::characterisation_pixels())
+    for (const auto& p : golden::characterization_pixels())
         golden::dump_pixel(dump, "transitions:" + p.name, run_detect(p));
 
     const std::string header = "# platform: " + golden::platform() + "\n";
@@ -380,7 +380,7 @@ TEST(Transitions, BitIdenticalToFixture)
 
 TEST(Transitions, PathsAsDocumented)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     using CQ = ccd::CurveQA;
     const int START = static_cast<int>(CQ::Start), END = static_cast<int>(CQ::End);
     const int CLEAR = static_cast<int>(CQ::InsufficientClear), SNOW = static_cast<int>(CQ::PersistentSnow);

@@ -39,7 +39,6 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/pixel_series.hpp"
@@ -54,7 +53,7 @@
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/library.hpp"
 
-#include "characterisation.hpp"
+#include "characterization.hpp"
 #include "find_closest_doy.hpp"
 
 namespace
@@ -1401,7 +1400,7 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
 
 TEST(StandardExit, EachWayTheMachineStops)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
 
     // Two random pixels for the routes after a change: Restart with no room
     // left, and an Initialize that finds no stable window after a segment.
@@ -1432,7 +1431,7 @@ TEST(StandardExit, EachWayTheMachineStops)
 
 TEST(StandardExit, TheEarlyExitsReturnTheMask)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     for (const char* name : {"standard_too_few", "variogram_nan"})
     {
         const auto& p = pixel(all, name);
@@ -1452,7 +1451,7 @@ TEST(StandardExit, TheEarlyExitsReturnTheMask)
 // result equals Detector::fit()'s.
 TEST(StandardMachine, EachStepIsOneDecision)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     std::size_t initialize_steps = 0, lookback_steps = 0, extend_steps = 0;
 
     for (const auto& p : all)
@@ -1540,7 +1539,7 @@ TEST(StandardMachine, OneStateServesManyPixels)
 {
     // A record reused across pixels gives each pixel the result a fresh one
     // does: reset() starts every pixel from Prepare with nothing carried.
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     ccd::standard::Detector reused;
 
     for (const auto& p : all)

@@ -36,8 +36,9 @@
 #include "ccd/strategies/noise/variogram.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 
-#include "golden.hpp"
-#include "specs.hpp"
+#include "dump.hpp"
+#include "units.hpp"
+#include "config.hpp"
 #include "synthetic.hpp"
 
 namespace

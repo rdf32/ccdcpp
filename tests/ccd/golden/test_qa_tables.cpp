@@ -24,13 +24,13 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
+#include "config.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/qa_tables.hpp"
 #include "ccd/run/run_pixel.hpp"   // internal (src/): Run and Worker
 
-#include "golden.hpp"
+#include "dump.hpp"
 #include "synthetic.hpp"
 
 namespace

@@ -31,8 +31,9 @@
 
 #include "ccd/ccd.hpp"
 #include "synthetic.hpp"
-#include "golden.hpp"
-#include "specs.hpp"
+#include "dump.hpp"
+#include "units.hpp"
+#include "config.hpp"
 
 struct CubeSpec { const char* name; std::uint64_t seed; golden::Regime regime; std::size_t H, W; };
 

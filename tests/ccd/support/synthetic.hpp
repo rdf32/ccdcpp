@@ -7,7 +7,7 @@
 // Everything here is driven by a splitmix64 stream, so a (cube seed, regime)
 // pair always produces the same cube on a given platform. The values are only
 // as portable as std::sin/std::cos/std::log of the C library, which is why the
-// golden fixture records the platform it was produced on (see golden.hpp).
+// golden fixture records the platform it was produced on (see dump.hpp).
 //
 // The generator aims at the paths of the algorithm, not at realism for its own
 // sake. Every pixel is one of three kinds:
@@ -23,7 +23,7 @@
 // Values are Collection-1 DN: six optical bands as reflectance x 10000 and the
 // thermal band as Kelvin x 10. Fill observations carry -9999 in every band.
 //
-// WARNING: characterisation.hpp builds its pixels from Rng and detail:: here;
+// WARNING: characterization.hpp builds its pixels from Rng and detail:: here;
 // any change to them changes those pixels and their transitions_fixture.txt.
 //
 //==============================================================================

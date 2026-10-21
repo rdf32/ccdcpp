@@ -8,7 +8,7 @@
 // (run/run.hpp, detect()) is that the continuation equals, bit for bit,
 // detect() on P with every
 // statistics cutoff capped at T: every segment and the processing mask (the
-// hexfloat dump of golden.hpp), and the record it writes equals the one a
+// hexfloat dump of dump.hpp), and the record it writes equals the one a
 // run made that way writes, so a resumed run resumes again.
 //
 //   * ResumeEqualsTheFullRun.*: that, at every split of the
@@ -37,12 +37,11 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
 
 #include "ccd/ccd.hpp"
 #include "config.hpp"
 
-#include "golden.hpp"
+#include "dump.hpp"
 #include "series_corpus.hpp"
 
 namespace

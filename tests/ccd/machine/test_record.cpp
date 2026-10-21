@@ -28,13 +28,14 @@
 
 #include <gtest/gtest.h>
 
-#include "specs.hpp"
+#include "config.hpp"
 
 #include "ccd/ccd.hpp"
 #include "ccd/strategies/model/lasso.hpp"
 
-#include "characterisation.hpp"
-#include "golden.hpp"
+#include "characterization.hpp"
+#include "dump.hpp"
+#include "units.hpp"
 
 namespace
 {
@@ -117,13 +118,13 @@ const golden::CharPixel& pixel(const std::vector<golden::CharPixel>& all, const 
 
 TEST(Record, TheResultIsDetects)
 {
-    for (const auto& p : golden::characterisation_pixels())
+    for (const auto& p : golden::characterization_pixels())
         EXPECT_EQ(dump(recorded(p).result), dump(detected(p))) << p.name;
 }
 
 TEST(Record, TheHeaderNamesTheRun)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     const golden::CharPixel& p = all.front();
     const ccd::PixelOutput r = recorded(p);
 
@@ -137,7 +138,7 @@ TEST(Record, TheHeaderNamesTheRun)
 
 TEST(Record, EachExitAndItsSuspension)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     const std::pair<const char*, Exit> expected[] = {
         {"standard_too_few", Exit::TooFewObservations},
         {"variogram_nan", Exit::VariogramNaN},
@@ -159,7 +160,7 @@ TEST(Record, EachExitAndItsSuspension)
 
 TEST(Record, TheSuspensionAgreesWithTheOutput)
 {
-    for (const auto& p : golden::characterisation_pixels())
+    for (const auto& p : golden::characterization_pixels())
     {
         const ccd::PixelOutput r = recorded(p);
         const ccd::standard::Suspended& s = r.record.standard;
@@ -241,7 +242,7 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
     }
 
     // prev_break is the last change's break, as a masked position.
-    for (const auto& p : golden::characterisation_pixels())
+    for (const auto& p : golden::characterization_pixels())
     {
         const ccd::PixelOutput r = recorded(p);
         const ccd::standard::Suspended& s = r.record.standard;
@@ -255,14 +256,14 @@ TEST(Record, TheSuspensionAgreesWithTheOutput)
 
     // After a grow the peek reached the last observation; after a drop it
     // fell short of it.
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     EXPECT_TRUE(recorded(pixel(all, "start_catch")).record.standard.grow);
     EXPECT_FALSE(recorded(pixel(all, "series_end_after_outlier")).record.standard.grow);
 }
 
 TEST(Record, TheExcludedDaysAreTheMachinesDrops)
 {
-    for (const auto& p : golden::characterisation_pixels())
+    for (const auto& p : golden::characterization_pixels())
     {
         const ccd::PixelOutput r = recorded(p);
         if (r.record.procedure != ccd::PixelProcedure::Standard)
@@ -296,7 +297,7 @@ TEST(Record, TheExcludedDaysAreTheMachinesDrops)
     }
 
     // The pixels built to drop observations do.
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     EXPECT_FALSE(recorded(pixel(all, "series_end_after_outlier")).record.excluded_days.empty());
     EXPECT_FALSE(recorded(pixel(all, "lookback_near_break")).record.excluded_days.empty());
 }
@@ -551,7 +552,7 @@ std::uint64_t fingerprint(const golden::CharPixel& p, std::int64_t through)
 
 TEST(InputFingerprint, ReadsEveryKeptValueUpToTheDate)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     const golden::CharPixel base = pixel(all, "start_catch");
     const std::int64_t through = base.dates[150];
     const std::uint64_t f = fingerprint(base, through);
@@ -589,7 +590,7 @@ TEST(InputFingerprint, ReadsEveryKeptValueUpToTheDate)
 
 TEST(InputFingerprint, LeavesOutFill)
 {
-    const auto all = golden::characterisation_pixels();
+    const auto all = golden::characterization_pixels();
     golden::CharPixel base = pixel(all, "start_catch");
     const index_t T = base.dates.size();
     base.qas[40] = base.h.qa_fill;

@@ -23,7 +23,7 @@
 // every row. Dates come from synthetic.hpp's make_dates().
 //
 // The values are only as portable as the C library's sin/cos/log; the
-// fixture records its platform (see golden.hpp).
+// fixture records its platform (see dump.hpp).
 //
 //==============================================================================
 

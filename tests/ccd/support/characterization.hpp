@@ -27,7 +27,6 @@
 
 #include "config.hpp"
 
-#include "specs.hpp"
 #include "synthetic.hpp"
 
 namespace golden
@@ -132,7 +131,7 @@ inline CharPixel make_char_pixel(
 }
 
 //------------------------------------------------------------------------------
-// Pixel families. The seeds characterisation_pixels() passes were found by
+// Pixel families. The seeds characterization_pixels() passes were found by
 // a scan with a trace-instrumented build: for a family built for a path, an
 // early seed that takes it; for the random families, a seed whose output a
 // rule decides (see test_transitions.cpp).
@@ -377,7 +376,7 @@ inline CharPixel sparse_random(const char* name, std::uint64_t seed)
 //------------------------------------------------------------------------------
 // The pixels test_transitions.cpp pins, in fixture order.
 //------------------------------------------------------------------------------
-inline std::vector<CharPixel> characterisation_pixels()
+inline std::vector<CharPixel> characterization_pixels()
 {
     std::vector<CharPixel> out;
     out.push_back(qa_pattern("select_clear_at_threshold", 100, 25, 0));
