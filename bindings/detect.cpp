@@ -51,7 +51,8 @@ ccd::RunSpec run_spec(
     std::shared_ptr<ccd::Algorithm> config,
     bool record,
     bool masks,
-    bool reasons
+    bool reasons,
+    bool diagnostics
 )
 {
     ccd::RunSpec spec;
@@ -60,6 +61,7 @@ ccd::RunSpec run_spec(
     spec.record = record;
     spec.masks = masks;
     spec.reasons = reasons;
+    spec.diagnostics = diagnostics;
     return spec;
 }
 
@@ -106,12 +108,13 @@ Traced observe(ccd::RunSpec& spec, const py::object& trace_pixels, ccd::index_t 
 
 // detect()'s output: the models, num_bands (the length of every model's band
 // list, also when there are none) and the processing mask; the reason codes
-// with reasons=, the record with record= or a resume, the status with a
-// resume, the trace with trace=.
+// with reasons=, the diagnostics with diagnostics=, the record with record=
+// or a resume, the status with a resume, the trace with trace=.
 py::dict pixel_to_python(
     const ccd::PixelOutput& run,
     ccd::index_t B,
     bool reasons,
+    bool diagnostics,
     bool record,
     bool resumed,
     const RecordingObserver* recording
@@ -123,6 +126,12 @@ py::dict pixel_to_python(
     output["processing_mask"] = bytes_array(run.result.mask.data());
     if (reasons)
         output["mask_reasons"] = bytes_array(run.result.reasons);
+    if (diagnostics)
+    {
+        output["pixel_diagnostics"] = pixel_diagnostics_to_python(run.result.diagnostics);
+        output["segment_diagnostics"] =
+            segment_diagnostics_columns(run.result.diagnostics.segments);
+    }
 
     if (record || resumed)
     {
@@ -138,8 +147,9 @@ py::dict pixel_to_python(
 }
 
 // detect_cube()'s output: the segment columns (with the masks and reason
-// codes asked for); the record columns with record= or a resume, the counts
-// with a resume, the traces with trace_pixels=.
+// codes asked for); the diagnostics with diagnostics=, the record columns
+// with record= or a resume, the counts with a resume, the traces with
+// trace_pixels=.
 py::dict cube_to_python(
     ccd::CubeOutput& cube,
     const CubeArrays& arrays,
@@ -147,11 +157,14 @@ py::dict cube_to_python(
     bool resumed,
     bool masks,
     bool reasons,
+    bool diagnostics,
     const Traced& traced
 )
 {
     py::dict output =
         segment_columns(cube, arrays.H, arrays.W, arrays.B, arrays.T, masks, reasons);
+    if (diagnostics)
+        add_cube_diagnostics(output, cube, arrays.H, arrays.W);
     if (record || resumed)
     {
         output["resume"] = record_columns(cube, arrays.H, arrays.W, arrays.B, resumed);
@@ -194,13 +207,14 @@ static py::dict detect_wrapper(
     bool record,
     py::object resume,
     bool trace,
-    bool reasons
+    bool reasons,
+    bool diagnostics
 )
 {
     const PixelArrays arrays = pixel_arrays(dates, spectral, qas, input.qa_table != nullptr);
     const std::optional<ccd::Resume> from = pixel_resume(resume);
-    ccd::RunSpec spec =
-        run_spec(input, std::move(config), record, true, reasons);   // with its mask
+    ccd::RunSpec spec = run_spec(input, std::move(config), record, true, reasons,
+                                 diagnostics);   // with its mask
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
     spec.observer = recording;
 
@@ -210,7 +224,8 @@ static py::dict detect_wrapper(
         run = ccd::detect(spec, arrays.dates, arrays.spectral, arrays.qas,
                           from ? &*from : nullptr);
     }
-    return pixel_to_python(run, arrays.B, reasons, record, from.has_value(), recording.get());
+    return pixel_to_python(run, arrays.B, reasons, diagnostics, record, from.has_value(),
+                           recording.get());
 }
 
 static py::dict detect_cube_wrapper(
@@ -224,11 +239,12 @@ static py::dict detect_cube_wrapper(
     py::object resume,
     py::object trace_pixels,
     bool masks,
-    bool reasons
+    bool reasons,
+    bool diagnostics
 )
 {
     const CubeArrays arrays = cube_arrays(dates, spectral, qas, input.qa_table != nullptr);
-    ccd::RunSpec spec = run_spec(input, std::move(config), record, masks, reasons);
+    ccd::RunSpec spec = run_spec(input, std::move(config), record, masks, reasons, diagnostics);
     const std::optional<ccd::Resume> from = cube_resume(resume, arrays.H, arrays.W, arrays.B);
     const Traced traced = observe(spec, trace_pixels, arrays.H, arrays.W);
 
@@ -238,7 +254,8 @@ static py::dict detect_cube_wrapper(
         cube = ccd::detect_cube(spec, arrays.dates, arrays.spectral, arrays.qas, threads,
                                 from ? &*from : nullptr);
     }
-    return cube_to_python(cube, arrays, record, from.has_value(), masks, reasons, traced);
+    return cube_to_python(cube, arrays, record, from.has_value(), masks, reasons, diagnostics,
+                          traced);
 }
 
 //------------------------------------------------------------------------------
@@ -262,6 +279,7 @@ void bind_detect(py::module_& m)
         py::arg("resume") = py::none(),
         py::arg("trace") = false,
         py::arg("reasons") = false,
+        py::arg("diagnostics") = false,
         "CCD on one pixel (see ccdcpp.detect)."
     );
     m.def(
@@ -279,6 +297,7 @@ void bind_detect(py::module_& m)
         py::arg("trace_pixels") = py::none(),
         py::arg("masks") = false,
         py::arg("reasons") = false,
+        py::arg("diagnostics") = false,
         "CCD on every pixel of a cube, as columns (see ccdcpp.detect_cube)."
     );
     py::tuple reasons(ccd::REASON_COUNT);
@@ -286,6 +305,10 @@ void bind_detect(py::module_& m)
         reasons[code] = ccd::name(static_cast<ccd::Reason>(code));
     m.attr("REASONS") = reasons;
     m.attr("FIRST_DROP") = static_cast<std::uint8_t>(ccd::FIRST_DROP);
+    py::tuple exits(static_cast<std::size_t>(ccd::machine::Exit::NoFit) + 1);
+    for (std::size_t code = 0; code < exits.size(); ++code)
+        exits[code] = ccd::machine::to_string(static_cast<ccd::machine::Exit>(code));
+    m.attr("EXITS") = exits;
     m.def("resume_schema", &resume_schema);
     m.attr("RESUME_FORMAT") = ccd::RESUME_FORMAT;
     m.attr("RESULTS_VERSION") = ccd::RESULTS_VERSION;

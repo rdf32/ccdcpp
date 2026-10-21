@@ -51,8 +51,8 @@ namespace ccd
 //   mask             its procedure's chain: the processing mask (and with
 //                    RunSpec::reasons the preprocessing's reason codes)
 //   fit              the change detector, or a resume of the stored run
-//   finish           the record for the next resume, and the reason codes
-//                    of the kept observations no segment holds
+//   finish           the record for the next resume, the reason codes of
+//                    the kept observations no segment holds, the diagnostics
 //
 // Run::prepare() makes the first four, into a PreparedPixel; Run::fresh()
 // (no resume) or Run::resumed() the last two.

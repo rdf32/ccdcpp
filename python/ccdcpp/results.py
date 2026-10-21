@@ -5,7 +5,8 @@ plain ``dict``.
 A key marked ``NotRequired`` is present only when the call asks for it: ``band_names`` with a
 profile, ``resume`` and ``resume_header`` with ``record=True`` or ``resume=``, ``status`` and
 ``counts`` with ``resume=``, ``trace`` / ``traces`` with ``trace=True`` / ``trace_pixels=``, the
-cube's ``processing_mask`` with ``masks=True``, ``mask_reasons`` with ``reasons=True``.
+cube's ``processing_mask`` with ``masks=True``, ``mask_reasons`` with ``reasons=True``,
+``pixel_diagnostics`` and ``segment_diagnostics`` with ``diagnostics=True``.
 """
 from __future__ import annotations
 
@@ -14,8 +15,9 @@ from typing import Literal, NotRequired, TypedDict
 import numpy as np
 from numpy.typing import NDArray
 
-__all__ = ["BandFit", "CubeColumns", "CubeRecord", "Model", "Pixel", "PixelRecord",
-           "PixelResult", "ResumeCounts", "ResumeHeader", "TraceEvent"]
+__all__ = ["BandFit", "CubeColumns", "CubePixelDiagnostics", "CubeRecord", "Model", "Pixel",
+           "PixelDiagnostics", "PixelRecord", "PixelResult", "ResumeCounts", "ResumeHeader",
+           "SegmentDiagnostics", "TraceEvent"]
 
 
 class BandFit(TypedDict):
@@ -117,6 +119,42 @@ class TraceEvent(TypedDict):
     values: list[float]
 
 
+class PixelDiagnostics(TypedDict):
+    """What a run did on one pixel (``diagnostics=True``)."""
+
+    #: 0 standard, 1 insufficient_clear, 2 snow (the record's codes)
+    procedure: int
+    #: why the machine stopped, a code of ccdcpp.EXITS; 0 ("None") without a machine
+    exit: int
+    #: the observations the preprocessing kept
+    clear: int
+    #: the observations the processing mask keeps after the fit
+    kept: int
+    #: the change test's peek; 0 without a machine
+    peek: int
+
+
+class CubePixelDiagnostics(TypedDict):
+    """``PixelDiagnostics`` of every pixel of a cube, (H, W) each; zeros for a failed pixel."""
+
+    procedure: NDArray[np.uint8]
+    exit: NDArray[np.uint8]
+    clear: NDArray[np.int32]
+    kept: NDArray[np.int32]
+    peek: NDArray[np.int32]
+
+
+class SegmentDiagnostics(TypedDict):
+    """The machine's work on each segment since the one before it, one entry per segment in
+    the order of the models (detect) or the segment columns (detect_cube)."""
+
+    initialize_steps: NDArray[np.int32]
+    lookback_steps: NDArray[np.int32]
+    tests: NDArray[np.int32]
+    refits: NDArray[np.int32]
+    dropped: NDArray[np.int32]
+
+
 class PixelResult(TypedDict):
     """``ccdcpp.detect()``'s result."""
 
@@ -125,6 +163,8 @@ class PixelResult(TypedDict):
     processing_mask: NDArray[np.uint8]
     #: (T,) uint8, with reasons=True: each observation's code in ccdcpp.REASONS
     mask_reasons: NotRequired[NDArray[np.uint8]]
+    pixel_diagnostics: NotRequired[PixelDiagnostics]
+    segment_diagnostics: NotRequired[SegmentDiagnostics]
     num_bands: int
     band_names: NotRequired[tuple[str, ...]]
     resume: NotRequired[PixelRecord]
@@ -162,6 +202,8 @@ class CubeColumns(TypedDict):
     processing_mask: NotRequired[NDArray[np.uint8]]
     #: (H, W, T) uint8, with reasons=True
     mask_reasons: NotRequired[NDArray[np.uint8]]
+    pixel_diagnostics: NotRequired[CubePixelDiagnostics]
+    segment_diagnostics: NotRequired[SegmentDiagnostics]
     band_names: NotRequired[tuple[str, ...]]
     resume: NotRequired[CubeRecord]
     resume_header: NotRequired[ResumeHeader]
@@ -171,10 +213,13 @@ class CubeColumns(TypedDict):
 
 class Pixel(TypedDict):
     """One pixel of ``ccdcpp.to_pixels()``: its address and models, and with masks=True its
-    processing mask, with reasons=True its reason codes."""
+    processing mask, with reasons=True its reason codes, with diagnostics=True its
+    diagnostics, as detect() returns them."""
 
     row: int
     col: int
     models: list[Model]
     processing_mask: NotRequired[NDArray[np.uint8]]
     mask_reasons: NotRequired[NDArray[np.uint8]]
+    pixel_diagnostics: NotRequired[PixelDiagnostics]
+    segment_diagnostics: NotRequired[SegmentDiagnostics]

@@ -2,6 +2,7 @@
 #include "resume.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -139,6 +140,32 @@ ArrayView<const scalar_t, 2> pixel_values(
     }
 
     return ArrayView<const scalar_t, 2>::contiguous(buffer.data(), {B, T});
+}
+
+// Step 6, with RunSpec::diagnostics: the pixel's, its procedure's, of a
+// result whose preprocessing kept `clear` observations, the machine's from
+// `detector` (a Standard pixel's); its segments' work the detector's, after
+// zeros for the segments it did not write (a resume's carried ones, or the
+// whole-series one).
+PixelDiagnostics diagnose(PixelProcedure procedure, index_t clear, const FitResult& result,
+                          const machine::Detector& detector)
+{
+    PixelDiagnostics d;
+    d.procedure = procedure;
+    d.clear = clear;
+    d.kept = result.mask.count();
+    const bool standard = procedure == PixelProcedure::Standard;
+    if (standard)
+    {
+        d.exit = detector.exit();
+        d.peek = detector.peek();
+    }
+    const std::vector<SegmentDiagnostics> none;
+    const std::vector<SegmentDiagnostics>& written = standard ? detector.segment_work() : none;
+    assert(written.size() <= result.models.size());
+    d.segments.assign(result.models.size() - written.size(), SegmentDiagnostics{});
+    d.segments.insert(d.segments.end(), written.begin(), written.end());
+    return d;
 }
 
 // Step 6, with RunSpec::reasons: the code of each kept observation of
@@ -292,6 +319,7 @@ PixelOutput Run::pixel(
         check_stored(resume_->records[at], resume_->segments[at]);
 
     PreparedPixel prepared = prepare<Value, Qa>(spectral, qa, worker);
+    const index_t clear = spec_.diagnostics ? prepared.mask.count() : 0;
 
     // The pixel's input up to `through`, as a record holds it.
     const auto fingerprint = [&](std::int64_t through)
@@ -312,6 +340,9 @@ PixelOutput Run::pixel(
         settle_reasons(out.result, dates_,
                        prepared.mode.procedure == PixelProcedure::Standard &&
                            worker.detector.exit() == machine::Exit::NoFit);
+    if (spec_.diagnostics)
+        out.result.diagnostics =
+            diagnose(prepared.mode.procedure, clear, out.result, worker.detector);
     if (!spec_.masks)
         out.result.mask = ProcessingMask();
     return out;

@@ -474,8 +474,9 @@ if(CCD_BUILD_TESTS)
         SOURCES tests/ccd/golden/test_resume.cpp tests/ccd/golden/test_run_spec.cpp
     )
 
-    # What a run reports beside its output: each observation's reason code.
-    # See tests/ccd/golden/test_diagnostics.cpp.
+    # What a run reports beside its output: each observation's reason code,
+    # each pixel's and segment's diagnostics. See
+    # tests/ccd/golden/test_diagnostics.cpp.
     ccd_add_gtest(test_diagnostics SOURCES tests/ccd/golden/test_diagnostics.cpp)
 
     # Prefix stability: a run on the observations up to a date keeps every

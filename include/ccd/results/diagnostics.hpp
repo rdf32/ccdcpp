@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "ccd/core/types.hpp"
+#include "ccd/input/procedure.hpp"
+#include "ccd/machine/suspended.hpp"
 
 // CMake sets CCD_OBSERVE for every target of the library; a translation unit
 // built without it gets the default, the hooks compiled in.
@@ -16,7 +18,13 @@
 
 //==============================================================================
 //
-// Diagnostics: what a run does, as it does it
+// Diagnostics: what a run did, and what it does as it does it
+//
+// With RunSpec::diagnostics a pixel's result holds its PixelDiagnostics: its
+// procedure, why its machine stopped, its observation counts and its peak,
+// and per segment the machine's work on it (SegmentDiagnostics). The
+// counters run on every pixel, a few additions per step; they are copied
+// into the result only when asked for.
 //
 // An Observer is told each step of the machine on the pixels a run observes
 // (RunSpec::observer, RunSpec::observe): every phase transition with where
@@ -33,6 +41,43 @@
 
 namespace ccd
 {
+
+// The machine's work on one segment, from the segment before it to its own
+// writing: its start search's Initialize steps, Lookback's steps, Extend's
+// change tests and refits, and the observations dropped on the way (the
+// window screen's, Lookback's and Extend's, and those the change before it
+// dropped after writing the segment it ended). The Start segment, written
+// between the first stable window and its Extend, holds zeros (that work is
+// the first curve's), as do the segments of the whole-series procedures and
+// a resume's carried ones.
+struct SegmentDiagnostics
+{
+    index_t initialize_steps = 0;
+    index_t lookback_steps = 0;
+    index_t tests = 0;
+    index_t refits = 0;
+    index_t dropped = 0;
+};
+
+// One pixel's run:
+//
+//   procedure   the mode's choice
+//   exit        why the machine stopped (machine::Exit); None for the
+//               whole-series procedures, which take no machine
+//   clear       the observations the preprocessing kept
+//   kept        the observations the processing mask keeps after the fit
+//   peek        the change test's peek for the pixel (PeekPlan::peek); 0
+//               without a machine or before Prepare chose it
+//   segments    one per segment of the result, in order
+struct PixelDiagnostics
+{
+    PixelProcedure procedure = PixelProcedure::Standard;
+    machine::Exit exit = machine::Exit::None;
+    index_t clear = 0;
+    index_t kept = 0;
+    index_t peek = 0;
+    std::vector<SegmentDiagnostics> segments;
+};
 
 struct ObserverEvent
 {

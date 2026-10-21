@@ -214,6 +214,11 @@ struct State
     Cursor cursor;
     std::vector<ChangeModel> segments;   // written by this run
 
+    // The work on the segment being found and grown, and each written
+    // segment's (SegmentDiagnostics), in step with `segments`.
+    SegmentDiagnostics work;
+    std::vector<SegmentDiagnostics> segment_work;
+
     // The final segments of the run this one resumed, which come before
     // `segments` (0 for a run from the start). "No segment yet", pyccd's
     // `start`, is segments.empty() && carried == 0.
@@ -277,8 +282,9 @@ struct State
 
     // Starts a pixel: Prepare, no exit, the series of `pixel` that
     // `mask` keeps (with `reasons`, the codes its drops write;
-    // MaskedSeries::reset()), the cursor at 0, no segments and none carried,
-    // the peek plan cleared, Extend untrained, no suspension.
+    // MaskedSeries::reset()), the cursor at 0, no segments, none carried and
+    // no work counted, the peek plan cleared, Extend untrained, no
+    // suspension.
     void reset(const PixelSeries& pixel, ProcessingMask mask,
                std::vector<std::uint8_t> reasons = {});
 
@@ -536,6 +542,17 @@ public:
     Exit exit() const
     {
         return state_.exit;
+    }
+
+    // The last Standard fit()'s or resume()'s peek (PeekPlan::peek, 0 before
+    // Prepare chose it) and the work on each segment it wrote.
+    index_t peek() const
+    {
+        return state_.peek_plan.peek;
+    }
+    const std::vector<SegmentDiagnostics>& segment_work() const
+    {
+        return state_.segment_work;
     }
 
 private:

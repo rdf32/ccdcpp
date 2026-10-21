@@ -157,9 +157,9 @@ class Unprofiled(unittest.TestCase):
         positional = ["dates", "spectral", "qas"]
         for name, keywords in (
             ("detect", ["input", "config", "record", "resume", "band_names", "trace",
-                        "reasons"]),
+                        "reasons", "diagnostics"]),
             ("detect_cube", ["input", "config", "threads", "record", "resume", "band_names",
-                             "trace_pixels", "masks", "reasons"]),
+                             "trace_pixels", "masks", "reasons", "diagnostics"]),
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters

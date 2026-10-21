@@ -21,8 +21,8 @@ namespace machine
 {
 
 // Why the machine stopped where it did: the early exits, and what ended the
-// segment loop (the routes into EndCatch). The resume record holds it; the
-// result does not carry it.
+// segment loop (the routes into EndCatch). The resume record holds it, and a
+// result's diagnostics (RunSpec::diagnostics).
 enum class Exit : std::uint8_t
 {
     None,                 // still running

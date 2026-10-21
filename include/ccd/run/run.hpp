@@ -66,6 +66,11 @@ using CubeQa = std::variant<
 //                       each observation is where the run left it,
 //                       detect's FitResult::reasons, detect_cube's
 //                       CubeOutput::reasons. Without it none is kept
+//   diagnostics         also return each pixel's diagnostics
+//                       (PixelDiagnostics, results/diagnostics.hpp): its
+//                       procedure, exit, observation counts and peek, and
+//                       the machine's work on each segment, in
+//                       FitResult::diagnostics
 //   observer, observe   where the observed pixels report each step
 //                       (results/diagnostics.hpp): detect's pixel, or
 //                       detect_cube's pixels at the flat indices `observe`
@@ -83,6 +88,7 @@ struct RunSpec
     bool record = false;
     bool masks = false;
     bool reasons = false;
+    bool diagnostics = false;
     std::shared_ptr<Observer> observer = nullptr;
     std::vector<index_t> observe;
 };

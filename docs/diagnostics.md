@@ -1,7 +1,8 @@
 # Diagnostics: what a run does, step by step
 
 A run can report, beside its output, why each observation is where the run left it (its
-reason code), and each step of the pixels it observes: every phase transition of the machine
+reason code), what it did on each pixel and segment (the diagnostics columns), and each step of
+the pixels it observes: every phase transition of the machine
 with where its cursor is, every Extend change test with its outcome and statistics, every
 observation a stage drops, every segment it writes, and how the pixel ends. Nothing about the
 run's output changes: a run with either has the results of the run without, bit for bit.
@@ -55,6 +56,55 @@ A cube pixel that failed has `len(ccdcpp.REASONS)` (no code) throughout. In C++ 
 `FitResult::reasons` for `detect`, `CubeOutput::reasons` and `reasons_of(row, col)` for
 `detect_cube`. Without them the run writes none: the preprocessing notes each step's removals
 and the machine its drops only when asked.
+
+## Diagnostics columns
+
+`detect(..., diagnostics=True)` also returns `"pixel_diagnostics"`, what the run did on the
+pixel, and `"segment_diagnostics"`, the machine's work on each segment, one int32 array per
+counter in the order of the models; `detect_cube(..., diagnostics=True)` returns the pixels' as
+`(H, W)` arrays (zeros for a failed pixel) and the segments' in the order of the segment columns,
+and `ccdcpp.to_pixels()` gives each pixel detect()'s.
+
+| pixel | |
+|---|---|
+| `procedure` | 0 standard, 1 insufficient_clear, 2 snow (the record's codes) |
+| `exit` | why the machine stopped, a code of `ccdcpp.EXITS` (`SeriesEnd`, `InitializeExhausted`, `NoFit`, ...); 0, `None`, for the whole-series procedures |
+| `clear` | the observations the preprocessing kept |
+| `kept` | the observations the processing mask keeps after the fit |
+| `peek` | the change test's peek for the pixel; 0 without a machine |
+
+| segment | from the segment before it to this one's writing |
+|---|---|
+| `initialize_steps` | Initialize's steps: the candidate windows its start search tested |
+| `lookback_steps` | Lookback's steps before the stable window |
+| `tests` | Extend's change tests |
+| `refits` | Extend's model fits |
+| `dropped` | the observations the machine dropped on the way: the window screen's, Lookback's, Extend's outliers, and those the change before it dropped |
+
+The Start segment holds zeros (its search is the first curve's), as do the whole-series
+segments and a resume's carried ones; an End segment holds the search that found no stable
+window after the last curve. On the quick-start pixel:
+
+```python
+import pandas as pd
+
+out = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), diagnostics=True)
+px = out["pixel_diagnostics"]
+print(px, ccdcpp.EXITS[px["exit"]])
+print(pd.DataFrame(out["segment_diagnostics"]).to_string())
+```
+
+```text
+{'procedure': 0, 'exit': 6, 'clear': 376, 'kept': 376, 'peek': 6} SeriesEnd
+   initialize_steps  lookback_steps  tests  refits  dropped
+0                 9               0    220      13        0
+1                14               3    107       7        0
+```
+
+In C++, `RunSpec::diagnostics` fills `FitResult::diagnostics`, a `ccd::PixelDiagnostics` with
+one `ccd::SegmentDiagnostics` per segment (`ccd/results/diagnostics.hpp`). The machine counts
+on every pixel, a few additions per step; the counts are copied into the result only when asked
+for.
 
 ## The trace from Python
 

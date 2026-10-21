@@ -60,6 +60,15 @@ void drop(const Context& context, State& state, index_t position, Window& window
     CCD_OBSERVE_EVENT(context.observe, day_event(ObserverEvent::Kind::Drop,
                                                  state.series.dates()(position), name(why)));
     state.series.drop(position, window, why);
+    ++state.work.dropped;
+}
+
+// A segment written: the work on it is its own, and counting starts again.
+void add_segment(State& state, ChangeModel segment)
+{
+    state.segments.push_back(std::move(segment));
+    state.segment_work.push_back(state.work);
+    state.work = SegmentDiagnostics{};
 }
 
 } // namespace
@@ -151,6 +160,8 @@ void State::reset(const PixelSeries& pixel, ProcessingMask mask,
     series.reset(pixel, std::move(mask), std::move(reasons));
     cursor = Cursor{};
     segments.clear();
+    work = SegmentDiagnostics{};
+    segment_work.clear();
     carried = 0;
 
     // Prepare's derived values, set again before anything reads them.
@@ -448,6 +459,8 @@ Screened screen_window(const Context& context, State& state,
             return search.usable(shortened);
         }
     );
+    if (dropped)
+        state.work.dropped += outliers.count();
 #if CCD_OBSERVE
     if (dropped)
         for (const std::int64_t day : days)
@@ -575,6 +588,7 @@ Phase initialize(const Context& context, State& state)
 {
     LOG_DEBUG("Initialize for change model #: " << state.segments.size());
     const InitializeOutcome outcome = initialize_step(context, state);
+    ++state.work.initialize_steps;
     LOG_DEBUG("Initialize: " << to_string(outcome));
 
     switch (outcome)
@@ -643,6 +657,7 @@ LookbackOutcome lookback_step(const Context& context, State& state)
 Phase lookback(const Context& context, State& state)
 {
     const LookbackOutcome outcome = lookback_step(context, state);
+    ++state.work.lookback_steps;
     LOG_DEBUG("Lookback: " << to_string(outcome));
 
     if (outcome != LookbackOutcome::Change &&
@@ -666,7 +681,9 @@ void write_start_segment(const Context& context, State& state)
         *state.edges
     );
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
+    // The work so far is the first curve's.
     state.segments.push_back(std::move(result));
+    state.segment_work.push_back(SegmentDiagnostics{});
 }
 
 Phase start_catch(const Context& context, State& state)
@@ -763,7 +780,7 @@ void write_extended_segment(
             magnitude ? (*magnitude)[band] : change_test.magnitude(last, scratch, band);
 
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
-    state.segments.push_back(std::move(result));
+    add_segment(state, std::move(result));
     extend.trained = false;
 }
 
@@ -791,7 +808,7 @@ void write_forced_segment(const Context& context, State& state)
     result.curve_qa = static_cast<CurveQA>(num_coef);
 
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
-    state.segments.push_back(std::move(result));
+    add_segment(state, std::move(result));
 }
 
 #if CCD_OBSERVE
@@ -852,6 +869,7 @@ bool refit_if_due(const Context& context, State& state)
     // magnitude is set from the peek residuals when the segment is
     // written, which fits the other bands (complete_models()).
     ++extend.fits;
+    ++state.work.refits;
     Model& model = *extend.model;
     const auto fit_dates =
         masked_dates.slice(range(extend.fit_window.start, extend.fit_window.stop));
@@ -889,6 +907,7 @@ TestOutcome test_peek(const Context& context, State& state, const Peek& peek)
 
     const TestOutcome outcome =
         context.strategies.change_test->test(peek, *extend.test, extend.result);
+    ++state.work.tests;
 
     CCD_OBSERVE_EVENT(context.observe, [&] {
         ObserverEvent e = day_event(ObserverEvent::Kind::Test, masked_dates(peek_window.start),
@@ -1117,7 +1136,7 @@ void write_end_segment(const Context& context, State& state)
         *state.edges
     );
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
-    state.segments.push_back(std::move(result));
+    add_segment(state, std::move(result));
 }
 
 Phase end_catch(const Context& context, State& state)

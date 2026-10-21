@@ -465,7 +465,8 @@ window_screen 'tmask' parameter 'bands' is empty
 | `ccd/procedure/pixel_procedure.hpp` | `ccd/input/procedure.hpp` (`PixelProcedure`, with `PROCEDURES` and `name()`; `PreprocessPlan::of()` is a procedure's plan); `fit_whole_series` is in `ccd/strategies/edge_segments/lasso.hpp`, the `mode` stage's `PixelMode` in `ccd/strategies/stages.hpp` |
 | `ccd/procedure/fit.hpp`, `ccd/procedure/kernels.hpp` | the header of each function's owner: `ccd/results/segment.hpp` (`ChangeModel`, `BandFit`, `FitResult`, `CurveQA`), `ccd/core/window.hpp` (`Window`, `span`), `ccd/strategies/stages.hpp` (`Variogram` is `BandNoise`, the `noise` stage's output), `ccd/strategies/model.hpp` (`KeepResiduals`), `ccd/strategies/model/lasso.hpp` (`fit_bands`, `peek_residuals`, `band_fit`), `ccd/strategies/edge_segments/lasso.hpp` (`catch_segment`, `fit_whole_series`), `ccd/strategies/noise/variogram.hpp` (`adjusted_variogram`), `ccd/strategies/window_screen/tmask.hpp` (`tmask`), `ccd/strategies/pyccd/peek_statistics.hpp` (`adjust_peek`, `adjust_change_threshold`, `change_magnitude`, `SeasonalOrder`, `seasonal_rmse`), `ccd/core/maths.hpp` (`chi2_quantile`); `find_closest_doy`, `calculate_variogram`, `check_variogram`, `enough_time` and `enough_samples` are internal or gone |
 
-`RunSpec` is `{input, algorithm, record, masks, reasons, observer, observe}`; `algorithm` is a
+`RunSpec` is `{input, algorithm, record, masks, reasons, diagnostics, observer, observe}`;
+`algorithm` is a
 compiled configuration (`ccd::Algorithm`, `run/algorithm.hpp`), the `ccdc` preset's
 (`Algorithm::preset("ccdc")`) unless set. The values and QA are views of any supported element
 type (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`).

@@ -1,5 +1,6 @@
 #include "results.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -810,6 +811,90 @@ std::optional<ccd::Resume> cube_resume(const py::object& resume, index_t H, inde
         header_from_python(previous["resume_header"].cast<py::dict>()),
         records_from_columns(previous["resume"].cast<py::dict>(), H, W, B),
         segments_from_columns(previous, H, W, B)};
+}
+
+//------------------------------------------------------------------------------
+// Diagnostics (diagnostics=)
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+// The per-segment counters, by name.
+constexpr std::pair<const char*, ccd::index_t ccd::SegmentDiagnostics::*> SEGMENT_COUNTERS[] = {
+    {"initialize_steps", &ccd::SegmentDiagnostics::initialize_steps},
+    {"lookback_steps", &ccd::SegmentDiagnostics::lookback_steps},
+    {"tests", &ccd::SegmentDiagnostics::tests},
+    {"refits", &ccd::SegmentDiagnostics::refits},
+    {"dropped", &ccd::SegmentDiagnostics::dropped},
+};
+
+} // namespace
+
+py::dict pixel_diagnostics_to_python(const ccd::PixelDiagnostics& d)
+{
+    py::dict out;
+    out["procedure"] = static_cast<std::uint8_t>(d.procedure);
+    out["exit"] = static_cast<std::uint8_t>(d.exit);
+    out["clear"] = d.clear;
+    out["kept"] = d.kept;
+    out["peek"] = d.peek;
+    return out;
+}
+
+py::dict segment_diagnostics_columns(const std::vector<ccd::SegmentDiagnostics>& segments)
+{
+    py::dict out;
+    const auto n = static_cast<py::ssize_t>(segments.size());
+    for (const auto& [name, counter] : SEGMENT_COUNTERS)
+    {
+        py::array_t<std::int32_t> column(n);
+        auto v = column.mutable_unchecked<1>();
+        for (py::ssize_t i = 0; i < n; ++i)
+            v(i) = static_cast<std::int32_t>(segments[i].*counter);
+        out[name] = column;
+    }
+    return out;
+}
+
+void add_cube_diagnostics(py::dict& output, const ccd::CubeOutput& cube, index_t H, index_t W)
+{
+    const std::vector<py::ssize_t> shape{static_cast<py::ssize_t>(H), static_cast<py::ssize_t>(W)};
+    py::array_t<std::uint8_t> procedure(shape), exit(shape);
+    py::array_t<std::int32_t> clear(shape), kept(shape), peek(shape);
+    std::fill_n(procedure.mutable_data(), H * W, std::uint8_t{0});
+    std::fill_n(exit.mutable_data(), H * W, std::uint8_t{0});
+    std::fill_n(clear.mutable_data(), H * W, 0);
+    std::fill_n(kept.mutable_data(), H * W, 0);
+    std::fill_n(peek.mutable_data(), H * W, 0);
+    auto procedure_v = procedure.mutable_unchecked<2>();
+    auto exit_v = exit.mutable_unchecked<2>();
+    auto clear_v = clear.mutable_unchecked<2>();
+    auto kept_v = kept.mutable_unchecked<2>();
+    auto peek_v = peek.mutable_unchecked<2>();
+
+    std::vector<ccd::SegmentDiagnostics> segments;
+    for (const auto& pixel : cube.pixels)
+    {
+        const ccd::PixelDiagnostics& d = pixel.result.diagnostics;
+        const auto r = static_cast<py::ssize_t>(pixel.row);
+        const auto c = static_cast<py::ssize_t>(pixel.col);
+        procedure_v(r, c) = static_cast<std::uint8_t>(d.procedure);
+        exit_v(r, c) = static_cast<std::uint8_t>(d.exit);
+        clear_v(r, c) = static_cast<std::int32_t>(d.clear);
+        kept_v(r, c) = static_cast<std::int32_t>(d.kept);
+        peek_v(r, c) = static_cast<std::int32_t>(d.peek);
+        segments.insert(segments.end(), d.segments.begin(), d.segments.end());
+    }
+
+    py::dict pixels;
+    pixels["procedure"] = procedure;
+    pixels["exit"] = exit;
+    pixels["clear"] = clear;
+    pixels["kept"] = kept;
+    pixels["peek"] = peek;
+    output["pixel_diagnostics"] = pixels;
+    output["segment_diagnostics"] = segment_diagnostics_columns(segments);
 }
 
 //------------------------------------------------------------------------------

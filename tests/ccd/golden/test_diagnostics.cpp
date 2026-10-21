@@ -1,6 +1,7 @@
 //==============================================================================
 //
-// What a run reports beside its output (RunSpec::reasons):
+// What a run reports beside its output (RunSpec::reasons,
+// RunSpec::diagnostics):
 //
 //   * Reasons.*: each observation's reason code says why it is where the run
 //     left it. Asking for them changes nothing else; the codes below
@@ -8,6 +9,10 @@
 //     observation from the fit gives its code, on the golden pixels, through
 //     detect() and detect_cube(), a registry's step and strategies, and a
 //     resume.
+//   * Diagnostics.*: each pixel's procedure, exit, counts and peek, and the
+//     machine's work on each segment. Asking for them changes nothing else;
+//     they agree with the reason codes and the record; each exit and the
+//     counters are pinned on the golden pixels that take them.
 //
 //==============================================================================
 
@@ -447,4 +452,192 @@ TEST(Reasons, AResumeGivesTheStoredDropsTheirOwnCode)
             break;
     }
     EXPECT_EQ(with_stored, 10u);
+}
+
+namespace
+{
+
+ccd::RunSpec with_diagnostics(ccd::RunSpec spec)
+{
+    spec.diagnostics = true;
+    return spec;
+}
+
+} // namespace
+
+TEST(Diagnostics, AreTheRunsAndChangeNothing)
+{
+    const auto first_drop = static_cast<std::uint8_t>(ccd::FIRST_DROP);
+    const auto machine_drop = static_cast<std::uint8_t>(Reason::WindowScreen);
+    for (const Series& s : pixels())
+    {
+        const ccd::RunSpec plain = golden::spec_of(s.h, s.config, true);
+        const ccd::PixelOutput without = run(plain, s);
+        ccd::RunSpec spec = with_diagnostics(with_reasons(plain));
+        const ccd::PixelOutput with = run(spec, s);
+        EXPECT_EQ(golden::dump(without.result), golden::dump(with.result)) << s.name;
+
+        const ccd::PixelDiagnostics& d = with.result.diagnostics;
+        EXPECT_TRUE(without.result.diagnostics.segments.empty()) << s.name;
+        EXPECT_EQ(d.procedure, with.record.procedure) << s.name;
+        if (with.record.standard.exit != ccd::machine::Exit::None)
+            EXPECT_EQ(d.exit, with.record.standard.exit) << s.name;
+        if (d.procedure != ccd::PixelProcedure::Standard)
+        {
+            EXPECT_EQ(d.exit, ccd::machine::Exit::None) << s.name;
+            EXPECT_EQ(d.peek, 0u) << s.name;
+        }
+
+        // The counts are the reason codes': the preprocessing's removals, the mask's.
+        std::size_t removed = 0, kept = 0, dropped = 0;
+        for (const std::uint8_t code : with.result.reasons)
+        {
+            removed += code >= first_drop && code < machine_drop;
+            kept += code < first_drop;
+            dropped += code >= machine_drop;
+        }
+        EXPECT_EQ(d.clear, s.size() - removed) << s.name;
+        EXPECT_EQ(d.kept, kept) << s.name;
+
+        // One per segment; Extend's own fitted once at least; the drops they count
+        // are the machine's.
+        ASSERT_EQ(d.segments.size(), with.result.models.size()) << s.name;
+        std::size_t counted = 0;
+        for (std::size_t i = 0; i < d.segments.size(); ++i)
+        {
+            const auto qa = static_cast<int>(with.result.models[i].curve_qa);
+            if (d.procedure == ccd::PixelProcedure::Standard && qa <= 8)
+                EXPECT_GE(d.segments[i].refits, 1u) << s.name << " " << i;
+            if (qa == static_cast<int>(ccd::CurveQA::Start) || qa > 24)
+                EXPECT_EQ(d.segments[i].initialize_steps + d.segments[i].tests, 0u)
+                    << s.name << " " << i;
+            counted += d.segments[i].dropped;
+        }
+        EXPECT_LE(counted, dropped) << s.name;
+    }
+}
+
+// Each exit, the procedures and the counters, on golden pixels that take them.
+TEST(Diagnostics, EachExitAndCounterOnAGoldenPixel)
+{
+    using ccd::machine::Exit;
+    struct Pin
+    {
+        const char* pixel;
+        ccd::PixelProcedure procedure;
+        Exit exit;
+        index_t clear, kept, peek;
+    };
+    const Pin pins[] = {
+        {"select_clear_below_threshold", ccd::PixelProcedure::InsufficientClear, Exit::None, 24, 24, 0},
+        {"select_snow_at_threshold", ccd::PixelProcedure::PermanentSnow, Exit::None, 81, 81, 0},
+        {"standard_too_few", ccd::PixelProcedure::Standard, Exit::TooFewObservations, 12, 12, 0},
+        {"variogram_nan", ccd::PixelProcedure::Standard, Exit::VariogramNaN, 61, 61, 6},
+        {"standard_no_room", ccd::PixelProcedure::Standard, Exit::NoRoomToInitialize, 20, 20, 6},
+        {"constant_detection_band", ccd::PixelProcedure::Standard, Exit::InitializeExhausted, 228, 228, 6},
+        {"peek_guard_tail", ccd::PixelProcedure::Standard, Exit::PeekBeyondEnd, 400, 400, 19},
+        {"series_end_after_outlier", ccd::PixelProcedure::Standard, Exit::SeriesEnd, 228, 227, 6},
+        {"dense_series_end", ccd::PixelProcedure::Standard, Exit::SeriesEnd, 288, 288, 32},
+        {"lookback_near_break_decides", ccd::PixelProcedure::Standard, Exit::SeriesEnd, 533, 493, 32},
+    };
+    for (const Pin& pin : pins)
+    {
+        const Series& s = golden::named(pixels(), pin.pixel);
+        const ccd::PixelDiagnostics d =
+            run(with_diagnostics(golden::spec_of(s.h, s.config)), s).result.diagnostics;
+        EXPECT_EQ(d.procedure, pin.procedure) << pin.pixel;
+        EXPECT_EQ(d.exit, pin.exit) << pin.pixel;
+        EXPECT_EQ(d.clear, pin.clear) << pin.pixel;
+        EXPECT_EQ(d.kept, pin.kept) << pin.pixel;
+        EXPECT_EQ(d.peek, pin.peek) << pin.pixel;
+    }
+
+    // The counters of lookback_far_peek_decides' three curves: the second's
+    // search, its 24 Lookback steps back to 127 observations and their 5
+    // outliers among its 13 drops.
+    const Series& s = golden::named(pixels(), "lookback_far_peek_decides");
+    const ccd::PixelDiagnostics d =
+        run(with_diagnostics(golden::spec_of(s.h, s.config)), s).result.diagnostics;
+    ASSERT_EQ(d.segments.size(), 3u);
+    const index_t expected[3][5] = {{13, 0, 77, 6, 1}, {46, 24, 86, 4, 13}, {13, 0, 38, 4, 1}};
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        const ccd::SegmentDiagnostics& g = d.segments[i];
+        EXPECT_EQ((std::vector<index_t>{g.initialize_steps, g.lookback_steps, g.tests, g.refits,
+                                        g.dropped}),
+                  std::vector<index_t>(expected[i], expected[i] + 5))
+            << i;
+    }
+
+    // A Start segment holds none of the work: its search is the next curve's.
+    const Series& start = golden::named(pixels(), "start_catch");
+    const ccd::PixelDiagnostics sd =
+        run(with_diagnostics(golden::spec_of(start.h, start.config)), start).result.diagnostics;
+    ASSERT_EQ(sd.segments.size(), 2u);
+    EXPECT_EQ(sd.segments[0].initialize_steps + sd.segments[0].lookback_steps, 0u);
+    EXPECT_EQ(sd.segments[1].initialize_steps, 23u);
+    EXPECT_EQ(sd.segments[1].lookback_steps, 1u);
+
+    // NoFit: a model that cannot fit.
+    const Series& unfit = golden::named(pixels(), "lookback_near_break");
+    ccd::RunSpec spec = with_diagnostics(golden::spec_of(
+        unfit.h, std::make_shared<const ccd::Algorithm>(
+                     with_strategy(unfit.config, "model", "never-fits"), test_registry())));
+    EXPECT_EQ(run(spec, unfit).result.diagnostics.exit, ccd::machine::Exit::NoFit);
+}
+
+// A cube's are each pixel's detect() diagnostics; a resume's carried
+// segments hold zeros.
+TEST(Diagnostics, ACubesAreEachPixelsAndAResumesCarriedSegmentsHoldNone)
+{
+    const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 2, 3);
+    const index_t T = c.T;
+    const ccd::RunSpec spec = with_diagnostics(golden::spec_of(ccd::Input{}, golden::pyccd()));
+    const ccd::CubeOutput cube = ccd::detect_cube(
+        spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
+        ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {2, 3, 7, T}),
+        ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {2, 3, T}), 2);
+    ASSERT_EQ(cube.pixels.size(), 6u);
+    for (index_t p = 0; p < 6; ++p)
+    {
+        const ccd::PixelDiagnostics one = ccd::detect(
+            spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
+            ccd::ArrayView<const double, 2>::contiguous(c.spectral.data() + p * 7 * T, {7, T}),
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T}))
+            .result.diagnostics;
+        const ccd::PixelDiagnostics& d = cube.pixels[p].result.diagnostics;
+        EXPECT_EQ(d.procedure, one.procedure) << p;
+        EXPECT_EQ(d.exit, one.exit) << p;
+        EXPECT_EQ(d.clear, one.clear) << p;
+        EXPECT_EQ(d.kept, one.kept) << p;
+        EXPECT_EQ(d.peek, one.peek) << p;
+        ASSERT_EQ(d.segments.size(), one.segments.size()) << p;
+        for (std::size_t i = 0; i < d.segments.size(); ++i)
+            EXPECT_EQ(d.segments[i].tests, one.segments[i].tests) << p << " " << i;
+    }
+
+    std::size_t carried = 0;
+    for (const Series& s : golden::synthetic_series())
+    {
+        const Series cut = s.prefix(s.size() * 2 / 3);
+        const ccd::PixelOutput stored = run(golden::spec_of(cut.h, cut.config, true), cut);
+        const std::size_t final_segments = stored.record.standard.final_segments;
+        if (final_segments == 0)
+            continue;
+        const ccd::PixelOutput resumed = ccd::detect(
+            with_diagnostics(golden::spec_of(s.h, s.config)), s.date_view(), s.spectral_view(),
+            s.qa_view(), ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+        if (resumed.status != ccd::ResumeStatus::Resumed)
+            continue;
+        const ccd::PixelDiagnostics& d = resumed.result.diagnostics;
+        ASSERT_EQ(d.segments.size(), resumed.result.models.size()) << s.name;
+        for (std::size_t i = 0; i < final_segments; ++i)
+            EXPECT_EQ(d.segments[i].initialize_steps + d.segments[i].tests +
+                          d.segments[i].refits,
+                      0u)
+                << s.name << " " << i;
+        if (++carried == 10)
+            break;
+    }
+    EXPECT_EQ(carried, 10u);
 }

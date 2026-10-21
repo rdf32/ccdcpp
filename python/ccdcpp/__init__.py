@@ -11,6 +11,7 @@ from numpy.typing import ArrayLike as _ArrayLike
 from .ccdcpp import (
     CCD_MAX_BANDS,
     CHAIN_CAPACITY,
+    EXITS,
     FIRST_DROP,
     NO_BAND,
     NO_STATISTICS_END,
@@ -119,7 +120,8 @@ def _configuration(entry: str, config: object) -> Config:
 def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
            input: Input | SensorProfile, config: Config | str = "ccdc", record: bool = False,
            resume: _Mapping[str, _Any] | None = None, band_names: _Sequence[str] | None = None,
-           trace: bool = False, reasons: bool = False) -> results.PixelResult:
+           trace: bool = False, reasons: bool = False,
+           diagnostics: bool = False) -> results.PixelResult:
     """CCD on one pixel.
 
     dates
@@ -173,6 +175,13 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         is where the run left it, a code of ccdcpp.REASONS ("kept" in a
         segment, "qa", "window_screen", "outlier", ...; docs/diagnostics.md).
         The codes below ccdcpp.FIRST_DROP are those processing_mask keeps.
+    diagnostics
+        True to also return "pixel_diagnostics", what the run did on the
+        pixel (procedure, exit, a code of ccdcpp.EXITS, the observations the
+        preprocessing kept and the mask keeps after the fit, the peek), and
+        "segment_diagnostics", the machine's work on each segment (its
+        Initialize and Lookback steps, change tests, refits and dropped
+        observations), one int32 array per counter in the models' order.
 
     Returns a dict: models (one dict per segment, each with a bands list of
     B entries in row order), processing_mask and num_bands, plus band_names
@@ -181,7 +190,8 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     h, profile = _input("detect", input, spectral, band_names)
     cfg = _configuration("detect", config)
     out = _extension.detect(dates, spectral, qas, input=h, config=cfg._algorithm,
-                            record=record, resume=resume, trace=trace, reasons=reasons)
+                            record=record, resume=resume, trace=trace, reasons=reasons,
+                            diagnostics=diagnostics)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -192,7 +202,8 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
                 record: bool = False, resume: _Mapping[str, _Any] | None = None,
                 band_names: _Sequence[str] | None = None,
                 trace_pixels: _Sequence[tuple[int, int]] | None = None,
-                masks: bool = False, reasons: bool = False) -> results.CubeColumns:
+                masks: bool = False, reasons: bool = False,
+                diagnostics: bool = False) -> results.CubeColumns:
     """CCD on every pixel of a cube, in parallel, as columns.
 
     dates
@@ -238,6 +249,11 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         True to also return "mask_reasons", every pixel's reason codes as
         detect() returns them, in one (H, W, T) uint8 array as masks= does
         (len(ccdcpp.REASONS), no code, for a failed pixel).
+    diagnostics
+        True to also return detect()'s "pixel_diagnostics" of every pixel,
+        each an (H, W) array (zeros for a failed pixel), and its
+        "segment_diagnostics", one entry per segment in the order of the
+        segment columns.
 
     Returns a dict of arrays with one entry per segment: row, col,
     start_day, end_day, break_day, curve_qa, observation_count,
@@ -251,7 +267,8 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     cfg = _configuration("detect_cube", config)
     out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
-                                 trace_pixels=trace_pixels, masks=masks, reasons=reasons)
+                                 trace_pixels=trace_pixels, masks=masks, reasons=reasons,
+                                 diagnostics=diagnostics)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -271,15 +288,19 @@ def to_pixels(out: results.CubeColumns) -> list[results.Pixel]:
     order: {"row", "col", "models"}, the models as detect() returns them (each
     with a bands list in row order, every value the column's), and with
     masks=True its "processing_mask", with reasons=True its "mask_reasons"
-    (its row of the cube's array). A pixel with no segment has no entry, as it
-    has no row in the columns."""
+    (its row of the cube's array), with diagnostics=True its
+    "pixel_diagnostics" and "segment_diagnostics" as detect() returns them. A
+    pixel with no segment has no entry, as it has no row in the columns."""
     pixels: list[results.Pixel] = []
     n = len(out["row"])
     B = int(out["num_bands"])
     masks = out.get("processing_mask")
     reasons = out.get("mask_reasons")
+    per_pixel = out.get("pixel_diagnostics")
+    per_segment = out.get("segment_diagnostics")
     i = 0
     while i < n:
+        first = i
         row, col = int(out["row"][i]), int(out["col"][i])
         models: list[results.Model] = []
         while i < n and int(out["row"][i]) == row and int(out["col"][i]) == col:
@@ -303,5 +324,20 @@ def to_pixels(out: results.CubeColumns) -> list[results.Pixel]:
             pixel["processing_mask"] = masks[row, col]
         if reasons is not None:
             pixel["mask_reasons"] = reasons[row, col]
+        if per_pixel is not None and per_segment is not None:
+            pixel["pixel_diagnostics"] = {
+                "procedure": int(per_pixel["procedure"][row, col]),
+                "exit": int(per_pixel["exit"][row, col]),
+                "clear": int(per_pixel["clear"][row, col]),
+                "kept": int(per_pixel["kept"][row, col]),
+                "peek": int(per_pixel["peek"][row, col]),
+            }
+            pixel["segment_diagnostics"] = {
+                "initialize_steps": per_segment["initialize_steps"][first:i],
+                "lookback_steps": per_segment["lookback_steps"][first:i],
+                "tests": per_segment["tests"][first:i],
+                "refits": per_segment["refits"][first:i],
+                "dropped": per_segment["dropped"][first:i],
+            }
         pixels.append(pixel)
     return pixels

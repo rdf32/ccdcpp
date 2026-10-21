@@ -116,7 +116,7 @@ print(sorted(k for k in cols if not k.startswith("pixels")))
 
 ## From C++
 
-The same two calls are `ccd::detect` and `ccd::detect_cube` (`include/ccd/run/run.hpp`). What a call runs is a `ccd::RunSpec`: the input (`ccd::Input`), the compiled configuration (`ccd::Algorithm`, the `ccdc` preset unless you give one), and whether to return resume records, processing masks and reason codes. The arrays are `ccd::ArrayView`s over your memory. Link the CMake target `ccd_core`.
+The same two calls are `ccd::detect` and `ccd::detect_cube` (`include/ccd/run/run.hpp`). What a call runs is a `ccd::RunSpec`: the input (`ccd::Input`), the compiled configuration (`ccd::Algorithm`, the `ccdc` preset unless you give one), and whether to return resume records, processing masks, reason codes and diagnostics. The arrays are `ccd::ArrayView`s over your memory. Link the CMake target `ccd_core`.
 
 ```cpp
 #include <cstdint>
@@ -168,9 +168,10 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
 
 ```text
 ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=None,
-              band_names=None, trace=False, reasons=False)
+              band_names=None, trace=False, reasons=False, diagnostics=False)
 ccdcpp.detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record=False,
-                   resume=None, band_names=None, trace_pixels=None, masks=False, reasons=False)
+                   resume=None, band_names=None, trace_pixels=None, masks=False, reasons=False,
+                   diagnostics=False)
 ccdcpp.to_pixels(cols)
 ```
 
@@ -184,6 +185,7 @@ ccdcpp.to_pixels(cols)
 | `band_names=` | with a profile, the names of the rows as the caller holds them, checked against the profile's before anything runs |
 | `trace=`, `trace_pixels=` | the run step by step, for one pixel or the cube pixels named ([Diagnostics](#diagnostics)) |
 | `reasons=` | also return `"mask_reasons"`, why each observation is where the run left it, one code per observation (`(H, W, T)` for a cube; [Diagnostics](#diagnostics)) |
+| `diagnostics=` | also return `"pixel_diagnostics"` and `"segment_diagnostics"`: each pixel's procedure, exit, counts and peek, and the machine's work on each segment ([Diagnostics](#diagnostics)) |
 | `threads=` | `detect_cube`'s OpenMP threads; 0, the default, is the runtime's count |
 
 | Array | `detect` | `detect_cube` |
@@ -753,7 +755,9 @@ print({ccdcpp.REASONS[c]: int(n) for c, n in zip(*np.unique(codes, return_counts
 {'kept': 370, 'no_segment': 6, 'qa': 81}
 ```
 
-In C++ an observer is `RunSpec::observer` (`ccd::TextObserver` prints the events), and `RunSpec::observe` names a cube's pixels. The hooks compile out with CMake's `-DCCD_OBSERVE=OFF`. See [docs/diagnostics.md](docs/diagnostics.md) for the reason codes, the event fields and the C++ side.
+`diagnostics=True` also returns `"pixel_diagnostics"` (the pixel's procedure, its exit, a code of `ccdcpp.EXITS`, the observations the preprocessing and the fit kept, the peek) and `"segment_diagnostics"` (per segment: Initialize and Lookback steps, change tests, refits, dropped observations), as `(H, W)` and per-segment columns for a cube.
+
+In C++ an observer is `RunSpec::observer` (`ccd::TextObserver` prints the events), and `RunSpec::observe` names a cube's pixels. The hooks compile out with CMake's `-DCCD_OBSERVE=OFF`. See [docs/diagnostics.md](docs/diagnostics.md) for the reason codes, the diagnostics columns, the event fields and the C++ side.
 
 # Build and test
 

@@ -13,6 +13,7 @@ import pickle
 import re
 import shutil
 import unittest
+from typing import cast
 
 from _harness import use_package
 
@@ -495,6 +496,51 @@ class Runs(unittest.TestCase):
         for p in ccdcpp.to_pixels(cols):
             assert "mask_reasons" in p
             np.testing.assert_array_equal(p["mask_reasons"], reasons)
+
+    def test_diagnostics_say_what_the_run_did(self):
+        d, s, q = pixel()
+        q[10] = 4
+        h = ccdcpp.Input()
+        plain = ccdcpp.detect(d, s, q, input=h)
+        self.assertNotIn("pixel_diagnostics", plain)
+        out = ccdcpp.detect(d, s, q, input=h, diagnostics=True, reasons=True)
+        self.assertEqual(out["models"], plain["models"])
+        assert "pixel_diagnostics" in out and "segment_diagnostics" in out
+        assert "mask_reasons" in out
+        px = out["pixel_diagnostics"]
+        self.assertEqual(ccdcpp.EXITS[px["exit"]], "SeriesEnd")
+        self.assertEqual((px["procedure"], px["clear"], px["kept"], px["peek"]),
+                         (0, d.size - 1, int(plain["processing_mask"].sum()), 6))
+        # Every counter's column, by name.
+        seg = cast(dict[str, NDArray[np.int32]], out["segment_diagnostics"])
+        self.assertEqual(sorted(seg), ["dropped", "initialize_steps", "lookback_steps", "refits",
+                                       "tests"])
+        for column in seg.values():
+            self.assertEqual(column.dtype, np.int32)
+            self.assertEqual(column.shape, (len(out["models"]),))
+        self.assertTrue(np.all(seg["refits"] >= 1))
+        machine = int(np.sum(out["mask_reasons"] >= ccdcpp.REASONS.index("window_screen")))
+        self.assertLessEqual(int(seg["dropped"].sum()), machine)
+
+        # A cube's: (H, W) per pixel, one entry per segment row; to_pixels() gives each
+        # pixel detect()'s.
+        cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
+        qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
+        cols = ccdcpp.detect_cube(d, cube, qc, input=h, threads=2, diagnostics=True)
+        assert "pixel_diagnostics" in cols and "segment_diagnostics" in cols
+        per_pixel = cast(dict[str, NDArray[np.int32]], cols["pixel_diagnostics"])
+        per_segment = cast(dict[str, NDArray[np.int32]], cols["segment_diagnostics"])
+        for key, value in px.items():
+            np.testing.assert_array_equal(per_pixel[key], np.full((2, 2), value))
+        for key, column in seg.items():
+            self.assertEqual(per_segment[key].shape, cols["row"].shape)
+            np.testing.assert_array_equal(per_segment[key], np.tile(column, 4))
+        for p in ccdcpp.to_pixels(cols):
+            assert "pixel_diagnostics" in p and "segment_diagnostics" in p
+            self.assertEqual(p["pixel_diagnostics"], px)
+            own = cast(dict[str, NDArray[np.int32]], p["segment_diagnostics"])
+            for key, column in seg.items():
+                np.testing.assert_array_equal(own[key], column)
 
     def test_an_edge_segment_has_more_observations_than_coefficients(self):
         # A peek below coefficient_min: the first k observations are another cover, so the
