@@ -9,10 +9,11 @@ against v0.6.1 measured in the same session.
 | `make_corpus.cpp` | Writes the synthetic corpus: 2000 pixels at a 16-day cadence, from `tests/ccd/golden/synthetic.hpp` (the golden corpus's `c16` cube). |
 | `bench_synthetic.py` | Times `detect_cube` on that corpus tiled 2x2 (8000 pixels), best of N calls. |
 | `bench.sh` | Runs `bench_synthetic.py` for the two reported configs, each under `/usr/bin/time -l`. |
-| `bench_cell.py` | Times `detect_cube` with `input=presets.landsat_c2()` on a 500 x 500 Landsat C2 ARD cell and prints a fingerprint of every output. |
+| `bench_cell.py` | Times `detect_cube` with `input=presets.landsat_c2()` on a 500 x 500 Landsat C2 ARD cell (`--size n`: its n x n corner) and prints a fingerprint of every output. |
 | `bench_pixel.py` | Times `detect` per pixel, single-threaded, with an Input, a profile and a named configuration. |
 | `bench_resume.py` | An annual update of the same cell: a recorded run on the dates before a cut, `detect_cube(resume=)` on all of them, and the full run; checks the update equals the full run on every pixel and times the three. |
 | `bench_pyccd.py` | Times PyCCD's `ccd.detect` and `ccdcpp.detect` on the same pixels, one thread each (corpus pixels and PyCCD-format CSVs), and counts the pixels whose segments agree; with `--only pyccd` or `--only ccdcpp`, one of them in its own process with its peak memory. |
+| `_common.py` | What the scripts share: loading the build under test (each checks `import ccdcpp` loaded from the directory given), reading the corpus and the cell, the C2 conversion, best-of-N timing and the peak memory. |
 | `patch_pyccd.py` | Copies PyCCD and applies ccdcpp's corrections to it (README, "Differences from pyccd"), so the two can be timed on the same algorithm. |
 
 ## Setup

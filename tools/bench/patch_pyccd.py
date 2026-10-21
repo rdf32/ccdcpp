@@ -1,4 +1,4 @@
-"""patch_pyccd.py <pyccd ccd dir> <out dir>: a copy of PyCCD with ccdcpp's corrections.
+"""A copy of PyCCD with ccdcpp's corrections.
 
 Copies the `ccd` package of lcmap-pyccd 2021.7.19 to <out dir>/ccd and applies the corrections
 README.md lists under "Differences from pyccd" (all but the coefficient counts, the same at the
@@ -7,13 +7,10 @@ defaults), each changed line marked
 on the synthetic corpus the patched copy and ccdcpp's defaults give the same segments on every
 pixel. Fails if any patch does not apply exactly once.
 """
+import argparse
 import os
 import shutil
 import sys
-
-src, out = sys.argv[1], sys.argv[2]
-dst = os.path.join(out, "ccd")
-shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
 
 PATCHES = [
     # RLM convergence: the absolute value of the difference, not of the comparison.
@@ -75,12 +72,26 @@ PATCHES = [
             break"""),
 ]
 
-for name, old, new in PATCHES:
-    path = os.path.join(dst, name)
-    with open(path) as f:
-        text = f.read()
-    if text.count(old) != 1:
-        sys.exit(f"{name}: the patch's text occurs {text.count(old)} times, not once")
-    with open(path, "w") as f:
-        f.write(text.replace(old, new))
-print(f"patched {len(PATCHES)} places into {dst}")
+
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("pyccd_ccd_dir", help="the ccd package of lcmap-pyccd 2021.7.19")
+    p.add_argument("out_dir")
+    args = p.parse_args(argv)
+    dst = os.path.join(args.out_dir, "ccd")
+    shutil.copytree(args.pyccd_ccd_dir, dst, ignore=shutil.ignore_patterns("__pycache__"))
+    for name, old, new in PATCHES:
+        path = os.path.join(dst, name)
+        with open(path) as f:
+            text = f.read()
+        if text.count(old) != 1:
+            sys.exit(f"{name}: the patch's text occurs {text.count(old)} times, not once")
+        with open(path, "w") as f:
+            f.write(text.replace(old, new))
+    print(f"patched {len(PATCHES)} places into {dst}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

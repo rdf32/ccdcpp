@@ -1,55 +1,64 @@
-"""bench_synthetic.py <module_dir> <corpus.bin> <dtype: f64|u16> <threads> <reps>
+"""The synthetic timing of one build.
 
-The synthetic timing of one build: the corpus of make_corpus.cpp tiled 2x2 (8000 pixels),
-through ccdcpp.detect_cube with the default input, `threads` threads, best of `reps` calls. Prints the best wall time of the call and its
-time per pixel, and the file `import ccdcpp` loaded.
+The corpus of `golden_driver gen` (c16.bin) tiled 2x2 (8000 pixels), through ccdcpp.detect_cube
+with the default input, `threads` threads, best of `reps` calls. Prints the best wall time of
+the call and its time per pixel, and the file `import ccdcpp` loaded.
 
 `module_dir` is a directory from which `import ccdcpp` loads the build under test: the build
 directory (it holds the bare extension) or a package directory. Input conversion and copying
 happen outside the timed call.
 """
+import argparse
 import os
-import resource
 import sys
 import time
 
-sys.path.insert(0, sys.argv[1])
-import numpy as np  # noqa: E402
+import numpy as np
 
-import ccdcpp  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _common  # noqa: E402
 
-# A wrong module_dir would silently time whatever ccdcpp the interpreter has installed.
-if not os.path.realpath(ccdcpp.__file__).startswith(os.path.realpath(sys.argv[1]) + os.sep):
-    sys.exit(f"{sys.argv[0]}: ccdcpp loaded from {ccdcpp.__file__}, not from {sys.argv[1]}")
 
-corpus, dtype = sys.argv[2], sys.argv[3]
-threads, reps = int(sys.argv[4]), int(sys.argv[5])
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("module_dir")
+    p.add_argument("corpus", help="c16.bin")
+    p.add_argument("dtype", choices=("f64", "u16"))
+    p.add_argument("threads", type=int)
+    p.add_argument("reps", type=int)
+    args = p.parse_args(argv)
+    _common.import_build(args.module_dir)
+    import ccdcpp
 
-with open(corpus, "rb") as f:
-    H, W, T = np.frombuffer(f.read(24), dtype=np.uint64).astype(int)
-    dates = np.frombuffer(f.read(8 * T), dtype=np.int64).copy()
-    spec = np.frombuffer(f.read(8 * H * W * 7 * T), dtype=np.float64).reshape(H, W, 7, T)
-    qas = np.frombuffer(f.read(H * W * T), dtype=np.uint8).reshape(H, W, T)
+    corpus = _common.read_corpus(args.corpus)
+    H, W, _, T = corpus.spectral.shape
+    dates = corpus.dates
+    qas = np.ascontiguousarray(np.tile(corpus.qas, (2, 2, 1)))
+    src = np.empty((2 * H, 2 * W, 7, T), dtype=np.uint16 if args.dtype == "u16" else np.float64)
+    for i in range(2):
+        for j in range(2):
+            np.clip(corpus.spectral, 0, 65535, out=src[i * H:(i + 1) * H, j * W:(j + 1) * W],
+                    casting="unsafe")
+    del corpus
 
-qas = np.ascontiguousarray(np.tile(qas, (2, 2, 1)))
-src = np.empty((2 * H, 2 * W, 7, T), dtype=np.uint16 if dtype == "u16" else np.float64)
-for i in range(2):
-    for j in range(2):
-        np.clip(spec, 0, 65535, out=src[i * H:(i + 1) * H, j * W:(j + 1) * W], casting="unsafe")
-del spec
+    h = ccdcpp.Input()
+    rss0 = _common.peak_mb()
+    best = float("inf")
+    for _ in range(args.reps):
+        # A fresh float64 input per call, as a caller's buffer would be.
+        s = src.copy() if (args.reps > 1 and args.dtype == "f64") else src
+        t0 = time.perf_counter()
+        r = ccdcpp.detect_cube(dates, s, qas, input=h, threads=args.threads)
+        best = min(best, time.perf_counter() - t0)
+        del r, s
 
-h = ccdcpp.Input()
-rss0 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-best = float("inf")
-for _ in range(reps):
-    # A fresh float64 input per call, as a caller's buffer would be.
-    s = src.copy() if (reps > 1 and dtype == "f64") else src
-    t0 = time.perf_counter()
-    r = ccdcpp.detect_cube(dates, s, qas, input=h, threads=threads)
-    best = min(best, time.perf_counter() - t0)
-    del r, s
+    npx = qas.shape[0] * qas.shape[1]
+    print(f"cube {args.dtype} t{args.threads}: {best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
+          f"input {src.nbytes / 1e6:.0f} MB, maxrss_before_call {rss0:.0f} MB, "
+          f"ccdcpp {ccdcpp.__file__}")
+    return 0
 
-npx = qas.shape[0] * qas.shape[1]
-print(f"cube {dtype} t{threads}: {best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
-      f"input {src.nbytes / 1e6:.0f} MB, maxrss_before_call {rss0 / 1e6:.0f} MB, "
-      f"ccdcpp {ccdcpp.__file__}")
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
