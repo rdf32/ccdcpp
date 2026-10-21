@@ -1,12 +1,13 @@
 # Timing harness
 
-How the state-machine refactor of the Standard procedure is timed. Every phase reports a
-synthetic bench and, at the phases that move the hot loop, a real cell. The budget is a ratio
-against v0.6.1 measured in the same session.
+How a build of ccdcpp is timed against another. A change reports the synthetic bench and, if it
+moves the hot loop, the real cell and the per-pixel bench; its cost is the ratio against the
+build before it, measured in the same session. [docs/benchmarks.md](../../docs/benchmarks.md)
+has the results.
 
 | File | What it does |
 |---|---|
-| `bench_synthetic.py` | Times `detect_cube` on that corpus tiled 2x2 (8000 pixels), best of N calls. |
+| `bench_synthetic.py` | Times `detect_cube` on the synthetic corpus (`c16.bin`, [below](#setup)) tiled 2x2 (8000 pixels), best of N calls. |
 | `bench.sh` | Runs `bench_synthetic.py` for the two reported configs, each in its own process. |
 | `bench_cell.py` | Times `detect_cube` with `input=presets.landsat_c2()` on a 500 x 500 Landsat C2 ARD cell (`--size n`: its n x n corner) and prints a fingerprint of every output. |
 | `bench_pixel.py` | Times `detect` per pixel, single-threaded, with an Input, a profile and a named configuration, each in its own process (`--only <form>` runs one). |
@@ -50,11 +51,11 @@ side (implementation, call form or phase) in its own process, so each peak is it
    ```
 
    Report the median detect time, the peak memory and the fingerprint; the peak above the one
-   once the cell is read is what detection adds to the input.
-   With `8 5 --size 20` (a 20 x 20 corner in strips of 5) it checks that the script runs. A build that prints the baseline's fingerprint gave byte-identical results on
-   all 250,000 pixels.
-3. Measure v0.6.1 again in the same session whenever the load differs much from the last
-   baseline. The budget (at most 2% slower) is checked on the finished machine against v0.6.1.
+   once the cell is read is what detection adds to the input. A build that prints the
+   baseline's fingerprint gave byte-identical results on all 250,000 pixels. With `8 5
+   --size 20` (a 20 x 20 corner in strips of 5) it only checks that the script runs.
+3. Measure the baseline build again in the same session whenever the load differs much from
+   its last run.
 4. PyCCD. With an interpreter that has lcmap-pyccd 2021.7.19's dependencies (numpy, scipy,
    scikit-learn) and PyCCD's `ccd` package in `<pyccd dir>`:
 

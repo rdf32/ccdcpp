@@ -36,4 +36,4 @@ docker image inspect --format '{{.Id}} {{.Os}}/{{.Architecture}} {{json .RepoDig
 docker run --rm --pull never --platform linux/amd64 \
   "${mounts[@]}" -v "$CORPUS:/corpus:ro" -v "$HERE:/tool:ro" -v "$OUT/linux-out:/out" \
   "$IMAGE" bash /tool/in_container.sh "${labels[@]}" > "$OUT/linux-run.log" 2>&1
-tail -n "$(( ${#labels[@]} - 1 ))" "$OUT/linux-run.log"
+grep ' vs .*: compared ' "$OUT/linux-run.log"

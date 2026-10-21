@@ -130,7 +130,8 @@ its replacement.
 - Types: `py.typed`, `ccdcpp.pyi`, `qa_tables.pyi`, and the results as `TypedDict`s in
   `ccdcpp.results`.
 - [docs/benchmarks.md](docs/benchmarks.md) and the bench tools (`tools/bench/`), with peak
-  memory beside every time; per pixel 1.0 runs as fast as 0.10.0.
+  memory beside every time, each side of a comparison in its own process; per pixel 1.0 runs
+  as fast as 0.10.0.
 
 ### Removed
 
