@@ -40,7 +40,7 @@ The procedure choice (the `pyccd` mode's, with its parameters):
 The whole-series fit has no loop, so it is a function, not a machine. With fewer than the
 `lasso` edge_segments' `min_observations` (the shared value, 12) kept observations it returns no segment, with the
 processing mask. Otherwise it returns one segment over the whole series, every band fitted with
-edge_segments' `coefficients` (the shared `coefficient_min`, 4).
+edge_segments' `coefficients` (the shared `coefficients.min`, 4).
 
 ## 2. The Standard machine
 
@@ -225,12 +225,12 @@ read, or derives it from one:
 
 | pyccd's constant | Where the configuration holds it |
 |---|---|
-| the start window, 12 observations | shared `min_observations`: `start_search`'s `meow_size`, `edge_segments`'s `min_observations` |
+| the start window, 12 observations | shared `min_observations`: `start_search`'s `meow_size`, `edge_segments`' `min_observations` |
 | the change probability, 0.99 | shared `change_probability`: `change_probability` of `change_test`, `stability_rule` and `lookback` |
 | the change threshold, chi2(5) at 0.99 | derived from it: `change_threshold` of `change_test`, `stability_rule` and `lookback` |
 | the outlier threshold, chi2(5) at 1 - 1e-6 | derived from shared `outlier_probability`: `outlier`'s `threshold`, `lookback`'s `outlier_threshold` |
-| the coefficient counts, 4, 6 and 8 | shared `coefficient_min`, `_mid`, `_max`: `model`'s and `stability_fit`'s; `edge_segments`'s `coefficients` (4) |
-| the Lasso's constants | shared `max_iter`, `alpha`, `tolerance`, `coef_floor`: `model`'s, `stability_fit`'s and `edge_segments`'s |
+| the coefficient counts, 4, 6 and 8 | shared `coefficients.min`, `.mid`, `.max`: `model`'s and `stability_fit`'s; `edge_segments`' `coefficients` (4) |
+| the Lasso's constants | shared `lasso.max_iter`, `lasso.alpha`, `lasso.tolerance`, `lasso.coef_floor`: `model`'s, `stability_fit`'s and `edge_segments`' |
 | the refit and model-RMSE window, 24 observations | two parameters, `refit`'s `min_obs` and `change_test`'s `model_rmse_up_to`, which a configuration may set apart |
 
 The stability rule's and the lookback's `peek` is 0, the change test's peek; N gives them a peek
@@ -310,9 +310,10 @@ using namespace ccd;
 // preprocessing, in physical terms (config::Config, config/config.hpp).
 config::Config config = strategies::library_registry().preset("ccdc");
 // config.shared holds detection_bands {"green", "red", "nir", "swir1", "swir2"},
-//   change_probability 0.99, outlier_probability 0.999999, alpha and coef_floor 1e-4
-//   (reflectance), max_iter 1000, tolerance 1e-4, the coefficient rule 4/6/8/3,
-//   min_observations 12 and statistics_end NO_STATISTICS_END; the stages that read them hold no copy.
+//   change_probability 0.99, outlier_probability 0.999999, min_observations 12,
+//   statistics_end NO_STATISTICS_END, the coefficient rule coefficients.min, .mid, .max
+//   and .per 4/6/8/3, and the Lasso's lasso.alpha and lasso.coef_floor 1e-4 (reflectance),
+//   lasso.max_iter 1000 and lasso.tolerance 1e-4; the stages that read them hold no copy.
 // config.stages["start_search"] is {"pyccd", {{"day_delta", 365}}}: its meow_size is the
 //   shared min_observations.
 // config.stages["window_screen"] is {"tmask", {{"bands", {"green", "swir1"}}, {"t_const", 4.89}}}

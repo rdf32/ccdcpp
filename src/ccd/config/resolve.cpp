@@ -29,22 +29,22 @@ struct SharedValues
 // The shared values of `given` against `input` (null: as written).
 SharedValues resolve_shared(const Values& given, const Input* input)
 {
-    static const std::vector<ParameterInfo> info = info_of(shared_schema());
+    const std::vector<ParameterInfo>& info = shared_parameters();
     SectionContext as_written;
     as_written.input = input;
     SharedValues out;
-    apply(shared_schema(), section_values(info, given, "shared", as_written, "value"), out.typed,
-          "shared");
+    apply_shared(section_values(info, given, "shared", as_written, "value"), out.typed);
+    out.typed.coefficients.check("shared");
 
     // A fit of min_observations observations (a start window, a whole-series
-    // curve) has coefficient_min coefficients at least, and its RMSE needs a
+    // curve) has coefficients.min coefficients at least, and its RMSE needs a
     // degree of freedom.
-    if (out.typed.min_observations <= out.typed.coefficient_min)
+    if (out.typed.min_observations <= out.typed.coefficients.min)
         throw std::invalid_argument(
-            "shared values 'min_observations' and 'coefficient_min' are " +
+            "shared values 'min_observations' and 'coefficients.min' are " +
             std::to_string(out.typed.min_observations) + " and " +
-            std::to_string(out.typed.coefficient_min) +
-            "; min_observations must exceed coefficient_min");
+            std::to_string(out.typed.coefficients.min) +
+            "; min_observations must exceed coefficients.min");
 
     const auto given_bands = given.find("detection_bands");
     const Value& bands = given_bands != given.end()
@@ -63,7 +63,7 @@ SharedValues resolve_shared(const Values& given, const Input* input)
     if (input)
         check_band_list(out.typed.detection_bands, input->bands(),
                         "shared value 'detection_bands'");
-    out.named = to_values(shared_schema(), out.typed);
+    out.named = shared_values(out.typed);
     return out;
 }
 
@@ -238,7 +238,7 @@ Config canonical(const Registry& registry, const Config& config)
 {
     check(registry, config);
     Config out = config;
-    out.shared = spelled_out(info_of(shared_schema()), config.shared);
+    out.shared = spelled_out(shared_parameters(), config.shared);
     for (auto& [stage, chosen] : out.stages)
         chosen.params = spelled_out(registry.strategy(stage, chosen.strategy).info, chosen.params);
     for (auto& [procedure, chain] : out.preprocess)

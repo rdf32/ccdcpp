@@ -33,7 +33,7 @@ for input in (ccdcpp.Input(), physical):
   transform. The outputs are in it too: coefficients, intercepts, RMSEs and magnitudes are in
   the input's units (DN in, DN out).
 - **The physical domain** is the configuration only: reflectance levels (0–1), reflectance
-  differences (`alpha`, `coef_floor`, the green median's offset), degrees Celsius, days,
+  differences (`lasso.alpha`, `lasso.coef_floor`, the green median's offset), degrees Celsius, days,
   observations, probabilities, bands by role and QA codes by name.
 - **The conversion.** The run converts the configuration into the storage domain once, when
   it resolves it against the input: levels as `r * reflectance_scale + reflectance_offset`,
@@ -50,7 +50,7 @@ transform (10, -27315) to Celsius x 100, `thermal_at_100c` 10000), "ccdc" resolv
 |---|---|---|
 | `band_range` 0 to 1 | 0 to 10000 | level: `r * 10000 + 0` |
 | `thermal_range` -93.2 to 70.7 °C | -9320 to 7070 | `c * 100 * 10000 / 10000` |
-| `alpha` 1e-4 | 1.0 | difference: `r * 10000` |
+| `lasso.alpha` 1e-4 | 1.0 | difference: `r * 10000` |
 | `green_median` offset +0.04 | +400 | difference: `r * 10000` |
 
 `ccdcpp.plan_of(config, input)` shows the resolved preprocessing and `Config.resolve(input)`
@@ -80,7 +80,7 @@ print(green)
   the defaults; Celsius / 100 through the identity: `thermal_at_100c` 1).
 
 A configuration's reflectance levels (`band_range`'s bounds) resolve as `r *
-reflectance_scale + reflectance_offset`, its reflectance differences (`alpha`, `coef_floor`,
+reflectance_scale + reflectance_offset`, its reflectance differences (`lasso.alpha`, `lasso.coef_floor`,
 `green_median`'s offset) as `r * reflectance_scale`, its degrees Celsius `c` as `c * 100 *
 thermal_at_100c / 10000`. 1e-4 x 10000, 0.04 x 10000, 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0
 and 10000 exactly, and -93.2 and 70.7 degrees are -9320 and 7070 on DN and -0.932 and 0.707 on

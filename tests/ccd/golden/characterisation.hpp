@@ -394,7 +394,7 @@ inline std::vector<CharPixel> characterisation_pixels()
         // The fewest coefficients raised to 6: Initialize, Extend's
         // coefficient schedule and the Start/End fits all read it.
         CharPixel p = sparse_random("coefficient_min_6", 3);
-        p.config.shared["coefficient_min"] = ccd::config::integer(6);
+        p.config.shared["coefficients.min"] = ccd::config::integer(6);
 
         out.push_back(std::move(p));
     }

@@ -23,7 +23,8 @@ namespace py = pybind11;
 //
 // The algorithm's configuration, in Python
 //
-// A configuration crosses into Python as a dict {"shared": {name: value},
+// A configuration crosses into Python as a dict {"shared": {name: value,
+// table: {name: value}},
 // "stages": {stage: {"strategy": name, "params": {name: value}}},
 // "preprocess": {procedure: {"thermal_transform": bool, "steps": [{"step":
 // name, name: value, ...}, ...]}}}: a value is a bool, an int, a float, a
@@ -124,6 +125,69 @@ py::dict values_to_python(const ccd::config::Values& values)
     py::dict out;
     for (const auto& [name, value] : values)
         out[py::str(name)] = value_to_python(value);
+    return out;
+}
+
+// Whether `name` is a table of the shared section.
+bool is_shared_table(const std::string& name)
+{
+    for (const ccd::config::SharedTable& t : ccd::config::shared_tables())
+        if (name == t.name)
+            return true;
+    return false;
+}
+
+// The shared section from Python, {name: value, table: {name: value}}: a
+// table's values by their paths ("lasso.alpha").
+ccd::config::Values shared_from_python(const py::handle& shared)
+{
+    if (!py::isinstance<py::dict>(shared))
+        throw py::value_error("shared is a dict of values and tables");
+    ccd::config::Values out;
+    for (const auto& [key, value] : shared.cast<py::dict>())
+    {
+        const std::string name = py::str(key);
+        if (is_shared_table(name))
+        {
+            if (!py::isinstance<py::dict>(value))
+                throw py::value_error("shared " + name + " is a table of values");
+            for (const auto& [inner, v] : value.cast<py::dict>())
+            {
+                const std::string path = name + "." + std::string(py::str(inner));
+                out[path] = value_from_python(v, "shared value '" + path + "'");
+            }
+        }
+        else if (py::isinstance<py::dict>(value))
+        {
+            std::vector<std::string> tables;
+            for (const ccd::config::SharedTable& t : ccd::config::shared_tables())
+                tables.push_back(t.name);
+            throw py::value_error("shared has no table '" + name + "'; its tables are " +
+                                  ccd::config::listed(tables));
+        }
+        else
+            out[name] = value_from_python(value, "shared value '" + name + "'");
+    }
+    return out;
+}
+
+// The shared values as Python holds them: a table's in its own dict.
+py::dict shared_to_python(const ccd::config::Values& values)
+{
+    py::dict out;
+    for (const auto& [name, value] : values)
+    {
+        const auto dot = name.find('.');
+        if (dot == std::string::npos)
+        {
+            out[py::str(name)] = value_to_python(value);
+            continue;
+        }
+        const py::str table(name.substr(0, dot));
+        if (!out.contains(table))
+            out[table] = py::dict();
+        out[table].cast<py::dict>()[py::str(name.substr(dot + 1))] = value_to_python(value);
+    }
     return out;
 }
 
@@ -288,7 +352,7 @@ py::dict resolved_to_python(const ccd::config::Resolved& r)
 {
     py::dict out;
     out["stages"] = stages_to_python(r.stages);
-    out["shared"] = values_to_python(ccd::config::to_values(ccd::config::shared_schema(), r.shared));
+    out["shared"] = shared_to_python(ccd::config::shared_values(r.shared));
     out["preprocess"] = preprocess_to_python(r.preprocess);
     out["digest"] = r.digest;
     return out;
@@ -310,7 +374,7 @@ ccd::config::Config config_from_python(const py::handle& config)
     }
     ccd::config::Config out;
     if (d.contains("shared"))
-        out.shared = values_from_python(d["shared"], "shared value");
+        out.shared = shared_from_python(d["shared"]);
     if (d.contains("stages"))
         out.stages = stages_from_python(d["stages"]);
     if (d.contains("preprocess"))
@@ -321,7 +385,7 @@ ccd::config::Config config_from_python(const py::handle& config)
 py::dict config_to_python(const ccd::config::Config& config)
 {
     py::dict out;
-    out["shared"] = values_to_python(config.shared);
+    out["shared"] = shared_to_python(config.shared);
     out["stages"] = stages_to_python(config.stages);
     out["preprocess"] = preprocess_to_python(config.preprocess);
     return out;
@@ -467,21 +531,36 @@ void bind_config(py::module_& m)
         "_shared",
         []()
         {
-            const ccd::config::Values defaults = ccd::config::shared_defaults();
             py::list out;
-            for (const auto& f : ccd::config::shared_schema())
+            for (const ccd::config::ParameterInfo& p : ccd::config::shared_parameters())
             {
                 py::dict d;
-                d["name"] = f.name;
-                d["unit"] = unit_name(f.unit);
-                d["bounds"] = ccd::config::describe(f.bounds);
-                d["doc"] = f.doc;
-                d["default"] = value_to_python(defaults.at(f.name));
+                d["name"] = p.name;
+                d["unit"] = unit_name(p.unit);
+                d["bounds"] = p.bounds;
+                d["doc"] = p.doc;
+                d["default"] = value_to_python(*p.default_value);
                 out.append(d);
             }
             return out;
         },
-        "The shared values of a configuration, with their physical defaults.");
+        "The shared values of a configuration, with their physical defaults: a table's by "
+        "its path (\"lasso.alpha\").");
+    m.def(
+        "_shared_tables",
+        []()
+        {
+            py::list out;
+            for (const ccd::config::SharedTable& t : ccd::config::shared_tables())
+            {
+                py::dict d;
+                d["name"] = t.name;
+                d["doc"] = t.doc;
+                out.append(d);
+            }
+            return out;
+        },
+        "The tables of a configuration's shared section, with what each decides.");
 
     m.def(
         "chi2_quantile",

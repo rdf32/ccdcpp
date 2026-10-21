@@ -62,7 +62,8 @@ class Presets(unittest.TestCase):
 
     def test_the_preset_is_physical(self):
         shared = ccdcpp.config("ccdc").shared()
-        self.assertEqual(shared["alpha"], 1e-4)
+        self.assertEqual(shared["lasso"]["alpha"], 1e-4)
+        self.assertEqual(shared["coefficients"], {"min": 4, "mid": 6, "max": 8, "per": 3})
         self.assertNotIn("green_filter", shared)
         self.assertEqual(shared["change_probability"], 0.99)
         self.assertEqual(shared["outlier_probability"], 1.0 - 1e-6)
@@ -120,6 +121,22 @@ class Presets(unittest.TestCase):
             if stage != "refit":
                 self.assertEqual(variant.params(stage), base.params(stage), stage)
         self.assertNotEqual(variant.hash(), base.hash())
+
+    def test_a_shared_table_is_reached_by_its_path(self):
+        cfg = ccdcpp.config().replace(shared__lasso__alpha=2e-4, shared__coefficients__max=6)
+        self.assertEqual(cfg.shared()["lasso"], {"alpha": 2e-4, "coef_floor": 1e-4,
+                                                 "max_iter": 1000, "tolerance": 1e-4})
+        self.assertEqual(cfg.shared()["coefficients"]["max"], 6)
+        self.assertEqual(cfg.resolve(ccdcpp.Input())["shared"]["lasso"]["alpha"], 2.0)
+        with self.assertRaisesRegex(ValueError, r"^shared has no table 'lassoo'; its tables are "
+                                                r"coefficients, lasso$"):
+            ccdcpp.config().replace(shared__lassoo__alpha=1.0)
+        # A file's table changes the values it gives, over its base's.
+        path = os.path.join(_ROOT, "lasso.toml")
+        with open(path, "w") as f:
+            f.write('extends = "ccdc"\n\n[shared.lasso]\nmax_iter = 500\n')
+        self.assertEqual(ccdcpp.config(path).shared()["lasso"],
+                         dict(ccdcpp.config().shared()["lasso"], max_iter=500))
 
     def test_a_stage_table_holds_its_strategy_and_params_only(self):
         # A parameter written beside strategy, not under [refit.params], is refused by name.
@@ -184,7 +201,8 @@ class Replace(unittest.TestCase):
 
     def test_a_stage_cannot_set_a_shared_value(self):
         with self.assertRaisesRegex(ValueError, "^model 'lasso' parameter 'alpha' is the shared "
-                                                "value 'alpha'; set shared 'alpha' instead$"):
+                                                "value 'lasso.alpha'; set shared 'lasso.alpha' "
+                                                "instead$"):
             ccdcpp.config().replace(model__alpha=1.0)
         with self.assertRaisesRegex(ValueError, "parameter 'change_threshold' is derived from "
                                                 "the shared value 'change_probability'"):
@@ -232,25 +250,26 @@ class Replace(unittest.TestCase):
         # A number with numeric bounds is finite; NaN is refused by the bounds themselves.
         inf = float("inf")
         for change, message in (
-                (dict(shared__alpha=inf), "shared parameter 'alpha' is inf; it must be a finite "
-                                          "number at least 0"),
+                (dict(shared__lasso__alpha=inf), "shared lasso parameter 'alpha' is inf; it must be "
+                                                 "a finite number at least 0"),
                 (dict(refit__factor=inf), "refit 'span-factor' parameter 'factor' is inf; it "
                                           "must be a finite number greater than 0"),
                 (dict(change_test__peek_reference_days=-inf), "is -inf; it must be a finite "
                                                               "number greater than 0"),
-                (dict(shared__alpha=float("nan")), "is nan; it must be at least 0")):
+                (dict(shared__lasso__alpha=float("nan")), "is nan; it must be at least 0")):
             with self.subTest(change=change):
                 with self.assertRaisesRegex(ValueError, message):
                     ccdcpp.config().replace(**change)
-        # min_observations exceeds coefficient_min: a fit of that many has a degree of freedom.
+        # min_observations exceeds coefficients.min: a fit of that many has a degree of freedom.
         for change in (dict(shared__min_observations=4),
-                       dict(shared__coefficient_min=6, shared__min_observations=6)):
+                       dict(shared__coefficients__min=6, shared__min_observations=6)):
             with self.subTest(change=change):
-                n, k = change.get("shared__min_observations"), change.get("shared__coefficient_min", 4)
+                n = change.get("shared__min_observations")
+                k = change.get("shared__coefficients__min", 4)
                 with self.assertRaisesRegex(ValueError, f"^shared values 'min_observations' and "
-                                                        f"'coefficient_min' are {n} and {k}; "
+                                                        f"'coefficients.min' are {n} and {k}; "
                                                         f"min_observations must exceed "
-                                                        f"coefficient_min$"):
+                                                        f"coefficients.min$"):
                     ccdcpp.config().replace(**change)
         ccdcpp.config().replace(shared__min_observations=5).check(ccdcpp.Input())
         # The thermal and reflectance bounds take any number: an infinity is an open end.
@@ -274,7 +293,7 @@ class Replace(unittest.TestCase):
         with self.assertRaises(AttributeError):
             cfg.x = 1
         self.assertIn("refit: span-factor(factor=1.33, min_obs=24)", repr(cfg))
-        self.assertIn("shared: alpha=0.0001", repr(cfg))
+        self.assertIn("lasso.alpha=0.0001", repr(cfg))
         self.assertEqual(pickle.loads(pickle.dumps(cfg)), cfg)
 
 
@@ -288,14 +307,15 @@ class Strategies(unittest.TestCase):
         self.assertEqual(refit["factor"]["bounds"], "greater than 0")
         self.assertEqual(refit["factor"]["source"], "own")
         lasso = {p["name"]: p for p in table["model"]["lasso"]}
-        self.assertEqual((lasso["alpha"]["source"], lasso["alpha"]["from"]), ("shared", "alpha"))
+        self.assertEqual((lasso["alpha"]["source"], lasso["alpha"]["from"]),
+                         ("shared", "lasso.alpha"))
         self.assertIsNone(lasso["alpha"]["default"])
         chi2 = {p["name"]: p for p in table["change_test"]["chi2"]}
         self.assertEqual((chi2["change_threshold"]["source"], chi2["change_threshold"]["from"]),
                          ("chi2", "change_probability"))
         shared = {v["name"]: v for v in ccdcpp.shared_values()}
-        self.assertEqual(shared["alpha"]["unit"], "reflectance_delta")
-        self.assertEqual(shared["alpha"]["default"], 1e-4)
+        self.assertEqual(shared["lasso.alpha"]["unit"], "reflectance_delta")
+        self.assertEqual(shared["lasso.alpha"]["default"], 1e-4)
 
 
 class Runs(unittest.TestCase):
@@ -332,7 +352,7 @@ class Runs(unittest.TestCase):
         d, s, q = pixel()
         h = ccdcpp.Input()
         plain = ccdcpp.detect(d, s, q, input=h)
-        sparse = ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(shared__alpha=0.01))
+        sparse = ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(shared__lasso__alpha=0.01))
         # A hundred times the Lasso penalty in every Lasso stage: other coefficients.
         self.assertNotEqual(sparse["models"], plain["models"])
         strict = ccdcpp.detect(

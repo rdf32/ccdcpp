@@ -227,9 +227,9 @@ ccd::config::Config with_bounds(const std::string& step, double lo, double hi,
 // (in reflectance), which every Lasso stage reads.
 ccd::config::Config with_lasso(double alpha, double coef_floor)
 {
-    return golden::with_shared(golden::with_shared(golden::pyccd(), "alpha",
+    return golden::with_shared(golden::with_shared(golden::pyccd(), "lasso.alpha",
                                                    ccd::config::real(alpha)),
-                               "coef_floor", ccd::config::real(coef_floor));
+                               "lasso.coef_floor", ccd::config::real(coef_floor));
 }
 
 // The kernels' solver with the same constants, for fit_whole_series().
@@ -714,8 +714,8 @@ TEST(Units, Collection2DnResolvesReflectanceZeroToOne)
     // The differences carry no offset.
     EXPECT_EQ(plan.insufficient_clear.chain[4].green_offset, 0.04 * h.reflectance_scale);
     const ccd::config::Resolved r = golden::resolved(golden::pyccd(), h);
-    EXPECT_EQ(r.shared.alpha, 1e-4 * h.reflectance_scale);
-    EXPECT_EQ(r.shared.coef_floor, 1e-4 * h.reflectance_scale);
+    EXPECT_EQ(r.shared.lasso.alpha, 1e-4 * h.reflectance_scale);
+    EXPECT_EQ(r.shared.lasso.coef_floor, 1e-4 * h.reflectance_scale);
 }
 
 TEST(Units, GreenMedianFilterIsAUnitConstant)

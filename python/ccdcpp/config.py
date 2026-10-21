@@ -77,6 +77,7 @@ _PRESETS = os.path.join(os.path.dirname(__file__), "configs")
 _SCHEMA = _extension._strategies()
 _STEPS = _extension._steps()
 _SHARED = {v["name"]: v for v in _extension._shared()}
+_TABLES = _extension._shared_tables()
 
 
 def strategies() -> dict[str, dict[str, list[dict[str, Any]]]]:
@@ -96,7 +97,8 @@ def steps() -> dict[str, list[dict[str, Any]]]:
 
 def shared_values() -> list[dict[str, Any]]:
     """The shared values of a configuration: [{"name", "unit", "bounds", "doc", "default"},
-    ...], the defaults the "ccdc" preset's, in physical terms."""
+    ...], the defaults the "ccdc" preset's, in physical terms; a table's value by its path,
+    "lasso.alpha" (``Config.replace(shared__lasso__alpha=...)``)."""
     return copy.deepcopy(list(_SHARED.values()))
 
 
@@ -132,6 +134,13 @@ def _set_step(tree: dict[str, Any], procedures: Sequence[str], step: str, param:
             found += 1
     if not found:
         raise ValueError(f"the configuration's preprocess has no '{step}' step")
+
+
+def _paths(shared: dict[str, Any]) -> list[tuple[str, Any]]:
+    """The shared values by their paths: a table's as "lasso.alpha"."""
+    return [(f"{k}.{n}", v) for k, t in shared.items() if isinstance(t, dict)
+            for n, v in t.items()] + [(k, v) for k, v in shared.items()
+                                      if not isinstance(v, dict)]
 
 
 class Config:
@@ -182,7 +191,7 @@ class Config:
         return copy.deepcopy(self._tree["stages"][stage]["params"])
 
     def shared(self) -> dict[str, Any]:
-        """A copy of the shared values."""
+        """A copy of the shared values: {name: value, table: {name: value}}."""
         return copy.deepcopy(self._tree["shared"])
 
     def preprocess(self, procedure: str) -> dict[str, Any]:
@@ -248,7 +257,14 @@ class Config:
             if stage == "shared":
                 if param == "statistics_end" and value is None:
                     value = _extension.NO_STATISTICS_END
-                tree["shared"][param] = value
+                if "__" in param:   # a table's value: shared__lasso__alpha
+                    table, param = param.split("__", 1)
+                    if not isinstance(tree["shared"].get(table), dict):
+                        raise ValueError(f"shared has no table '{table}'; its tables are "
+                                         f"{', '.join(t['name'] for t in _TABLES)}")
+                    tree["shared"][table][param] = value
+                else:
+                    tree["shared"][param] = value
                 continue
             if stage not in tree["stages"]:
                 raise ValueError(f"the configuration has no stage '{stage}'")
@@ -288,10 +304,16 @@ class Config:
                                        for b in v) + "]"
             return str(v)
 
+        shared = self._tree["shared"]
         lines = ["[shared]"]
-        for name in sorted(self._tree["shared"]):
-            lines.append(f"{name} = {text(self._tree['shared'][name])}")
+        for name in sorted(k for k in shared if not isinstance(shared[k], dict)):
+            lines.append(f"{name} = {text(shared[name])}")
         lines.append("")
+        for table in sorted(k for k in shared if isinstance(shared[k], dict)):
+            lines.append(f"[shared.{table}]")
+            for name in sorted(shared[table]):
+                lines.append(f"{name} = {text(shared[table][name])}")
+            lines.append("")
         for stage in self.stages():
             entry = self._tree["stages"][stage]
             lines.append(f"[{stage}]")
@@ -323,8 +345,7 @@ class Config:
         return self.hash()
 
     def __repr__(self) -> str:
-        rows = ["  shared: " + ", ".join(f"{k}={self._tree['shared'][k]!r}"
-                                         for k in sorted(self._tree["shared"]))]
+        rows = ["  shared: " + ", ".join(f"{k}={v!r}" for k, v in sorted(_paths(self._tree["shared"])))]
         for stage in self.stages():
             entry = self._tree["stages"][stage]
             params = ", ".join(f"{k}={entry['params'][k]!r}" for k in sorted(entry["params"]))
@@ -359,7 +380,11 @@ def _load(path: str, seen: frozenset[str]) -> Config:
     shared = data.pop("shared", {})
     if not isinstance(shared, dict):
         raise ValueError(f"{path}: [shared] is a table of values")
-    tree["shared"].update(shared)
+    for name, value in shared.items():
+        if isinstance(value, dict) and isinstance(tree["shared"].get(name), dict):
+            tree["shared"][name].update(value)   # a table: the file's values over the base's
+        else:
+            tree["shared"][name] = value
     preprocess = data.pop("preprocess", {})
     if not isinstance(preprocess, dict):
         raise ValueError(f"{path}: [preprocess] is a table of procedures")

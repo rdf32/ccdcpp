@@ -484,10 +484,10 @@ A value several stages read is written once, in `shared`, and the stages that re
 | `detection_bands` | `["green", "red", "nir", "swir1", "swir2"]` | roles | the bands every test reads; their count is the chi-squared degrees of freedom |
 | `change_probability` | `0.99` | probability | `change_test`, `stability_rule` and `lookback`: their change threshold is its chi-squared quantile |
 | `outlier_probability` | `0.999999` | probability | `outlier`'s and `lookback`'s outlier threshold, its chi-squared quantile |
-| `alpha`, `coef_floor` | `1e-4`, `1e-4` | reflectance | the Lasso of `model`, `stability_fit` and `edge_segments` |
-| `max_iter`, `tolerance` | `1000`, `1e-4` | none | the same three |
-| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | `4`, `6`, `8`, `3` | none | the coefficient rule of `model` and `stability_fit`; `edge_segments` fits `coefficient_min`, and writes a Start or End segment only on more observations than the peek and than `coefficient_min` |
-| `min_observations` | `12` | observations | the fewest observations a curve is fitted on: `start_search`'s start window, `edge_segments`'s whole-series curve; more than `coefficient_min` |
+| `lasso.alpha`, `lasso.coef_floor` | `1e-4`, `1e-4` | reflectance | the Lasso of `model`, `stability_fit` and `edge_segments` |
+| `lasso.max_iter`, `lasso.tolerance` | `1000`, `1e-4` | none | the same three |
+| `coefficients.min`, `.mid`, `.max`, `.per` | `4`, `6`, `8`, `3` | none | the coefficient rule of `model` and `stability_fit`; `edge_segments` fits `coefficients.min`, and writes a Start or End segment only on more observations than the peek and than `coefficients.min` |
+| `min_observations` | `12` | observations | the fewest observations a curve is fitted on: `start_search`'s start window, `edge_segments`' whole-series curve; more than `coefficients.min` |
 | `statistics_end` | none (`NO_STATISTICS_END`) | ordinal day | the last date the QA statistics, the cadence, the variogram and the green median read |
 
 **`ccdc` has no statistics cutoff**: the statistics read the whole series. PyCCD and LCMAP's 2018 production baseline stop them at 2017-12-31, ordinal 736694; `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` runs that cutoff. `shared__statistics_end=None` is no cutoff.
@@ -924,7 +924,7 @@ The Standard procedure (`ccd/procedures.py`) is pyccd's with five such correctio
 
 - **Lookback's peek far from the break.** `slice(start - 1, start - peek, -1)` (line 753) reads one observation fewer than the peek; ccdcpp reads the peek, as Extend does after the window and TrendSeasonalFit does both ways.
 - **Lookback's peek near the break.** The guard against reading past the start of the series (`start - peek <= 0`, line 755) also fires after a break, where it reads the previous segment's observations; ccdcpp reads down to the previous break and never below, as TrendSeasonalFit does. It takes an adjusted peek of 13 or more, a median gap of about 7.7 days or less (HLS, Sentinel-2), never Landsat's 16 days.
-- **Coefficient counts.** Initialize fits a literal 4 coefficients and the peeks predict with a literal 8-term basis; ccdcpp reads the shared `coefficient_min` and `coefficient_max` (TrendSeasonalFit's `min_num_c`, `max_num_c`). The same at the defaults.
+- **Coefficient counts.** Initialize fits a literal 4 coefficients and the peeks predict with a literal 8-term basis; ccdcpp reads the shared `coefficients.min` and `coefficients.max` (TrendSeasonalFit's `min_num_c`, `max_num_c`). The same at the defaults.
 - **The series end.** The check before Extend's grow (line 691) tests `>` where its comment, and pyccd's own `>=` before it changed its loop guard, mean the window to stop before the grow, so the check never holds and the last curve grows once more: its end day is its break day. ccdcpp stops at the last full peek, so a series-end segment ends one observation earlier, before its break day (as after an outlier drop). That curve is the last: pyccd restarts after it, and at peeks of 26 or more runs Initialize on the last observations and drops observations no segment uses; ccdcpp goes to the End segment's test, as TrendSeasonalFit ends.
 - **Refit at 24 observations.** Extend refits while the window holds fewer than 24 observations (line 632) but compares against the model RMSE while it holds at most 24 (line 646), so at exactly 24 it compares an older fit's RMSE; ccdcpp refits at most 24, as TrendSeasonalFit does with one `<=` for both.
 

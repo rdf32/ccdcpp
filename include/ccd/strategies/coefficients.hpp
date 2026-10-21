@@ -37,18 +37,17 @@ struct CoefficientRule
     }
 
     // Refuses a rule the harmonic basis cannot hold, as a schema refuses a
-    // parameter: `where` is the strategy ("model 'lasso'"). Each count is at
-    // least 1 by the strategy's schema.
+    // parameter: `where` is whose rule it is ("shared", "model 'lasso'").
+    // Each count is at least 1 by its schema.
     void check(const std::string& where) const
     {
         if (!(min <= mid && mid <= max))
             throw std::invalid_argument(
-                where + " parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' are " +
-                std::to_string(min) + ", " + std::to_string(mid) + ", " + std::to_string(max) +
-                "; they must not decrease");
+                where + " coefficients min, mid, max are " + std::to_string(min) + ", " +
+                std::to_string(mid) + ", " + std::to_string(max) + "; they must not decrease");
         if (max > CCD_MAX_COEFS + 1)
             throw std::invalid_argument(
-                where + " parameter 'coefficient_max' is " + std::to_string(max) +
+                where + " coefficients max is " + std::to_string(max) +
                 "; the harmonic basis has at most " + std::to_string(CCD_MAX_COEFS + 1));
     }
 };

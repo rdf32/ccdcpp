@@ -139,7 +139,7 @@ its replacement.
   `tolerance`), a NaN change or outlier probability.
 - A build without OpenMP compiles and runs a cube on one thread.
 - The package declares its dependency on numpy (`pyproject.toml`).
-- An infinite value of a parameter whose bounds are numbers (`shared__alpha=inf`) is refused
+- An infinite value of a parameter whose bounds are numbers (`shared__lasso__alpha=inf`) is refused
   ("it must be a finite number at least 0"); the thermal and reflectance bounds, which take any
   number, still take an infinity. A NaN `saturation_code` or `thermal_saturation_code` is
   refused when the run checks the input.
@@ -148,14 +148,14 @@ its replacement.
   `RuntimeError`). A list mixing strs and ints names what each may be (QA code names or codes,
   band roles or rows); a strategy or step without parameters no longer ends its unknown-parameter
   message with an empty "it has".
-- A `min_observations` at or below `coefficient_min` is refused when the configuration is
+- A `min_observations` at or below `coefficients.min` is refused when the configuration is
   built, naming both values: its fits had no degree of freedom (a NaN RMSE, an assertion in
   a debug build).
 - A TOML stage table holding anything but `strategy` and `[<stage>.params]` (a parameter
   written beside `strategy`, which was dropped silently) is refused, naming the keys.
 - A Start or End segment is written only on more observations than edge_segments'
-  coefficients (`coefficient_min`), as well as more than the peek: a `peek_size` below
-  `coefficient_min` (2 or 3, or `coefficient_min` 7 or 8 with the default peek) wrote a
+  coefficients (`coefficients.min`), as well as more than the peek: a `peek_size` below
+  `coefficients.min` (2 or 3, or `coefficients.min` 7 or 8 with the default peek) wrote a
   segment of too few observations, with a NaN or infinite RMSE (and an assertion in a debug
   build). The defaults' outputs are unchanged.
 

@@ -359,7 +359,7 @@ namespace
 // coefficient rule, which the stability fit, the model and edge_segments read.
 ccd::config::Config with_coefficients(ccd::config::Config config, std::int64_t count)
 {
-    for (const char* name : {"coefficient_min", "coefficient_mid", "coefficient_max"})
+    for (const char* name : {"coefficients.min", "coefficients.mid", "coefficients.max"})
         config.shared[name] = ccd::config::integer(count);
     return config;
 }
@@ -374,20 +374,18 @@ TEST(Validation, CoefficientRules)
     {
         expect_config_error(
             golden::with_shared(golden::pyccd(), name, ccd::config::integer(value)), ccd::Input{},
-            "model 'lasso' ", what);
+            "shared ", what);
     };
 
     expect_config_error(
-        golden::with_shared(golden::pyccd(), "coefficient_min", ccd::config::integer(0)),
-        ccd::Input{}, "shared parameter 'coefficient_min' is 0", "it must be at least 1");
-    expect_error("coefficient_min", 7,
-        "model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' "
-        "are 7, 6, 8; they must not decrease");
-    expect_error("coefficient_max", 5,
-        "model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' "
-        "are 4, 6, 5; they must not decrease");
-    expect_error("coefficient_max", 9,
-        "model 'lasso' parameter 'coefficient_max' is 9; the harmonic basis has at most 8");
+        golden::with_shared(golden::pyccd(), "coefficients.min", ccd::config::integer(0)),
+        ccd::Input{}, "shared coefficients parameter 'min' is 0", "it must be at least 1");
+    expect_error("coefficients.min", 7,
+        "shared coefficients min, mid, max are 7, 6, 8; they must not decrease");
+    expect_error("coefficients.max", 5,
+        "shared coefficients min, mid, max are 4, 6, 5; they must not decrease");
+    expect_error("coefficients.max", 9,
+        "shared coefficients max is 9; the harmonic basis has at most 8");
 
     // The extremes accepted: a count of 1 throughout (the trend and annual
     // basis, as 4, with 1 degree of freedom), and 8.

@@ -96,8 +96,8 @@ the input when the configuration is resolved (`check(input)`, or the run):
 ```python
 for bad in (lambda: cfg.replace(refit__fctor=2.0),
             lambda: cfg.replace(refit__factor=0.0),
-            lambda: cfg.replace(shared__alpha=-1.0),
-            lambda: cfg.replace(shared__coefficient_min=7),
+            lambda: cfg.replace(shared__lasso__alpha=-1.0),
+            lambda: cfg.replace(shared__coefficients__min=7),
             lambda: cfg.replace(start_search__meow_size=16),
             lambda: cfg.replace(window_screen__bands=["green", "coastal"]).check(ccdcpp.Input())):
     try:
@@ -109,9 +109,9 @@ for bad in (lambda: cfg.replace(refit__fctor=2.0),
 ```text
 refit 'span-factor' has no parameter 'fctor'; it has min_obs, factor
 refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
-shared parameter 'alpha' is -1; it must be at least 0
-model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' are 7, 6, 8; they must not decrease
-start_search 'pyccd' parameter 'meow_size' is the shared value 'min_observations'; set shared__min_observations instead
+shared lasso parameter 'alpha' is -1; it must be at least 0
+shared coefficients min, mid, max are 7, 6, 8; they must not decrease
+start_search 'pyccd' parameter 'meow_size' is the shared value 'min_observations'; set shared 'min_observations' instead
 window_screen 'tmask' parameter 'bands' holds 'coastal', which the input does not have; its rows are blue, green, red, nir, swir1, swir2, thermal
 ```
 
@@ -130,8 +130,8 @@ peek_size | observations | own | 6
 peek_reference_days | days | own | 16.0
 change_threshold | none | chi2 | None
 change_probability | none | shared | None
-['detection_bands', 'change_probability', 'outlier_probability', 'alpha']
-['add_qa', 'band_range', 'one_per_date', 'green_median', 'keep_qa', 'thermal_range']
+['detection_bands', 'change_probability', 'outlier_probability', 'min_observations']
+['add_qa', 'band_range', 'green_median', 'keep_qa', 'one_per_date', 'thermal_range']
 ```
 
 A parameter whose source is `shared` or `chi2` reads a shared value (its chi-squared quantile
@@ -146,10 +146,10 @@ the configuration as a preset file; a `Config` pickles, so it can go to worker p
 | `detection_bands` | green, red, nir, swir1, swir2 | roles | every test; their count is the chi-squared degrees of freedom |
 | `change_probability` | 0.99 | probability | `change_test`, `stability_rule`, `lookback` (their `change_threshold`, derived) |
 | `outlier_probability` | 0.999999 | probability | `outlier`'s `threshold`, `lookback`'s `outlier_threshold` (derived) |
-| `alpha`, `coef_floor` | 1e-4, 1e-4 | reflectance (difference) | the Lasso of `model`, `stability_fit`, `edge_segments` |
-| `max_iter`, `tolerance` | 1000, 1e-4 | none | the same three |
-| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | 4, 6, 8, 3 | none | `model`, `stability_fit` (the coefficient rule); `edge_segments`'s `coefficients` (`coefficient_min`) |
-| `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_segments`'s `min_observations`; more than `coefficient_min` |
+| `lasso.alpha`, `lasso.coef_floor` | 1e-4, 1e-4 | reflectance (difference) | the Lasso of `model`, `stability_fit`, `edge_segments` |
+| `lasso.max_iter`, `lasso.tolerance` | 1000, 1e-4 | none | the same three |
+| `coefficients.min`, `.mid`, `.max`, `.per` | 4, 6, 8, 3 | none | `model`, `stability_fit` (the coefficient rule); `edge_segments`' `coefficients` (`coefficients.min`) |
+| `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_segments`' `min_observations`; more than `coefficients.min` |
 | `statistics_end` | `NO_STATISTICS_END` (none) | ordinal day | the QA statistics, the cadence, the variogram, `green_median`'s date |
 
 `statistics_end` is none (`ccdcpp.NO_STATISTICS_END`, the largest int64, which TOML writes as
@@ -275,7 +275,7 @@ your own registered and named.
 | other Tmask bands | `cfg.replace(window_screen__bands=["green", "red", "swir1"])` |
 | fewer outliers dropped | `cfg.replace(shared__outlier_probability=0.99999)` |
 | Initialize and Lookback at a peek of 6, whatever the change test's | `cfg.replace(stability_rule__peek=6, lookback__peek=6)` |
-| fewer coefficients for long windows | `cfg.replace(shared__coefficient_max=6)` |
+| fewer coefficients for long windows | `cfg.replace(shared__coefficients__max=6)` |
 | pyccd's statistics cutoff | `cfg.replace(shared__statistics_end=736694)` |
 | another preprocessing | `cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)`, `cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(...))` |
 | a sweep | `[ccdcpp.detect_cube(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |

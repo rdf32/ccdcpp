@@ -202,8 +202,8 @@ inline ccd::Input c2_input()
 inline ccd::config::Config c2_config()
 {
     using ccd::config::real;
-    ccd::config::Config c = with_shared(pyccd(), "alpha", real(1.0));
-    c = with_shared(c, "coef_floor", real(1.0));
+    ccd::config::Config c = with_shared(pyccd(), "lasso.alpha", real(1.0));
+    c = with_shared(c, "lasso.coef_floor", real(1.0));
     c = with_steps(c, "band_range", "min", real(7273.0));
     c = with_steps(c, "band_range", "max", real(43636.0));
     // Degrees Celsius: 1e8 x 100 x thermal_at_100c 1 / 10000 is 1e6.

@@ -209,8 +209,8 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     const ccd::config::Config& preset = r.preset("ccdc");
 
     // Physical: alpha in reflectance, probabilities, roles, the cutoff.
-    EXPECT_EQ(preset.shared.at("alpha"), real(1e-4));
-    EXPECT_EQ(preset.shared.at("coef_floor"), real(1e-4));
+    EXPECT_EQ(preset.shared.at("lasso.alpha"), real(1e-4));
+    EXPECT_EQ(preset.shared.at("lasso.coef_floor"), real(1e-4));
     EXPECT_EQ(preset.preprocess.at("insufficient_clear").steps.at(4).params.at("offset"),
               real(0.04));
     EXPECT_EQ(preset.shared.at("change_probability"), real(0.99));
@@ -292,8 +292,8 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
     const ccd::config::Values& green = got.preprocess.at("insufficient_clear").steps.at(4).params;
     EXPECT_EQ(green.at("offset"), real(400.0));
     EXPECT_EQ(green.at("scope"), ccd::config::Value(std::string("stat_window")));
-    EXPECT_EQ(shared.alpha, 1.0);
-    EXPECT_EQ(shared.coef_floor, 1.0);
+    EXPECT_EQ(shared.lasso.alpha, 1.0);
+    EXPECT_EQ(shared.lasso.coef_floor, 1.0);
     EXPECT_EQ(shared, ccd::config::Shared{});
 }
 
@@ -365,7 +365,7 @@ TEST(Registry, SharedValuesReachTheirStages)
     reflectance.reflectance_scale = 1.0;
 
     // Reflectance values times the input's unit, in every Lasso stage.
-    const auto lasso = golden::with_shared(golden::ccdc(), "alpha", real(0.5));
+    const auto lasso = golden::with_shared(golden::ccdc(), "lasso.alpha", real(0.5));
     for (const char* stage : {"model", "stability_fit", "edge_segments"})
     {
         EXPECT_EQ(golden::parameter<double>(ccd::config::resolve(r, lasso, reflectance).stages, stage, "alpha"),
@@ -377,7 +377,7 @@ TEST(Registry, SharedValuesReachTheirStages)
     }
     EXPECT_EQ(ccd::config::resolve(r, golden::ccdc(), reflectance).plan.insufficient_clear.chain[4].green_offset,
               0.04);
-    EXPECT_EQ(ccd::config::resolve(r, golden::ccdc(), reflectance).shared.alpha, 1e-4);
+    EXPECT_EQ(ccd::config::resolve(r, golden::ccdc(), reflectance).shared.lasso.alpha, 1e-4);
 
     // A probability, and the thresholds of its quantile for the count of
     // detection bands.
@@ -400,7 +400,7 @@ TEST(Registry, SharedValuesReachTheirStages)
               (ccd::BandList{2, 3, 4, 5}));
 
     // edge_segments' coefficients are the coefficient rule's minimum.
-    const auto six = golden::with_shared(golden::ccdc(), "coefficient_min", ccd::config::integer(6));
+    const auto six = golden::with_shared(golden::ccdc(), "coefficients.min", ccd::config::integer(6));
     EXPECT_EQ(golden::parameter<std::int64_t>(ccd::config::resolve(r, six, ccd::Input{}).stages, "edge_segments",
                                               "coefficients"),
               6);
@@ -409,8 +409,8 @@ TEST(Registry, SharedValuesReachTheirStages)
     auto copy = golden::ccdc();
     copy.stages["model"].params["alpha"] = real(1.0);
     expect_refused([&] { ccd::config::check(r, copy); },
-                   "model 'lasso' parameter 'alpha' is the shared value 'alpha'; set shared "
-                   "'alpha' instead");
+                   "model 'lasso' parameter 'alpha' is the shared value 'lasso.alpha'; set shared "
+                   "'lasso.alpha' instead");
     copy = golden::ccdc();
     copy.stages["outlier"].params["threshold"] = real(30.0);
     expect_refused([&] { ccd::config::resolve(r, copy, ccd::Input{}); },
@@ -435,7 +435,7 @@ TEST(Registry, SharedValuesReachTheirStages)
         if (p.name == "alpha")
         {
             EXPECT_EQ(p.source, ccd::config::Source::Shared);
-            EXPECT_EQ(p.from, "alpha");
+            EXPECT_EQ(p.from, "lasso.alpha");
             EXPECT_FALSE(p.default_value.has_value());
         }
     EXPECT_EQ(r.defaults("model", "lasso").size(), 0u);
@@ -512,8 +512,8 @@ TEST(Registry, AnEditedPresetBuildsItsStrategies)
 TEST(MonitoringModel, TheLassoIsTheKernelsFit)
 {
     ccd::config::Config tree = golden::ccdc();
-    tree.shared["alpha"] = ccd::config::real(0.5);
-    tree.shared["max_iter"] = ccd::config::integer(300);
+    tree.shared["lasso.alpha"] = ccd::config::real(0.5);
+    tree.shared["lasso.max_iter"] = ccd::config::integer(300);
     EXPECT_EQ(tree.stages.at("model").strategy, "lasso");
     ccd::Input reflectance;
     reflectance.reflectance_scale = 1.0;
@@ -574,9 +574,9 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     EXPECT_TRUE(got[1].empty());   // band 1 was not fitted
 
     const auto& r = golden::core_registry();
-    expect_refused([&] { golden::strategies_of(golden::with_shared(tree, "alpha",
+    expect_refused([&] { golden::strategies_of(golden::with_shared(tree, "lasso.alpha",
                                                                    ccd::config::real(NAN))); },
-                   "shared parameter 'alpha' is nan");
+                   "shared lasso parameter 'alpha' is nan");
     expect_refused(
         [&] { r.make<ccd::MonitoringModel>({"lasso", {{"alpha", ccd::config::real(-1)}}}); },
         "model 'lasso' parameter 'alpha' is -1; it must be at least 0");
@@ -1091,9 +1091,9 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
 TEST(EdgeSegments, LassoIsTheCatchSegmentAndWholeSeriesKernels)
 {
     ccd::config::Config config = golden::ccdc();
-    config.shared["coefficient_min"] = ccd::config::integer(6);
+    config.shared["coefficients.min"] = ccd::config::integer(6);
     config.shared["min_observations"] = ccd::config::integer(15);
-    config.shared["alpha"] = ccd::config::real(0.5);
+    config.shared["lasso.alpha"] = ccd::config::real(0.5);
     ccd::Input reflectance;
     reflectance.reflectance_scale = 1.0;
     const ccd::config::ConfigTree tree = golden::resolved(config, reflectance).stages;
@@ -1174,7 +1174,7 @@ TEST(ConfigDigest, EqualConfigurationsAndOnlyThem)
     auto c = a;
     c.stages["refit"].params["factor"] = ccd::config::real(1.0);
     EXPECT_NE(ccd::config::digest(b), ccd::config::digest(c));
-    b = golden::with_shared(a, "alpha", ccd::config::real(2e-4));
+    b = golden::with_shared(a, "lasso.alpha", ccd::config::real(2e-4));
     EXPECT_NE(ccd::config::digest(a), ccd::config::digest(b));
     EXPECT_NE(golden::resolved(a).digest, golden::resolved(b).digest);
     // The resolved digest covers the input.

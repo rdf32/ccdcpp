@@ -176,7 +176,7 @@ print(cols["processing_mask"].shape, rows[5]["processing_mask"].sum())
 
 `ccdcpp.HarmonicOptions` is `ccdcpp.Input`, which keeps only how to read the data, its fields
 in snake case; every algorithm field moved to the configuration, and so did `LassoOptions`'
-`alpha`, `coef_floor`, `max_iter` and `tolerance`. `LassoOptions`' `fit_intercept`,
+`alpha`, `coef_floor`, `max_iter` and `tolerance` (the shared `lasso` table). `LassoOptions`' `fit_intercept`,
 `unbiased_rmse` and `warm_start` are fixed at their defaults (true, true, false). The `Input`
 is immutable: `ccdcpp.Input(**fields)` by keyword, `replace(**fields)` for a changed copy, where
 `HarmonicOptions` set attributes.
@@ -205,7 +205,7 @@ cfg = ccdcpp.config("ccdc").replace(
     refit__factor=2.0,
     shared__min_observations=16,             # the start window and a whole-series curve's least
     window_screen__bands=["green", "red", "swir1"],
-    shared__max_iter=500)
+    shared__lasso__max_iter=500)
 out = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=cfg)
 print(len(out["models"]), out["models"][-1]["bands"][3]["rmse"])
 ```
@@ -269,7 +269,7 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `GREEN_FILTER_SCOPE` | `StatWindow` | `preprocess` `green_median`'s `scope` (`"stat_window"`) |
 | `STAT_ORD` | 736694 | `shared__statistics_end` (default: none, `NO_STATISTICS_END`) |
 | `DETECTION_BANDS` | [1, 2, 3, 4, 5] | `shared__detection_bands` (roles: green, red, nir, swir1, swir2) |
-| `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_segments`'s `min_observations`) |
+| `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_segments`' `min_observations`) |
 | `PEEK_SIZE` | 6 | `change_test__peek_size` (`stability_rule__peek` and `lookback__peek` are 0: the change test's peek) |
 | `DAY_DELTA` | 365 | `start_search__day_delta` |
 | `CLEAR_PCT_THRESHOLD` | 0.25 | `mode__clear_pct_threshold` |
@@ -284,9 +284,9 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `RETRAIN_SPAN_FACTOR` | 1.33 | `refit__factor` |
 | `SEASONAL_RMSE_COUNT` | 24 | `change_test__seasonal_count` |
 | `SEASONAL_RMSE_DIVISOR` | 4.0 | `change_test__seasonal_divisor` |
-| `COEFFICIENT_MIN`, `COEFFICIENT_MID`, `COEFFICIENT_MAX`, `NUM_OBS_FACTOR` | 4, 6, 8, 3 | `shared__coefficient_min`, `shared__coefficient_mid`, `shared__coefficient_max`, `shared__num_obs_factor` |
-| `LassoOptions.alpha`, `LassoOptions.coef_floor` | 1.0, 1.0 (DN) | `shared__alpha`, `shared__coef_floor` (reflectance: 1e-4) |
-| `LassoOptions.max_iter`, `LassoOptions.tolerance` | 1000, 1e-4 | `shared__max_iter`, `shared__tolerance` |
+| `COEFFICIENT_MIN`, `COEFFICIENT_MID`, `COEFFICIENT_MAX`, `NUM_OBS_FACTOR` | 4, 6, 8, 3 | `shared__coefficients__min`, `shared__coefficients__mid`, `shared__coefficients__max`, `shared__coefficients__per` |
+| `LassoOptions.alpha`, `LassoOptions.coef_floor` | 1.0, 1.0 (DN) | `shared__lasso__alpha`, `shared__lasso__coef_floor` (reflectance: 1e-4) |
+| `LassoOptions.max_iter`, `LassoOptions.tolerance` | 1000, 1e-4 | `shared__lasso__max_iter`, `shared__lasso__tolerance` |
 | `LassoOptions.fit_intercept`, `unbiased_rmse`, `warm_start` | true, true, false | fixed |
 
 A stage cannot set a value it reads from `shared`: `replace(start_search__meow_size=16)` is
@@ -305,7 +305,7 @@ the configuration's, the same for every profile.
 | `profile.qa_table(h)` | `profile.input().qa_table` |
 | `detection`, `tmask` | `shared__detection_bands`, `window_screen__bands` |
 | `saturation` | `band_range`'s `bands` (`"reflective"` in `ccdc`, the rows the profiles listed) |
-| `alpha`, `coef_floor` | `shared__alpha`, `shared__coef_floor`, in reflectance for every profile |
+| `alpha`, `coef_floor` | `shared__lasso__alpha`, `shared__lasso__coef_floor`, in reflectance for every profile |
 | `cadence` | `stage__parameter` changes of the configuration |
 | `stat_ord` | `shared__statistics_end` (none by default; 0.10.0's Landsat profiles had 736694) |
 | `change_threshold`, `outlier_threshold` | `shared__change_probability`, `shared__outlier_probability` |
@@ -394,11 +394,11 @@ configuration is built, before any pixel runs:
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `NUM_OBS_FACTOR = 0` | `shared parameter 'num_obs_factor' is 0; it must be at least 1` |
+| `NUM_OBS_FACTOR = 0` | `shared coefficients parameter 'per' is 0; it must be at least 1` |
 | `MEOW_SIZE = 0` | `shared parameter 'min_observations' is 0; it must be at least 1` |
-| `LassoOptions.tolerance = -1e-4` | `shared parameter 'tolerance' is -0.0001; it must be at least 0` |
-| `LassoOptions.alpha = nan` | `shared parameter 'alpha' is nan; it must be at least 0` |
-| `LassoOptions.alpha = -1`, `coef_floor = -1` | `shared parameter 'alpha' is -1; it must be at least 0` (and `'coef_floor'`) |
+| `LassoOptions.tolerance = -1e-4` | `shared lasso parameter 'tolerance' is -0.0001; it must be at least 0` |
+| `LassoOptions.alpha = nan` | `shared lasso parameter 'alpha' is nan; it must be at least 0` |
+| `LassoOptions.alpha = -1`, `coef_floor = -1` | `shared lasso parameter 'alpha' is -1; it must be at least 0` (and `'coef_floor'`) |
 | `CHANGE_THRESHOLD = nan`, `OUTLIER_THRESHOLD = nan` | thresholds are derived; a NaN probability: `shared parameter 'change_probability' is nan; it must be in (0, 1)` |
 
 ## Error messages
@@ -411,15 +411,15 @@ stage that reads them, and a role against the input when the configuration is re
 | 0.10.0 | 1.0 |
 |---|---|
 | `PEEK_SIZE is 1; it must be at least 2` | `change_test 'chi2' parameter 'peek_size' is 1; it must be at least 2` |
-| `COEFFICIENT_MAX is 9; the harmonic basis has at most 8` | `model 'lasso' parameter 'coefficient_max' is 9; the harmonic basis has at most 8` |
-| `COEFFICIENT_MIN` above `COEFFICIENT_MID` | `model 'lasso' parameters 'coefficient_min', 'coefficient_mid', 'coefficient_max' are 7, 6, 8; they must not decrease` |
+| `COEFFICIENT_MAX is 9; the harmonic basis has at most 8` | `shared coefficients max is 9; the harmonic basis has at most 8` |
+| `COEFFICIENT_MIN` above `COEFFICIENT_MID` | `shared coefficients min, mid, max are 7, 6, 8; they must not decrease` |
 | `TMASK_BANDS is empty` | `window_screen 'tmask' parameter 'bands' is empty` |
 | a band past the input in `TMASK_BANDS` | `window_screen 'tmask' parameter 'bands' holds band 12; the input has 7 bands` |
 | a detection band the input lacks | `shared value 'detection_bands' holds 'coastal', which the input does not have; its rows are blue, green, red, nir, swir1, swir2, thermal` |
-| (none: one field held it) | `start_search 'pyccd' parameter 'meow_size' is the shared value 'min_observations'; set shared__min_observations instead` |
+| (none: one field held it) | `start_search 'pyccd' parameter 'meow_size' is the shared value 'min_observations'; set shared 'min_observations' instead` |
 
 ```python
-for bad in (dict(change_test__peek_size=1), dict(shared__coefficient_max=9),
+for bad in (dict(change_test__peek_size=1), dict(shared__coefficients__max=9),
             dict(window_screen__bands=[])):
     try:
         ccdcpp.config("ccdc").replace(**bad)
@@ -429,7 +429,7 @@ for bad in (dict(change_test__peek_size=1), dict(shared__coefficient_max=9),
 
 ```text
 change_test 'chi2' parameter 'peek_size' is 1; it must be at least 2
-model 'lasso' parameter 'coefficient_max' is 9; the harmonic basis has at most 8
+shared coefficients max is 9; the harmonic basis has at most 8
 window_screen 'tmask' parameter 'bands' is empty
 ```
 
@@ -438,7 +438,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | 0.10.0 | 1.0 |
 |---|---|
 | `HarmonicOptions` (`ccd/harmonic/harmonic.hpp`) | `ccd::Input` (`ccd/input/input.hpp`, how to read the data) and `config::Config` (`ccd/config/config.hpp`, the algorithm) |
-| `LassoOptions` in a call | the shared `alpha`, `coef_floor`, `max_iter`, `tolerance` (`LassoOptions` remains the solver's own options type, inside the `lasso` strategies) |
+| `LassoOptions` in a call | the shared `lasso.alpha`, `lasso.coef_floor`, `lasso.max_iter`, `lasso.tolerance` (`LassoOptions` remains the solver's own options type, inside the `lasso` strategies) |
 | `detect(d, s, q, h, l, table, plan)` (8 overloads) | `detect(spec, d, s, q).result`; `spec.input` holds its `qa_table`, the configuration its preprocessing |
 | `detect_recorded(...)` | `detect` with `RunSpec::record = true` |
 | `resume(d, s, q, h, l, header, record, segments)` | `detect(spec, d, s, q, Resume{header, {record}, {segments}})` |
