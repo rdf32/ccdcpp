@@ -173,7 +173,7 @@ private:
     // The fit of the resume's pixel at flat index `at`, whose input up to the
     // stored series end has `fingerprint`: the stored run continued, or the
     // pixel rerun. The status, the result and the record's suspension and
-    // drops.
+    // drops (run/resume.cpp).
     PixelOutput resumed(PreparedPixel& pixel, Worker& worker, index_t at,
                         std::uint64_t fingerprint) const;
 

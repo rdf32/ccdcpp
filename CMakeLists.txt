@@ -185,6 +185,7 @@ add_library(
     src/ccd/machine/standard.cpp
 
     src/ccd/run/algorithm.cpp
+    src/ccd/run/resume.cpp
     src/ccd/run/run.cpp
     src/ccd/config/convert.cpp
     src/ccd/config/digest.cpp

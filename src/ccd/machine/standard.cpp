@@ -1205,6 +1205,40 @@ void drive(const Context& context, State& state)
 
 } // namespace
 
+//------------------------------------------------------------------------------
+// Detector
+//------------------------------------------------------------------------------
+
+FitResult Detector::fit(
+    const PixelMode& mode,
+    const PixelSeries& series,
+    ProcessingMask mask,
+    const config::Shared& shared,
+    const Strategies& strategies,
+    Observe observe
+)
+{
+    state_.bind(strategies);
+    if (mode.procedure != PixelProcedure::Standard)
+        return strategies.edge_segments->whole_series(mode.procedure, series, std::move(mask),
+                                                      *state_.edges);
+
+    LOG_DEBUG("Standard");
+    const Context context{shared, series, strategies, observe, mode.max_coefficients};
+    State& state = state_;
+
+    state.reset(series, std::move(mask));
+    if (context.max_coefficients > 0)
+        state.resumable = false;   // a resume does not cap
+    drive(context, state);
+    report_exit(context, state);
+    return state.take_result();
+}
+
+//------------------------------------------------------------------------------
+// Resume
+//------------------------------------------------------------------------------
+
 namespace
 {
 
@@ -1328,36 +1362,6 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
 }
 
 } // namespace
-
-//------------------------------------------------------------------------------
-// Detector
-//------------------------------------------------------------------------------
-
-FitResult Detector::fit(
-    const PixelMode& mode,
-    const PixelSeries& series,
-    ProcessingMask mask,
-    const config::Shared& shared,
-    const Strategies& strategies,
-    Observe observe
-)
-{
-    state_.bind(strategies);
-    if (mode.procedure != PixelProcedure::Standard)
-        return strategies.edge_segments->whole_series(mode.procedure, series, std::move(mask),
-                                                      *state_.edges);
-
-    LOG_DEBUG("Standard");
-    const Context context{shared, series, strategies, observe, mode.max_coefficients};
-    State& state = state_;
-
-    state.reset(series, std::move(mask));
-    if (context.max_coefficients > 0)
-        state.resumable = false;   // a resume does not cap
-    drive(context, state);
-    report_exit(context, state);
-    return state.take_result();
-}
 
 FitResult Detector::resume(
     const PixelSeries& series,
