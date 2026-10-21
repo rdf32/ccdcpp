@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Any, ClassVar, TypeAlias
+from typing import Any, ClassVar
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from . import qa_tables as qa_tables
-from .config import Config
 from .results import CubeColumns, PixelResult
 
 __version__: str
@@ -23,10 +22,6 @@ QA_TABLE_SIZE: int
 RESULTS_VERSION: int
 RESUME_FORMAT: int
 ROLES: tuple[str, ...]
-
-# What the extension's config= takes: a compiled Algorithm, a ccdcpp.Config, a configuration's
-# dict, or None for "ccdc".
-_ConfigArg: TypeAlias = Algorithm | Config | Mapping[str, Any] | None
 
 
 class GreenFilterScope:
@@ -248,7 +243,7 @@ def detect(
     qas: ArrayLike,
     *,
     input: Input,
-    config: _ConfigArg = None,
+    config: Algorithm | None = None,
     record: bool = False,
     resume: Mapping[str, Any] | None = None,
     trace: bool = False,
@@ -260,7 +255,7 @@ def detect_cube(
     qas: ArrayLike,
     *,
     input: Input,
-    config: _ConfigArg = None,
+    config: Algorithm | None = None,
     threads: int = 0,
     record: bool = False,
     resume: Mapping[str, Any] | None = None,
@@ -268,7 +263,7 @@ def detect_cube(
     masks: bool = False,
 ) -> CubeColumns: ...
 
-def plan_of(config: _ConfigArg, input: Input) -> PreprocessPlan: ...
+def plan_of(config: Algorithm | None, input: Input) -> PreprocessPlan: ...
 
 def resume_schema() -> dict[str, str]: ...
 

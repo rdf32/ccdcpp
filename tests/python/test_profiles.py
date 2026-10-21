@@ -732,7 +732,7 @@ class ProfileAndConfig(unittest.TestCase):
         for cfg in (ccdcpp.config("ccdc"), cfg_phys):
             assert_same(self, without(ccdcpp.detect(DATES, s, q, input=profile, config=cfg),
                                       "band_names"),
-                        EXT.detect(DATES, s, q, input=h_phys, config=cfg))
+                        EXT.detect(DATES, s, q, input=h_phys, config=cfg._algorithm))
         # The default is "ccdc", whatever the profile.
         assert_same(self, ccdcpp.detect(DATES, s, q, input=profile),
                     ccdcpp.detect(DATES, s, q, input=profile, config=ccdcpp.config("ccdc")))

@@ -405,19 +405,9 @@ py::dict config_to_python(const ccd::config::Config& config)
     return out;
 }
 
-ccd::AlgorithmPtr algorithm_from_python(const py::object& config)
+ccd::AlgorithmPtr algorithm_or_ccdc(std::shared_ptr<ccd::Algorithm> config)
 {
-    if (config.is_none())
-        return ccd::Algorithm::preset("ccdc");
-    if (py::isinstance<ccd::Algorithm>(config))
-        return config.cast<std::shared_ptr<ccd::Algorithm>>();
-    // A ccdcpp.Config holds its compiled Algorithm, built with it.
-    if (py::hasattr(py::type::of(config), "_algorithm"))
-        return config.attr("_algorithm").cast<std::shared_ptr<ccd::Algorithm>>();
-    if (!py::isinstance<py::dict>(config))
-        throw py::type_error("config is a ccdcpp.Config, a configuration's dict {\"shared\": "
-                             "..., <stage>: ..., \"preprocess\": ...} or None");
-    return std::make_shared<const ccd::Algorithm>(config_from_python(config));
+    return config ? std::move(config) : ccd::Algorithm::preset("ccdc");
 }
 
 void bind_config(py::module_& m)

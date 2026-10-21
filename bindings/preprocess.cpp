@@ -370,12 +370,12 @@ void bind_preprocess(py::module_& m)
 
     m.def(
         "plan_of",
-        [](const py::object& config, const ccd::Input& input)
-        { return algorithm_from_python(config)->for_input(input)->plan; },
+        [](std::shared_ptr<ccd::Algorithm> config, const ccd::Input& input)
+        { return algorithm_or_ccdc(std::move(config))->for_input(input)->plan; },
         py::arg("config"),
         py::arg("input"),
-        "The PreprocessPlan `config` runs on `input` (`config` as detect "
-        "takes it): its preprocess section resolved against the input, the "
+        "The PreprocessPlan `config` (an Algorithm, None for the \"ccdc\" "
+        "preset's) runs on `input`: its preprocess section resolved against the input, the "
         "QA code names as its codes, the bands by role as its rows, the "
         "bounds in its units; a thermal_range step is left out of an input "
         "without a thermal row."

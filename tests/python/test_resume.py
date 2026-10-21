@@ -57,12 +57,12 @@ def pixel(seed: int, step_at: int | None = None) -> Series:
     return dates, np.round(spectral), qas
 
 
-def capped(cut: int) -> dict[str, Any]:
+def capped(cut: int) -> ccdcpp.Algorithm:
     """The ccdc preset with its statistics cutoff capped at `cut`."""
     config = ccdcpp._config_preset("ccdc")
     end = config["shared"]["statistics_end"]
     config["shared"]["statistics_end"] = cut if end == "none" else min(end, cut)
-    return config
+    return ccdcpp.Algorithm(config)
 
 
 def upto(dates: NDArray[np.int64], cut: int) -> int:
@@ -175,7 +175,7 @@ class OnePixel(unittest.TestCase):
 
         def call(h: ccdcpp.Input | None = None, header: Mapping[str, Any] | None = None,
                  until: int | None = None,
-                 config: Mapping[str, Any] | None = None) -> PixelResult:
+                 config: ccdcpp.Algorithm | None = None) -> PixelResult:
             m = dates.size if until is None else until
             return ccdcpp.detect(dates[:m], spectral[:, :m], qas[:m],
                                  input=h or ccdcpp.Input(), config=config,
@@ -191,9 +191,9 @@ class OnePixel(unittest.TestCase):
         stricter = ccdcpp._config_preset("ccdc")
         stricter["shared"]["change_probability"] = 0.995
         with self.assertRaises(ValueError):
-            call(config=stricter)
+            call(config=ccdcpp.Algorithm(stricter))
         # The preset, given, is the default the record was made under.
-        call(config=ccdcpp._config_preset("ccdc"))
+        call(config=ccdcpp.Algorithm(ccdcpp._config_preset("ccdc")))
         with self.assertRaises(ValueError):
             call(header=dict(header_of(stored), results_version=ccdcpp.RESULTS_VERSION + 1))
         with self.assertRaises(ValueError):

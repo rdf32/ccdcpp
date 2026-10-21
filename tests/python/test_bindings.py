@@ -92,6 +92,11 @@ def preset(**changes: object) -> dict[str, Any]:
     return tree
 
 
+def algorithm(**changes: object) -> ccdcpp.Algorithm:
+    """preset(**changes) as the extension's config= takes it."""
+    return ccdcpp.Algorithm(preset(**changes))
+
+
 def resolved(config: Mapping[str, Any] | None = None,
              input: ccdcpp.Input | None = None) -> dict[str, Any]:
     """The configuration resolved against the input (default Input())."""
@@ -289,14 +294,14 @@ class BandLayout(unittest.TestCase):
     def test_explicit_landsat_layout_equals_default(self):
         h = ccdcpp.Input(roles=["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
         args = noisy(7, 120)
-        by_rows = preset(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5],
-                         preprocess__band_range__bands=[0, 1, 2, 3, 4, 5])
+        by_rows = algorithm(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5],
+                            preprocess__band_range__bands=[0, 1, 2, 3, 4, 5])
         self.assertEqual(
             repr(ccdcpp.detect(*args, input=h, config=by_rows)),
             repr(ccdcpp.detect(*args, **options())))
 
     def test_outputs_follow_the_band_count(self):
-        h, cfg = ten_band_layout(), ten_band_config()
+        h, cfg = ten_band_layout(), ccdcpp.Algorithm(ten_band_config())
         d, s, q = noisy(10, 120)
         out = ccdcpp.detect(d, s, q, input=h, config=cfg)
         self.assertEqual(out["num_bands"], 10)
@@ -332,10 +337,14 @@ class LayoutValidation(unittest.TestCase):
         d, s, q = inputs(bands, 40)
         cube_s = np.broadcast_to(s, (2, 3, bands, 40)).copy()
         cube_q = np.zeros((2, 3, 40), dtype=np.uint8)
+        # The configuration is built in the call: some refusals are its own.
+        def compiled() -> ccdcpp.Algorithm | None:
+            return None if config is None else ccdcpp.Algorithm(config)
         calls = {
-            "detect": lambda: ccdcpp.detect(d, s, q, input=h, config=config),
+            "detect": lambda: ccdcpp.detect(d, s, q, input=h, config=compiled()),
             "detect_cube":
-                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=config),
+                lambda: ccdcpp.detect_cube(d, cube_s, cube_q, input=h, threads=1,
+                                           config=compiled()),
         }
         for name, call in calls.items():
             with self.subTest(entry=name, expected=expected):
@@ -527,8 +536,8 @@ class CadenceParameters(unittest.TestCase):
         self.assertIn("same boost call", ccdcpp.chi2_quantile.__doc__ or "")
 
     def test_defaults_spelled_out_equal_default(self):
-        cfg = preset(**{f"{stage}__{name}": value
-                        for (stage, name), value in self.DEFAULTS.items()})
+        cfg = algorithm(**{f"{stage}__{name}": value
+                           for (stage, name), value in self.DEFAULTS.items()})
         for args in (noisy(7, 120), noisy(7, 400, seed=3)):
             self.assertEqual(
                 repr(ccdcpp.detect(*args, input=ccdcpp.Input(), config=cfg)),
@@ -546,12 +555,12 @@ class CadenceParameters(unittest.TestCase):
         s[1:6, 250:258] += 600.0
         q = np.zeros(500, dtype=np.uint8)
 
-        def breaks(config: Mapping[str, Any] | None) -> float:
+        def breaks(config: ccdcpp.Algorithm | None) -> float:
             out = ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
         self.assertEqual(breaks(None), 1)
-        self.assertEqual(breaks(preset(change_test__peek_reference_days=32.0)), 0)
+        self.assertEqual(breaks(algorithm(change_test__peek_reference_days=32.0)), 0)
 
 
 class BoundFlags(unittest.TestCase):
@@ -579,7 +588,7 @@ class BoundFlags(unittest.TestCase):
         its first observations, with the steps' flags (step__name=value)."""
         d, s, q = inputs(7, 40)
         s[band, :len(values)] = values
-        config = preset(**{"preprocess__" + k: v for k, v in flags.items()})
+        config = algorithm(**{"preprocess__" + k: v for k, v in flags.items()})
         return ccdcpp.detect(d, s, q, input=ccdcpp.Input(),
                              config=config)["processing_mask"][:len(values)].tolist()
 
@@ -644,8 +653,8 @@ class GreenFilterScope(unittest.TestCase):
         return d, s, q
 
     def detect_mask(self, pixel: Series, scope: ccdcpp.GreenFilterScope) -> NDArray[np.uint8]:
-        config = preset(shared__statistics_end=self.STATISTICS_END,
-                        preprocess__green_median__scope=self.NAMES[scope.name])
+        config = algorithm(shared__statistics_end=self.STATISTICS_END,
+                           preprocess__green_median__scope=self.NAMES[scope.name])
         out = ccdcpp.detect(*pixel, input=ccdcpp.Input(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]

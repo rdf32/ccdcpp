@@ -26,7 +26,7 @@ PYBIND11_MODULE(ccdcpp, m)
 
     bind_input(m);
     bind_qa_tables(m);
+    bind_config(m);       // before the calls that take an Algorithm
     bind_preprocess(m);
     bind_detect(m);
-    bind_config(m);
 }

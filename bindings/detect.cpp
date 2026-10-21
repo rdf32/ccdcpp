@@ -143,7 +143,7 @@ static py::dict detect_wrapper(
     py::object spectral,
     py::object qas,
     const ccd::Input& input,
-    py::object config,
+    std::shared_ptr<ccd::Algorithm> config,
     bool record,
     py::object resume,
     bool trace
@@ -163,7 +163,7 @@ static py::dict detect_wrapper(
 
     ccd::RunSpec spec;
     spec.input = input;
-    spec.algorithm = algorithm_from_python(config);
+    spec.algorithm = algorithm_or_ccdc(std::move(config));
     spec.record = record;
     spec.masks = true;   // detect returns the processing mask
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
@@ -396,7 +396,7 @@ static py::dict detect_cube_wrapper(
     py::object spectral,
     py::object qas,
     const ccd::Input& input,
-    py::object config,
+    std::shared_ptr<ccd::Algorithm> config,
     int threads,
     bool record,
     py::object resume,
@@ -408,7 +408,7 @@ static py::dict detect_cube_wrapper(
 
     ccd::RunSpec spec;
     spec.input = input;
-    spec.algorithm = algorithm_from_python(config);
+    spec.algorithm = algorithm_or_ccdc(std::move(config));
     spec.masks = masks;
     spec.record = record;
 
