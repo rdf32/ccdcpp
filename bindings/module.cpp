@@ -3,6 +3,7 @@
 //     input.cpp           // bind_input: Input, GreenFilterScope
 //     qa_tables.cpp       // bind_qa_tables: QaTable, ccdcpp.qa_tables
 //     preprocess.cpp      // bind_preprocess: PreprocessPlan and its parts, plan_of
+//     arrays.cpp          // the arrays of detect and detect_cube as the run's views (arrays.hpp)
 //     detect.cpp          // bind_detect: detect, detect_cube, resume_schema
 //     resume.cpp          // the resume record and segments as Python data (resume.hpp)
 //     config.cpp          // bind_config: Algorithm, the configuration helpers

@@ -162,7 +162,31 @@ class BandCount(unittest.TestCase):
                         np.testing.assert_array_equal(out[key], plain[key])
 
 
-TEN_ROLES = ["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
+class PixelLayouts(unittest.TestCase):
+    def test_float32_uint16_and_strided_pixels_are_float64s(self):
+        d, s, q = noisy(7, 120, seed=3)
+        q = q.copy()
+        q[::7] = 4
+        base = ccdcpp.detect(d, s, q, **options())
+        self.assertTrue(base["models"])
+        wide = np.zeros((7, 240))
+        wide[:, ::2] = s
+        qs = np.zeros(240, dtype=np.uint8)
+        qs[::2] = q
+        forms = {
+            "float32": (s.astype(np.float32), q),
+            "uint16": (s.astype(np.uint16), q),
+            "transposed": (np.asfortranarray(s), q),
+            "strided": (wide[:, ::2], qs[::2]),
+        }
+        for name, (spectral, qas) in forms.items():
+            with self.subTest(form=name):
+                out = ccdcpp.detect(d, spectral, qas, **options())
+                self.assertEqual(repr(out["models"]), repr(base["models"]))
+                np.testing.assert_array_equal(out["processing_mask"], base["processing_mask"])
+
+
+TEN_ROLES = ["blue","green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "nir",
              "other", "swir1", "swir2"]
 
 

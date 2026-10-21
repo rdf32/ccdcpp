@@ -125,7 +125,8 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         otherwise). Equal dates are allowed; the first observation of each
         date is kept.
     spectral
-        (B, T) float64, one row per band.
+        (B, T) float64, float32 or uint16, one row per band, any non-negative
+        strides.
     qas
         (T,) uint8 QA codes, or raw uint8/uint16 QA when the input has a
         qa_table.

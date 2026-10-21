@@ -120,6 +120,8 @@ its replacement.
   `green_median` and `one_per_date`. A strategy parameter read from a shared value is named
   for it (`model`'s `lasso.alpha`, `coefficients.min`, in `ccdcpp.strategies()` and
   `resolve()`).
+- `detect` takes `spectral` as `detect_cube` does: float64, float32 or uint16 in any
+  non-negative strides, read where it is (each value widened exactly, as numpy would).
 - `detect_cube(masks=True)`: every pixel's processing mask in one `(H, W, T)` uint8 array;
   `ccdcpp.to_pixels()` reads the columns per pixel.
 - Diagnostics ([docs/diagnostics.md](docs/diagnostics.md)): `ccd::Observer`,

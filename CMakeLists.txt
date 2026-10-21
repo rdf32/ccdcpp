@@ -1124,6 +1124,7 @@ if(CCD_BUILD_PYTHON)
         bindings/input.cpp
         bindings/qa_tables.cpp
         bindings/preprocess.cpp
+        bindings/arrays.cpp
         bindings/detect.cpp
         bindings/resume.cpp
     )
