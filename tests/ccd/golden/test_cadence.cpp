@@ -203,15 +203,7 @@ TEST(Cadence, Defaults)
 
 TEST(Cadence, DefaultsSpelledOutEqualDefault)
 {
-    const struct { std::uint64_t seed; golden::Regime regime; std::size_t H, W; } corpus[] = {
-        {11, golden::Regime::Cadence16, 10, 16},
-        {12, golden::Regime::Cadence8,   6,  8},
-        {13, golden::Regime::Duplicates, 5,  8},
-        {14, golden::Regime::Short,      4,  5},
-        {15, golden::Regime::Medium,     5,  8},
-    };
-
-    for (const auto& c : corpus)
+    for (const auto& c : golden::GOLDEN_CUBES)
     {
         const auto cube = golden::make_cube(c.seed, c.regime, c.H, c.W);
 

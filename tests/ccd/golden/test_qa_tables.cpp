@@ -177,17 +177,8 @@ std::string detect_cube(
         threads));
 }
 
-struct CubeSpec
-{
-    const char* name;
-    std::uint64_t seed;
-    golden::Regime regime;
-    std::size_t H;
-    std::size_t W;
-};
-
 // The golden corpus's cubes, smaller.
-const CubeSpec CUBES[] = {
+const golden::CubeSpec CUBES[] = {
     {"c16",    11, golden::Regime::Cadence16,  5, 8},
     {"c8",     12, golden::Regime::Cadence8,   3, 4},
     {"dup",    13, golden::Regime::Duplicates, 3, 4},

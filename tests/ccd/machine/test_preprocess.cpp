@@ -442,24 +442,6 @@ struct Series
     }
 };
 
-struct GoldenCube
-{
-    const char* name;
-    std::uint64_t seed;
-    golden::Regime regime;
-    std::size_t H;
-    std::size_t W;
-};
-
-// The cubes of test_golden.cpp, with its seeds.
-const GoldenCube GOLDEN_CUBES[] = {
-    {"c16",    11, golden::Regime::Cadence16,  10, 16},
-    {"c8",     12, golden::Regime::Cadence8,    6,  8},
-    {"dup",    13, golden::Regime::Duplicates,  5,  8},
-    {"short",  14, golden::Regime::Short,       4,  5},
-    {"medium", 15, golden::Regime::Medium,      5,  8},
-};
-
 Series from_cube(const char* name, const golden::Cube& c, const Options& h)
 {
     return {name, c.dates, c.spectral, c.qas, c.H * c.W, 7, c.T, h};
@@ -498,7 +480,7 @@ std::vector<Series> fixture_inputs()
                                  Options{golden::c2_input(), golden::c2_config()}));
     }
 
-    for (const auto& spec : GOLDEN_CUBES)
+    for (const auto& spec : golden::GOLDEN_CUBES)
     {
         out.push_back(from_cube(
             spec.name,

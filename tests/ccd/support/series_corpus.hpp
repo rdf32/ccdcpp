@@ -163,17 +163,8 @@ inline std::vector<Series> csv_series(const std::string& dir)
 
 inline std::vector<Series> synthetic_series()
 {
-    struct Spec { const char* name; std::uint64_t seed; Regime regime; std::size_t H, W; };
-    const Spec cubes[] = {
-        {"c16",    11, Regime::Cadence16,  10, 16},
-        {"c8",     12, Regime::Cadence8,    6,  8},
-        {"dup",    13, Regime::Duplicates,  5,  8},
-        {"short",  14, Regime::Short,       4,  5},
-        {"medium", 15, Regime::Medium,      5,  8},
-    };
-
     std::vector<Series> out;
-    for (const auto& spec : cubes)
+    for (const auto& spec : GOLDEN_CUBES)
     {
         const Cube c = make_cube(spec.seed, spec.regime, spec.H, spec.W);
         const std::size_t T = c.T;

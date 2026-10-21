@@ -326,4 +326,24 @@ inline Cube make_cube(
     return cube;
 }
 
+// A cube of a corpus: its name, its make_cube() seed and regime, its size.
+struct CubeSpec
+{
+    const char* name;
+    std::uint64_t seed;
+    Regime regime;
+    std::size_t H;
+    std::size_t W;
+};
+
+// The golden fixture's cubes (test_golden.cpp), which every test that runs
+// the Landsat corpus runs.
+inline const CubeSpec GOLDEN_CUBES[] = {
+    {"c16",    11, Regime::Cadence16,  10, 16},
+    {"c8",     12, Regime::Cadence8,    6,  8},
+    {"dup",    13, Regime::Duplicates,  5,  8},
+    {"short",  14, Regime::Short,       4,  5},
+    {"medium", 15, Regime::Medium,      5,  8},
+};
+
 } // namespace golden

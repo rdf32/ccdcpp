@@ -145,23 +145,6 @@ std::vector<Options> option_sets()
     };
 }
 
-struct CubeSpec
-{
-    const char* name;
-    std::uint64_t seed;
-    golden::Regime regime;
-    std::size_t H;
-    std::size_t W;
-};
-
-const CubeSpec CUBES[] = {
-    {"c16",    11, golden::Regime::Cadence16,  10, 16},
-    {"c8",     12, golden::Regime::Cadence8,    6,  8},
-    {"dup",    13, golden::Regime::Duplicates,  5,  8},
-    {"short",  14, golden::Regime::Short,       4,  5},
-    {"medium", 15, golden::Regime::Medium,      5,  8},
-};
-
 std::string pixel_label(const char* cube, const char* opts, std::size_t row, std::size_t col)
 {
     return std::string(cube) + ":" + opts + ":" + std::to_string(row) + "," + std::to_string(col);
@@ -220,7 +203,7 @@ std::string run_corpus()
     //--------------------------------------------------------------------------
     // Synthetic cubes
     //--------------------------------------------------------------------------
-    for (const auto& spec : CUBES)
+    for (const auto& spec : golden::GOLDEN_CUBES)
     {
         const golden::Cube base =
             golden::make_cube(spec.seed, spec.regime, spec.H, spec.W);

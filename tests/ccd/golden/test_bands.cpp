@@ -191,16 +191,13 @@ std::string dump_series(
     return dump_series(s, h, config, [](ccd::FitResult r) { return r; });
 }
 
-// The Landsat corpus of test_golden.cpp, with its seeds.
+// The Landsat corpus of test_golden.cpp.
 std::vector<Series> landsat_corpus()
 {
-    return {
-        from_cube(golden::make_cube(11, golden::Regime::Cadence16, 10, 16)),
-        from_cube(golden::make_cube(12, golden::Regime::Cadence8,   6,  8)),
-        from_cube(golden::make_cube(13, golden::Regime::Duplicates, 5,  8)),
-        from_cube(golden::make_cube(14, golden::Regime::Short,      4,  5)),
-        from_cube(golden::make_cube(15, golden::Regime::Medium,     5,  8)),
-    };
+    std::vector<Series> out;
+    for (const auto& spec : golden::GOLDEN_CUBES)
+        out.push_back(from_cube(golden::make_cube(spec.seed, spec.regime, spec.H, spec.W)));
+    return out;
 }
 
 // Which procedures and outcomes a profile's corpus reached.

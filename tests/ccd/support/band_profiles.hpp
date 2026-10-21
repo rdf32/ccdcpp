@@ -119,16 +119,7 @@ inline std::vector<Profile> profiles()
     return out;
 }
 
-struct CubeSpec
-{
-    const char* name;
-    std::uint64_t seed;
-    golden::Regime regime;
-    std::size_t H;
-    std::size_t W;
-};
-
-inline const CubeSpec CUBES[] = {
+inline const golden::CubeSpec CUBES[] = {
     {"c16",    1, golden::Regime::Cadence16, 6, 8},
     {"c8",     2, golden::Regime::Cadence8,  4, 5},
     {"short",  3, golden::Regime::Short,     3, 4},
