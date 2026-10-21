@@ -28,6 +28,109 @@ std::string describe(const Bounds& b)
     return "a number";
 }
 
+namespace
+{
+
+// A number of `value`, an integer read as a real.
+double number_at(const Value& value, const std::string& at)
+{
+    if (const auto* v = std::get_if<double>(&value))
+        return *v;
+    if (const auto* v = std::get_if<std::int64_t>(&value))
+        return static_cast<double>(*v);
+    throw std::invalid_argument(at + " is a number");
+}
+
+void check_bounds(double v, const Bounds& bounds, const std::string& at)
+{
+    if (!bounds.contains(v))
+        throw std::invalid_argument(at + " is " + number(v) + "; it must be " +
+                                    (std::isinf(v) ? "a finite number " : "") + describe(bounds));
+}
+
+// A whole number of `value` (a number, and an integer).
+std::int64_t whole_at(const Value& value, const std::string& at)
+{
+    number_at(value, at);
+    if (!std::holds_alternative<std::int64_t>(value))
+        throw std::invalid_argument(at + " is a whole number");
+    return std::get<std::int64_t>(value);
+}
+
+} // namespace
+
+void assign(bool& member, const Value& value, const Bounds&, const std::string& at)
+{
+    if (!std::holds_alternative<bool>(value))
+        throw std::invalid_argument(at + " is a flag (true or false)");
+    member = std::get<bool>(value);
+}
+
+void assign(std::string& member, const Value& value, const Bounds&, const std::string& at)
+{
+    if (!std::holds_alternative<std::string>(value))
+        throw std::invalid_argument(at + " is a name");
+    member = std::get<std::string>(value);
+}
+
+void assign(std::vector<std::int64_t>& member, const Value& value, const Bounds& bounds,
+            const std::string& at)
+{
+    if (!std::holds_alternative<std::vector<std::int64_t>>(value))
+        throw std::invalid_argument(at + " is a list of QA code names or codes");
+    for (const std::int64_t code : std::get<std::vector<std::int64_t>>(value))
+        if (!bounds.contains(static_cast<double>(code)))
+            throw std::invalid_argument(at + " holds " + std::to_string(code) +
+                                        "; a code must be " + describe(bounds));
+    member = std::get<std::vector<std::int64_t>>(value);
+}
+
+void assign(BandList& member, const Value& value, const Bounds&, const std::string& at)
+{
+    if (!std::holds_alternative<std::vector<std::int64_t>>(value))
+        throw std::invalid_argument(at + " is a list of band roles or indices");
+    BandList list;
+    for (const std::int64_t band : std::get<std::vector<std::int64_t>>(value))
+    {
+        if (band < 0)
+            throw std::invalid_argument(at + " holds band " + std::to_string(band) +
+                                        "; a band index is at least 0");
+        try
+        {
+            list.push_back(static_cast<index_t>(band));
+        }
+        catch (const std::invalid_argument& e)
+        {
+            throw std::invalid_argument(at + ": " + e.what());
+        }
+    }
+    member = list;
+}
+
+void assign(double& member, const Value& value, const Bounds& bounds, const std::string& at)
+{
+    const double v = number_at(value, at);
+    check_bounds(v, bounds, at);
+    member = v;
+}
+
+void assign(index_t& member, const Value& value, const Bounds& bounds, const std::string& at)
+{
+    const std::int64_t i = whole_at(value, at);
+    if (i < 0)
+        throw std::invalid_argument(at + " is " + std::to_string(i) + "; it must be at least 0");
+    check_bounds(static_cast<double>(i), bounds, at);
+    member = static_cast<index_t>(i);
+}
+
+void assign(std::int64_t& member, const Value& value, const Bounds& bounds,
+            const std::string& at)
+{
+    const std::int64_t i = whole_at(value, at);
+    check_bounds(static_cast<double>(i), bounds, at);
+    member = i;
+}
+
 void check_band_list(const BandList& list, index_t bands, const std::string& where)
 {
     std::set<index_t> seen;

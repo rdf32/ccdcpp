@@ -7,7 +7,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -190,23 +189,34 @@ struct Field
     std::optional<Value> default_value = std::nullopt;
 };
 
+// One value into a member of each type a Field may point to, refusing (std::
+// invalid_argument naming `at`) a value of the wrong type (an integer is
+// accepted for a real), a whole number the member cannot hold, a number or a
+// code outside `bounds`, a band list with an index below 0 or not below
+// CCD_MAX_BANDS, or longer than CCD_MAX_BANDS, and a band list by role.
+void assign(bool& member, const Value& value, const Bounds& bounds, const std::string& at);
+void assign(std::string& member, const Value& value, const Bounds& bounds, const std::string& at);
+void assign(std::vector<std::int64_t>& member, const Value& value, const Bounds& bounds,
+            const std::string& at);
+void assign(BandList& member, const Value& value, const Bounds& bounds, const std::string& at);
+void assign(double& member, const Value& value, const Bounds& bounds, const std::string& at);
+void assign(index_t& member, const Value& value, const Bounds& bounds, const std::string& at);
+void assign(std::int64_t& member, const Value& value, const Bounds& bounds,
+            const std::string& at);
+
 //------------------------------------------------------------------------------
-// The parameters `values` give `params`, starting from its defaults. Throws
+// The parameters `values` give `params`, starting from its defaults: each by
+// assign() into its member, named "<where> parameter '<name>'". Throws
 // std::invalid_argument, naming `where` (e.g. "refit 'span-factor'") and the
-// field, on a name the schema does not hold, a value of the wrong type
-// (an integer is accepted for a real), a whole number its member cannot
-// hold, a value outside the field's bounds, a band list with an index below 0
-// or not below CCD_MAX_BANDS, or longer than CCD_MAX_BANDS, and a band list
-// by role (config::resolve() maps roles to rows first).
+// field, on a name the schema does not hold and on what assign() refuses (a
+// band list by role among it: config::resolve() maps roles to rows first).
 //------------------------------------------------------------------------------
 template<class P>
 void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
            const std::string& where)
 {
-    for (const auto& entry : values)
+    for (const auto& [name, value] : values)
     {
-        const std::string& name = entry.first;
-        const Value& value = entry.second;
         const Field<P>* field = nullptr;
         for (const auto& f : schema)
             if (name == f.name)
@@ -219,89 +229,9 @@ void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
             throw std::invalid_argument(where + " has no parameter '" + name + "'" +
                                         (known.empty() ? "" : "; it has " + known));
         }
-
         const std::string at = where + " parameter '" + name + "'";
-        std::visit(
-            [&](auto member)
-            {
-                using T = std::remove_cv_t<std::remove_reference_t<decltype(params.*member)>>;
-                if constexpr (std::is_same_v<T, bool>)
-                {
-                    if (!std::holds_alternative<bool>(value))
-                        throw std::invalid_argument(at + " is a flag (true or false)");
-                    params.*member = std::get<bool>(value);
-                }
-                else if constexpr (std::is_same_v<T, std::string>)
-                {
-                    if (!std::holds_alternative<std::string>(value))
-                        throw std::invalid_argument(at + " is a name");
-                    params.*member = std::get<std::string>(value);
-                }
-                else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>)
-                {
-                    if (!std::holds_alternative<std::vector<std::int64_t>>(value))
-                        throw std::invalid_argument(at + " is a list of QA code names or codes");
-                    for (const std::int64_t code : std::get<std::vector<std::int64_t>>(value))
-                        if (!field->bounds.contains(static_cast<double>(code)))
-                            throw std::invalid_argument(at + " holds " + std::to_string(code) +
-                                                        "; a code must be " +
-                                                        describe(field->bounds));
-                    params.*member = std::get<std::vector<std::int64_t>>(value);
-                }
-                else if constexpr (std::is_same_v<T, BandList>)
-                {
-                    if (!std::holds_alternative<std::vector<std::int64_t>>(value))
-                        throw std::invalid_argument(at + " is a list of band roles or indices");
-                    BandList list;
-                    for (const std::int64_t band : std::get<std::vector<std::int64_t>>(value))
-                    {
-                        if (band < 0)
-                            throw std::invalid_argument(at + " holds band " +
-                                                        std::to_string(band) +
-                                                        "; a band index is at least 0");
-                        try
-                        {
-                            list.push_back(static_cast<index_t>(band));
-                        }
-                        catch (const std::invalid_argument& e)
-                        {
-                            throw std::invalid_argument(at + ": " + e.what());
-                        }
-                    }
-                    params.*member = list;
-                }
-                else
-                {
-                    double v;
-                    if (std::holds_alternative<double>(value))
-                        v = std::get<double>(value);
-                    else if (std::holds_alternative<std::int64_t>(value))
-                        v = static_cast<double>(std::get<std::int64_t>(value));
-                    else
-                        throw std::invalid_argument(at + " is a number");
-                    if constexpr (!std::is_same_v<T, double>)
-                    {
-                        if (!std::holds_alternative<std::int64_t>(value))
-                            throw std::invalid_argument(at + " is a whole number");
-                        const std::int64_t i = std::get<std::int64_t>(value);
-                        if constexpr (std::is_unsigned_v<T>)
-                        {
-                            if (i < 0)
-                                throw std::invalid_argument(at + " is " + std::to_string(i) +
-                                                            "; it must be at least 0");
-                        }
-                    }
-                    if (!field->bounds.contains(v))
-                        throw std::invalid_argument(
-                            at + " is " + number(v) + "; it must be " +
-                            (std::isinf(v) ? "a finite number " : "") + describe(field->bounds));
-                    if constexpr (std::is_same_v<T, double>)
-                        params.*member = v;
-                    else
-                        params.*member = static_cast<T>(std::get<std::int64_t>(value));
-                }
-            },
-            field->member);
+        std::visit([&](auto member) { assign(params.*member, value, field->bounds, at); },
+                   field->member);
     }
 }
 
