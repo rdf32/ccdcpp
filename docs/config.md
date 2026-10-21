@@ -297,9 +297,6 @@ strategy's defaults. A shared table changes the values it gives. A procedure the
 takes the file's `thermal` and `steps` where it gives them, each step's parameters from the
 step's defaults. A relative path in `extends` is the extending file's directory's. The shipped
 preset is `ccdc`; `python/ccdcpp/configs/ccdc.toml` is its `to_toml()` under a header comment.
-A file in the layout before 1.0 is refused, the message naming the key (a `[<stage>.params]`
-table, `thermal_transform`, an old stage, step or parameter name); [migration-1.0.md](migration-1.0.md#configuration-files) maps
-it.
 
 ## From C++
 

@@ -351,7 +351,8 @@ The chain is part of the configuration. `preprocess=`, the profile's `preprocess
 | `detect(..., preprocess=plan)` | `config=cfg.replace(preprocess__<procedure>=ProcedureChain(...))`, or `preprocess__<procedure>__<step>__<param>=` |
 | `ProcedureChain(steps, transform="default")` / `transform=None` | `ProcedureChain(steps, thermal="celsius")` (through the input's transform) / `thermal="stored"` |
 | `Transform(role, scale, offset)` | the input's `thermal_scale`, `thermal_offset` |
-| `BandRange(roles=...)` | `BandRange(bands=...)` (roles) |
+| `ThermalRange(min, max, inclusive)` | `ThermalRange(celsius, inclusive)`: `celsius = (-93.2, 70.7)` |
+| `BandRange(roles, min, max, inclusive)` | `BandRange(bands, reflectance, inclusive)`: `bands` roles or rows, `reflectance = (0.0, 1.0)` |
 | `Dedupe()`, `StepKind.Dedupe` (C++ `preprocess::Step::dedupe()`, `StepKind::Dedupe`) | `OnePerDate()`, `StepKind.OnePerDate` (`Step::one_per_date()`, `StepKind::OnePerDate`): the step `one_per_date` |
 | `GreenMedian(offset, scope, max_date, role)` | `GreenMedian(offset, scope)`; its date is the shared `statistics_end`, its band the green role |
 | the bounds in the input's units | the bounds in physical units: reflectance, degrees Celsius |
@@ -390,54 +391,6 @@ back ([change (b)](#what-changes-in-the-outputs)).
 | `ccdcpp.QA_CODE_FIELDS` | `ccdcpp.QA_CODE_NAMES` (the names a configuration's `codes` take) |
 | `ccdcpp.GREEN_FILTER_SCOPES` | the names `green_median`'s `scope` takes: `"all"`, `"stat_window"`, `"off"` |
 | `qa_tables.<builder>(options)` | `qa_tables.<builder>(input)`, an `Input` |
-
-### Configuration files
-
-A configuration file or dict written by a development build before the 1.0 layout is refused,
-naming the key that changed (`stage 'refit' holds a 'params' table; ...`, `the configuration
-has no stage 'noise_floor'; the stages are ...`, `shared has no value 'alpha'; ...`). Rewrite
-it, or start from `ccdcpp.config("ccdc").to_toml()`:
-
-| Before the 1.0 layout | 1.0 |
-|---|---|
-| `[refit]` `strategy = "span-factor"` and `[refit.params]` `factor = 2.0` | `[refit]` `strategy = "span-factor"` and `factor = 2.0` side by side; a file extending another may leave `strategy` out |
-| the stages `noise_floor`, `segment_fit`, `edge_fit` | `noise`, `segment_report`, `edge_segments` |
-| shared `alpha`, `coef_floor`, `max_iter`, `tolerance` | `[shared.lasso]` `alpha`, `coef_floor`, `max_iter`, `tolerance` (`shared__lasso__alpha=`, C++ `config.shared["lasso.alpha"]`) |
-| shared `coefficient_min`, `coefficient_mid`, `coefficient_max`, `num_obs_factor` | `[shared.coefficients]` `min`, `mid`, `max`, `per` (`shared__coefficients__max=`) |
-| `statistics_end = 9223372036854775807` (`shared__statistics_end=None`) | `statistics_end = "none"`; a date `"2017-12-31"` or an ordinal for a cutoff |
-| `peek = 0` | `peek = "change_test"`; a number of at least 1 otherwise |
-| `thermal_transform = true` / `false` | `thermal = "celsius"` / `"stored"` (`preprocess__snow__thermal="celsius"`) |
-| `thermal_range`'s `min = -93.2, max = 70.7`, `min_inclusive`, `max_inclusive` | `celsius = [-93.2, 70.7]`, `inclusive = [false, false]` (the default, left out) |
-| `band_range`'s `min = 0.0, max = 1.0`, `min_inclusive`, `max_inclusive` | `reflectance = [0.0, 1.0]`, `inclusive = [false, false]` |
-| `{ step = "dedupe" }` | `{ step = "one_per_date" }` |
-| `ThermalRange(min, max, inclusive)`, `BandRange(bands, min, max, inclusive)`, `ProcedureChain(steps, thermal_transform)`, `Dedupe()` | `ThermalRange(celsius, inclusive)`, `BandRange(bands, reflectance, inclusive)`, `ProcedureChain(steps, thermal)`, `OnePerDate()` |
-| the dict `{"shared": ..., "stages": {stage: {"strategy": ..., "params": {...}}}, "preprocess": ...}`, and `resolve()`'s `["stages"][stage]["params"]` | the file's layout: `{"shared": ..., stage: {"strategy": ..., parameter: ...}, "preprocess": ...}`; `resolve(h)[stage][parameter]` |
-| C++ `Registry::check(config)`, `resolve(config, input)`, `build(tree)` | `config::check(registry, config)`, `config::resolve(registry, config, input)`, `config::build_strategies(registry, tree)` (`ccd/config/resolve.hpp`) |
-| a strategy parameter read from a shared value: `model`'s `alpha`, `coef_floor`, `max_iter`, `tolerance`, `coefficient_min`, `coefficient_mid`, `coefficient_max`, `num_obs_factor` (and `stability_fit`'s), `edge_segments`' `alpha`, ..., `coefficients`, `start_search`'s `meow_size`, `green_median`'s `max_date` | named for the shared value: `min_observations`, `statistics_end`, `lasso.alpha`, `lasso.coef_floor`, `lasso.max_iter`, `lasso.tolerance`, `coefficients.min`, `.mid`, `.max`, `.per` (`resolve(h)["model"]["lasso.alpha"]`); C++ `Params` members `lasso_alpha`, ..., `coefficients_min`, ... |
-| C++ `Shared::alpha`, `coefficient_min`, ...; `StepContext::thermal_transform` | `Shared::lasso.alpha` (a `LassoOptions`), `Shared::coefficients.min` (a `CoefficientRule`); `StepContext::thermal` (`config::Thermal`) |
-
-```toml
-# Before
-[refit]
-strategy = "span-factor"
-[refit.params]
-factor = 2.0
-
-[preprocess.snow]
-thermal_transform = false
-steps = [{ step = "thermal_range", min = -93.2, max = 70.7 }, { step = "dedupe" }]
-```
-
-```toml
-# 1.0
-[refit]
-strategy = "span-factor"
-factor = 2.0
-
-[preprocess.snow]
-thermal = "stored"
-steps = [{ step = "thermal_range", celsius = [-93.2, 70.7] }, { step = "one_per_date" }]
-```
 
 ## Newly refused values
 

@@ -221,10 +221,6 @@ ccd::config::StageConfig stage_from_python(const std::string& stage, const py::h
         const std::string name = py::str(key);
         if (name == "strategy")
             continue;
-        if (name == "params" && py::isinstance<py::dict>(value))
-            throw py::value_error("stage '" + stage + "' holds a 'params' table; a stage's "
-                                  "parameters are written in its own table, beside its "
-                                  "strategy ([" + stage + "] strategy = ..., parameter = ...)");
         out.params[name] =
             value_from_python(value, stage + " '" + out.strategy + "' parameter '" + name + "'");
     }
@@ -393,10 +389,6 @@ ccd::config::Config config_from_python(const py::handle& config)
             out.shared = shared_from_python(value);
         else if (name == "preprocess")
             out.preprocess = preprocess_from_python(value);
-        else if (name == "stages")
-            throw py::value_error("a configuration holds no 'stages': each stage is a table of "
-                                  "its own, {\"refit\": {\"strategy\": \"span-factor\", "
-                                  "\"factor\": 1.33}, ...}");
         else
             out.stages[name] = stage_from_python(name, value);
     }

@@ -18,9 +18,8 @@ its replacement.
 ### Changed
 
 - **`ccdc`'s `band_range` lists its bands**: blue, green, red, nir, swir1 and swir2. A band list
-  is roles or rows; `"reflective"` (`ccdcpp.REFLECTIVE`) is gone. On HLS and Sentinel-2 inputs
-  coastal, the red edges and B08 are not range-checked unless a configuration lists them;
-  Landsat outputs do not change.
+  is roles or rows. On HLS and Sentinel-2 inputs coastal, the red edges and B08 are not
+  range-checked unless a configuration lists them; Landsat outputs do not change.
 - **No statistics cutoff by default.** `ccdc`'s `shared.statistics_end` is `"none"`:
   the QA statistics, the cadence, the variogram and the green median read the whole series.
   0.10.0 and pyccd stopped them at 2017-12-31 (ordinal 736694), LCMAP's 2018 production
@@ -120,8 +119,7 @@ its replacement.
   and `edge_segments`, the steps `keep_qa`, `add_qa`, `thermal_range`, `band_range`,
   `green_median` and `one_per_date`. A strategy parameter read from a shared value is named
   for it (`model`'s `lasso.alpha`, `coefficients.min`, in `ccdcpp.strategies()` and
-  `resolve()`). A file of an earlier 1.0 development build is refused,
-  naming what changed ([docs/migration-1.0.md](docs/migration-1.0.md#configuration-files)).
+  `resolve()`).
 - `detect_cube(masks=True)`: every pixel's processing mask in one `(H, W, T)` uint8 array;
   `ccdcpp.to_pixels()` reads the columns per pixel.
 - Diagnostics ([docs/diagnostics.md](docs/diagnostics.md)): `ccd::Observer`,
@@ -162,13 +160,9 @@ its replacement.
 - The package declares its dependency on numpy (`pyproject.toml`).
 - An infinite value of a parameter whose bounds are numbers (`shared__lasso__alpha=inf`) is refused
   ("it must be a finite number at least 0"); the thermal and reflectance bounds, which take any
-  number, still take an infinity. A NaN `saturation_code` or `thermal_saturation_code` is
-  refused when the run checks the input.
-- `ccdcpp.Input` equality and hash agree: -0.0 and 0.0 are one value in `digest()`.
+  number, still take an infinity.
 - Shape and length mismatches of `dates`, `spectral` and `qas` raise `ValueError` (they raised
-  `RuntimeError`). A list mixing strs and ints names what each may be (QA code names or codes,
-  band roles or rows); a strategy or step without parameters no longer ends its unknown-parameter
-  message with an empty "it has".
+  `RuntimeError`).
 - A `min_observations` at or below `coefficients.min` is refused when the configuration is
   built, naming both values: its fits had no degree of freedom (a NaN RMSE, an assertion in
   a debug build).

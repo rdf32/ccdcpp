@@ -142,12 +142,12 @@ class Presets(unittest.TestCase):
         self.assertEqual(ccdcpp.config(path).shared()["lasso"],
                          dict(ccdcpp.config().shared()["lasso"], max_iter=500))
 
-    def test_a_file_of_the_old_layout_is_refused_naming_what_changed(self):
-        path = os.path.join(_ROOT, "old.toml")
+    def test_a_file_of_unknown_names_or_bad_values_is_refused_naming_them(self):
+        path = os.path.join(_ROOT, "wrong.toml")
         for text, message in (
                 ('[refit]\nstrategy = "span-factor"\n[refit.params]\nfactor = 2.0\n',
-                 r"stage 'refit' holds a 'params' table; a stage's parameters are written in its "
-                 r"own table, beside its strategy"),
+                 r"refit 'span-factor' parameter 'params' is a bool, an int, a float, a str or a "
+                 r"list of them, not dict"),
                 ('[refit]\nfctor = 2.0\n', r"refit 'span-factor' has no parameter 'fctor'"),
                 ('[noise_floor]\nstrategy = "variogram"\n',
                  r"the configuration has no stage 'noise_floor'; the stages are mode, noise, "),
@@ -492,9 +492,6 @@ class Runs(unittest.TestCase):
         tree["refit"] = {"strategy": "nope"}
         with self.assertRaisesRegex(ValueError, "refit has no strategy 'nope'"):
             ccdcpp.detect(d, s, q, input=h, config=ccdcpp.Config(tree))
-        with self.assertRaisesRegex(ValueError, "a configuration holds no 'stages': each stage is "
-                                                "a table of its own"):
-            ccdcpp.Config({"stages": {"refit": {"strategy": "span-factor", "params": {}}}})
         with self.assertRaisesRegex(ValueError, "the configuration has no 'mode' stage"):
             ccdcpp.detect(d, s, q, input=h,
                           config=ccdcpp.Config({"refit": {"strategy": "span-factor"}}))
