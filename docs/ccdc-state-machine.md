@@ -174,7 +174,7 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 | `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | Standard's |
 | `variogram` (`Variogram`, `include/ccd/strategies/stages.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
-| `init_model`, `stability`, `lookback` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's and the lookback's per-pixel scratch, each a `PerThread` of its strategy | Standard's |
+| `init_model`, `stability`, `lookback`, `edges`, `segment_report` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's, the lookback's, edge_segments' and segment_report's per-pixel scratch, each a `PerThread` of its strategy, made by `State::bind` before the pixel | Standard's |
 | `extend` (`ExtendState`) | what Extend carries from one peek test to the next | Standard's |
 
 `MaskedSeries` is the only writer of the mask. Its two drops, `drop` (Lookback, Extend) and
@@ -182,7 +182,8 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 observations by one rule: a window bound above the dropped position moves down by one.
 
 The record's buffers keep their capacity across pixels: `State::reset` starts a pixel without
-freeing anything. `standard::Detector` owns one record, and a `Worker`
+freeing anything, and `State::bind` makes a strategy's objects again only when the run's
+strategy is another. `standard::Detector` owns one record, and a `Worker`
 (`src/ccd/run/run_pixel.hpp`) holds one `Detector` per OpenMP thread.
 
 ### Stages and strategies

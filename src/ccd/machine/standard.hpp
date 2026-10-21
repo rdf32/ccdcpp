@@ -318,7 +318,8 @@ struct State
     PerThread<StabilityFit, Model> init_model;
     PerThread<StabilityRule, Scratch> stability;
     PerThread<Lookback, Scratch> lookback;   // the lookback's per-pixel state
-    PerThread<EdgeSegments, Scratch> edges;       // edge_segments' buffers
+    PerThread<EdgeSegments, Scratch> edges;   // edge_segments' buffers, the
+                                              // whole-series fit's too
     PerThread<SegmentReport, Scratch> segment_report;
 
     // The processing mask when the current start's search began, kept for a
@@ -347,6 +348,13 @@ struct State
 
     // Where the segment loop stopped (set with every Exit).
     Suspended suspended;
+
+    // Makes the objects of the run's `strategies` the State holds: each
+    // PerThread's of its strategy, kept when that strategy made it and made
+    // again when another did (another run's). The phases read them
+    // (*init_model, *extend.test, ...) from the pixel's Prepare on; the
+    // Detector binds before each pixel.
+    void bind(const Strategies& strategies);
 
     // Starts a pixel: Prepare, no exit, the series of `pixel` that
     // `mask` keeps, the cursor at 0, no segments and none carried, the
@@ -379,15 +387,6 @@ struct Context
     // none).
     index_t max_coefficients = 0;
 };
-
-// The state's stability fit and stability-rule scratch, of the run's
-// strategies (made when the state's are another run's).
-Model& stability_fit(const Context& context, State& state);
-Scratch& stability_scratch(const Context& context, State& state);
-
-// The state's lookback and edge-fit scratch, of the run's strategies.
-Scratch& lookback_scratch(const Context& context, State& state);
-Scratch& edge_scratch(const Context& context, State& state);
 
 //------------------------------------------------------------------------------
 // Transitions: one per phase but Done. Each makes one decision and returns

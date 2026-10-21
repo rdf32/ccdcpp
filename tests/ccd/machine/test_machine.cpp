@@ -106,6 +106,7 @@ struct Record
         ccd::ProcessingMask mask(n);
         for (index_t i = 0; i < n; ++i)
             mask.set(i, true);
+        state.bind(strategies);
         state.reset(workspace, std::move(mask));
     }
 
@@ -131,25 +132,24 @@ struct Record
         // The change test as Prepare leaves it on a series at the reference
         // cadence (16 days): its threshold, change_threshold.
         const std::int64_t reference[] = {730000, 730016};
+        state.bind(strategies);
         strategies.change_test->prepare(
             ccd::ArrayView<const std::int64_t, 1>::contiguous(reference, {2}),
-            shared.detection_bands.size(),
-            state.extend.test.get(strategies.change_test,
-                                     [](const ccd::ChangeTest& c) { return c.make_scratch(); }));
+            shared.detection_bands.size(), *state.extend.test);
         // The stability rule's threshold, change_threshold (a peek of the
         // change test's peek_size), whatever peek the record has.
         const index_t peek_size = count("change_test", "peek_size");
         const ccd::PeekPlan plan{peek_size, true, 0, peek_size};
         strategies.stability_rule->prepare(
-            plan, shared.detection_bands.size(), stability_scratch());
+            plan, shared.detection_bands.size(), *state.stability);
         // Lookback over `peek` observations against its change_threshold:
         // pyccd's at a peek of its own, so its threshold is unadjusted.
         strategies.lookback = std::make_shared<const ccd::strategies::PyccdLookback>(
             ccd::strategies::PyccdLookback::Params{real("lookback", "change_threshold"),
                                                    real("lookback", "change_probability"),
                                                    real("lookback", "outlier_threshold"), peek});
-        strategies.lookback->prepare(plan, shared.detection_bands.size(),
-                                     ccd::standard::lookback_scratch(context, state));
+        state.bind(strategies);
+        strategies.lookback->prepare(plan, shared.detection_bands.size(), *state.lookback);
     }
 
     // A segment already written, as Extend or StartCatch leaves one.
@@ -185,7 +185,7 @@ struct Record
     // coefficient_min coefficients, residuals kept.
     void with_stability_fit(index_t start, index_t stop)
     {
-        stability_fit().fit(
+        state.init_model->fit(
             state.series.dates().slice(ccd::range(start, stop)),
             state.series.spectral().slice(ccd::all(), ccd::range(start, stop)),
             count("stability_fit", "coefficient_min"),
@@ -195,13 +195,11 @@ struct Record
         );
     }
 
-    // The record's stability fit and stability-rule scratch.
-    ccd::Model& stability_fit() { return ccd::standard::stability_fit(context, state); }
-    ccd::Scratch& stability_scratch() { return ccd::standard::stability_scratch(context, state); }
-
-    // One transition of the record's phase, as the Detector makes it.
+    // One transition of the record's phase, as the Detector makes it, with
+    // the record's strategies bound (a test may have replaced one).
     Phase step()
     {
+        state.bind(strategies);
         const Phase next = ccd::standard::step(context, state);
         state.phase = next;
         return next;
@@ -446,9 +444,9 @@ InitializeOutcome outcome_of(index_t n, Setup setup)
     return ccd::standard::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
                                 r.state.variogram,
                                 ccd::standard::InitializeStages{*r.strategies.start_search,
-                                                      *r.strategies.window_screen, r.stability_fit(),
+                                                      *r.strategies.window_screen, *r.state.init_model,
                                                       *r.strategies.stability_rule,
-                                                      r.stability_scratch()});
+                                                      *r.state.stability});
 }
 
 TEST(StandardInitialize, NoCandidateLeftIsExhausted)
@@ -1495,6 +1493,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
             driven.fit(ccd::PixelProcedure::Standard, workspace, mask, resolved.shared, strategies);
 
         ccd::standard::State s;
+        s.bind(strategies);
         s.reset(workspace, mask);
         while (s.phase != Phase::Done)
         {

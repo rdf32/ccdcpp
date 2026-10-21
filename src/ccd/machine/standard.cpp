@@ -27,39 +27,8 @@ InitializeCriteria initialize_criteria(const config::Shared& shared,
     };
 }
 
-Model& stability_fit(const Context& context, State& state)
-{
-    return state.init_model.get(context.strategies.stability_fit,
-                                [](const StabilityFit& f) { return f.make_model(); });
-}
-
-Scratch& stability_scratch(const Context& context, State& state)
-{
-    return state.stability.get(context.strategies.stability_rule,
-                               [](const StabilityRule& r) { return r.make_scratch(); });
-}
-
-Scratch& edge_scratch(const Context& context, State& state)
-{
-    return state.edges.get(context.strategies.edge_segments,
-                           [](const EdgeSegments& e) { return e.make_scratch(); });
-}
-
-Scratch& lookback_scratch(const Context& context, State& state)
-{
-    return state.lookback.get(context.strategies.lookback,
-                              [](const Lookback& l) { return l.make_scratch(); });
-}
-
 namespace
 {
-
-// The state's segment-fit scratch, of the run's segment-fit strategy.
-Scratch& segment_scratch(const Context& context, State& state)
-{
-    return state.segment_report.get(context.strategies.segment_report,
-                                 [](const SegmentReport& f) { return f.make_scratch(); });
-}
 
 // The last day of the input, whatever its QA.
 std::int64_t input_end(const Context& context)
@@ -82,13 +51,6 @@ ObserverEvent day_event(ObserverEvent::Kind kind, std::int64_t day, std::string 
     return e;
 }
 #endif
-
-// Extend's change-test buffers, of the run's change-test strategy.
-Scratch& test_scratch(const Context& context, ExtendState& extend)
-{
-    return extend.test.get(context.strategies.change_test,
-                              [](const ChangeTest& c) { return c.make_scratch(); });
-}
 
 // Extend's last peek, as its tests read it.
 Peek peek_of(const Context& context, const State& state)
@@ -199,6 +161,20 @@ void State::reset(const PixelSeries& pixel, ProcessingMask mask)
     resumable = true;
     carried_change = false;
     suspended = Suspended{};
+}
+
+void State::bind(const Strategies& strategies)
+{
+    init_model.get(strategies.stability_fit,
+                   [](const StabilityFit& f) { return f.make_model(); });
+    stability.get(strategies.stability_rule,
+                  [](const StabilityRule& r) { return r.make_scratch(); });
+    lookback.get(strategies.lookback, [](const Lookback& l) { return l.make_scratch(); });
+    edges.get(strategies.edge_segments, [](const EdgeSegments& e) { return e.make_scratch(); });
+    segment_report.get(strategies.segment_report,
+                       [](const SegmentReport& f) { return f.make_scratch(); });
+    extend.model.get(strategies.model, [](const MonitoringModel& m) { return m.make_model(); });
+    extend.test.get(strategies.change_test, [](const ChangeTest& c) { return c.make_scratch(); });
 }
 
 FitResult State::take_result()
@@ -347,7 +323,7 @@ Phase prepare(const Context& context, State& state)
     const index_t detection_bands = shared.detection_bands.size();
     const ChangeTest& change_test = *context.strategies.change_test;
     const PeekPlan plan = change_test.prepare(
-        stat_dates, detection_bands, test_scratch(context, state.extend));
+        stat_dates, detection_bands, *state.extend.test);
     // A peek holds an observation at least; chi2's schema refuses fewer than
     // two (a change is consecutive observations over the threshold).
     assert(plan.peek >= 1);
@@ -356,9 +332,9 @@ Phase prepare(const Context& context, State& state)
     if (!plan.full)
         state.resumable = false;
     context.strategies.stability_rule->prepare(
-        plan, detection_bands, stability_scratch(context, state));
+        plan, detection_bands, *state.stability);
     context.strategies.lookback->prepare(
-        plan, detection_bands, lookback_scratch(context, state));
+        plan, detection_bands, *state.lookback);
     state.initialize_criteria =
         initialize_criteria(shared, context.strategies.stability_fit->coefficients());
     state.coefficients = context.strategies.model->coefficients();
@@ -535,8 +511,8 @@ InitializeOutcome initialize_outcome(const Context& context, State& state)
         state.initialize_criteria,
         state.variogram,
         InitializeStages{*context.strategies.start_search, *context.strategies.window_screen,
-                         stability_fit(context, state),
-                         *context.strategies.stability_rule, stability_scratch(context, state)}
+                         *state.init_model, *context.strategies.stability_rule,
+                         *state.stability}
     );
     LOG_DEBUG("Initialize: " << to_string(outcome));
     return outcome;
@@ -588,11 +564,10 @@ LookbackOutcome lookback_step(const Context& context, State& state)
 {
     MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
-    assert(state.init_model);   // a stable Initialize made it
 
     const LookbackJudgement judged = context.strategies.lookback->judge(
         *state.init_model, series.dates(), series.spectral(), window, state.cursor.prev_break,
-        state.variogram, context.shared.detection_bands, lookback_scratch(context, state));
+        state.variogram, context.shared.detection_bands, *state.lookback);
 
     switch (judged.verdict)
     {
@@ -636,7 +611,7 @@ void write_start_segment(const Context& context, State& state)
         state.series.spectral(),
         window_0,
         CurveQA::Start,
-        edge_scratch(context, state)
+        *state.edges
     );
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
     state.segments.push_back(std::move(result));
@@ -650,15 +625,6 @@ Phase start_catch(const Context& context, State& state)
 
 namespace
 {
-
-// Extend's model, of the run's monitoring-model strategy, for a
-// refit: the refit's number is the next.
-Model& refit_model(const Context& context, ExtendState& extend)
-{
-    ++extend.fits;
-    return extend.model.get(context.strategies.model,
-                               [](const MonitoringModel& m) { return m.make_model(); });
-}
 
 // The bands no test reads (those not in the detection bands), as the last test
 // would have had them: fitted on the last refit's window with its
@@ -722,7 +688,7 @@ void write_extended_segment(
     result.start_day = masked_dates(window.start);
     result.end_day = masked_dates(window.stop - 1);
     const ChangeTest& change_test = *context.strategies.change_test;
-    const Scratch& scratch = test_scratch(context, extend);
+    const Scratch& scratch = *extend.test;
     const Peek last = peek_of(context, state);
     result.break_day = masked_dates(change ? change_test.break_at(last, scratch)
                                            : std::min(window.stop, series.size() - 1));
@@ -731,7 +697,7 @@ void write_extended_segment(
 
     const index_t num_coef = context.strategies.segment_report->segment(
         *extend.model, masked_dates, series.spectral(), window, extend.num_coef,
-        context.max_coefficients, segment_scratch(context, state), result.bands);
+        context.max_coefficients, *state.segment_report, result.bands);
     result.curve_qa = static_cast<CurveQA>(num_coef);
     for (index_t band = 0; band < num_bands; ++band)
         result.bands[band].magnitude =
@@ -751,6 +717,7 @@ void write_forced_segment(const Context& context, State& state)
     const auto masked_dates = series.dates();
     const Window window = *state.forced;
     state.forced.reset();
+    ++state.extend.fits;   // the forced window's fit is a refit
 
     ChangeModel result;
     result.start_day = masked_dates(window.start);
@@ -759,9 +726,9 @@ void write_forced_segment(const Context& context, State& state)
     result.observation_count = window.size();
     result.change_probability = 0.0;
     const index_t num_coef = context.strategies.segment_report->unfitted(
-        refit_model(context, state.extend), masked_dates, series.spectral(), window,
+        *state.extend.model, masked_dates, series.spectral(), window,
         state.coefficients.count(window.size()), context.max_coefficients,
-        segment_scratch(context, state), result.bands);
+        *state.segment_report, result.bands);
     result.curve_qa = static_cast<CurveQA>(num_coef);
 
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
@@ -845,7 +812,8 @@ ExtendOutcome extend_step(const Context& context, State& state)
         // The detection bands: seasonal_rmse() reads their residuals; the
         // magnitude is set from the peek residuals when the segment is
         // written, which fits the other bands (complete_models()).
-        Model& model = refit_model(context, extend);
+        ++extend.fits;
+        Model& model = *extend.model;
         const auto fit_dates =
             masked_dates.slice(range(extend.fit_window.start, extend.fit_window.stop));
         const auto fit_spectral =
@@ -881,7 +849,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
 
     const Peek peek = peek_of(context, state);
     const TestOutcome outcome = context.strategies.change_test->test(
-        peek, test_scratch(context, extend), extend.result);
+        peek, *extend.test, extend.result);
 
     CCD_OBSERVE_EVENT(context.observe, [&] {
         ObserverEvent e = day_event(ObserverEvent::Kind::Test, masked_dates(peek_window.start),
@@ -959,7 +927,7 @@ Phase extend(const Context& context, State& state)
         // the ones before it leave the series, after the segment is written.
         const index_t first = state.extend.peek.start;
         const index_t at = context.strategies.change_test->break_at(
-            peek_of(context, state), test_scratch(context, state.extend));
+            peek_of(context, state), *state.extend.test);
         write_extended_segment(context, state, true);
         if (at > first)
             state.resumable = false;   // the record keeps no drops before a change
@@ -1037,7 +1005,7 @@ void write_end_segment(const Context& context, State& state)
         series.spectral(),
         window_1,
         CurveQA::End,
-        edge_scratch(context, state)
+        *state.edges
     );
     CCD_OBSERVE_EVENT(context.observe, segment_event(result));
     state.segments.push_back(std::move(result));
@@ -1218,7 +1186,8 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     extend.trained = true;
     extend.fit_window = Window(window.start, from.fit_stop);
     extend.fit_span = span(dates, extend.fit_window);
-    refit_model(context, extend).fit(
+    ++extend.fits;
+    extend.model->fit(
         dates.slice(range(extend.fit_window.start, extend.fit_window.stop)),
         spectral.slice(all(), range(extend.fit_window.start, extend.fit_window.stop)),
         state.coefficients.count(extend.fit_window.size()),
@@ -1265,11 +1234,10 @@ FitResult Detector::fit(
     Observe observe
 )
 {
+    state_.bind(strategies);
     if (mode.procedure != PixelProcedure::Standard)
-        return strategies.edge_segments->whole_series(
-            mode.procedure, series, std::move(mask),
-            state_.edges.get(strategies.edge_segments,
-                             [](const EdgeSegments& e) { return e.make_scratch(); }));
+        return strategies.edge_segments->whole_series(mode.procedure, series, std::move(mask),
+                                                      *state_.edges);
 
     LOG_DEBUG("Standard");
     const Context context{shared, series, strategies, observe, mode.max_coefficients};
@@ -1297,6 +1265,7 @@ FitResult Detector::resume(
     const Context context{shared, series, strategies, observe};
     State& state = state_;
 
+    state.bind(strategies);
     state.reset(series, std::move(mask));
     // The statistics are the stored run's, and the series is no shorter, so
     // Prepare neither exits early nor computes other values: it reads the
