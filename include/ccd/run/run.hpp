@@ -8,51 +8,20 @@
 #include <vector>
 
 #include "ccd/core/array_view.hpp"
-#include "ccd/strategies/register_core.hpp"
-#include "ccd/config/registry.hpp"
-#include "ccd/input/pixel_series.hpp"
 #include "ccd/input/input.hpp"
-#include "ccd/input/mask/preprocess.hpp"
-#include "ccd/run/algorithm.hpp"
 #include "ccd/machine/fit.hpp"
-#include "ccd/machine/standard.hpp"
-#include "ccd/results/record.hpp"
 #include "ccd/results/diagnostics.hpp"
-#include "ccd/regression/lasso_solver.hpp"
+#include "ccd/results/record.hpp"
+#include "ccd/run/algorithm.hpp"
 
 namespace ccd
 {
 
 //==============================================================================
 //
-// Running CCD
-//
-// Every call goes through three objects:
-//
-//   Run      built once per call from a RunSpec, the dates and the input's
-//            layout: everything checked (the input against the band count,
-//            the dates, the input's QA table for raw QA, a resume header
-//            against this run), and everything every pixel shares (the
-//            algorithm resolved for the input with its plan, the resume header
-//            and its capped shared values). Immutable: one Run serves every
-//            thread.
-//   Worker   one per thread: the buffers and the change detector a pixel
-//            needs, reused from pixel to pixel.
-//   Run::pixel(input, worker)
-//            one pixel through the steps below, in order.
-//
-// detect() and detect_cube() do this for one pixel and for a cube; they are
-// the whole entry point.
-//
-// The steps of one pixel:
-//
-//   decode_qa        raw QA through the QA table (or the codes as given)
-//   choose_procedure the QA statistics and the pixel's procedure
-//   values           the pixel's (B, T) as scalar_t, with its procedure's
-//                    transform (read in place when nothing needs changing)
-//   mask             its procedure's chain: the processing mask
-//   fit              the change detector, or a resume of the stored run
-//   finish           the record for the next resume
+// Running CCD: the two entry points, detect() for one pixel and
+// detect_cube() for a cube, with what a call runs (RunSpec) and what it
+// returns and resumes from.
 //
 //==============================================================================
 
@@ -112,14 +81,6 @@ struct RunSpec
     std::vector<index_t> observe;
 };
 
-// One pixel's stored run, for a resume: its record and its stored segments
-// (of which the first record.standard.final_segments are kept as given).
-struct PixelPrior
-{
-    const PixelRecord* record = nullptr;
-    const std::vector<ChangeModel>* segments = nullptr;
-};
-
 // A stored pixel run to continue: the stored call's header and the pixel's
 // record and segments.
 struct PixelResume
@@ -127,15 +88,6 @@ struct PixelResume
     ResumeHeader header;
     PixelRecord record;
     std::vector<ChangeModel> segments;
-};
-
-// One pixel's outcome: its result, and with RunSpec::record or a resume its
-// record for the next resume and what was done.
-struct PixelOutcome
-{
-    FitResult result;
-    PixelRecord record;
-    ResumeStatus status = ResumeStatus::Resumed;
 };
 
 struct PixelResult
@@ -222,146 +174,32 @@ struct CubeOutput
 
 //------------------------------------------------------------------------------
 //
-// A pixel's buffers and change detector, reused from one pixel to the next.
-//
-// Every buffer in here is rewritten before it is read for each pixel, so a
-// thread that keeps one across pixels gets the same results as a fresh one
-// per pixel, without reallocating.
-//
-//------------------------------------------------------------------------------
-struct Worker
-{
-    // Where the pixel being run reports (the run sets it per pixel).
-    Observe observe;
-
-    // The run's change detector, with its per-pixel record.
-    standard::Detector standard;
-
-    // The pixel's (B, T) as scalar_t, when it has to be converted or its
-    // thermal band transformed.
-    std::vector<scalar_t> spectral;
-
-    // The pixel's (T) QA codes, when its raw QA is decoded through a QaTable.
-    std::vector<std::uint8_t> qas;
-};
-
-//------------------------------------------------------------------------------
-//
-// One call's run.
-//
-// The constructor checks, before any pixel, and throws std::invalid_argument,
-// in this order, on: an input that fails validate() for `bands`; `dates` or
-// the QA without `timesteps` entries; dates that fail validate_dates(); raw
-// (uint16) QA without the input's QA table; a configuration the input does
-// not fit (Algorithm::for_input(), the plan's validate() included); and for
-// a resume (`resume` not null), a header of another record format or
-// results version, made with another input (its QA table included),
-// or configuration (by Resolved::digest), or for a series that ends
-// before the stored one.
-//
-// pixel() throws std::invalid_argument for a resume on a prior with fewer
-// stored segments than its record's final ones.
-//
-// A Run reads the `spec` and the `dates` it was built with, without a copy:
-// they must outlive it (a temporary spec is refused at compile time).
-//
-//------------------------------------------------------------------------------
-class Run
-{
-public:
-
-    Run(const RunSpec& spec,
-        ArrayView<const std::int64_t, 1> dates,
-        index_t bands,
-        index_t timesteps,
-        index_t qa_timesteps,
-        bool raw_qa,
-        const ResumeHeader* resume = nullptr);
-
-    Run(RunSpec&& spec,
-        ArrayView<const std::int64_t, 1> dates,
-        index_t bands,
-        index_t timesteps,
-        index_t qa_timesteps,
-        bool raw_qa,
-        const ResumeHeader* resume = nullptr) = delete;
-
-    // The call's header: digest, series end, statistics cutoff (for
-    // a resume the stored run's), with RunSpec::record or a resume.
-    const ResumeHeader& header() const { return header_; }
-
-    bool resuming() const { return resume_.has_value(); }
-
-    // Where the pixel at flat index `at` of a cube reports: the spec's
-    // observer when it observes that pixel.
-    Observe observed(index_t at) const;
-
-    const RunSpec& spec() const { return spec_; }
-
-    // One pixel through the steps of the file comment. Without a resume
-    // `prior` is ignored; with one it is required (std::invalid_argument
-    // without it). The input must have the run's band and timestep counts,
-    // and raw (uint16) QA only when the Run was built for it (detect and
-    // detect_cube see to both; std::invalid_argument otherwise).
-    //
-    // A Run reads the `spec` and `dates` it was built with on every pixel:
-    // they must outlive it.
-    //
-    // A resume continues the pixel from its record when its input up to the
-    // stored series end is the stored run's and the machine stopped where it
-    // can continue; otherwise the pixel is rerun under the stored statistics
-    // cutoff, and the status says why. Either way the result equals the
-    // pixel's run under that cutoff, whole output.
-    PixelOutcome pixel(const PixelSpectral& spectral, const PixelQa& qa,
-                       const PixelPrior& prior, Worker& worker) const;
-
-private:
-
-    // pixel() for a known element type, as the cube loop calls it (instantiated
-    // in run.cpp for every supported pair).
-    template<typename Value, typename Qa>
-    PixelOutcome pixel_typed(ArrayView<const Value, 2> spectral, ArrayView<const Qa, 1> qa,
-                             const PixelPrior& prior, Worker& worker) const;
-
-    template<typename Value, typename Qa>
-    friend CubeOutput cube_loop(const Run&, ArrayView<const Value, 4>, ArrayView<const Qa, 3>,
-                                int, const CubeResumeFrom*);
-
-
-    const RunSpec& spec_;
-    ArrayView<const std::int64_t, 1> dates_;
-    index_t bands_;
-    index_t timesteps_;
-    bool raw_qa_;
-
-    // The algorithm resolved for the input: its stages, shared values and
-    // strategies, shared by every thread.
-    std::shared_ptr<const config::Resolved> resolved_;
-
-    // What the pixels run: the shared values and plan, with every
-    // statistics cutoff capped at header_.statistics_end for a resume.
-    config::Shared shared_;
-    preprocess::PreprocessPlan run_plan_;
-
-    ResumeHeader header_;
-
-    // The stored call's header, for a resume.
-    std::optional<ResumeHeader> resume_;
-};
-
-//------------------------------------------------------------------------------
-//
 // CCD on one pixel: `spectral` (B, T), `qas` (T), `dates` (T).
 //
 // `spectral` is read, never written: the plan's transform (in "ccdc" the
 // Standard procedure's thermal transform, Input::thermal_scale/
 // thermal_offset) is applied to a private copy. Any strides. The QA is the
 // codes (uint8) or raw values decoded through the input's qa_table (uint8 or
-// uint16). Throws what Run and Run::pixel throw.
+// uint16).
 //
-// With `resume`, continues that stored run on the whole of a longer series
-// (Run::pixel): the stored run's input with the observations after its series
-// end.
+// Before the pixel runs, it throws std::invalid_argument, in this order, on:
+// an input that fails validate() for the spectral's band count; `dates` or
+// the QA without the spectral's timestep count; dates that fail
+// validate_dates(); raw (uint16) QA without the input's QA table; a
+// configuration the input does not fit (Algorithm::for_input(), the plan's
+// validate() included); and for a resume, a header of another record format
+// or results version, made with another input (its QA table included) or
+// configuration (by Resolved::digest), or for a series that ends before the
+// stored one. Then on a resume with fewer stored segments than its record's
+// final ones.
+//
+// With `resume`, continues that stored run on the whole of a longer series:
+// the stored run's input with the observations after its series end. The
+// pixel continues from its record when its input up to the stored series end
+// is the stored run's and the machine stopped where it can continue;
+// otherwise it is rerun under the stored statistics cutoff, and the status
+// says why. Either way the result equals the pixel's run under that cutoff,
+// whole output.
 //
 // The returned header is the run's (RunSpec::record or a resume).
 //
@@ -407,8 +245,8 @@ inline PixelOutput detect(
 //
 // This never throws on account of a pixel; see CubeOutput::failures. It
 // throws, before any pixel runs, std::runtime_error on a QA cube that is not
-// (H, W, T), and std::invalid_argument on what Run throws on and for a resume
-// on records or segment lists that are not H x W.
+// (H, W, T), and std::invalid_argument on what detect() throws on before its
+// pixel runs and for a resume on records or segment lists that are not H x W.
 //
 // The cube is read, never written, in any strides, as float64, float32 or
 // uint16. Each pixel is converted to scalar_t in a per-thread buffer --

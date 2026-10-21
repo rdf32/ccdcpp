@@ -902,6 +902,19 @@ if(CCD_BUILD_TESTS)
             cxx_std_17
     )
 
+    # The tests that reach the library's internal headers (src/), which the
+    # library does not export.
+    foreach(internal_test IN ITEMS
+        test_qa_tables
+    )
+        target_include_directories(
+            ${internal_test}
+
+            PRIVATE
+                ${PROJECT_SOURCE_DIR}/src
+        )
+    endforeach()
+
     configure_file(
         ${PROJECT_SOURCE_DIR}/tests/ccd/machine/test002_c2.csv
         ${PROJECT_BINARY_DIR}/test002_c2.csv

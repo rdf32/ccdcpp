@@ -28,6 +28,7 @@
 
 #include "ccd/ccd.hpp"
 #include "ccd/input/qa_tables.hpp"
+#include "ccd/run/run_pixel.hpp"   // internal (src/): Run and Worker
 
 #include "golden.hpp"
 #include "synthetic.hpp"
@@ -304,11 +305,11 @@ TEST(QaTables, DetectDecodes)
             const ccd::Run with_table(table_spec, dates, 7, T, T, true);
             const ccd::Run without(codes_spec, dates, 7, T, T, false);
             std::string with_worker;
-            golden::dump_pixel(with_worker, "", with_table.pixel(spectral, ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}), {}, worker).result);
+            golden::dump_pixel(with_worker, "", with_table.pixel<double, std::uint16_t>(spectral, ccd::ArrayView<const std::uint16_t, 1>::contiguous(raw.data(), {T}), {}, worker).result);
             EXPECT_EQ(expected, with_worker) << s.name << " pixel " << p;
 
             std::string after;
-            golden::dump_pixel(after, "", without.pixel(spectral, ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T}), {}, worker).result);
+            golden::dump_pixel(after, "", without.pixel<double, std::uint8_t>(spectral, ccd::ArrayView<const std::uint8_t, 1>::contiguous(codes, {T}), {}, worker).result);
             EXPECT_EQ(expected, after) << s.name << " pixel " << p;
         }
     }

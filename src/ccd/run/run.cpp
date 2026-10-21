@@ -1,4 +1,4 @@
-#include "ccd/run/run.hpp"
+#include "run_pixel.hpp"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -448,7 +448,7 @@ Observe Run::observed(index_t at) const
 }
 
 template<typename Value, typename Qa>
-PixelOutcome Run::pixel_typed(
+PixelOutcome Run::pixel(
     ArrayView<const Value, 2> spectral,
     ArrayView<const Qa, 1> qa,
     const PixelPrior& prior,
@@ -535,22 +535,21 @@ PixelOutcome Run::pixel_typed(
     return out;
 }
 
-PixelOutcome Run::pixel(
-    const PixelSpectral& spectral,
-    const PixelQa& qa,
-    const PixelPrior& prior,
-    Worker& worker
-) const
-{
-    return std::visit(
-        [&](auto s, auto q)
-        {
-            using Value = std::remove_const_t<typename decltype(s)::value_type>;
-            using Qa = std::remove_const_t<typename decltype(q)::value_type>;
-            return pixel_typed<Value, Qa>(s, q, prior, worker);
-        },
-        spectral, qa);
-}
+// Every supported pair of element types.
+template PixelOutcome Run::pixel<double, std::uint8_t>(
+    ArrayView<const double, 2>, ArrayView<const std::uint8_t, 1>, const PixelPrior&, Worker&) const;
+template PixelOutcome Run::pixel<double, std::uint16_t>(
+    ArrayView<const double, 2>, ArrayView<const std::uint16_t, 1>, const PixelPrior&, Worker&) const;
+template PixelOutcome Run::pixel<float, std::uint8_t>(
+    ArrayView<const float, 2>, ArrayView<const std::uint8_t, 1>, const PixelPrior&, Worker&) const;
+template PixelOutcome Run::pixel<float, std::uint16_t>(
+    ArrayView<const float, 2>, ArrayView<const std::uint16_t, 1>, const PixelPrior&, Worker&) const;
+template PixelOutcome Run::pixel<std::uint16_t, std::uint8_t>(
+    ArrayView<const std::uint16_t, 2>, ArrayView<const std::uint8_t, 1>, const PixelPrior&,
+    Worker&) const;
+template PixelOutcome Run::pixel<std::uint16_t, std::uint16_t>(
+    ArrayView<const std::uint16_t, 2>, ArrayView<const std::uint16_t, 1>, const PixelPrior&,
+    Worker&) const;
 
 //==============================================================================
 // Entry points
@@ -581,7 +580,14 @@ PixelOutput detect(
 
     Worker worker;
     worker.observe = Observe{spec.observer.get(), 0};
-    PixelOutcome outcome = run.pixel(spectral, qas, prior, worker);
+    PixelOutcome outcome = std::visit(
+        [&](auto s, auto q)
+        {
+            using Value = std::remove_const_t<typename decltype(s)::value_type>;
+            using Qa = std::remove_const_t<typename decltype(q)::value_type>;
+            return run.pixel<Value, Qa>(s, q, prior, worker);
+        },
+        spectral, qas);
 
     PixelOutput out;
     out.result = std::move(outcome.result);
@@ -696,7 +702,7 @@ CubeOutput cube_loop(
 
                 worker.observe = run.observed(at);
                 PixelOutcome outcome =
-                    run.pixel_typed<Value, Qa>(spect_view, qa_view, prior, worker);
+                    run.pixel<Value, Qa>(spect_view, qa_view, prior, worker);
 
                 if (masks)
                 {
