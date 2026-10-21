@@ -127,7 +127,7 @@ thermal  (K*10 - 27315) / 10000      -> degrees Celsius / 100
 The coefficients then come out in those same units: no descaling pass on the way out, at any
 scale, for any band. `presets.landsat_c1_physical()` is this input.
 
-**Measured**, on the pyccd reference pixel in `tests/ccd/machine/test_3657_3610_observations.csv`
+**Measured**, on the pyccd reference pixel in `tests/ccd/data/test_3657_3610_observations.csv`
 (443 observations, 5 segments): against the DN input, this input reproduces the processing mask
 bit for bit, the same 5 segments with identical start, end and break days, observation counts
 and curve_qa, change probabilities equal to 0.0e+00 absolute, and every coefficient, intercept,

@@ -333,13 +333,16 @@ if(CCD_BUILD_TESTS)
     # gtest_main, with DEFINES as its compile definitions; INTERNAL gives it
     # the library's internal headers (src/), which the library does not
     # export. Its tests are discovered unless NO_DISCOVER, for the tests that
-    # discover theirs in shards (below).
+    # discover theirs in shards (below). Every test opens its CSVs in
+    # tests/ccd/data by absolute path (CCD_TEST_DATA_DIR), so it passes from
+    # any working directory, not only under ctest.
     function(ccd_add_gtest name)
         cmake_parse_arguments(PARSE_ARGV 1 test "INTERNAL;NO_DISCOVER" "" "SOURCES;DEFINES")
         add_executable(${name} ${test_SOURCES})
         target_link_libraries(${name} PRIVATE ccd_core GTest::gtest_main)
         target_compile_features(${name} PRIVATE cxx_std_17)
-        target_compile_definitions(${name} PRIVATE ${test_DEFINES})
+        target_compile_definitions(
+            ${name} PRIVATE CCD_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/data" ${test_DEFINES})
         if(test_INTERNAL)
             target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src)
         endif()
@@ -348,23 +351,18 @@ if(CCD_BUILD_TESTS)
         endif()
     endfunction()
 
-    # The tests that read the CSVs copied below open them under the build
-    # directory by absolute path, so they pass from any working directory,
-    # not only under ctest.
-    set(data_dir CCD_TEST_DATA_DIR="${PROJECT_BINARY_DIR}")
-
     # The regression solvers against scikit-learn.
-    ccd_add_gtest(test_lasso SOURCES tests/ccd/regression/test_lasso.cpp DEFINES ${data_dir})
-    ccd_add_gtest(test_robust SOURCES tests/ccd/regression/test_robust.cpp DEFINES ${data_dir})
+    ccd_add_gtest(test_lasso SOURCES tests/ccd/regression/test_lasso.cpp)
+    ccd_add_gtest(test_robust SOURCES tests/ccd/regression/test_robust.cpp)
 
     # The three procedures on the pyccd reference pixel against pyccd.
-    ccd_add_gtest(test_clear SOURCES tests/ccd/machine/test_clear.cpp DEFINES ${data_dir})
-    ccd_add_gtest(test_snow SOURCES tests/ccd/machine/test_snow.cpp DEFINES ${data_dir})
+    ccd_add_gtest(test_clear SOURCES tests/ccd/machine/test_clear.cpp)
+    ccd_add_gtest(test_snow SOURCES tests/ccd/machine/test_snow.cpp)
     ccd_add_gtest(test_standard INTERNAL SOURCES tests/ccd/machine/test_standard.cpp
-                  DEFINES ${data_dir})
+                 )
 
     # The unit-convention guard. Shares test_standard's input file.
-    ccd_add_gtest(test_units SOURCES tests/ccd/machine/test_units.cpp DEFINES ${data_dir})
+    ccd_add_gtest(test_units SOURCES tests/ccd/machine/test_units.cpp)
 
     # The observation filters on hand-built series: the range bounds and
     # their flags, and the green median filter's scope.
@@ -378,13 +376,7 @@ if(CCD_BUILD_TESTS)
 
     # The shared kernels against the per-site loops they stand for, bit for
     # bit. See tests/ccd/machine/test_kernels.cpp.
-    ccd_add_gtest(
-        test_kernels INTERNAL
-        SOURCES tests/ccd/machine/test_kernels.cpp
-        DEFINES
-            CCD_PYCCD_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_3657_3610_observations.csv"
-            CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test002_c2.csv"
-    )
+    ccd_add_gtest(test_kernels INTERNAL SOURCES tests/ccd/machine/test_kernels.cpp)
 
     # The strategy registry and parameter schemas. See
     # tests/ccd/strategies/test_registry.cpp.
@@ -398,16 +390,14 @@ if(CCD_BUILD_TESTS)
     # hand-written chains, custom plans through detect(), plan
     # validation, and a microbenchmark of apply(). See
     # tests/ccd/machine/test_preprocess.cpp.
-    ccd_add_gtest(test_preprocess SOURCES tests/ccd/machine/test_preprocess.cpp DEFINES ${data_dir})
+    ccd_add_gtest(test_preprocess SOURCES tests/ccd/machine/test_preprocess.cpp)
 
     # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
     ccd_add_gtest(
         test_golden
         SOURCES tests/ccd/golden/test_golden.cpp
-        DEFINES
-            ${data_dir}
-            CCD_GOLDEN_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/golden_fixture.txt"
+        DEFINES CCD_GOLDEN_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/golden_fixture.txt"
     )
 
     # The Standard procedure's transitions, guards and pyccd quirks that the
@@ -426,20 +416,12 @@ if(CCD_BUILD_TESTS)
     target_include_directories(test_record PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/golden)
 
     # Resume equals the full run. See tests/ccd/golden/test_resume.cpp.
-    ccd_add_gtest(
-        test_resume NO_DISCOVER
-        SOURCES tests/ccd/golden/test_resume.cpp
-        DEFINES CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
-    )
+    ccd_add_gtest(test_resume NO_DISCOVER SOURCES tests/ccd/golden/test_resume.cpp)
 
     # Prefix stability: a run on the observations up to a date keeps every
     # final segment of the run on the whole series. See
     # tests/ccd/golden/test_prefix.cpp.
-    ccd_add_gtest(
-        test_prefix NO_DISCOVER
-        SOURCES tests/ccd/golden/test_prefix.cpp
-        DEFINES CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
-    )
+    ccd_add_gtest(test_prefix NO_DISCOVER SOURCES tests/ccd/golden/test_prefix.cpp)
 
     # The sweeps over cuts (tests/ccd/golden/series_corpus.hpp) run as shards:
     # "sample" in every run, "restN" labelled corpus, so `ctest -LE corpus` is
@@ -485,27 +467,6 @@ if(CCD_BUILD_TESTS)
     # QA lookup tables: raw QA decoded through a table against the codes
     # passed directly. See tests/ccd/golden/test_qa_tables.cpp.
     ccd_add_gtest(test_qa_tables INTERNAL SOURCES tests/ccd/golden/test_qa_tables.cpp)
-
-    # Copy the reference data into the build directory, where the tests open
-    # it (CCD_TEST_DATA_DIR above).
-    foreach(
-        csv
-
-        tests/ccd/regression/lasso_reference.csv
-        tests/ccd/regression/robust_reference.csv
-        tests/ccd/machine/test_3657_3610_observations.csv
-        tests/ccd/machine/test_atlanta_024013_00030008_481_393.csv
-        tests/ccd/machine/test002_c2.csv
-        tests/ccd/machine/clear_reference.csv
-        tests/ccd/machine/clear_mask_reference.csv
-        tests/ccd/machine/snow_reference.csv
-        tests/ccd/machine/snow_mask_reference.csv
-        tests/ccd/machine/standard_reference.csv
-        tests/ccd/machine/standard_mask_reference.csv
-    )
-        get_filename_component(csv_name ${csv} NAME)
-        configure_file(${PROJECT_SOURCE_DIR}/${csv} ${PROJECT_BINARY_DIR}/${csv_name} COPYONLY)
-    endforeach()
 
 endif()
 

@@ -142,8 +142,8 @@ struct CsvPixel
 const std::vector<CsvPixel>& csv_pixels()
 {
     static const std::vector<CsvPixel> pixels{
-        {CCD_PYCCD_PIXEL_CSV, ccd::Input{}, golden::pyccd()},
-        {CCD_C2_PIXEL_CSV, golden::c2_input(), golden::c2_config()},
+        {CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", ccd::Input{}, golden::pyccd()},
+        {CCD_TEST_DATA_DIR "/test002_c2.csv", golden::c2_input(), golden::c2_config()},
     };
     return pixels;
 }

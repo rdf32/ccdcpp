@@ -185,7 +185,7 @@ TEST_P(PrefixStability, CsvPixelsEverySplit)
 {
     Sweep total;
     std::size_t ordinal = 0;
-    for (const auto& s : golden::csv_series(CCD_PREFIX_DATA_DIR))
+    for (const auto& s : golden::csv_series(CCD_TEST_DATA_DIR))
         sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), total);
     report("csv", total);
     EXPECT_GT(total.with_final, 0u);

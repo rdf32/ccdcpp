@@ -61,8 +61,8 @@ side (implementation, call form or phase) in its own process, so each peak is it
 
    ```
    <python> -I -W ignore tools/bench/bench_pyccd.py <package dir> <pyccd dir> c16.bin 402 \
-       tests/ccd/machine/test_3657_3610_observations.csv \
-       tests/ccd/machine/test_atlanta_024013_00030008_481_393.csv
+       tests/ccd/data/test_3657_3610_observations.csv \
+       tests/ccd/data/test_atlanta_024013_00030008_481_393.csv
    ```
 
    Run it twice and report the medians, totals and ratios of the last lines. For the same

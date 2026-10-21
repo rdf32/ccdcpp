@@ -14,7 +14,7 @@ The cell is Landsat ARD tile h024v013, chunk 00030008 (500 x 500 ARD pixels). Fi
 | `break` | 0, 90 | 23 developed, medium intensity | 10, 141 | 15, 212 |
 | `coastal` | (0, 91, the ARD pixel containing its centre) | 21 developed, open space (HLS grid) | 10, 142 | HLS only |
 
-**`481_393` is 1-based (column, row)**: the production CCD table's `px=481, py=393`, the pixel of `tests/ccd/machine/test_atlanta_024013_00030008_481_393.csv`, which is 0-based row 392, column 480. Its tests are named `..._fixture_481_393_one_based_col_row`. An ARD pixel maps to the HLS pixel containing its centre, an HLS pixel to the S2 20 m pixel containing its centre; `pixels.json` holds the positions (HLS tile row 2807, column 2283 for the fixture pixel) and the breaks the validation found.
+**`481_393` is 1-based (column, row)**: the production CCD table's `px=481, py=393`, the pixel of `tests/ccd/data/test_atlanta_024013_00030008_481_393.csv`, which is 0-based row 392, column 480. Its tests are named `..._fixture_481_393_one_based_col_row`. An ARD pixel maps to the HLS pixel containing its centre, an HLS pixel to the S2 20 m pixel containing its centre; `pixels.json` holds the positions (HLS tile row 2807, column 2283 for the fixture pixel) and the breaks the validation found.
 
 ## Files
 

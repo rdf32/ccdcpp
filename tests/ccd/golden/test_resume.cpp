@@ -172,7 +172,7 @@ TEST_P(ResumeEqualsTheFullRun, CsvPixelsEveryCut)
 {
     Counts c;
     std::size_t ordinal = 0;
-    for (const auto& s : golden::csv_series(CCD_PREFIX_DATA_DIR))
+    for (const auto& s : golden::csv_series(CCD_TEST_DATA_DIR))
         sweep(s, golden::shard_of(s, ordinal++, golden::every(s.size()), GetParam()), c);
     report("csv", c);
     EXPECT_GT(c.continued, c.splits / 2);
