@@ -98,7 +98,8 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/regression/lasso_solver.hpp"
-#include "ccd/machine/fit.hpp"
+#include "ccd/results/segment.hpp"
+#include "ccd/strategies/edge_fit/lasso.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/input/mask/filter.hpp"
 

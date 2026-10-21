@@ -33,7 +33,6 @@
 #include "ccd/regression/robust_solver.hpp"
 
 #include "ccd/machine/fit.hpp"
-#include "ccd/machine/kernels.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/machine/suspended.hpp"
 

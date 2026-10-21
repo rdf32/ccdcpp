@@ -105,7 +105,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 The guards inside one call, in the order they are tested:
 
-- **Initialize** (`initialize_step`, `src/ccd/machine/kernels.cpp`): the start search finds
+- **Initialize** (`initialize_step`, `src/ccd/machine/standard.cpp`): the start search finds
   no candidate left (`Exhausted`) or a span too short (`ShortSpan`, grow; pyccd: under
   `day_delta`); the window screen (Tmask) flags
   every observation (`AllOutliers`, grow); it flags some and the shortened window is not a
@@ -367,21 +367,28 @@ record:
 
 | Function or type | File |
 |---|---|
-| `fit_whole_series`, `PixelProcedure` | `include/ccd/machine/pixel_procedure.hpp` |
+| `PixelProcedure`, `PixelMode` | `include/ccd/machine/pixel_procedure.hpp` |
 | `MaskedSeries` | `include/ccd/input/masked_series.hpp` |
 | `Cursor`, `drive` | `src/ccd/machine/machine.hpp` |
-| `fit_bands` (the one per-band fit loop), `peek_residuals`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/machine/kernels.hpp` |
-| `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
-| `Variogram`, `adjusted_variogram`, `tmask` | `include/ccd/machine/fit.hpp` |
-| `adjust_peek`, `adjust_change_threshold`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse`: pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
 | `Window`, `span`, `count_through` | `include/ccd/core/window.hpp` |
 | `ChangeModel`, `BandFit`, `FitResult`, `CurveQA` | `include/ccd/results/segment.hpp` |
+| `Variogram`, `adjusted_variogram`, `tmask` | `include/ccd/machine/fit.hpp` |
+| `KeepResiduals`, with the `Model` contract | `include/ccd/strategies/model.hpp` |
+| `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
+
+Each strategy holds its own code, beside its class:
+
+| Function or type | Owner | File |
+|---|---|---|
+| `fit_bands` (the one per-band fit loop), `peek_residuals`, `band_fit` | the Lasso model and stability fit | `include/ccd/strategies/model/lasso.hpp` |
+| `catch_segment`, `fit_whole_series` | the Lasso edge fit | `include/ccd/strategies/edge_fit/lasso.hpp` |
+| `adjust_peek`, `adjust_change_threshold`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse` | pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
-(`src/ccd/machine/standard.hpp`): `initialize_criteria`, the phases,
-the
-transitions and the routing. A function moves to the shared list once a second machine or a
-strategy uses it.
+(`src/ccd/machine/standard.hpp`): `initialize_criteria`, `initialize_step` with
+`InitializeCriteria`, `InitializeStages` and `InitializeOutcome`, the phases, the transitions
+and the routing. A function moves to the shared list once a second machine or a strategy uses
+it.
 
 ## 5. The driver and the trace
 

@@ -2,19 +2,21 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "ccd/machine/fit.hpp"
-#include "ccd/machine/kernels.hpp"
+#include "ccd/core/band_list.hpp"
+#include "ccd/core/window.hpp"
 #include "ccd/machine/suspended.hpp"
 
 #include "machine.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
+#include "ccd/results/segment.hpp"
 #include "ccd/strategies/model.hpp"
 #include "ccd/strategies/per_thread.hpp"
 #include "ccd/strategies/stages.hpp"
@@ -43,6 +45,96 @@ struct Cadence
     index_t shortest;     // peek for a test of full peeks only, else 0
     index_t min_window;   // a smaller model window grows untested
 };
+
+//==============================================================================
+//
+// Initialize
+//
+// One step of the search for a stable start window, as a plain function of
+// what it reads: the Initialize phase calls it once per candidate window.
+//
+//==============================================================================
+
+// What Initialize fits a candidate window with, besides its strategies. The
+// machine fills it from its run's shared values (initialize_criteria());
+// initialize_step() does not read them directly. Values throughout (a
+// BandList is a small fixed-capacity array), so a criteria object never
+// refers to what it was filled from.
+struct InitializeCriteria
+{
+    BandList detection_bands;   // the bands fitted and tested for stability
+    index_t num_coefficients;   // of the stability fits
+    index_t max_coefficients;   // the widest model's: their peek basis width
+
+    // The last day the search sees (StartSearch::last_day()): its
+    // exhausted() reads the observations dated through it.
+    std::int64_t last_day = std::numeric_limits<std::int64_t>::max();
+};
+
+// The strategies one Initialize step runs, of the run's stages: the start
+// search, the window screen, the stability fit (its Model, which holds the
+// fits) and the stability rule with its scratch, prepared for the pixel.
+struct InitializeStages
+{
+    const StartSearch& search;
+    const WindowScreen& screen;
+    Model& fit;
+    const StabilityRule& rule;
+    const Scratch& rule_scratch;
+};
+
+// What one step of the start-window search did, in the order the step tests
+// them.
+//
+// The last two are one step that changes two things: Tmask's outliers are
+// dropped from the series (the window shortened by as many), and the
+// shortened window is fitted and tested in the same step, as pyccd does in
+// one pass of its loop. Their routing is Unstable's and Stable's.
+enum class InitializeOutcome : std::uint8_t
+{
+    Exhausted,            // the start search has no candidate left:
+                          // nothing tested or changed
+    ShortSpan,            // the window spans too few days: grown
+    AllOutliers,          // Tmask flags every observation in it: grown
+    RejectedOutliers,     // what Tmask's outliers leave is too short or too
+                          // few: grown, nothing dropped
+    Unstable,             // nothing flagged; fitted, not stable: shifted
+    Stable,               // nothing flagged; fitted and stable
+    DroppedThenUnstable,  // outliers dropped; fitted, not stable: shifted
+    DroppedThenStable     // outliers dropped; fitted and stable
+};
+
+const char* to_string(InitializeOutcome outcome);
+
+// One step of the search for a stable start window: one candidate window.
+// `window` holds at least the search's min_window() observations.
+//
+// In this order:
+//
+//   * the start search finds no candidate left: Exhausted;
+//   * it finds the window spans too few days: the window grows by one;
+//   * the window screen flags every observation of the window: it grows by
+//     one (AllOutliers);
+//   * it flags some: they are dropped from `series` if what is left of
+//     the window is still a candidate (the search's usable();
+//     MaskedSeries::drop_outliers_if(), which shortens the window), and the
+//     step goes on; otherwise the window grows by one with nothing dropped
+//     (RejectedOutliers);
+//   * the detection bands are fitted over the window by the stability fit
+//     (residuals kept): Stable (DroppedThenStable after a drop) when the
+//     stability rule finds the fit stable, with `window` the stable window
+//     and the fit its fits; otherwise the window shifts by one (Unstable,
+//     DroppedThenUnstable).
+//
+// Only the detection bands are fitted, and only on the four fitted
+// outcomes.
+InitializeOutcome initialize_step(
+    MaskedSeries& series,
+    Window& window,
+    const InitializeCriteria& criteria,
+    const Variogram& variogram,
+    const InitializeStages& stages
+);
 
 // What Initialize fits a candidate window with: the shared detection bands,
 // and stability fits of the stability fit's rule's min coefficients in a
@@ -91,7 +183,7 @@ InitializeCriteria initialize_criteria(const config::Shared& shared,
 enum class Phase : std::uint8_t
 {
     Prepare,       // the early exits, the statistics window, cadence, variogram
-    Initialize,    // one candidate start window (ccd::initialize_step)
+    Initialize,    // one candidate start window (initialize_step)
     Lookback,      // one observation before the window, towards prev_break
     StartCatch,    // the leading observations of the first segment
     Extend,        // one peek test after the window

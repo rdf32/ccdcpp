@@ -28,11 +28,12 @@ namespace ccd
 //     kept observations;
 //   * Cursor (below): where the model window is;
 //   * the segments written so far (ChangeModel, results/segment.hpp);
-//   * the kernels of kernels.hpp, Initialize's step among them;
+//   * the run's strategies, one per stage (strategies/stages.hpp);
 //   * drive() (below), the loop, with its trace.
 //
-// Around a machine, also shared: the per-pixel procedure choice and the
-// whole-series fit of the pixels that take no machine (pixel_procedure.hpp).
+// Around a machine, also shared: the per-pixel procedure
+// (pixel_procedure.hpp), which the mode stage chooses, and the whole-series
+// fit of the pixels that take no machine, which is the edge fit's.
 // docs/ccdc-state-machine.md describes the design as a whole.
 //
 //==============================================================================

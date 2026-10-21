@@ -8,10 +8,17 @@
 #include "ccd/core/types.hpp"
 #include "ccd/results/segment.hpp"
 
-#include "ccd/machine/kernels.hpp"
-
 namespace ccd
 {
+
+// Whether a fit keeps each band's in-window residuals (Model::residuals()).
+// The stability rule and Extend's seasonal RMSE read them; a
+// returned segment's are never read.
+enum class KeepResiduals : bool
+{
+    No = false,
+    Yes = true
+};
 
 //==============================================================================
 //

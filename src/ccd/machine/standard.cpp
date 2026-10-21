@@ -122,6 +122,24 @@ const char* to_string(Phase phase)
     return "?";
 }
 
+const char* to_string(InitializeOutcome outcome)
+{
+    switch (outcome)
+    {
+        case InitializeOutcome::Exhausted:        return "exhausted";
+        case InitializeOutcome::ShortSpan:        return "short span, grown";
+        case InitializeOutcome::AllOutliers:      return "all Tmask outliers, grown";
+        case InitializeOutcome::RejectedOutliers: return "Tmask drop rejected, grown";
+        case InitializeOutcome::Unstable:         return "unstable, shifted";
+        case InitializeOutcome::Stable:           return "stable";
+        case InitializeOutcome::DroppedThenUnstable:
+            return "Tmask outliers dropped, unstable, shifted";
+        case InitializeOutcome::DroppedThenStable:
+            return "Tmask outliers dropped, stable";
+    }
+    return "?";
+}
+
 const char* to_string(LookbackOutcome outcome)
 {
     switch (outcome)
@@ -410,6 +428,135 @@ Phase begin_search(const Context& context, State& state)
     if (state.search.exhausted == Exhaustion::Restore)
         state.search_mask = state.series.mask();
     return Phase::Initialize;
+}
+
+InitializeOutcome initialize_step(
+    MaskedSeries& series,
+    Window& window,
+    const InitializeCriteria& criteria,
+    const Variogram& variogram,
+    const InitializeStages& stages
+)
+{
+    const StartSearch& search = stages.search;
+    assert(window.size() >= search.min_window());
+
+    //--------------------------------------------------------------------------
+    // No candidate left before the end of the series
+    //--------------------------------------------------------------------------
+    const index_t seen = criteria.last_day == std::numeric_limits<std::int64_t>::max()
+        ? series.size()
+        : count_through(series.dates(), criteria.last_day);
+    if (search.exhausted(window, seen))
+    {
+        LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
+        return InitializeOutcome::Exhausted;
+    }
+
+    // The window's observations; a Tmask drop below replaces them.
+    auto dates =
+        series.dates().slice(range(window.start, window.stop));
+    auto spectral =
+        series.spectral().slice(all(), range(window.start, window.stop));
+
+    //--------------------------------------------------------------------------
+    // Check minimum time span
+    //--------------------------------------------------------------------------
+    if (search.short_span(dates))
+    {
+        window.grow();
+        return InitializeOutcome::ShortSpan;
+    }
+
+    LOG_DEBUG(
+        "Checking window ("
+        << window.start
+        << ", "
+        << window.stop
+        << ")"
+    );
+    //--------------------------------------------------------------------------
+    // The window screen (Tmask)
+    //--------------------------------------------------------------------------
+    auto outliers = stages.screen.screen(dates, spectral, variogram);
+    LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
+    //--------------------------------------------------------------------------
+    // The screen removed everything
+    //--------------------------------------------------------------------------
+    if (outliers.count() == window.size())
+    {
+        window.grow();
+        return InitializeOutcome::AllOutliers;
+    }
+
+    //--------------------------------------------------------------------------
+    // Update persistent mask
+    //--------------------------------------------------------------------------
+    bool dropped = false;
+    if (outliers.any())
+    {
+        //----------------------------------------------------------------------
+        // Drop them only if the shortened window is still usable; otherwise
+        // grow, with nothing dropped
+        //----------------------------------------------------------------------
+        dropped = series.drop_outliers_if(
+            outliers,
+            window,
+            [&search](ArrayView<const std::int64_t, 1> shortened)
+            {
+                return search.usable(shortened);
+            }
+        );
+
+        if (!dropped)
+        {
+            window.grow();
+            return InitializeOutcome::RejectedOutliers;
+        }
+
+        dates = series.dates().slice(range(window.start, window.stop));
+        spectral = series.spectral().slice(all(), range(window.start, window.stop));
+    }
+
+    LOG_DEBUG("Generating models to check for stability");
+    LOG_DEBUG(
+        "window for stability: ("
+        << window.start
+        << ", "
+        << window.stop
+        << ")"
+    );
+    //--------------------------------------------------------------------------
+    // Fit the detection bands
+    //
+    // Only these are read: the stability rule here and Lookback after it.
+    //--------------------------------------------------------------------------
+    stages.fit.fit(
+        dates,
+        spectral,
+        criteria.num_coefficients,
+        criteria.max_coefficients,
+        criteria.detection_bands,
+        KeepResiduals::Yes
+    );
+
+    //--------------------------------------------------------------------------
+    // Stability check
+    //--------------------------------------------------------------------------
+    if (stages.rule.stable(
+            stages.fit,
+            dates,
+            variogram,
+            criteria.detection_bands,
+            stages.rule_scratch))
+    {
+        LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
+        return dropped ? InitializeOutcome::DroppedThenStable : InitializeOutcome::Stable;
+    }
+
+    window.shift();
+    LOG_DEBUG("Unstable model, shift window to: (" << window.start << ", " << window.stop << ")");
+    return dropped ? InitializeOutcome::DroppedThenUnstable : InitializeOutcome::Unstable;
 }
 
 InitializeOutcome initialize_outcome(const Context& context, State& state)

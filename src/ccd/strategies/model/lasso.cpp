@@ -1,11 +1,159 @@
 #include "ccd/strategies/model/lasso.hpp"
 
-#include "ccd/machine/kernels.hpp"
+#include <cassert>
+#include <cmath>
+#include <utility>
+
 #include "ccd/regression/harmonic_basis.hpp"
 #include "ccd/strategies/model.hpp"
 
 namespace ccd
 {
+
+namespace
+{
+
+// One band's fit, over the basis already in `lworkspace`.
+void fit_band(
+    ArrayView<const scalar_t, 1> y,
+    index_t num_coefficients,
+    KeepResiduals keep,
+    LassoWorkspace& lworkspace,
+    LassoSolver& solver,
+    LassoResult& fit
+)
+{
+    LassoModel model = solver.fit(
+        lworkspace,
+        y
+    );
+
+    model.predict(
+        lworkspace.X(),
+        lworkspace.predictions
+    );
+
+    fit.model = std::move(model);
+    fit.score.rmse = rmse(
+        y,
+        lworkspace.predictions,
+        lworkspace.residuals,
+        num_coefficients,
+        true
+    );
+    fit.score.magn = 0.0;
+
+    if (keep == KeepResiduals::Yes)
+    {
+        fit.score.residuals.assign(
+            lworkspace.residuals.begin(),
+            lworkspace.residuals.end()
+        );
+    }
+    else
+    {
+        fit.score.residuals.clear();
+    }
+}
+
+// One band's peek residuals, in place: the prediction, then |y - prediction|.
+void peek_band_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 1> y,
+    const LassoModel& model,
+    std::vector<scalar_t>& residuals
+)
+{
+    residuals.resize(y.size());
+
+    model.predict(
+        peek_basis.X(),
+        residuals
+    );
+
+    for (index_t i = 0; i < y.size(); ++i)
+    {
+        residuals[i] =
+            std::abs(y(i) - residuals[i]);
+    }
+}
+
+} // namespace
+
+BandFit band_fit(const LassoResult& fit)
+{
+    BandFit out;
+    out.intercept = fit.model.intercept();
+    out.coefficients = fit.model.coefficients();
+    out.rmse = fit.score.rmse;
+    out.magnitude = fit.score.magn;
+    out.iterations = fit.model.iterations();
+    return out;
+}
+
+void fit_bands(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    index_t num_coefficients,
+    const BandList& bands,
+    KeepResiduals keep,
+    LassoWorkspace& lworkspace,
+    LassoSolver& solver,
+    std::vector<LassoResult>& fits
+)
+{
+    lworkspace.resize(dates.size());
+    lworkspace.build_basis(dates, num_coefficients);
+
+    for (const index_t band : bands)
+    {
+        fit_band(
+            spectral.slice(fixed(band), all()),
+            num_coefficients,
+            keep,
+            lworkspace,
+            solver,
+            fits[band]
+        );
+    }
+}
+
+void fit_bands(
+    ArrayView<const std::int64_t, 1> dates,
+    ArrayView<const scalar_t, 2> spectral,
+    index_t num_coefficients,
+    KeepResiduals keep,
+    LassoWorkspace& lworkspace,
+    LassoSolver& solver,
+    std::vector<LassoResult>& fits
+)
+{
+    fits.resize(spectral.extent(0));
+    fit_bands(dates, spectral, num_coefficients, every_band(spectral.extent(0)), keep,
+              lworkspace, solver, fits);
+}
+
+void peek_residuals(
+    const HarmonicBasis& peek_basis,
+    ArrayView<const scalar_t, 2> peek_spectral,
+    const std::vector<LassoResult>& models,
+    const BandList& bands,
+    std::vector<std::vector<scalar_t>>& residuals
+)
+{
+    assert(peek_basis.samples() == peek_spectral.extent(1));
+
+    for (const index_t band : bands)
+    {
+        peek_band_residuals(
+            peek_basis,
+            peek_spectral.slice(fixed(band), all()),
+            models[band].model,
+            residuals[band]
+        );
+    }
+}
+
 namespace strategies
 {
 

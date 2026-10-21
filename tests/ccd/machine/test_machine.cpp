@@ -50,6 +50,7 @@
 #include "ccd/machine/standard.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
 #include "../golden/config.hpp"
+#include "ccd/strategies/edge_fit/lasso.hpp"
 #include "ccd/strategies/lookback/pyccd.hpp"
 #include "ccd/strategies/pyccd/peek_statistics.hpp"
 #include "ccd/strategies/register_core.hpp"
@@ -63,6 +64,7 @@ namespace
 using ccd::index_t;
 using ccd::scalar_t;
 using ccd::standard::Exit;
+using ccd::standard::InitializeOutcome;
 using ccd::standard::Phase;
 
 //------------------------------------------------------------------------------
@@ -408,7 +410,7 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     // Initialize's criteria, once for the pixel: the stability fit's
     // (coefficient_min coefficients in a coefficient_max-wide basis among
     // them).
-    const ccd::InitializeCriteria& c = r.state.initialize_criteria;
+    const ccd::standard::InitializeCriteria& c = r.state.initialize_criteria;
     EXPECT_EQ(c.detection_bands.size(), r.shared.detection_bands.size());
     EXPECT_EQ(c.num_coefficients, r.count("stability_fit", "coefficient_min"));
     EXPECT_EQ(c.max_coefficients, r.count("stability_fit", "coefficient_max"));
@@ -439,13 +441,13 @@ void in_initialize(Record& r, index_t start, index_t stop, index_t prev_break = 
 // What the shared step reports for a record set up as `setup` leaves it,
 // on a record of its own (the step changes the record it is given).
 template<typename Setup>
-ccd::InitializeOutcome outcome_of(index_t n, Setup setup)
+InitializeOutcome outcome_of(index_t n, Setup setup)
 {
     Record r(n);
     setup(r);
-    return ccd::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
+    return ccd::standard::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
                                 r.state.variogram,
-                                ccd::InitializeStages{*r.strategies.start_search,
+                                ccd::standard::InitializeStages{*r.strategies.start_search,
                                                       *r.strategies.window_screen, r.stability_fit(),
                                                       *r.strategies.stability_rule,
                                                       r.stability_scratch()});
@@ -458,7 +460,7 @@ TEST(StandardInitialize, NoCandidateLeftIsExhausted)
     {
         in_initialize(r, 16, 28, 16);
     };
-    EXPECT_EQ(outcome_of(40, setup), ccd::InitializeOutcome::Exhausted);
+    EXPECT_EQ(outcome_of(40, setup), InitializeOutcome::Exhausted);
 
     Record r(40);
     setup(r);
@@ -476,7 +478,7 @@ TEST(StandardInitialize, AShortSpanGrows)
     {
         in_initialize(r, 0, 12);
     };
-    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::ShortSpan);
+    EXPECT_EQ(outcome_of(60, setup), InitializeOutcome::ShortSpan);
 
     Record r(60);
     setup(r);
@@ -495,7 +497,7 @@ TEST(StandardInitialize, TmaskFlaggingEverythingGrows)
         in_initialize(r, 0, 24);
         r.with_variogram(1e-12);
     };
-    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::AllOutliers);
+    EXPECT_EQ(outcome_of(60, setup), InitializeOutcome::AllOutliers);
 
     Record r(60);
     setup(r);
@@ -514,7 +516,7 @@ TEST(StandardInitialize, ARejectedTmaskDropGrowsWithNothingDropped)
         r.edit([](index_t b, index_t i, double v) { return (i == 23 && (b == 1 || b == 4)) ? v + 5000 : v; });
         in_initialize(r, 0, 24);
     };
-    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::RejectedOutliers);
+    EXPECT_EQ(outcome_of(60, setup), InitializeOutcome::RejectedOutliers);
 
     Record r(60);
     setup(r);
@@ -535,7 +537,7 @@ TEST(StandardInitialize, AnAcceptedTmaskDropCommitsThenTests)
         r.edit([](index_t b, index_t i, double v) { return (i == 10 && (b == 1 || b == 4)) ? v + 5000 : v; });
         in_initialize(r, 0, 24);
     };
-    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::DroppedThenStable);
+    EXPECT_EQ(outcome_of(60, setup), InitializeOutcome::DroppedThenStable);
 
     Record r(60);
     setup(r);
@@ -563,7 +565,7 @@ TEST(StandardInitialize, AnAcceptedTmaskDropThenAnUnstableWindowShifts)
         });
         in_initialize(r, 0, 24);
     };
-    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::DroppedThenUnstable);
+    EXPECT_EQ(outcome_of(60, setup), InitializeOutcome::DroppedThenUnstable);
 
     Record r(60);
     setup(r);
@@ -582,7 +584,7 @@ TEST(StandardInitialize, AStableWindowLeavesThroughTheRouting)
         in_initialize(r, 20, 44, 10);
         r.with_segment();
     };
-    EXPECT_EQ(outcome_of(80, setup), ccd::InitializeOutcome::Stable);
+    EXPECT_EQ(outcome_of(80, setup), InitializeOutcome::Stable);
 
     Record r(80);
     setup(r);
@@ -600,7 +602,7 @@ TEST(StandardInitialize, AnUnstableWindowShifts)
         r.edit([](index_t b, index_t i, double v) { return (b == 2 || b == 3 || b == 5) ? v + 40.0 * i : v; });
         in_initialize(r, 0, 24);
     };
-    EXPECT_EQ(outcome_of(60, setup), ccd::InitializeOutcome::Unstable);
+    EXPECT_EQ(outcome_of(60, setup), InitializeOutcome::Unstable);
 
     Record r(60);
     setup(r);

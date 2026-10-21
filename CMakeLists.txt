@@ -182,9 +182,7 @@ add_library(
     src/ccd/input/mask/steps.cpp
 
     src/ccd/machine/fit.cpp
-    src/ccd/machine/kernels.cpp
     src/ccd/input/masked_series.cpp
-    src/ccd/machine/pixel_procedure.cpp
     src/ccd/machine/standard.cpp
 
     src/ccd/run/algorithm.cpp

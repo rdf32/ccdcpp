@@ -20,10 +20,6 @@
 namespace ccd
 {
 
-// The BandFit of a Lasso fit: its model's intercept, coefficients and
-// iteration count, its RMSE and its magnitude.
-BandFit band_fit(const LassoResult& fit);
-
 std::vector<scalar_t> calculate_variogram(
     ArrayView<const scalar_t, 2> spectral
 );
