@@ -375,146 +375,60 @@ PixelOutput detect(
 }
 
 
-// The cube loop for one pair of element types.
+namespace
+{
+
+// The pixel at (row, col) of a cube, run with the thread's `worker`. With
+// RunSpec::masks its mask goes straight into its T bytes of `masks`, the
+// cube's (H, W, T) array, and the pixel keeps none.
 template<typename Value, typename Qa>
-CubeOutput cube_loop(
+CubePixel cube_pixel(
     const Run& run,
     ArrayView<const Value, 4> spectral,       // (H,W,B,T)
     ArrayView<const Qa, 3> qas,               // (H,W,T)
-    int threads
+    index_t row,
+    index_t col,
+    Worker& worker,
+    std::vector<std::uint8_t>& masks
 )
 {
-    const index_t H = spectral.extent(0);
-    const index_t W = spectral.extent(1);
     const index_t T = spectral.extent(3);
+    const std::size_t at =
+        static_cast<std::size_t>(row) * static_cast<std::size_t>(spectral.extent(1)) +
+        static_cast<std::size_t>(col);
 
-    // threads == 0 keeps the historical behaviour: let the OpenMP runtime
-    // decide, which is OMP_NUM_THREADS or the core count. A positive value is
-    // a request, not a guarantee -- the runtime may still hand back fewer, so
-    // the count reported below is read from inside the region.
-    const int requested =
-        threads > 0 ? threads : omp_get_max_threads();
+    auto spect_view =
+        spectral.slice(fixed(row), fixed(col), all(), all()); // B, T
 
-    //----------------------------------------------------------------------
-    // One slot per pixel, written by whichever thread runs it, so the
-    // result comes back in raster order whatever the schedule did.
-    //----------------------------------------------------------------------
-    const std::int64_t npixels =
-        static_cast<std::int64_t>(H) *
-        static_cast<std::int64_t>(W);
+    auto qa_view =
+        qas.slice(fixed(row), fixed(col), all()); // T
 
-    std::vector<CubePixel> by_pixel(static_cast<std::size_t>(npixels));
-    std::vector<std::uint8_t> succeeded(static_cast<std::size_t>(npixels), 0);
-    std::vector<std::vector<CubeFailure>> thread_failures(requested);
+    worker.observe = run.observed(at);
+    PixelOutput outcome =
+        run.pixel<Value, Qa>(spect_view, qa_view, static_cast<index_t>(at), worker);
 
-    // With RunSpec::masks, each pixel's mask goes straight into its T bytes
-    // of the result's (H, W, T) array, and the pixel keeps none.
-    CubeOutput merged;
-    merged.height = H;
-    merged.width = W;
-    merged.timesteps = T;
-    const bool masks = run.spec().masks;
-    if (masks)
-        merged.masks.assign(static_cast<std::size_t>(npixels) * T, std::uint8_t{0});
-
-    int used = requested;
-
-    #pragma omp parallel num_threads(requested)
+    if (run.spec().masks)
     {
-        const int tid = omp_get_thread_num();
-
-        #pragma omp single
-        used = omp_get_num_threads();
-
-        auto& failures = thread_failures[tid];
-
-        Worker worker;
-
-        #pragma omp for schedule(dynamic)
-        for (std::int64_t pixel = 0; pixel < npixels; ++pixel)
-        {
-            const index_t row =
-                static_cast<index_t>(pixel) / W;
-
-            const index_t col =
-                static_cast<index_t>(pixel) % W;
-
-            auto spect_view =
-                spectral.slice(fixed(row), fixed(col), all(), all()); // B, T
-
-            auto qa_view =
-                qas.slice(fixed(row), fixed(col), all()); // T
-
-            LOG_DEBUG(
-                "thread "
-                << omp_get_thread_num()
-                << " pixel "
-                << row << "," << col
-            );
-
-            //------------------------------------------------------------------
-            // The try/catch is load-bearing, not defensive habit: an
-            // exception that escapes an OpenMP region terminates the process,
-            // so without this one pathological time series destroys every
-            // other pixel's result in the cube and reports nothing about
-            // which pixel did it. Catching per pixel turns that into a
-            // recorded address plus a message, and the other 249,999 pixels
-            // still come back.
-            //
-            // Nothing is swallowed -- every catch lands in
-            // CubeOutput::failures, and it is the caller's job to surface the
-            // count.
-            //------------------------------------------------------------------
-            try
-            {
-                const std::size_t at = static_cast<std::size_t>(pixel);
-
-                worker.observe = run.observed(at);
-                PixelOutput outcome =
-                    run.pixel<Value, Qa>(spect_view, qa_view, static_cast<index_t>(at), worker);
-
-                if (masks)
-                {
-                    const std::vector<std::uint8_t>& bits = outcome.result.mask.data();
-                    if (bits.size() != T)
-                        throw std::logic_error("the pixel's processing mask is not T long");
-                    std::copy(bits.begin(), bits.end(), merged.masks.begin() + at * T);
-                    outcome.result.mask = ProcessingMask();
-                }
-
-                by_pixel[at] = CubePixel{row, col, std::move(outcome.result),
-                                           std::move(outcome.record), outcome.status};
-
-                succeeded[at] = 1;
-            }
-            catch (const std::exception& e)
-            {
-                failures.emplace_back(
-                    CubeFailure{
-                        row,
-                        col,
-                        std::string(e.what())
-                    }
-                );
-            }
-            catch (...)
-            {
-                failures.emplace_back(
-                    CubeFailure{
-                        row,
-                        col,
-                        std::string("unknown non-std exception")
-                    }
-                );
-            }
-        }
+        const std::vector<std::uint8_t>& bits = outcome.result.mask.data();
+        if (bits.size() != T)
+            throw std::logic_error("the pixel's processing mask is not T long");
+        std::copy(bits.begin(), bits.end(), masks.begin() + at * T);
+        outcome.result.mask = ProcessingMask();
     }
 
-    //----------------------------------------------------------------------
-    // Collect, in raster order
-    //----------------------------------------------------------------------
-    merged.threads = used;
+    return CubePixel{row, col, std::move(outcome.result), std::move(outcome.record),
+                     outcome.status};
+}
 
+// The cube's pixels that succeeded into `merged`, in raster order, and every
+// thread's failures, sorted into raster order.
+void collect(
+    CubeOutput& merged,
+    std::vector<CubePixel>& by_pixel,
+    const std::vector<std::uint8_t>& succeeded,
+    std::vector<std::vector<CubeFailure>>& thread_failures
+)
+{
     std::size_t total = 0;
     for (const auto ok : succeeded)
         total += ok;
@@ -551,12 +465,127 @@ CubeOutput cube_loop(
         {
             return a.row != b.row ? a.row < b.row : a.col < b.col;
         });
+}
 
+// The cube loop for one pair of element types: every pixel through
+// cube_pixel(), on `threads` threads, then collect().
+template<typename Value, typename Qa>
+CubeOutput cube_loop(
+    const Run& run,
+    ArrayView<const Value, 4> spectral,       // (H,W,B,T)
+    ArrayView<const Qa, 3> qas,               // (H,W,T)
+    int threads
+)
+{
+    const index_t H = spectral.extent(0);
+    const index_t W = spectral.extent(1);
+    const index_t T = spectral.extent(3);
+
+    // threads == 0 keeps the historical behaviour: let the OpenMP runtime
+    // decide, which is OMP_NUM_THREADS or the core count. A positive value is
+    // a request, not a guarantee -- the runtime may still hand back fewer, so
+    // the count reported below is read from inside the region.
+    const int requested =
+        threads > 0 ? threads : omp_get_max_threads();
+
+    //----------------------------------------------------------------------
+    // One slot per pixel, written by whichever thread runs it, so the
+    // result comes back in raster order whatever the schedule did.
+    //----------------------------------------------------------------------
+    const std::int64_t npixels =
+        static_cast<std::int64_t>(H) *
+        static_cast<std::int64_t>(W);
+
+    std::vector<CubePixel> by_pixel(static_cast<std::size_t>(npixels));
+    std::vector<std::uint8_t> succeeded(static_cast<std::size_t>(npixels), 0);
+    std::vector<std::vector<CubeFailure>> thread_failures(requested);
+
+    CubeOutput merged;
+    merged.height = H;
+    merged.width = W;
+    merged.timesteps = T;
+    if (run.spec().masks)
+        merged.masks.assign(static_cast<std::size_t>(npixels) * T, std::uint8_t{0});
+
+    int used = requested;
+
+    #pragma omp parallel num_threads(requested)
+    {
+        const int tid = omp_get_thread_num();
+
+        #pragma omp single
+        used = omp_get_num_threads();
+
+        auto& failures = thread_failures[tid];
+
+        Worker worker;
+
+        #pragma omp for schedule(dynamic)
+        for (std::int64_t pixel = 0; pixel < npixels; ++pixel)
+        {
+            const index_t row =
+                static_cast<index_t>(pixel) / W;
+
+            const index_t col =
+                static_cast<index_t>(pixel) % W;
+
+            LOG_DEBUG(
+                "thread "
+                << omp_get_thread_num()
+                << " pixel "
+                << row << "," << col
+            );
+
+            //------------------------------------------------------------------
+            // The try/catch is load-bearing, not defensive habit: an
+            // exception that escapes an OpenMP region terminates the process,
+            // so without this one pathological time series destroys every
+            // other pixel's result in the cube and reports nothing about
+            // which pixel did it. Catching per pixel turns that into a
+            // recorded address plus a message, and the other 249,999 pixels
+            // still come back.
+            //
+            // Nothing is swallowed -- every catch lands in
+            // CubeOutput::failures, and it is the caller's job to surface the
+            // count.
+            //------------------------------------------------------------------
+            try
+            {
+                const std::size_t at = static_cast<std::size_t>(pixel);
+                by_pixel[at] =
+                    cube_pixel<Value, Qa>(run, spectral, qas, row, col, worker, merged.masks);
+                succeeded[at] = 1;
+            }
+            catch (const std::exception& e)
+            {
+                failures.emplace_back(
+                    CubeFailure{
+                        row,
+                        col,
+                        std::string(e.what())
+                    }
+                );
+            }
+            catch (...)
+            {
+                failures.emplace_back(
+                    CubeFailure{
+                        row,
+                        col,
+                        std::string("unknown non-std exception")
+                    }
+                );
+            }
+        }
+    }
+
+    merged.threads = used;
+    collect(merged, by_pixel, succeeded, thread_failures);
     merged.header = run.header();
     return merged;
 }
 
-
+} // namespace
 
 CubeOutput detect_cube(
     const RunSpec& spec,
