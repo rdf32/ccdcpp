@@ -390,6 +390,18 @@ if(CCD_BUILD_TESTS)
             tests/ccd/strategies/test_registry_preprocess.cpp
     )
 
+    # The worked example of docs/writing-a-strategy.md: the outlier rule
+    # "residual-cap" (tests/ccd/extension, an extension directory), registered
+    # beside the library's strategies. See
+    # tests/ccd/strategies/test_residual_cap.cpp.
+    ccd_add_gtest(
+        test_residual_cap
+        SOURCES
+            tests/ccd/strategies/test_residual_cap.cpp
+            tests/ccd/extension/outlier/residual_cap.cpp
+    )
+    target_include_directories(test_residual_cap PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/extension)
+
     # The Standard machine: its routing and steps from hand-built records,
     # its routes under test-only strategies, and its exit reasons on whole
     # pixels. See tests/ccd/machine/test_standard_*.cpp.
