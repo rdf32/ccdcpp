@@ -872,6 +872,7 @@ The Standard procedure is a small state machine: a per-pixel record, one transit
 
 The start window is the shared `min_observations` (pyccd's `meow_size`). The phases and routes are fixed; what a phase decides is a stage, decided by the strategy the configuration names for it ([Configurations and presets](#configurations-and-presets)). Because the record holds everything that survives from one step to the next, a run can stop at a size guard and continue on a longer series ([Resuming a run](#resuming-a-run)), and an observer can report each step ([Diagnostics](#diagnostics)).
 
+- [Architecture](docs/architecture.md): a run end to end, the machine's phases, the stages and their contracts, the registry, configuration and resolve, and where each piece lives, against 0.10.0.
 - [CCDC as a state machine](docs/ccdc-state-machine.md): the phases, guards and routes, the record, the stages and strategies, resuming, and why the code is shaped this way.
 - [Floating-point sums](docs/floating-point-sums.md): why the order of the Lasso solver's sums is part of the output, and how they are made fast.
 
