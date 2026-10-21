@@ -155,8 +155,8 @@ void State::reset(const PixelSeries& pixel, ProcessingMask mask)
 
 void State::bind(const Strategies& strategies)
 {
-    init_model.get(strategies.stability_fit,
-                   [](const StabilityFit& f) { return f.make_model(); });
+    stability_model.get(strategies.stability_fit,
+                        [](const StabilityFit& f) { return f.make_model(); });
     stability.get(strategies.stability_rule,
                   [](const StabilityRule& r) { return r.make_scratch(); });
     lookback.get(strategies.lookback, [](const Lookback& l) { return l.make_scratch(); });
@@ -428,7 +428,7 @@ Screened screen_window(const Context& context, State& state,
 }
 
 // The stability fit of the detection bands over the window's observations
-// (into init_model, residuals kept), then the run's stability rule on it.
+// (into stability_model, residuals kept), then the run's stability rule on it.
 // Only the detection bands are read: the stability rule here and Lookback
 // after it.
 bool fit_stable(const Context& context, State& state,
@@ -436,7 +436,7 @@ bool fit_stable(const Context& context, State& state,
                 ArrayView<const scalar_t, 2> spectral)
 {
     const BandList& detection_bands = context.shared.detection_bands;
-    Model& fit = *state.init_model;
+    Model& fit = *state.stability_model;
     fit.fit(
         dates,
         spectral,
@@ -591,8 +591,8 @@ LookbackOutcome lookback_step(const Context& context, State& state)
     Window& window = state.cursor.window;
 
     const LookbackJudgement judged = context.strategies.lookback->judge(
-        *state.init_model, series.dates(), series.spectral(), window, state.cursor.prev_break,
-        state.variogram, context.shared.detection_bands, *state.lookback);
+        *state.stability_model, series.dates(), series.spectral(), window,
+        state.cursor.prev_break, state.variogram, context.shared.detection_bands, *state.lookback);
 
     switch (judged.verdict)
     {

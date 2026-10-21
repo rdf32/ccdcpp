@@ -184,7 +184,7 @@ struct Record
     // coefficients.min coefficients, residuals kept.
     void with_stability_fit(index_t start, index_t stop)
     {
-        state.init_model->fit(
+        state.stability_model->fit(
             state.series.dates().slice(ccd::range(start, stop)),
             state.series.spectral().slice(ccd::all(), ccd::range(start, stop)),
             count("stability_fit", "coefficients.min"),
@@ -534,8 +534,8 @@ TEST(StandardInitialize, AnAcceptedTmaskDropCommitsThenTests)
     EXPECT_FALSE(r.state.series.mask()[10]);
     EXPECT_EQ(r.state.cursor.window.start, 0u);
     EXPECT_EQ(r.state.cursor.window.stop, 23u);
-    ASSERT_TRUE(r.state.init_model);
-    EXPECT_FALSE(r.state.init_model->residuals(1).empty());   // a detection band
+    ASSERT_TRUE(r.state.stability_model);
+    EXPECT_FALSE(r.state.stability_model->residuals(1).empty());   // a detection band
 }
 
 TEST(StandardInitialize, AnAcceptedTmaskDropThenAnUnstableWindowShifts)

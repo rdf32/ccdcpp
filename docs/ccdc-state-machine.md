@@ -180,7 +180,7 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 | `peek_plan` (`PeekPlan`, `include/ccd/strategies/stages.hpp`) | the peek the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | a shared type, chosen by the change test |
 | `variogram` (`Variogram`, `include/ccd/strategies/stages.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `stability_coefficients`, `coefficients` (`CoefficientRule`) | the stability fit's and the monitoring model's coefficient rules: Initialize's and Extend's fits | a shared type, the strategies' |
-| `init_model`, `stability`, `lookback`, `edges`, `segment_report` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's, the lookback's, edge_segments' and segment_report's per-pixel scratch, each a `PerThread` of its strategy, made by `State::bind` before the pixel | Standard's |
+| `stability_model`, `stability`, `lookback`, `edges`, `segment_report` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's, the lookback's, edge_segments' and segment_report's per-pixel scratch, each a `PerThread` of its strategy, made by `State::bind` before the pixel | Standard's |
 | `extend` (`ExtendState`) | what Extend carries from one peek test to the next | Standard's |
 
 `MaskedSeries` is the only writer of the mask. Its two drops, `drop` (Lookback, Extend) and

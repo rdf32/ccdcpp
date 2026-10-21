@@ -232,7 +232,7 @@ struct State
     // Initialize's fits of the detection bands, made by the run's
     // stability-fit strategy: the stable window's, which Lookback tests
     // against. The stability rule's per-pixel state.
-    PerThread<StabilityFit, Model> init_model;
+    PerThread<StabilityFit, Model> stability_model;
     PerThread<StabilityRule, Scratch> stability;
     PerThread<Lookback, Scratch> lookback;   // the lookback's per-pixel state
     PerThread<EdgeSegments, Scratch> edges;   // edge_segments' buffers, the
@@ -269,7 +269,7 @@ struct State
     // Makes the objects of the run's `strategies` the State holds: each
     // PerThread's of its strategy, kept when that strategy made it and made
     // again when another did (another run's). The phases read them
-    // (*init_model, *extend.test, ...) from the pixel's Prepare on; the
+    // (*stability_model, *extend.test, ...) from the pixel's Prepare on; the
     // Detector binds before each pixel.
     void bind(const Strategies& strategies);
 
@@ -335,7 +335,7 @@ void write_end_segment(const Context& context, State& state);
 
 // One step of the search for a stable start window: one candidate window,
 // with the run's start search, window screen, stability fit (into
-// init_model, its stability_coefficients) and stability rule, on the
+// stability_model, its stability_coefficients) and stability rule, on the
 // detection bands. The window holds at least the search's min_window()
 // observations.
 //
@@ -353,7 +353,7 @@ void write_end_segment(const Context& context, State& state);
 //   * the detection bands are fitted over the window by the stability fit
 //     (residuals kept): Stable (DroppedThenStable after a drop) when the
 //     stability rule finds the fit stable, the window the stable window and
-//     init_model its fits; otherwise the window shifts by one (Unstable,
+//     stability_model its fits; otherwise the window shifts by one (Unstable,
 //     DroppedThenUnstable).
 //
 // Only the detection bands are fitted, and only on the four fitted
@@ -369,7 +369,7 @@ InitializeOutcome initialize_step(const Context& context, State& state);
 Phase initialize(const Context& context, State& state);
 
 // One Lookback step: the run's lookback judges the observation before the
-// window against init_model, and the step applies its verdict on the
+// window against stability_model, and the step applies its verdict on the
 // record. Pre: window.start > prev_break.
 //
 //   * Change: the window stays;

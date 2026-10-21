@@ -168,7 +168,7 @@ PixelOutput Run::resumed(
     const index_t carried = from.standard.final_segments;
     const bool carried_change = carried > 0 && stored[carried - 1].change_probability == 1.0;
 
-    standard::Detector& detector = worker.standard;
+    standard::Detector& detector = worker.detector;
     const Strategies& strategies = resolved_->strategies;
     const ProcessingMask filtered = pixel.mask;
     out.result = continues

@@ -44,7 +44,8 @@ namespace ccd
 // The steps of one pixel:
 //
 //   decode_qa        raw QA through the QA table (or the codes as given)
-//   choose_procedure the QA statistics and the pixel's procedure
+//   mode             the QA statistics and the mode stage's choice: the
+//                    pixel's procedure
 //   values           the pixel's (B, T) as scalar_t, with its procedure's
 //                    transform (read in place when nothing needs changing)
 //   mask             its procedure's chain: the processing mask
@@ -71,7 +72,7 @@ struct Worker
     Observe observe;
 
     // The run's change detector, with its per-pixel record.
-    standard::Detector standard;
+    standard::Detector detector;
 
     // The pixel's (B, T) as scalar_t, when it has to be converted or its
     // thermal band transformed.

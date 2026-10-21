@@ -98,19 +98,6 @@ ArrayView<const std::uint8_t, 1> decode_qa(
     return ArrayView<const std::uint8_t, 1>::contiguous(buffer.data(), {T});
 }
 
-// Step 2. The pixel's procedure and mode, from its QA statistics up to
-// statistics_end.
-PixelMode choose_procedure(
-    ArrayView<const std::uint8_t, 1> qas,
-    ArrayView<const std::int64_t, 1> dates,
-    const Input& input,
-    std::int64_t statistics_end,
-    const ModeRule& mode
-)
-{
-    return mode.choose(qa_statistics(qas, dates, input, statistics_end));
-}
-
 // Step 3. The pixel's (B, T) as contiguous scalar_t with the procedure's
 // transform applied: read in place when it already is that and there is no
 // transform, otherwise converted into `buffer`. The caller's buffer is never
@@ -225,8 +212,10 @@ PreparedPixel Run::prepare(
 ) const
 {
     const auto qas = decode_qa<Qa>(qa, spec_.input.qa_table.get(), worker.qas);
-    PixelMode mode = choose_procedure(qas, dates_, spec_.input, shared_.statistics_end,
-                                      *resolved_->strategies.mode);
+    // Step 2. The pixel's procedure and mode, from its QA statistics up to
+    // statistics_end.
+    PixelMode mode = resolved_->strategies.mode->choose(
+        qa_statistics(qas, dates_, spec_.input, shared_.statistics_end));
 
     const preprocess::ProcedurePlan& steps = run_plan_.of(mode.procedure);
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
@@ -245,7 +234,7 @@ PreparedPixel Run::prepare(
 PixelOutput Run::fresh(PreparedPixel& pixel, Worker& worker) const
 {
     PixelOutput out;
-    standard::Detector& detector = worker.standard;
+    standard::Detector& detector = worker.detector;
     const Strategies& strategies = resolved_->strategies;
 
     if (!spec_.record)
