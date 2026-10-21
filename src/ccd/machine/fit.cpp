@@ -9,7 +9,7 @@
 
 #include "ccd/core/maths.hpp"
 #include "ccd/core/constants.hpp"
-#include "ccd/core/logger.hpp"
+#include "../core/logger.hpp"
 
 
 namespace ccd

@@ -1,4 +1,4 @@
-#include "ccd/machine/standard.hpp"
+#include "standard.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "ccd/core/maths.hpp"
-#include "ccd/core/logger.hpp"
+#include "../core/logger.hpp"
 
 namespace ccd
 {

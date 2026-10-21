@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-#include "ccd/core/logger.hpp"
+#include "../../core/logger.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/machine/kernels.hpp"
 #include "ccd/strategies/model.hpp"

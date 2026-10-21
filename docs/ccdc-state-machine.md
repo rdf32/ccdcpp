@@ -27,7 +27,7 @@ detector it reuses from pixel to pixel. The steps of one pixel:
 4. apply that procedure's transform to the pixel's private copy and run its filter chain to
    build the processing mask (`include/ccd/input/mask/preprocess.hpp`);
 5. fit the mask with the run's change detector, `standard::Detector::fit`
-   (`include/ccd/machine/standard.hpp`).
+   (`src/ccd/machine/standard.hpp`).
 
 The procedure choice (the `pyccd` mode's, with its parameters):
 
@@ -90,7 +90,7 @@ The exit is internal; the trace and the tests read it, the result does not carry
 ### Phases and their guards
 
 Each row is one transition function in `src/ccd/machine/standard.cpp`, declared in
-`include/ccd/machine/standard.hpp`. The three phases that repeat themselves do one thing per
+`src/ccd/machine/standard.hpp`. The three phases that repeat themselves do one thing per
 call and say what they did as an outcome value, so the trace and the tests see every decision.
 
 | Phase | One call | Next |
@@ -168,7 +168,7 @@ input (`strategies::library_registry().resolve(config, input).strategies`), as `
 |---|---|---|
 | `phase`, `exit` | where the machine is, and why it stopped | each machine has its own enums |
 | `series` (`MaskedSeries`, `include/ccd/input/masked_series.hpp`) | the processing mask and the observations it keeps, always in step | shared |
-| `cursor` (`Cursor`, `include/ccd/machine/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
+| `cursor` (`Cursor`, `src/ccd/machine/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
 | `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | Standard's |
@@ -369,20 +369,20 @@ record:
 |---|---|
 | `fit_whole_series`, `PixelProcedure` | `include/ccd/machine/pixel_procedure.hpp` |
 | `MaskedSeries` | `include/ccd/input/masked_series.hpp` |
-| `Cursor`, `drive` | `include/ccd/machine/machine.hpp` |
+| `Cursor`, `drive` | `src/ccd/machine/machine.hpp` |
 | `fit_bands` (the one per-band fit loop), `peek_residuals`, `change_magnitude`, `catch_segment`, `initialize_step` with `InitializeCriteria` and `InitializeOutcome` | `include/ccd/machine/kernels.hpp` |
 | `HarmonicBasis` (the harmonic design, column order documented) | `include/ccd/regression/harmonic_basis.hpp` |
 | `Variogram`, `adjusted_variogram`, `tmask`, `find_closest_doy`, `SeasonalOrder`, `seasonal_rmse`, `span`, `Window`, `ChangeModel`, `BandFit` | `include/ccd/machine/fit.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
-(`include/ccd/machine/standard.hpp`): `initialize_criteria`, the phases,
+(`src/ccd/machine/standard.hpp`): `initialize_criteria`, the phases,
 the
 transitions and the routing. A function moves to the shared list once a second machine or a
 strategy uses it.
 
 ## 5. The driver and the trace
 
-`ccd::drive<Machine>` (`include/ccd/machine/machine.hpp`) is the only loop:
+`ccd::drive<Machine>` (`src/ccd/machine/machine.hpp`) is the only loop:
 
 ```cpp
 while (state.phase != Phase::Done)
@@ -425,7 +425,7 @@ longer series make the same decisions up to the first size guard that failed in 
 one (`PrefixStability.*`, `tests/ccd/golden/test_prefix.cpp`). Every segment written before
 that guard is final.
 
-That guard is where the record stops: `standard::Suspended` (`standard.hpp`) is captured by
+That guard is where the record stops: `standard::Suspended` (`include/ccd/machine/suspended.hpp`) is captured by
 every route into EndCatch and by the early exits, before anything after the guard writes. It
 holds the exit, the cursor, the fit window's end, a pending grow, the last peek test's
 coefficient count and magnitudes, and the final segment count. `ccd::detect()` with `RunSpec::record`

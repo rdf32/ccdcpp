@@ -451,7 +451,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `HarmonicWorkspace` | `PixelSeries` (`ccd/input/pixel_series.hpp`): the pixel's data, the run's input and shared values by reference |
 | `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`ccd/strategies/coefficients.hpp`) |
 | `Clock`, `elapsed_ms`, `print_change_model(s)` | none |
-| `ccd/types.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, `ccd/harmonic/...`, `ccd/preprocess/...` | `ccd/core/types.hpp`, `ccd/machine/standard.hpp`, `ccd/results/record.hpp`, `ccd/input/...`, `ccd/input/mask/...` (`ccd/ccd.hpp` includes every header) |
+| `ccd/types.hpp`, `ccd/procedure/standard.hpp`, `ccd/record.hpp`, `ccd/harmonic/...`, `ccd/preprocess/...` | `ccd/core/types.hpp`, none (the machine is internal; `ccd/machine/suspended.hpp` holds the record's `Suspended`), `ccd/results/record.hpp`, `ccd/input/...`, `ccd/input/mask/...` (`ccd/ccd.hpp` includes every public header) |
 
 `RunSpec` is `{input, algorithm, record, masks, observer, observe}`; `algorithm` is a
 compiled configuration (`ccd::Algorithm`, `run/algorithm.hpp`), the `ccdc` preset's

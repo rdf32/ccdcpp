@@ -8,7 +8,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/types.hpp"
 #include "ccd/machine/pixel_procedure.hpp"
-#include "ccd/machine/standard.hpp"
+#include "ccd/machine/suspended.hpp"
 
 namespace ccd
 {

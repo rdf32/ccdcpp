@@ -3,7 +3,7 @@
 #include <cassert>
 #include <utility>
 
-#include "ccd/core/logger.hpp"
+#include "../core/logger.hpp"
 #include "ccd/machine/kernels.hpp"
 
 namespace ccd

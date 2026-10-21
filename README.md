@@ -778,7 +778,7 @@ ctest --test-dir build-asan -j8
 
 # The C++ API
 
-The library is the CMake target `ccd_core`; `#include "ccd/ccd.hpp"` includes every header, `ccd/run/run.hpp` the two calls. Both calls throw `std::invalid_argument` before any pixel runs on an input, dates or a configuration they refuse; a pixel that throws in `detect_cube` is one of its `failures`.
+The library is the CMake target `ccd_core`; `#include "ccd/ccd.hpp"` includes every public header, `ccd/run/run.hpp` the two calls. Both calls throw `std::invalid_argument` before any pixel runs on an input, dates or a configuration they refuse; a pixel that throws in `detect_cube` is one of its `failures`.
 
 ```cpp
 namespace ccd {

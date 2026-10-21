@@ -10,7 +10,7 @@
 #include "ccd/config/registry.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/input/mask/preprocess.hpp"
-#include "ccd/machine/standard.hpp"
+#include "../machine/standard.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/results/record.hpp"
 #include "ccd/run/run.hpp"

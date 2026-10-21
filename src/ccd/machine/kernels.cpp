@@ -5,7 +5,7 @@
 #include <limits>
 #include <utility>
 
-#include "ccd/core/logger.hpp"
+#include "../core/logger.hpp"
 #include "ccd/strategies/model.hpp"
 #include "ccd/strategies/stages.hpp"
 

@@ -68,7 +68,8 @@ its replacement.
   default outputs changed.
 - **The source layout**: `include/ccd/` and `src/ccd/` in `core/`, `input/`, `regression/`,
   `config/`, `strategies/`, `machine/`, `results/` and `run/`; `ccd/ccd.hpp` includes every
-  header. `HarmonicWorkspace` is `PixelSeries`.
+  public header. The run (`Run`, `Worker`) and the Standard machine (`machine/standard.hpp`,
+  `machine/machine.hpp`) are internal, under `src/ccd/`. `HarmonicWorkspace` is `PixelSeries`.
 
 ### Added
 

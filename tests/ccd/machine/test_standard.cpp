@@ -22,7 +22,7 @@
 
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/machine/fit.hpp"
-#include "ccd/machine/standard.hpp"
+#include "ccd/machine/standard.hpp"   // internal (src/)
 #include "../golden/specs.hpp"
 
 

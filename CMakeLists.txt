@@ -906,7 +906,11 @@ if(CCD_BUILD_TESTS)
     # The tests that reach the library's internal headers (src/), which the
     # library does not export.
     foreach(internal_test IN ITEMS
+        test_kernels
+        test_machine
+        test_masked_series
         test_qa_tables
+        test_standard
     )
         target_include_directories(
             ${internal_test}

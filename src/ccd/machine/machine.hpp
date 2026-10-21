@@ -3,10 +3,11 @@
 #include <string>
 
 #include "ccd/core/types.hpp"
-#include "ccd/core/logger.hpp"
 #include "ccd/results/diagnostics.hpp"
 
 #include "ccd/machine/fit.hpp"
+
+#include "../core/logger.hpp"
 
 namespace ccd
 {
