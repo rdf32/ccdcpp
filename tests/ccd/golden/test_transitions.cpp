@@ -15,7 +15,7 @@
 // reads only its result, so the tests hold whatever the procedure's insides
 // become, and stay valid beside a second change-detection procedure.
 //
-// Three tests:
+// Three kinds of test:
 //
 //   * Transitions.InputsAreTheSameOnEveryPlatform: a fingerprint of each
 //     pixel's input (dates, QA, every spectral value's bits), pinned. The
@@ -30,11 +30,12 @@
 //     its diff is known to move only the pins it should:
 //     CCD_TRANSITIONS_WRITE=1 ./test_transitions
 //
-//   * Transitions.PathsAsDocumented: the structure of each result (segment
-//     count, curve_qa, change probability, observation counts, the mask) and
-//     the observable signature of the rule a pixel is for, and on the
-//     pixels whose output a rule decides without moving that structure, the
-//     values it decides, to a tolerance. Platform free.
+//   * Transitions/PathsAsDocumented.Pixel/<pixel>, one test per pixel: the
+//     structure of its result (segment count, curve_qa, change probability,
+//     observation counts, the mask) and the observable signature of the rule
+//     the pixel is for, and on the pixels whose output a rule decides
+//     without moving that structure, the values it decides, to a tolerance.
+//     Platform free.
 //
 // The rules these pixels pin, where ccdcpp keeps pyccd's intent over its
 // literals, numbered as in the design notes:
@@ -173,6 +174,7 @@
 
 #include <cstdint>
 #include <iterator>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -302,133 +304,166 @@ TEST(Transitions, BitIdenticalToFixture)
     golden::expect_matches_fixture(dump, CCD_TRANSITIONS_FIXTURE, "CCD_TRANSITIONS_WRITE");
 }
 
-TEST(Transitions, PathsAsDocumented)
+namespace
 {
-    const auto all = golden::characterization_pixels();
-    using CQ = ccd::CurveQA;
-    const int START = static_cast<int>(CQ::Start), END = static_cast<int>(CQ::End);
-    const int CLEAR = static_cast<int>(CQ::InsufficientClear), SNOW = static_cast<int>(CQ::PersistentSnow);
 
+using CQ = ccd::CurveQA;
+const int START = static_cast<int>(CQ::Start), END = static_cast<int>(CQ::End);
+const int CLEAR = static_cast<int>(CQ::InsufficientClear), SNOW = static_cast<int>(CQ::PersistentSnow);
+
+// An early exit: no segments, and the processing mask (rule 5): the clear
+// and snow observations of snow_too_few, the clear ones of the others.
+void expect_early_exit(const char* name, const golden::Series& p, const ccd::FitResult& r,
+                       std::size_t kept)
+{
+    EXPECT_TRUE(r.models.empty()) << name;
+    EXPECT_EQ(r.mask.size(), p.dates.size()) << name;
+    EXPECT_EQ(r.mask.count(), kept) << name;
+}
+
+// A pixel and what its result holds: the path it is documented to take.
+struct Path
+{
+    const char* pixel;
+    void (*check)(const golden::Series& p, const ccd::FitResult& r);
+};
+
+void PrintTo(const Path& path, std::ostream* os)
+{
+    *os << path.pixel;
+}
+
+const Path PATHS[] = {
     // Select at and around the two thresholds.
-    {
-        const auto r = golden::detect(golden::named(all, "select_clear_at_threshold"));
-        expect_shapes("select_clear_at_threshold", r, {{6, 0.0, 19}});   // Standard: Extend's curve_qa
-        EXPECT_EQ(r.mask.count(), 25u);
-    }
-    expect_shapes("select_clear_below_threshold",
-        golden::detect(golden::named(all, "select_clear_below_threshold")), {{CLEAR, 0.0, 24}});
-    expect_shapes("select_snow_at_threshold",
-        golden::detect(golden::named(all, "select_snow_at_threshold")), {{SNOW, 0.0, 81}});
-    expect_shapes("select_snow_below_threshold",
-        golden::detect(golden::named(all, "select_snow_below_threshold")), {{CLEAR, 0.0, 20}});
+    {"select_clear_at_threshold", [](const golden::Series&, const ccd::FitResult& r)
+     {
+         expect_shapes("select_clear_at_threshold", r, {{6, 0.0, 19}});   // Standard: Extend's curve_qa
+         EXPECT_EQ(r.mask.count(), 25u);
+     }},
+    {"select_clear_below_threshold", [](const golden::Series&, const ccd::FitResult& r)
+     { expect_shapes("select_clear_below_threshold", r, {{CLEAR, 0.0, 24}}); }},
+    {"select_snow_at_threshold", [](const golden::Series&, const ccd::FitResult& r)
+     { expect_shapes("select_snow_at_threshold", r, {{SNOW, 0.0, 81}}); }},
+    {"select_snow_below_threshold", [](const golden::Series&, const ccd::FitResult& r)
+     { expect_shapes("select_snow_below_threshold", r, {{CLEAR, 0.0, 20}}); }},
 
-    // Early exits: no segments, and the processing mask (rule 5): the clear
-    // and snow observations of snow_too_few, the clear ones of the others.
-    const std::pair<const char*, std::size_t> early[] = {
-        {"snow_too_few", 11}, {"standard_too_few", 12}, {"variogram_nan", 61}};
-    for (const auto& [name, kept] : early)
-    {
-        const auto& p = golden::named(all, name);
-        const auto r = golden::detect(p);
-        EXPECT_TRUE(r.models.empty()) << name;
-        EXPECT_EQ(r.mask.size(), p.dates.size()) << name;
-        EXPECT_EQ(r.mask.count(), kept) << name;
-    }
+    // The early exits.
+    {"snow_too_few", [](const golden::Series& p, const ccd::FitResult& r)
+     { expect_early_exit("snow_too_few", p, r, 11); }},
+    {"standard_too_few", [](const golden::Series& p, const ccd::FitResult& r)
+     { expect_early_exit("standard_too_few", p, r, 12); }},
+    {"variogram_nan", [](const golden::Series& p, const ccd::FitResult& r)
+     { expect_early_exit("variogram_nan", p, r, 61); }},
 
     // No room for Initialize: straight to EndCatch, one End segment over all 20.
-    expect_shapes("standard_no_room", golden::detect(golden::named(all, "standard_no_room")), {{END, 0.0, 20}});
+    {"standard_no_room", [](const golden::Series&, const ccd::FitResult& r)
+     { expect_shapes("standard_no_room", r, {{END, 0.0, 20}}); }},
 
     // Never stable: Initialize exhausted with no segment, EndCatch over everything.
-    expect_shapes("constant_detection_band",
-        golden::detect(golden::named(all, "constant_detection_band")), {{END, 0.0, 228}});
+    {"constant_detection_band", [](const golden::Series&, const ccd::FitResult& r)
+     { expect_shapes("constant_detection_band", r, {{END, 0.0, 228}}); }},
 
     // StartCatch: a Start segment up to the window Lookback stopped at, which
     // is where the next segment starts and the Start segment's break day.
-    {
-        const auto r = golden::detect(golden::named(all, "start_catch"));
-        expect_shapes("start_catch", r, {{START, 0.0, 10}, {8, 0.0, 212}});
-        EXPECT_EQ(r.models[0].break_day, r.models[1].start_day);
-    }
+    {"start_catch", [](const golden::Series&, const ccd::FitResult& r)
+     {
+         expect_shapes("start_catch", r, {{START, 0.0, 10}, {8, 0.0, 212}});
+         EXPECT_EQ(r.models[0].break_day, r.models[1].start_day);
+     }},
 
     // Lookback near prev_break at a dense cadence (rule 2), after a change:
     // the observations between the first break and the second segment
     // belong to no segment.
-    {
-        const auto& p = golden::named(all, "lookback_near_break");
-        const auto r = golden::detect(p);
-        expect_shapes("lookback_near_break", r, {{4, 1.0, 13}, {8, 0.0, 476}});
-        EXPECT_LT(r.models[0].break_day, r.models[1].start_day);
-        // Series end after the last full peek (rule 6): the curve ends
-        // before the observation the peek starts at, its break day.
-        EXPECT_LT(r.models[1].end_day, r.models[1].break_day);
-    }
+    {"lookback_near_break", [](const golden::Series&, const ccd::FitResult& r)
+     {
+         expect_shapes("lookback_near_break", r, {{4, 1.0, 13}, {8, 0.0, 476}});
+         EXPECT_LT(r.models[0].break_day, r.models[1].start_day);
+         // Series end after the last full peek (rule 6): the curve ends
+         // before the observation the peek starts at, its break day.
+         EXPECT_LT(r.models[1].end_day, r.models[1].break_day);
+     }},
 
     // The pixels whose output a rule decides (see the rules above): their
     // shapes, so a path change reads as one even off the fixture platform,
     // and where a fix keeps the shapes, what it does move.
-    {
-        // Rule 2 decides only the mask: Lookback near the break reads no
-        // observation of the previous segment, so it drops none that
-        // reading below the break would (493 kept; 483 when it reads
-        // below).
-        const auto r = golden::detect(golden::named(all, "lookback_near_break_decides"));
-        expect_shapes("lookback_near_break_decides", r,
-            {{6, 1.0, 22}, {8, 1.0, 188}, {8, 0.0, 241}});
-        EXPECT_EQ(r.mask.count(), 493u);
-    }
-    {
-        // Rule 1 decides the shapes: the second segment's Lookback, peeking
-        // the full adjusted peek, reaches back to 127 observations. Rule 7
-        // decides only the first segment's fit, refitted at 24 observations.
-        const auto r = golden::detect(golden::named(all, "lookback_far_peek_decides"));
-        expect_shapes("lookback_far_peek_decides", r,
-            {{8, 1.0, 99}, {8, 1.0, 127}, {8, 0.0, 60}});
-        expect_rmse("lookback_far_peek_decides", r, 0,
-            {35.81290728, 48.70786646, 47.4006856, 124.7866627, 71.73959318,
-             66.24394152, 231.2815984});
-    }
-    {
-        // Rule 4 decides the fits of the first two segments: Initialize
-        // fits coefficients.min = 6 coefficients.
-        const auto r = golden::detect(golden::named(all, "coefficient_min_6"));
-        expect_shapes("coefficient_min_6", r,
-            {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 307}});
-        expect_rmse("coefficient_min_6", r, 0,
-            {33.84482982, 41.67944514, 50.41066257, 122.4179905, 92.36000081,
-             65.21865399, 223.7726019});
-        expect_rmse("coefficient_min_6", r, 1,
-            {61.42278107, 58.15066275, 75.88209759, 179.3754244, 114.9040179,
-             75.02686201, 172.548894});
-    }
+    {"lookback_near_break_decides", [](const golden::Series&, const ccd::FitResult& r)
+     {
+         // Rule 2 decides only the mask: Lookback near the break reads no
+         // observation of the previous segment, so it drops none that
+         // reading below the break would (493 kept; 483 when it reads
+         // below).
+         expect_shapes("lookback_near_break_decides", r,
+             {{6, 1.0, 22}, {8, 1.0, 188}, {8, 0.0, 241}});
+         EXPECT_EQ(r.mask.count(), 493u);
+     }},
+    {"lookback_far_peek_decides", [](const golden::Series&, const ccd::FitResult& r)
+     {
+         // Rule 1 decides the shapes: the second segment's Lookback, peeking
+         // the full adjusted peek, reaches back to 127 observations. Rule 7
+         // decides only the first segment's fit, refitted at 24 observations.
+         expect_shapes("lookback_far_peek_decides", r,
+             {{8, 1.0, 99}, {8, 1.0, 127}, {8, 0.0, 60}});
+         expect_rmse("lookback_far_peek_decides", r, 0,
+             {35.81290728, 48.70786646, 47.4006856, 124.7866627, 71.73959318,
+              66.24394152, 231.2815984});
+     }},
+    {"coefficient_min_6", [](const golden::Series&, const ccd::FitResult& r)
+     {
+         // Rule 4 decides the fits of the first two segments: Initialize
+         // fits coefficients.min = 6 coefficients.
+         expect_shapes("coefficient_min_6", r,
+             {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 307}});
+         expect_rmse("coefficient_min_6", r, 0,
+             {33.84482982, 41.67944514, 50.41066257, 122.4179905, 92.36000081,
+              65.21865399, 223.7726019});
+         expect_rmse("coefficient_min_6", r, 1,
+             {61.42278107, 58.15066275, 75.88209759, 179.3754244, 114.9040179,
+              75.02686201, 172.548894});
+     }},
 
     // The peek guard sends the second Initialize to EndCatch.
-    expect_shapes("peek_guard_tail",
-        golden::detect(golden::named(all, "peek_guard_tail")), {{8, 1.0, 310}, {END, 0.0, 90}});
+    {"peek_guard_tail", [](const golden::Series&, const ccd::FitResult& r)
+     { expect_shapes("peek_guard_tail", r, {{8, 1.0, 310}, {END, 0.0, 90}}); }},
 
     // Series end after an outlier drop: the break day is the observation
     // after the dropped one, so end day < break day, and the drop is in the mask.
-    {
-        const auto& p = golden::named(all, "series_end_after_outlier");
-        const auto r = golden::detect(p);
-        expect_shapes("series_end_after_outlier", r, {{8, 0.0, 222}});
-        EXPECT_LT(r.models[0].end_day, r.models[0].break_day);
-        EXPECT_EQ(r.mask.count(), p.dates.size() - 1);
-    }
+    {"series_end_after_outlier", [](const golden::Series& p, const ccd::FitResult& r)
+     {
+         expect_shapes("series_end_after_outlier", r, {{8, 0.0, 222}});
+         EXPECT_LT(r.models[0].end_day, r.models[0].break_day);
+         EXPECT_EQ(r.mask.count(), p.dates.size() - 1);
+     }},
 
     // A series end at peek 32 (rule 6): the curve that reaches the end is
     // the last one, so nothing runs after it, and the spikes among the last
     // observations, which no segment reads, stay in the mask.
-    {
-        const auto& p = golden::named(all, "dense_series_end");
-        const auto r = golden::detect(p);
-        expect_shapes("dense_series_end", r, {{8, 0.0, 256}});
-        EXPECT_LT(r.models[0].end_day, r.models[0].break_day);
+    {"dense_series_end", [](const golden::Series& p, const ccd::FitResult& r)
+     {
+         expect_shapes("dense_series_end", r, {{8, 0.0, 256}});
+         EXPECT_LT(r.models[0].end_day, r.models[0].break_day);
 
-        std::size_t dropped_after = 0;
-        for (std::size_t t = 0; t < p.dates.size(); ++t)
-            if (!r.mask[t] && p.dates[t] > r.models[0].break_day)
-                ++dropped_after;
-        EXPECT_EQ(dropped_after, 0u);
-        EXPECT_EQ(r.mask.count(), p.dates.size());
-    }
+         std::size_t dropped_after = 0;
+         for (std::size_t t = 0; t < p.dates.size(); ++t)
+             if (!r.mask[t] && p.dates[t] > r.models[0].break_day)
+                 ++dropped_after;
+         EXPECT_EQ(dropped_after, 0u);
+         EXPECT_EQ(r.mask.count(), p.dates.size());
+     }},
+};
+
+class PathsAsDocumented : public ::testing::TestWithParam<Path>
+{
+};
+
+} // namespace
+
+// One test per pixel, named for it: its detect() result against its path.
+TEST_P(PathsAsDocumented, Pixel)
+{
+    static const auto all = golden::characterization_pixels();
+    const golden::Series& p = golden::named(all, GetParam().pixel);
+    GetParam().check(p, golden::detect(p));
 }
+
+INSTANTIATE_TEST_SUITE_P(Transitions, PathsAsDocumented, ::testing::ValuesIn(PATHS),
+                         [](const auto& info) { return std::string(info.param.pixel); });
