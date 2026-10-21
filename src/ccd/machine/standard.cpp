@@ -212,6 +212,11 @@ FitResult State::take_result()
     return result;
 }
 
+namespace
+{
+
+#if CCD_OBSERVE
+// The observer's event of a segment written (Kind::Segment).
 ObserverEvent segment_event(const ChangeModel& m)
 {
     ObserverEvent e{ObserverEvent::Kind::Segment};
@@ -222,46 +227,7 @@ ObserverEvent segment_event(const ChangeModel& m)
                 std::to_string(m.break_day) + " change " + std::to_string(m.change_probability);
     return e;
 }
-
-void report_exit(const Context& context, const State& state)
-{
-#if CCD_OBSERVE
-    if (context.observe.observer)
-    {
-        ObserverEvent e{ObserverEvent::Kind::Exit};
-        e.outcome = to_string(state.exit);
-        e.observations = state.segments.size();
-        context.observe.observer->event(context.observe.pixel, e);
-    }
-#else
-    (void)context;
-    (void)state;
 #endif
-}
-
-ObserverEvent observed(const State& state)
-{
-    ObserverEvent e{ObserverEvent::Kind::Transition};
-    e.window_start = state.cursor.window.start;
-    e.window_stop = state.cursor.window.stop;
-    e.prev_break = state.cursor.prev_break;
-    e.observations = state.series.size();
-    return e;
-}
-
-std::string summary(const State& state)
-{
-    return
-        "window (" + std::to_string(state.cursor.window.start) +
-        ", " + std::to_string(state.cursor.window.stop) +
-        "), prev_break " + std::to_string(state.cursor.prev_break) +
-        ", " + std::to_string(state.series.size()) + " observations, " +
-        std::to_string(state.segments.size()) + " segments, exit " +
-        to_string(state.exit);
-}
-
-namespace
-{
 
 // Records where the segment loop stopped, from the record as the failed
 // guard found it.
@@ -1094,7 +1060,7 @@ Phase end_catch(const Context& context, State& state)
 // The machine
 //------------------------------------------------------------------------------
 
-Phase Machine::step(const Context& context, State& state)
+Phase step(const Context& context, State& state)
 {
     switch (state.phase)
     {
@@ -1110,6 +1076,78 @@ Phase Machine::step(const Context& context, State& state)
     assert(false && "step() on a Done machine");
     return Phase::Done;
 }
+
+namespace
+{
+
+// Reports the transition from `from` to `to`, the record as the step left
+// it: to the context's observer with the cursor and the series length
+// (CCD_OBSERVE), and as one DEBUG line through the logger, so the log level
+// is the trace's only switch, and below DEBUG it compiles to nothing:
+//
+//     [DEBUG] standard: <phase> -> <next phase> | <cursor, observations,
+//                                                  segments, exit>
+void report_transition(const Context& context, const State& state, Phase from, Phase to)
+{
+#if CCD_OBSERVE
+    if (context.observe.observer)
+    {
+        ObserverEvent e{ObserverEvent::Kind::Transition};
+        e.machine = "standard";
+        e.phase = to_string(from);
+        e.next = to_string(to);
+        e.window_start = state.cursor.window.start;
+        e.window_stop = state.cursor.window.stop;
+        e.prev_break = state.cursor.prev_break;
+        e.observations = state.series.size();
+        context.observe.observer->event(context.observe.pixel, e);
+    }
+#else
+    (void)context;
+    (void)state;
+    (void)from;
+    (void)to;
+#endif
+
+    LOG_DEBUG(
+        "standard: " << to_string(from) << " -> " << to_string(to)
+        << " | window (" << state.cursor.window.start << ", " << state.cursor.window.stop
+        << "), prev_break " << state.cursor.prev_break << ", " << state.series.size()
+        << " observations, " << state.segments.size() << " segments, exit "
+        << to_string(state.exit)
+    );
+}
+
+// Reports the pixel's exit (state.exit) to the context's observer, if any.
+void report_exit(const Context& context, const State& state)
+{
+#if CCD_OBSERVE
+    if (context.observe.observer)
+    {
+        ObserverEvent e{ObserverEvent::Kind::Exit};
+        e.outcome = to_string(state.exit);
+        e.observations = state.segments.size();
+        context.observe.observer->event(context.observe.pixel, e);
+    }
+#else
+    (void)context;
+    (void)state;
+#endif
+}
+
+// Steps `state` until its phase is Done, reporting each transition: the
+// machine's only loop.
+void drive(const Context& context, State& state)
+{
+    while (state.phase != Phase::Done)
+    {
+        const Phase next = step(context, state);
+        report_transition(context, state, state.phase, next);
+        state.phase = next;
+    }
+}
+
+} // namespace
 
 namespace
 {
@@ -1240,7 +1278,7 @@ FitResult Detector::fit(
     state.reset(series, std::move(mask));
     if (context.max_coefficients > 0)
         state.resumable = false;   // a resume does not cap
-    drive<Machine>(context, state);
+    drive(context, state);
     report_exit(context, state);
     return state.take_result();
 }
@@ -1264,17 +1302,7 @@ FitResult Detector::resume(
     // Prepare neither exits early nor computes other values: it reads the
     // series before any drop, as the stored run's did.
     const Phase prepared = prepare(context, state);
-#if CCD_OBSERVE
-    if (context.observe.observer)
-    {
-        ObserverEvent e = observed(state);
-        e.kind = ObserverEvent::Kind::Transition;
-        e.machine = Machine::name;
-        e.phase = to_string(Phase::Prepare);
-        e.next = to_string(prepared);
-        context.observe.observer->event(context.observe.pixel, e);
-    }
-#endif
+    report_transition(context, state, Phase::Prepare, prepared);
     if (prepared == Phase::Done)
     {
         report_exit(context, state);
@@ -1325,7 +1353,7 @@ FitResult Detector::resume(
             state.phase = Phase::Done;
     }
 
-    drive<Machine>(context, state);
+    drive(context, state);
     report_exit(context, state);
     return state.take_result();
 }

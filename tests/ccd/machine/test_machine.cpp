@@ -45,7 +45,6 @@
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/chain.hpp"
-#include "ccd/machine/machine.hpp"    // internal (src/)
 #include "ccd/input/procedure.hpp"
 #include "ccd/machine/standard.hpp"   // internal (src/)
 #include "ccd/regression/lasso_solver.hpp"
@@ -123,7 +122,7 @@ struct Record
     // The record at a cursor, with a cadence, past Prepare.
     void at(index_t start, index_t stop, index_t prev_break, index_t peek = 6)
     {
-        state.cursor = ccd::Cursor{ccd::Window(start, stop), prev_break};
+        state.cursor = ccd::standard::Cursor{ccd::Window(start, stop), prev_break};
         state.cadence = ccd::standard::Cadence{peek, peek, 0};   // chi2: full peeks only
         state.initialize_criteria = ccd::standard::initialize_criteria(
             shared, strategies.stability_fit->coefficients());
@@ -200,10 +199,10 @@ struct Record
     ccd::Model& stability_fit() { return ccd::standard::stability_fit(context, state); }
     ccd::Scratch& stability_scratch() { return ccd::standard::stability_scratch(context, state); }
 
-    // One transition of the record's phase, as drive() makes it.
+    // One transition of the record's phase, as the Detector makes it.
     Phase step()
     {
-        const Phase next = ccd::standard::Machine::step(context, state);
+        const Phase next = ccd::standard::step(context, state);
         state.phase = next;
         return next;
     }
@@ -1504,7 +1503,7 @@ TEST(StandardMachine, EachStepIsOneDecision)
             const std::size_t segments = s.segments.size();
             const Phase phase = s.phase;
 
-            const Phase next = ccd::standard::Machine::step(context, s);
+            const Phase next = ccd::standard::step(context, s);
             const ccd::Window v = s.cursor.window;
 
             if (phase == Phase::Initialize && next == Phase::Initialize)

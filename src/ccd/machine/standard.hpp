@@ -10,12 +10,13 @@
 
 #include "ccd/config/shared.hpp"
 #include "ccd/core/band_list.hpp"
+#include "ccd/core/types.hpp"
 #include "ccd/core/window.hpp"
 #include "ccd/machine/suspended.hpp"
 
-#include "machine.hpp"
 #include "ccd/input/masked_series.hpp"
 #include "ccd/regression/harmonic_basis.hpp"
+#include "ccd/results/diagnostics.hpp"
 #include "ccd/results/segment.hpp"
 #include "ccd/strategies/model.hpp"
 #include "ccd/strategies/per_thread.hpp"
@@ -146,9 +147,9 @@ InitializeCriteria initialize_criteria(const config::Shared& shared,
 //
 // The Standard machine
 //
-// pyccd's standard procedure as a per-pixel state machine. drive()
-// (machine.hpp) steps it from Prepare to Done; each call of a phase's
-// transition makes one decision on the State and returns the next phase.
+// pyccd's standard procedure as a per-pixel state machine. The Detector
+// steps it from Prepare to Done (step()); each call of a phase's transition
+// makes one decision on the State and returns the next phase.
 // Initialize tests one candidate window per call, Lookback one observation
 // before the window, Extend one peek after it; each repeats itself until a
 // guard sends it on.
@@ -265,6 +266,25 @@ enum class ExtendOutcome : std::uint8_t
 const char* to_string(ExtendOutcome outcome);
 
 //------------------------------------------------------------------------------
+// Cursor
+//
+// Where the machine is in the pixel's series, in masked coordinates
+// (positions in MaskedSeries::dates()):
+//
+//   window       the model window, the observations a model is fitted to
+//   prev_break   the position where the previous segment stopped, the
+//                break observation of the last change; 0 before the first
+//
+// A MaskedSeries::drop() moves `window` with the observations; `prev_break`
+// stays where it is.
+//------------------------------------------------------------------------------
+struct Cursor
+{
+    Window window;
+    index_t prev_break = 0;
+};
+
+//------------------------------------------------------------------------------
 // State
 //
 // One pixel's record: everything that survives from one step to the next.
@@ -275,7 +295,7 @@ struct State
     Phase phase = Phase::Prepare;
     Exit exit = Exit::None;
 
-    // The shared parts (machine.hpp).
+    // The pixel's kept observations, where the window is, and the segments.
     MaskedSeries series;
     Cursor cursor;
     std::vector<ChangeModel> segments;   // written by this run
@@ -339,9 +359,6 @@ struct State
     FitResult take_result();
 };
 
-// One trace line's view of the record: cursor, observations, segments, exit.
-std::string summary(const State& state);
-
 //------------------------------------------------------------------------------
 // Context
 //
@@ -363,20 +380,10 @@ struct Context
     index_t max_coefficients = 0;
 };
 
-// The state's cursor and series length, as an observer's transition reports
-// them.
-ObserverEvent observed(const State& state);
-
-// The observer's event of a segment written (Kind::Segment).
-ObserverEvent segment_event(const ChangeModel& segment);
-
 // The state's stability fit and stability-rule scratch, of the run's
 // strategies (made when the state's are another run's).
 Model& stability_fit(const Context& context, State& state);
 Scratch& stability_scratch(const Context& context, State& state);
-
-// Reports the pixel's exit (state.exit) to the context's observer, if any.
-void report_exit(const Context& context, const State& state);
 
 // The state's lookback and edge-fit scratch, of the run's strategies.
 Scratch& lookback_scratch(const Context& context, State& state);
@@ -508,20 +515,9 @@ Phase after_lookback(const Context& context, State& state);
 // The peek guard: Extend when peek_fits(), else EndCatch (PeekBeyondEnd).
 Phase peek_guard(const Context& context, State& state);
 
-//------------------------------------------------------------------------------
-// The machine, for drive(), and one pixel's run of it.
-//------------------------------------------------------------------------------
-struct Machine
-{
-    using Context = standard::Context;
-    using State = standard::State;
-    using Phase = standard::Phase;
-
-    static constexpr const char* name = "standard";
-
-    // The transition of state.phase, which is not Done.
-    static Phase step(const Context& context, State& state);
-};
+// The transition of state.phase, which is not Done: the machine's one step,
+// which the Detector repeats until Done.
+Phase step(const Context& context, State& state);
 
 //==============================================================================
 //

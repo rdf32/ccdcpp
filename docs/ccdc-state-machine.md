@@ -3,7 +3,7 @@
 Per pixel, CCDC is a small state machine. It has one cursor, the model window over the pixel's
 kept observations, and one input it changes as it goes, the processing mask. Every loop in the
 algorithm is one state repeating itself until a guard sends it on. ccdcpp writes it that way:
-each state is a function that makes one decision and returns the next state, one loop steps any
+each state is a function that makes one decision and returns the next state, one loop steps the
 machine, and the per-pixel record holds everything that survives from one step to the next.
 
 This page describes the code as it is, with the files to read. Paths are relative to the
@@ -168,7 +168,7 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 |---|---|---|
 | `phase`, `exit` | where the machine is, and why it stopped | each machine has its own enums |
 | `series` (`MaskedSeries`, `include/ccd/input/masked_series.hpp`) | the processing mask and the observations it keeps, always in step | shared |
-| `cursor` (`Cursor`, `src/ccd/machine/machine.hpp`) | the model window and `prev_break`, in masked coordinates | shared |
+| `cursor` (`Cursor`) | the model window and `prev_break`, in masked coordinates | Standard's |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
 | `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | Standard's |
@@ -370,7 +370,6 @@ record:
 | `PixelProcedure`, `PROCEDURES`, `name()` | `include/ccd/input/procedure.hpp` |
 | `PixelMode`, with the `mode` stage | `include/ccd/strategies/stages.hpp` |
 | `MaskedSeries` | `include/ccd/input/masked_series.hpp` |
-| `Cursor`, `drive` | `src/ccd/machine/machine.hpp` |
 | `Window`, `span`, `count_through` | `include/ccd/core/window.hpp` |
 | `ChangeModel`, `BandFit`, `FitResult`, `CurveQA` | `include/ccd/results/segment.hpp` |
 | `Variogram`, with the stage interfaces | `include/ccd/strategies/stages.hpp` |
@@ -389,28 +388,27 @@ Each strategy holds its own code, beside its class:
 
 What only the Standard machine uses lives with it, in `ccd::standard`
 (`src/ccd/machine/standard.hpp`): `initialize_criteria`, `initialize_step` with
-`InitializeCriteria`, `InitializeStages` and `InitializeOutcome`, the phases, the transitions
-and the routing. A function moves to the shared list once a second machine or a strategy uses
+`InitializeCriteria`, `InitializeStages` and `InitializeOutcome`, `Cursor`, the phases, the
+transitions and the routing. A function moves to the shared list once a second machine or a strategy uses
 it.
 
 ## 5. The driver and the trace
 
-`ccd::drive<Machine>` (`src/ccd/machine/machine.hpp`) is the only loop:
+`drive` (`src/ccd/machine/standard.cpp`) is the machine's only loop:
 
 ```cpp
 while (state.phase != Phase::Done)
 {
-    const Phase next = Machine::step(context, state);
-    // with an observer (CCD_OBSERVE): context.observe.observer->event(pixel, the transition)
-    LOG_DEBUG(Machine::name << ": " << to_string(state.phase) << " -> "
-              << to_string(next) << " | " << summary(state));
+    const Phase next = step(context, state);
+    // the observer's transition (CCD_OBSERVE) and the DEBUG trace line
+    report_transition(context, state, state.phase, next);
     state.phase = next;
 }
 ```
 
-`standard::Machine::step` is a `switch` from the phase to its transition, and
-`standard::Detector::fit` is reset, drive, take the result. A machine supplies its types, its `step`, a name, and
-`to_string(Phase)` and `summary(State)` for the trace.
+`standard::step` is a `switch` from the phase to its transition, and `standard::Detector::fit`
+is reset, drive, take the result. A resume reports its Prepare through the same
+`report_transition` before it puts the cursor back.
 
 An observer (`RunSpec::observer`, [diagnostics.md](diagnostics.md)) is told each transition with
 the cursor as the step left it. The log trace is one DEBUG line per transition through the
@@ -426,8 +424,8 @@ library's logger, so the log level is its only switch; below DEBUG (the default)
 [DEBUG] standard: Lookback -> Extend | window (17, 92), prev_break 13, 512 observations, 1 segments, exit None
 ```
 
-The outcome line comes from the transition, the arrow line from `drive`, after the step: the
-summary shows the record as the decision left it.
+The outcome line comes from the transition, the arrow line from `report_transition`, after the
+step: the summary shows the record as the decision left it.
 
 ## 6. Resuming a stopped machine
 
