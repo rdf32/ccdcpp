@@ -65,7 +65,7 @@ preprocessing plan.
 ```python
 cfg = ccdcpp.config("ccdc")          # the preset, built once and shared
 print(cfg.stages()[:4], cfg.strategy("refit"), cfg.params("refit"))
-print(cfg.shared()["detection_bands"], cfg.shared()["statistics_end"] == ccdcpp.NO_STATISTICS_END)
+print(cfg.shared()["detection_bands"], cfg.shared()["statistics_end"])
 
 # Change values: shared__name=, stage__parameter=, preprocess__...=. A Config is immutable;
 # replace() returns a copy, checked and compiled as it is built.
@@ -150,11 +150,11 @@ the configuration as a preset file; a `Config` pickles, so it can go to worker p
 | `lasso.max_iter`, `lasso.tolerance` | 1000, 1e-4 | none | the same three |
 | `coefficients.min`, `.mid`, `.max`, `.per` | 4, 6, 8, 3 | none | `model`, `stability_fit` (the coefficient rule); `edge_segments`' `coefficients` (`coefficients.min`) |
 | `min_observations` | 12 | observations | `start_search`'s `meow_size`, `edge_segments`' `min_observations`; more than `coefficients.min` |
-| `statistics_end` | `NO_STATISTICS_END` (none) | ordinal day | the QA statistics, the cadence, the variogram, `green_median`'s date |
+| `statistics_end` | `"none"` | date | the QA statistics, the cadence, the variogram, `green_median`'s date |
 
-`statistics_end` is none (`ccdcpp.NO_STATISTICS_END`, the largest int64, which TOML writes as
-`9223372036854775807`) or an ordinal day; `replace(shared__statistics_end=None)` is none, and
-pyccd's 2017-12-31 is `replace(shared__statistics_end=736694)`.
+`statistics_end` is `"none"` (the whole series), a date `"YYYY-MM-DD"` or an ordinal day
+(`date.toordinal()`): pyccd's cutoff is `replace(shared__statistics_end="2017-12-31")`, the same
+run as `replace(shared__statistics_end=736694)`.
 
 ### Preprocessing
 

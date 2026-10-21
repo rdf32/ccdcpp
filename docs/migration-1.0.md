@@ -41,7 +41,7 @@ procedure choice), the cadence (the peek size and its threshold), the variogram 
 median from the observations up to 2017-12-31 (`STAT_ORD` 736694). That date reproduced LCMAP's
 2018 production baseline; it is not part of the algorithm, and for a series that runs past 2017
 it ignores the years since. 1.0's `ccdc` uses the whole series (`shared.statistics_end` is
-`NO_STATISTICS_END`). pyccd and LCMAP parity is
+`"none"`). pyccd and LCMAP parity is
 `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)`, bit for bit as 0.10.0. On the
 Atlanta cell (Landsat Collection 2 ARD h024v013, 1984-2023, 250,000 pixels) the change makes
 57.1% of the pixels differ and changes the segment count of 6.5% of them (32,751 breaks new,
@@ -267,10 +267,10 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `THERM_MIN`, `THERM_MAX`, `THERM_MIN_INCLUSIVE`, `THERM_MAX_INCLUSIVE` | -9320, 7070, false, false | `preprocess` `thermal_range`'s `min`, `max` (degrees Celsius: -93.2, 70.7) and flags |
 | `MEDIAN_GREEN_FILTER` | 400 | `preprocess` `green_median`'s `offset` (reflectance: 0.04) |
 | `GREEN_FILTER_SCOPE` | `StatWindow` | `preprocess` `green_median`'s `scope` (`"stat_window"`) |
-| `STAT_ORD` | 736694 | `shared__statistics_end` (default: none, `NO_STATISTICS_END`) |
+| `STAT_ORD` | 736694 | `shared__statistics_end`: `"none"` (the default), a date `"2017-12-31"` or an ordinal |
 | `DETECTION_BANDS` | [1, 2, 3, 4, 5] | `shared__detection_bands` (roles: green, red, nir, swir1, swir2) |
 | `MEOW_SIZE` | 12 | `shared__min_observations` (read as `start_search`'s `meow_size` and `edge_segments`' `min_observations`) |
-| `PEEK_SIZE` | 6 | `change_test__peek_size` (`stability_rule__peek` and `lookback__peek` are 0: the change test's peek) |
+| `PEEK_SIZE` | 6 | `change_test__peek_size` (`stability_rule__peek` and `lookback__peek` are `"change_test"`: the change test's peek) |
 | `DAY_DELTA` | 365 | `start_search__day_delta` |
 | `CLEAR_PCT_THRESHOLD` | 0.25 | `mode__clear_pct_threshold` |
 | `SNOW_PCT_THRESHOLD` | 0.75 | `mode__snow_pct_threshold` |
@@ -380,7 +380,7 @@ back ([change (b)](#what-changes-in-the-outputs)).
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `ccdcpp.NO_STAT_CUTOFF` | `ccdcpp.NO_STATISTICS_END` |
+| `ccdcpp.NO_STAT_CUTOFF` | `statistics_end = "none"`; `ccdcpp.NO_STATISTICS_END` is the value a resolved plan's `green_median` step holds for it |
 | `ccdcpp.CADENCE_FIELDS` | none: the cadence is the configuration's parameters |
 | `ccdcpp.OUTLIER_PROBABILITY` | `ccdcpp.config("ccdc").shared()["outlier_probability"]` |
 | `ccdcpp.QA_CODE_FIELDS` | `ccdcpp.QA_CODE_NAMES` (the names a configuration's `codes` take) |

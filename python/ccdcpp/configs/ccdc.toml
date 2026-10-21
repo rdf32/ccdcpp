@@ -11,7 +11,7 @@ change_probability = 0.99
 detection_bands = ["green", "red", "nir", "swir1", "swir2"]
 min_observations = 12
 outlier_probability = 0.999999
-statistics_end = 9223372036854775807
+statistics_end = "none"
 
 [shared.coefficients]
 max = 8
@@ -40,7 +40,7 @@ strategy = "lasso"
 [lookback]
 strategy = "pyccd"
 [lookback.params]
-peek = 0
+peek = "change_test"
 
 [mode]
 strategy = "pyccd"
@@ -76,7 +76,7 @@ strategy = "lasso"
 [stability_rule]
 strategy = "pyccd"
 [stability_rule.params]
-peek = 0
+peek = "change_test"
 
 [start_search]
 strategy = "pyccd"

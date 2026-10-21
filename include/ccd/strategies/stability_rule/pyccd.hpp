@@ -29,7 +29,7 @@ struct PyccdStability final : StabilityRule
     {
         scalar_t change_threshold = 15.086272469388987l;
         scalar_t change_probability = 0.99;
-        index_t peek = 0;
+        index_t peek = 0;   // 0: the change test's ("change_test")
     };
 
     static const std::vector<config::Field<Params>>& schema();

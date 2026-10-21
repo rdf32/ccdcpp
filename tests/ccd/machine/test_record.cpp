@@ -415,7 +415,8 @@ TEST(Digest, EveryGroupOfFieldsMoves)
                     else if constexpr (std::is_same_v<T, double>)
                         return ccd::config::real(v + 0.5);
                     else if constexpr (std::is_same_v<T, std::string>)
-                        return v + "-other";
+                        return v == "change_test" ? ccd::config::integer(6)
+                                                  : ccd::config::Value(v + "-other");
                     else if constexpr (std::is_same_v<T, std::vector<std::string>>)
                     {
                         v.push_back("nir");

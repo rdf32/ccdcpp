@@ -323,6 +323,7 @@ const char* unit_name(ccd::config::Unit unit)
         case ccd::config::Unit::Days:         return "days";
         case ccd::config::Unit::Reflectance:  return "reflectance";
         case ccd::config::Unit::ReflectanceDelta: return "reflectance_delta";
+        case ccd::config::Unit::Date:         return "date";
         case ccd::config::Unit::Celsius:      return "celsius";
         case ccd::config::Unit::Bands:        return "bands";
         case ccd::config::Unit::QaCodes:      return "qa_codes";
@@ -485,6 +486,7 @@ void bind_config(py::module_& m)
                         d["from"] = p.from;
                         d["default"] = p.default_value ? value_to_python(*p.default_value)
                                                        : py::none();
+                        d["keyword"] = p.keyword.empty() ? py::object(py::none()) : py::object(py::str(p.keyword));
                         list.append(d);
                     }
                     by_name[py::str(name)] = list;
@@ -515,6 +517,7 @@ void bind_config(py::module_& m)
                     d["from"] = p.from;
                     d["default"] = p.default_value ? value_to_python(*p.default_value)
                                                    : py::none();
+                    d["keyword"] = p.keyword.empty() ? py::object(py::none()) : py::object(py::str(p.keyword));
                     list.append(d);
                 }
                 out[py::str(name)] = list;
@@ -540,6 +543,7 @@ void bind_config(py::module_& m)
                 d["bounds"] = p.bounds;
                 d["doc"] = p.doc;
                 d["default"] = value_to_python(*p.default_value);
+                d["keyword"] = p.keyword.empty() ? py::object(py::none()) : py::object(py::str(p.keyword));
                 out.append(d);
             }
             return out;

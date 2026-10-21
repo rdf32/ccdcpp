@@ -45,7 +45,7 @@ struct PyccdLookback final : Lookback
         scalar_t change_threshold = 15.086272469388987l;
         scalar_t change_probability = 0.99;
         scalar_t outlier_threshold = 35.888186879610423L;
-        index_t peek = 0;
+        index_t peek = 0;   // 0: the change test's ("change_test")
     };
 
     static const std::vector<config::Field<Params>>& schema();

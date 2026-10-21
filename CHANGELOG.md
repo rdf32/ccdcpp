@@ -17,7 +17,7 @@ its replacement.
 
 ### Changed
 
-- **No statistics cutoff by default.** `ccdc`'s `shared.statistics_end` is `NO_STATISTICS_END`:
+- **No statistics cutoff by default.** `ccdc`'s `shared.statistics_end` is `"none"`:
   the QA statistics, the cadence, the variogram and the green median read the whole series.
   0.10.0 and pyccd stopped them at 2017-12-31 (ordinal 736694), LCMAP's 2018 production
   baseline; `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` is that run, bit for
@@ -119,7 +119,7 @@ its replacement.
   `qa_table=`, `preprocess=`, `resume_record=`, `detect_cube_columns`, `resume`,
   `resume_cube_columns`, the per-pixel-dict `detect_cube`, `default_plan`, `validate_plan`,
   `Transform`, `DEFAULT_TRANSFORM`, `CADENCE_FIELDS`, `GREEN_FILTER_SCOPES`,
-  `OUTLIER_PROBABILITY`, `QA_CODE_FIELDS`, `NO_STAT_CUTOFF` (`NO_STATISTICS_END`), and the
+  `OUTLIER_PROBABILITY`, `QA_CODE_FIELDS`, `NO_STAT_CUTOFF` (`statistics_end = "none"`), and the
   profiles' algorithm fields (`detection`, `tmask`, `saturation`, `alpha`, `coef_floor`,
   `cadence`, `stat_ord`, `change_threshold`, `outlier_threshold`, `green_filter_scope`,
   `preprocess`).

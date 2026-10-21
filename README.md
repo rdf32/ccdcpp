@@ -488,9 +488,9 @@ A value several stages read is written once, in `shared`, and the stages that re
 | `lasso.max_iter`, `lasso.tolerance` | `1000`, `1e-4` | none | the same three |
 | `coefficients.min`, `.mid`, `.max`, `.per` | `4`, `6`, `8`, `3` | none | the coefficient rule of `model` and `stability_fit`; `edge_segments` fits `coefficients.min`, and writes a Start or End segment only on more observations than the peek and than `coefficients.min` |
 | `min_observations` | `12` | observations | the fewest observations a curve is fitted on: `start_search`'s start window, `edge_segments`' whole-series curve; more than `coefficients.min` |
-| `statistics_end` | none (`NO_STATISTICS_END`) | ordinal day | the last date the QA statistics, the cadence, the variogram and the green median read |
+| `statistics_end` | `"none"` | a date | the last date the QA statistics, the cadence, the variogram and the green median read: `"none"`, `"YYYY-MM-DD"` or an ordinal day |
 
-**`ccdc` has no statistics cutoff**: the statistics read the whole series. PyCCD and LCMAP's 2018 production baseline stop them at 2017-12-31, ordinal 736694; `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` runs that cutoff. `shared__statistics_end=None` is no cutoff.
+**`ccdc` has no statistics cutoff**: the statistics read the whole series. PyCCD and LCMAP's 2018 production baseline stop them at 2017-12-31, ordinal 736694; `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)` runs that cutoff. `shared__statistics_end="2017-12-31"` is the same date, and `"none"` no cutoff.
 
 ## Stages and strategies
 

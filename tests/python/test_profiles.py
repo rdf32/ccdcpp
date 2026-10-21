@@ -947,8 +947,8 @@ class Profiles(unittest.TestCase):
         stages = cfg.resolve(h)["stages"]
         self.assertEqual(stages["start_search"]["params"]["meow_size"], 18)
         self.assertEqual(stages["edge_segments"]["params"]["min_observations"], 18)
-        self.assertEqual(cfg.shared()["statistics_end"], ccdcpp.NO_STATISTICS_END)
-        self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], 2**63 - 1)
+        self.assertEqual(cfg.shared()["statistics_end"], "none")
+        self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], "none")
         out = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(), config=cfg)
         self.assertEqual(out["detect_cube"]["failures"], [])
 
@@ -1053,7 +1053,7 @@ class TenBand(unittest.TestCase):
         cfg = ccdcpp.config("ccdc").replace(
             change_test__peek_reference_days=10.0,
             shared__detection_bands=["green", "red", "red_edge_2", "nir", "swir1", "swir2"],
-            shared__statistics_end=None,
+            shared__statistics_end="none",
         )
         self.assertEqual(TEN_BAND_CONFIG, cfg)
         self.assertEqual(profile.input(), with_table(h, ccdcpp.qa_tables.sentinel2_scl(h)))
@@ -1080,7 +1080,7 @@ class TenBand(unittest.TestCase):
         self.assertEqual((h.bands(), h.index("green"), h.index("thermal")), (8, 2, 7))
         shared = ccdcpp.config("ccdc").resolve(h)["shared"]
         self.assertEqual(shared["detection_bands"], [2, 3, 4, 5, 6])
-        self.assertEqual(shared["statistics_end"], ccdcpp.NO_STATISTICS_END)
+        self.assertEqual(shared["statistics_end"], "none")
         np.testing.assert_array_equal(profile.input().qa_table.codes,
                                       ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
 
@@ -1236,7 +1236,7 @@ class SensorPresets(unittest.TestCase):
                 self.assertEqual(set(option_params(cfg, "alpha", h).values()), {1e-4})
                 for threshold in (change_threshold, outlier_threshold):
                     self.assertEqual(threshold(cfg, h).hex(), threshold(defaults).hex())
-                self.assertEqual(r["shared"]["statistics_end"], ccdcpp.NO_STATISTICS_END)
+                self.assertEqual(r["shared"]["statistics_end"], "none")
                 self.assertEqual(preset().band_names, BAND_NAMES[name])
                 self.assertEqual(preset().qa_table_options,
                                  dict(sentinel2_l2a=()).get(

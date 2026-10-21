@@ -100,8 +100,9 @@ const std::vector<config::Field<PyccdLookback::Params>>& PyccdLookback::schema()
         {"outlier_threshold", &Params::outlier_threshold, Unit::None, config::any(),
          "the observation before the window is dropped above this", config::Source::Chi2,
          "outlier_probability"},
-        {"peek", &Params::peek, Unit::Observations, config::any(),
-         "0: the change test's peek; N: a peek of N, change_threshold for it"},
+        {"peek", &Params::peek, Unit::Observations, config::at_least(1),
+         "a peek of N, change_threshold for it; \"change_test\": the change test's",
+         config::Source::Own, nullptr, std::nullopt, config::Keyword{"change_test", 0}},
     };
     return s;
 }

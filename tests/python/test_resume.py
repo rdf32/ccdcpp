@@ -60,7 +60,8 @@ def pixel(seed: int, step_at: int | None = None) -> Series:
 def capped(cut: int) -> dict[str, Any]:
     """The ccdc preset with its statistics cutoff capped at `cut`."""
     config = ccdcpp._config_preset("ccdc")
-    config["shared"]["statistics_end"] = min(config["shared"]["statistics_end"], cut)
+    end = config["shared"]["statistics_end"]
+    config["shared"]["statistics_end"] = cut if end == "none" else min(end, cut)
     return config
 
 

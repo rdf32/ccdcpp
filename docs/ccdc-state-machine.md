@@ -311,7 +311,7 @@ using namespace ccd;
 config::Config config = strategies::library_registry().preset("ccdc");
 // config.shared holds detection_bands {"green", "red", "nir", "swir1", "swir2"},
 //   change_probability 0.99, outlier_probability 0.999999, min_observations 12,
-//   statistics_end NO_STATISTICS_END, the coefficient rule coefficients.min, .mid, .max
+//   statistics_end "none", the coefficient rule coefficients.min, .mid, .max
 //   and .per 4/6/8/3, and the Lasso's lasso.alpha and lasso.coef_floor 1e-4 (reflectance),
 //   lasso.max_iter 1000 and lasso.tolerance 1e-4; the stages that read them hold no copy.
 // config.stages["start_search"] is {"pyccd", {{"day_delta", 365}}}: its meow_size is the

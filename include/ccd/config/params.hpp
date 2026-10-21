@@ -7,6 +7,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -38,7 +39,7 @@ namespace config
 //             {"min_obs", &Params::min_obs, Unit::Observations, at_least(1), "..."},
 //             {"factor",  &Params::factor,  Unit::None, greater_than(0), "..."},
 //             {"alpha",   &Params::alpha,   Unit::ReflectanceDelta, at_least(0), "...",
-//              Source::Shared, "alpha"},
+//              Source::Shared, "lasso.alpha"},
 //         };
 //         return s;
 //     }
@@ -63,6 +64,8 @@ namespace config
 //                              Lasso's alpha and coef_floor, the green
 //                              median's offset): times
 //                              Input::reflectance_scale only;
+//   Date                       a day: an ordinal (0001-01-01 is 1) as given, a
+//                              date "YYYY-MM-DD" as its ordinal;
 //   Celsius                    degrees Celsius, to the thermal row's unit
 //                              after the input's transform: c x 100 (hundredths
 //                              of a degree, pyccd's unit) times
@@ -83,6 +86,7 @@ enum class Unit : std::uint8_t
     Days,
     Reflectance,
     ReflectanceDelta,
+    Date,
     Celsius,
     Bands,
     QaCodes
@@ -176,6 +180,17 @@ enum class Source : std::uint8_t
     Chi2
 };
 
+// A name a whole-number field takes in place of one value it means
+// something particular by: a lookback's peek "change_test" (0, the change
+// test's peek), the statistics_end "none" (NO_STATISTICS_END). apply() takes
+// the name for the value, which its bounds need not hold, and to_values()
+// gives the value back as the name.
+struct Keyword
+{
+    const char* name;
+    std::int64_t value;
+};
+
 template<class P>
 struct Field
 {
@@ -190,6 +205,7 @@ struct Field
     Source source = Source::Own;
     const char* from = nullptr;
     std::optional<Value> default_value = std::nullopt;
+    std::optional<Keyword> keyword = std::nullopt;
 };
 
 // One value into a member of each type a Field may point to, refusing (std::
@@ -233,6 +249,24 @@ void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
                                         (known.empty() ? "" : "; it has " + known));
         }
         const std::string at = where + " parameter '" + name + "'";
+        const auto* text = std::get_if<std::string>(&value);
+        if (field->keyword && text)
+        {
+            if (*text != field->keyword->name)
+                throw std::invalid_argument(at + " is '" + *text + "'; it is a number or \"" +
+                                            field->keyword->name + "\"");
+            std::visit(
+                [&](auto member)
+                {
+                    using T = std::remove_reference_t<decltype(params.*member)>;
+                    if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
+                        params.*member = static_cast<T>(field->keyword->value);
+                    else
+                        throw std::logic_error(at + ": a keyword names a whole number");
+                },
+                field->member);
+            continue;
+        }
         std::visit([&](auto member) { assign(params.*member, value, field->bounds, at); },
                    field->member);
     }
@@ -258,6 +292,9 @@ Values to_values(const std::vector<Field<P>>& schema, const P& params)
                     out[f.name] = Value(params.*member);
                 else if constexpr (std::is_same_v<T, double>)
                     out[f.name] = real(params.*member);
+                else if (f.keyword &&
+                         static_cast<std::int64_t>(params.*member) == f.keyword->value)
+                    out[f.name] = Value(std::string(f.keyword->name));
                 else
                     out[f.name] = integer(static_cast<std::int64_t>(params.*member));
             },
@@ -277,6 +314,7 @@ struct ParameterInfo
     Source source;
     std::string from;     // the shared value it reads; empty for Own
     std::optional<Value> default_value;
+    std::string keyword;  // the name it takes for a value (Keyword); empty for none
 };
 
 // The parameters of `schema`, each Own one with its configuration default
@@ -292,7 +330,8 @@ std::vector<ParameterInfo> info_of(const std::vector<Field<P>>& schema)
         if (field.source == Source::Own)
             fallback = field.default_value ? *field.default_value : members.at(field.name);
         info.push_back(ParameterInfo{field.name, field.unit, describe(field.bounds), field.doc,
-                                     field.source, field.from ? field.from : "", fallback});
+                                     field.source, field.from ? field.from : "", fallback,
+                                     field.keyword ? field.keyword->name : ""});
     }
     return info;
 }

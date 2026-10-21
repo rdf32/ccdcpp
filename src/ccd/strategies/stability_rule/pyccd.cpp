@@ -34,8 +34,9 @@ const std::vector<config::Field<PyccdStability::Params>>& PyccdStability::schema
         {"change_probability", &Params::change_probability, Unit::None,
          config::open_interval(0, 1), "the probability a longer peek's threshold keeps",
          config::Source::Shared, "change_probability"},
-        {"peek", &Params::peek, Unit::Observations, config::any(),
-         "0: the change test's peek; N: a peek of N, change_threshold for it"},
+        {"peek", &Params::peek, Unit::Observations, config::at_least(1),
+         "a peek of N, change_threshold for it; \"change_test\": the change test's",
+         config::Source::Own, nullptr, std::nullopt, config::Keyword{"change_test", 0}},
     };
     return s;
 }

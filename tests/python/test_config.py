@@ -67,7 +67,7 @@ class Presets(unittest.TestCase):
         self.assertNotIn("green_filter", shared)
         self.assertEqual(shared["change_probability"], 0.99)
         self.assertEqual(shared["outlier_probability"], 1.0 - 1e-6)
-        self.assertEqual(shared["statistics_end"], ccdcpp.NO_STATISTICS_END)
+        self.assertEqual(shared["statistics_end"], "none")
         self.assertEqual(shared["detection_bands"], ["green", "red", "nir", "swir1", "swir2"])
         self.assertEqual(ccdcpp.config("ccdc").params("window_screen")["bands"],
                          ["green", "swir1"])
@@ -107,7 +107,7 @@ class Presets(unittest.TestCase):
         self.assertEqual((clear[1]["min"], clear[1]["max"]), (-9320.0, 7070.0))
         self.assertEqual((clear[2]["min"], clear[2]["max"]), (0.0, 10000.0))
         self.assertEqual(clear[4], {"step": "green_median", "offset": 400.0,
-                                    "scope": "stat_window", "max_date": ccdcpp.NO_STATISTICS_END})
+                                    "scope": "stat_window", "max_date": "none"})
 
     def test_a_file_extends_a_preset(self):
         path = os.path.join(_ROOT, "variant.toml")
@@ -156,17 +156,41 @@ class Presets(unittest.TestCase):
         path = os.path.join(_ROOT, "written.toml")
         for cfg in (ccdcpp.config(),
                     ccdcpp.config().replace(window_screen__bands=[1, 2, 4], refit__factor=1.5),
-                    ccdcpp.config().replace(shared__statistics_end=None,
+                    ccdcpp.config().replace(shared__statistics_end="2017-12-31",
                                             shared__detection_bands=["red", "nir"])):
             with open(path, "w") as f:
                 f.write(cfg.to_toml())
             self.assertEqual(ccdcpp.config(path), cfg)
 
-    def test_no_statistics_cutoff_is_the_largest_ordinal(self):
-        cfg = ccdcpp.config().replace(shared__statistics_end=None)
-        self.assertEqual(cfg.shared()["statistics_end"], ccdcpp.NO_STATISTICS_END)
-        self.assertEqual(ccdcpp.NO_STATISTICS_END, 2**63 - 1)
-        self.assertIn("statistics_end = 9223372036854775807", cfg.to_toml())
+    def test_statistics_end_is_none_a_date_or_an_ordinal(self):
+        cfg = ccdcpp.config()
+        self.assertEqual(cfg.shared()["statistics_end"], "none")
+        self.assertIn('statistics_end = "none"', cfg.to_toml())
+        h = ccdcpp.Input()
+        self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], "none")
+        # A date is its ordinal: the same run, and the same digest.
+        dated = cfg.replace(shared__statistics_end="2017-12-31")
+        ordinal = cfg.replace(shared__statistics_end=736694)
+        self.assertEqual(dated.resolve(h)["shared"]["statistics_end"], 736694)
+        self.assertEqual(dated.resolve(h)["digest"], ordinal.resolve(h)["digest"])
+        self.assertIn('statistics_end = "2017-12-31"', dated.to_toml())
+        for bad, message in (("2017-02-29", r"^shared value 'statistics_end' is '2017-02-29', "
+                                            r"which is not a date$"),
+                             ("never", r"^shared parameter 'statistics_end' is 'never'; it is a "
+                                       r"number or \"none\"$")):
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(ValueError, message):
+                    cfg.replace(shared__statistics_end=bad)
+
+    def test_a_peek_is_the_change_tests_or_a_number(self):
+        cfg = ccdcpp.config()
+        self.assertEqual(cfg.params("lookback")["peek"], "change_test")
+        self.assertEqual(cfg.resolve(ccdcpp.Input())["stages"]["lookback"]["params"]["peek"],
+                         "change_test")
+        self.assertEqual(cfg.replace(lookback__peek=8).params("lookback")["peek"], 8)
+        with self.assertRaisesRegex(ValueError, r"^lookback 'pyccd' parameter 'peek' is 0; it "
+                                                r"must be at least 1$"):
+            cfg.replace(lookback__peek=0)
 
     def test_an_unknown_preset_names_the_presets(self):
         with self.assertRaisesRegex(ValueError, r"the presets are (.*, )?ccdc$"):

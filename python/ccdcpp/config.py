@@ -55,8 +55,9 @@ table per stage and one ``[preprocess.<procedure>]`` table per procedure:
 A stage a file names with the base's strategy changes only the parameters it gives; with
 another strategy, the stage starts from that strategy's defaults. A procedure a file names
 takes the file's ``thermal_transform`` and ``steps`` where it gives them, its base's otherwise.
-``statistics_end`` with no statistics cutoff is ``NO_STATISTICS_END``, 9223372036854775807
-(``None`` in ``replace()``).
+``statistics_end`` is ``"none"`` (no statistics cutoff), a date ``"YYYY-MM-DD"`` or an ordinal
+day; a lookback's and a stability rule's ``peek`` is ``"change_test"`` (the change test's) or a
+number.
 """
 from __future__ import annotations
 
@@ -201,8 +202,8 @@ class Config:
     def replace(self, **changes: Any) -> Config:
         """A copy with changes:
 
-        - ``shared__name=value`` sets a shared value (``statistics_end=None`` for no statistics
-          cutoff);
+        - ``shared__name=value`` sets a shared value, ``shared__table__name=value`` one of a
+          table's (``shared__lasso__alpha=1e-5``);
         - ``stage="strategy"`` swaps a stage's strategy (its parameters become the new
           strategy's defaults), ``stage__param=value`` sets one parameter;
         - ``preprocess=ccdcpp.Preprocess(...)`` replaces the procedures it gives,
@@ -255,8 +256,6 @@ class Config:
                                      f"preprocess__procedure__step__param")
                 continue
             if stage == "shared":
-                if param == "statistics_end" and value is None:
-                    value = _extension.NO_STATISTICS_END
                 if "__" in param:   # a table's value: shared__lasso__alpha
                     table, param = param.split("__", 1)
                     if not isinstance(tree["shared"].get(table), dict):

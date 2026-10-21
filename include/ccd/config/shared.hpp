@@ -17,8 +17,8 @@ namespace config
 {
 
 // The shared statistics_end that puts every date inside the statistics
-// window: the largest ordinal. A configuration writes "no cutoff" as this number (TOML
-// and Python carry it as the integer 9223372036854775807).
+// window: the largest ordinal. A configuration writes it "none"
+// (statistics_end's Keyword).
 constexpr std::int64_t NO_STATISTICS_END = std::numeric_limits<std::int64_t>::max();
 
 //==============================================================================
@@ -50,12 +50,12 @@ constexpr std::int64_t NO_STATISTICS_END = std::numeric_limits<std::int64_t>::ma
 //                                       observations it needs after it, and
 //                                       edge_segments' least for a
 //                                       whole-series curve
-//   statistics_end       ordinal day    the statistics cutoff: the procedure
+//   statistics_end       date           the statistics cutoff: the procedure
 //                                       choice, the cadence, the variogram
 //                                       and the green median step read only
 //                                       the observations dated <=
-//                                       statistics_end; NO_STATISTICS_END
-//                                       for none
+//                                       statistics_end; "none"
+//                                       (NO_STATISTICS_END) for none
 //   coefficients.min, .mid, .max, .per  the coefficient rule of model and
 //                        none           stability_fit (CoefficientRule);
 //                                       edge_segments' coefficients is min

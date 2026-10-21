@@ -215,7 +215,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
               real(0.04));
     EXPECT_EQ(preset.shared.at("change_probability"), real(0.99));
     EXPECT_EQ(preset.shared.at("outlier_probability"), real(1.0 - 1e-6));
-    EXPECT_EQ(preset.shared.at("statistics_end"), integer(ccd::config::NO_STATISTICS_END));
+    EXPECT_EQ(preset.shared.at("statistics_end"), ccd::config::Value(std::string("none")));
     EXPECT_EQ(preset.shared.at("detection_bands"),
               ccd::config::roles({"green", "red", "nir", "swir1", "swir2"}));
     EXPECT_EQ(preset.stages.at("window_screen").params.at("bands"),
@@ -241,7 +241,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
         {"lookback", {"pyccd", {{"change_probability", real(0x1.fae147ae147aep-1)},
                                 {"change_threshold", real(0x1.e2c2be7b52448p+3)},
                                 {"outlier_threshold", real(0x1.1f1b01b9054dfp+5)},
-                                {"peek", integer(0)}}}},
+                                {"peek", ccd::config::Value(std::string("change_test"))}}}},
         {"mode", {"pyccd", {{"clear_pct_threshold", real(0.25)},
                             {"snow_pct_threshold", real(0.75)}}}},
         {"model", {"lasso", {{"alpha", real(1.0)},
@@ -268,7 +268,7 @@ TEST(Registry, CcdcOnTheDefaultInputIsPyccdsTree)
                                      {"tolerance", real(0x1.a36e2eb1c432dp-14)}}}},
         {"stability_rule", {"pyccd", {{"change_probability", real(0x1.fae147ae147aep-1)},
                                       {"change_threshold", real(0x1.e2c2be7b52448p+3)},
-                                      {"peek", integer(0)}}}},
+                                      {"peek", ccd::config::Value(std::string("change_test"))}}}},
         {"start_search", {"pyccd", {{"day_delta", integer(365)}, {"meow_size", integer(12)}}}},
         {"window_screen", {"tmask", {{"bands", ccd::config::Value(List{1, 4})},
                                      {"t_const", real(0x1.38f5c28f5c28fp+2)}}}},
@@ -327,6 +327,49 @@ TEST(Registry, ResolveFillsTheDefaults)
     partial = ccdc;
     partial.shared["nope"] = ccd::config::integer(1);
     expect_refused([&] { ccd::config::check(r, partial); }, "shared has no value 'nope'; it has detection_bands");
+}
+
+// A named value stands for the one value its field means something
+// particular by, both ways: statistics_end "none" and a lookback's peek
+// "change_test". A date is its ordinal, as Python's date.toordinal().
+TEST(Registry, NamedValuesAndDates)
+{
+    using ccd::config::Value;
+    const ccd::config::Registry& r = ccd::strategies::library_registry();
+    const auto end_of = [&](Value end)
+    {
+        return ccd::config::resolve(r, golden::with_shared(golden::ccdc(), "statistics_end",
+                                                           std::move(end)),
+                                    ccd::Input{})
+            .shared.statistics_end;
+    };
+    EXPECT_EQ(end_of(Value(std::string("none"))), ccd::config::NO_STATISTICS_END);
+    for (const auto& [date, ordinal] : std::vector<std::pair<std::string, std::int64_t>>{
+             {"0001-01-01", 1}, {"1970-01-01", 719163}, {"2000-02-29", 730179},
+             {"2017-12-31", 736694}, {"2100-03-01", 766704}, {"9999-12-31", 3652059}})
+        EXPECT_EQ(end_of(Value(date)), ordinal) << date;
+    EXPECT_EQ(end_of(ccd::config::integer(736694)), 736694);
+    for (const char* bad : {"2017-02-29", "2017-13-01", "0000-01-01"})
+        expect_refused([&] { end_of(Value(std::string(bad))); },
+                       "shared value 'statistics_end' is '" + std::string(bad) +
+                           "', which is not a date");
+    expect_refused([&] { end_of(Value(std::string("never"))); },
+                   "shared parameter 'statistics_end' is 'never'; it is a number or \"none\"");
+
+    // The resolved values give the name back; the green median reads it too.
+    const ccd::config::Resolved resolved = golden::resolved(golden::ccdc());
+    EXPECT_EQ(resolved.stages.at("lookback").params.at("peek"), Value(std::string("change_test")));
+    EXPECT_EQ(resolved.preprocess.at("insufficient_clear").steps.at(4).params.at("max_date"),
+              Value(std::string("none")));
+    EXPECT_EQ(golden::parameter<std::int64_t>(
+                  golden::resolved(golden::with(golden::ccdc(), "lookback", "peek",
+                                                ccd::config::integer(8)))
+                      .stages,
+                  "lookback", "peek"),
+              8);
+    expect_refused([&] { golden::resolved(golden::with(golden::ccdc(), "lookback", "peek",
+                                                       ccd::config::integer(0))); },
+                   "lookback 'pyccd' parameter 'peek' is 0; it must be at least 1");
 }
 
 // canonical() writes a configuration out in full, in its own terms: the
@@ -1004,7 +1047,7 @@ TEST(Lookback, PyccdTakesItsThresholdsFromTheSharedValues)
     const auto& lookback = tree.at("lookback");
     const auto& test = tree.at("change_test");
     EXPECT_EQ(lookback.strategy, "pyccd");
-    EXPECT_EQ(std::get<std::int64_t>(lookback.params.at("peek")), 0);   // the test's
+    EXPECT_EQ(std::get<std::string>(lookback.params.at("peek")), "change_test");   // the test's
     EXPECT_EQ(std::get<double>(lookback.params.at("change_threshold")),
               std::get<double>(test.params.at("change_threshold")));
     EXPECT_EQ(std::get<double>(lookback.params.at("change_probability")),

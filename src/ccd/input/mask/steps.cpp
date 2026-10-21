@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 
+#include "ccd/config/shared.hpp"
+
 namespace ccd
 {
 namespace preprocess
@@ -132,7 +134,7 @@ const std::vector<Field<GreenMedian::Params>>& GreenMedian::schema()
          "which observations it drops: all, stat_window or off"},
         {"max_date", &Params::max_date, Unit::None, config::any(),
          "the last date of the observations the median is taken over", Source::Shared,
-         "statistics_end"},
+         "statistics_end", std::nullopt, config::Keyword{"none", config::NO_STATISTICS_END}},
     };
     return s;
 }

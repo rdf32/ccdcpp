@@ -81,6 +81,38 @@ Value to_thermal_unit(const Value& value, const Input& input)
     return value;
 }
 
+// A date "YYYY-MM-DD" as its ordinal day (0001-01-01 is 1, as Python's
+// date.toordinal()); another value as given.
+Value to_ordinal(const Value& value, const std::string& at)
+{
+    const auto* text = std::get_if<std::string>(&value);
+    const auto digits = [&](std::size_t from, std::size_t n)
+    {
+        for (std::size_t i = from; i < from + n; ++i)
+            if ((*text)[i] < '0' || (*text)[i] > '9')
+                return false;
+        return true;
+    };
+    if (!text || text->size() != 10 || (*text)[4] != '-' || (*text)[7] != '-' ||
+        !digits(0, 4) || !digits(5, 2) || !digits(8, 2))
+        return value;
+    const std::int64_t y = std::stoll(text->substr(0, 4));
+    const std::int64_t m = std::stoll(text->substr(5, 2));
+    const std::int64_t d = std::stoll(text->substr(8, 2));
+    const bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    const std::int64_t month_days[] = {31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (y < 1 || m < 1 || m > 12 || d < 1 || d > month_days[m - 1])
+        throw std::invalid_argument(at + " is '" + *text + "', which is not a date");
+    // Days since 1970-01-01 of the proleptic Gregorian date (H. Hinnant's
+    // days_from_civil), then 1970-01-01's ordinal, 719163.
+    const std::int64_t year = m <= 2 ? y - 1 : y;
+    const std::int64_t era = year / 400;
+    const std::int64_t yoe = year - era * 400;
+    const std::int64_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const std::int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return integer(era * 146097 + doe - 719468 + 719163);
+}
+
 // QA code names as the input's codes; codes as given.
 std::optional<Value> to_codes(const Value& value, const std::string& at, const Input* input)
 {
@@ -168,6 +200,8 @@ std::optional<Value> convert(Unit unit, const Value& value, const std::string& a
             return input ? to_reflectance_delta(value, *input) : value;
         case Unit::Celsius:
             return input ? to_thermal_unit(value, *input) : value;
+        case Unit::Date:
+            return to_ordinal(value, at);
         case Unit::QaCodes:
             return to_codes(value, at, input);
         case Unit::Bands:
