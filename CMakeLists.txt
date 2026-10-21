@@ -1097,42 +1097,6 @@ if(CCD_BUILD_GOLDEN_DRIVER)
 
 endif()
 
-# add_executable(
-#     test_scratch
-
-#     tests/scratch.cpp
-# )
-
-
-# target_link_libraries(
-#     test_scratch
-
-#     PRIVATE
-#         ccd_core
-# )
-
-add_executable(
-    test_ccd
-
-    tests/ccd/machine/test_ccd.cpp
-)
-
-
-target_link_libraries(
-    test_ccd
-
-    PRIVATE
-        ccd_core
-)
-
-
-target_compile_features(
-    test_ccd
-
-    PRIVATE
-        cxx_std_17
-)
-
 # --------------------------------------------------
 # Python bindings
 # --------------------------------------------------

@@ -1,8 +1,5 @@
-#include <iostream>
-#include <iomanip>
 #include <vector>
 #include <array>
-#include <chrono>
 
 #include <fstream>
 #include <sstream>
@@ -20,80 +17,6 @@
 #include "ccd/machine/pixel_procedure.hpp"
 #include "../golden/config.hpp"
 
-
-using Clock = std::chrono::high_resolution_clock;
-
-inline void print_change_model(const ccd::ChangeModel& model)
-{
-    std::cout << "\n========================================\n";
-    std::cout << "ChangeModel\n";
-    std::cout << "========================================\n";
-
-    std::cout << "Start Day          : " << model.start_day << '\n';
-    std::cout << "End Day            : " << model.end_day << '\n';
-    std::cout << "Break Day          : " << model.break_day << '\n';
-    std::cout << "Observation Count  : " << model.observation_count << '\n';
-    std::cout << "Change Probability : " << model.change_probability << '\n';
-    std::cout << "Curve QA           : " << static_cast<int>(model.curve_qa) << '\n';
-
-    std::cout << "\nSpectral Models\n";
-    std::cout << "----------------------------------------\n";
-
-    for (std::size_t band = 0; band < model.bands.size(); ++band)
-    {
-        const ccd::BandFit& fit = model.bands[band];
-        const auto& coef = fit.coefficients;
-
-        std::cout << "Band " << band << '\n';
-        std::cout << "  Iterations : " << fit.iterations << '\n';
-        std::cout << "  Intercept  : " << fit.intercept << '\n';
-        std::cout << "  RMSE       : " << fit.rmse << '\n';
-        std::cout << "  Magnitude  : " << fit.magnitude << '\n';
-
-        std::cout << "  Coefficients (" << coef.size() << "): ";
-
-        for (std::size_t i = 0; i < coef.size(); ++i)
-        {
-            std::cout << coef[i];
-
-            if (i + 1 != coef.size())
-                std::cout << ", ";
-        }
-        std::cout << "\n";
-
-        // std::cout << "  Residuals (" << resi.size() << "): ";
-
-        // for (std::size_t i = 0; i < resi.size(); ++i)
-        // {
-        //     std::cout << resi[i];
-
-        //     if (i + 1 != resi.size())
-        //         std::cout << ", ";
-        // }
-        // std::cout << "\n";
-
-        std::cout << "\n\n";
-    }
-    std::cout << "========================================\n";
-}
-
-inline void print_change_models(
-    const std::vector<ccd::ChangeModel>& models
-)
-{
-    for(std::size_t i = 0;
-        i < models.size();
-        ++i)
-    {
-        std::cout << "\n######## Change Model "
-                  << i
-                  << " ########\n";
-
-        print_change_model(
-            models[i]
-        );
-    }
-}
 
 struct TestData
 {
@@ -174,16 +97,6 @@ TestData read_data(
 
 
     return result;
-}
-
-auto elapsed_ms(
-    Clock::time_point start,
-    Clock::time_point end
-)
-{
-    return std::chrono::duration<double, std::milli>(
-        end - start
-    ).count();
 }
 
 struct ExpectedBand
@@ -376,7 +289,6 @@ TEST(CCD, DetectSnow)
         solver
     );
 
-    print_change_models(result.models);
 
     auto expected =
         read_snow_reference(
