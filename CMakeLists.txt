@@ -327,714 +327,119 @@ if(CCD_BUILD_TESTS)
     FetchContent_MakeAvailable(googletest)
 
 
-    # -----------------------------
-    # Lasso test executable
-    # -----------------------------
+    include(GoogleTest)
 
-    add_executable(
-        test_lasso
+    # A test executable: `name` built from SOURCES, linked with the library and
+    # gtest_main, with DEFINES as its compile definitions; INTERNAL gives it
+    # the library's internal headers (src/), which the library does not
+    # export. Its tests are discovered unless NO_DISCOVER, for the tests that
+    # discover theirs in shards (below).
+    function(ccd_add_gtest name)
+        cmake_parse_arguments(PARSE_ARGV 1 test "INTERNAL;NO_DISCOVER" "" "SOURCES;DEFINES")
+        add_executable(${name} ${test_SOURCES})
+        target_link_libraries(${name} PRIVATE ccd_core GTest::gtest_main)
+        target_compile_features(${name} PRIVATE cxx_std_17)
+        target_compile_definitions(${name} PRIVATE ${test_DEFINES})
+        if(test_INTERNAL)
+            target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        endif()
+        if(NOT test_NO_DISCOVER)
+            gtest_discover_tests(${name})
+        endif()
+    endfunction()
 
-        tests/ccd/regression/test_lasso.cpp
-    )
+    # The tests that read the CSVs copied below open them under the build
+    # directory by absolute path, so they pass from any working directory,
+    # not only under ctest.
+    set(data_dir CCD_TEST_DATA_DIR="${PROJECT_BINARY_DIR}")
 
+    # The regression solvers against scikit-learn.
+    ccd_add_gtest(test_lasso SOURCES tests/ccd/regression/test_lasso.cpp DEFINES ${data_dir})
+    ccd_add_gtest(test_robust SOURCES tests/ccd/regression/test_robust.cpp DEFINES ${data_dir})
 
-    target_link_libraries(
-        test_lasso
+    # The three procedures on the pyccd reference pixel against pyccd.
+    ccd_add_gtest(test_clear SOURCES tests/ccd/machine/test_clear.cpp DEFINES ${data_dir})
+    ccd_add_gtest(test_snow SOURCES tests/ccd/machine/test_snow.cpp DEFINES ${data_dir})
+    ccd_add_gtest(test_standard INTERNAL SOURCES tests/ccd/machine/test_standard.cpp
+                  DEFINES ${data_dir})
 
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_lasso
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # -----------------------------
-    # Robust test executable
-    # -----------------------------
-
-    add_executable(
-        test_robust
-
-        tests/ccd/regression/test_robust.cpp
-    )
-
-
-    target_link_libraries(
-        test_robust
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_robust
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # -----------------------------
-    # Clear test executable
-    # -----------------------------
-
-    add_executable(
-        test_clear
-
-        tests/ccd/machine/test_clear.cpp
-    )
-
-
-    target_link_libraries(
-        test_clear
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_clear
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # -----------------------------
-    # Snow test executable
-    # -----------------------------
-
-    add_executable(
-        test_snow
-
-        tests/ccd/machine/test_snow.cpp
-    )
-
-
-    target_link_libraries(
-        test_snow
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_snow
-
-        PRIVATE
-            cxx_std_17
-    )
-
-
-    add_executable(
-        test_standard
-
-        tests/ccd/machine/test_standard.cpp
-    )
-
-
-    target_link_libraries(
-        test_standard
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_standard
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # The unit-convention guard. Shares test_standard's input file, which the
-    # configure_file below already copies into the build directory.
-    add_executable(
-        test_units
-
-        tests/ccd/machine/test_units.cpp
-    )
-
-
-    target_link_libraries(
-        test_units
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_units
-
-        PRIVATE
-            cxx_std_17
-    )
+    # The unit-convention guard. Shares test_standard's input file.
+    ccd_add_gtest(test_units SOURCES tests/ccd/machine/test_units.cpp DEFINES ${data_dir})
 
     # The observation filters on hand-built series: the range bounds and
     # their flags, and the green median filter's scope.
-    add_executable(
-        test_filters
+    ccd_add_gtest(test_filters SOURCES tests/ccd/machine/test_filters.cpp)
 
-        tests/ccd/machine/test_filters.cpp
+    # Entry-point input checks: band count and timestep agreement.
+    ccd_add_gtest(test_validation SOURCES tests/ccd/machine/test_validation.cpp)
+
+    # The per-pixel records below Run::pixel: MaskedSeries, BandNoise.
+    ccd_add_gtest(test_masked_series INTERNAL SOURCES tests/ccd/machine/test_masked_series.cpp)
+
+    # The shared kernels against the per-site loops they stand for, bit for
+    # bit. See tests/ccd/machine/test_kernels.cpp.
+    ccd_add_gtest(
+        test_kernels INTERNAL
+        SOURCES tests/ccd/machine/test_kernels.cpp
+        DEFINES
+            CCD_PYCCD_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_3657_3610_observations.csv"
+            CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test002_c2.csv"
     )
 
+    # The strategy registry and parameter schemas. See
+    # tests/ccd/strategies/test_registry.cpp.
+    ccd_add_gtest(test_registry SOURCES tests/ccd/strategies/test_registry.cpp)
 
-    target_link_libraries(
-        test_filters
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_filters
-
-        PRIVATE
-            cxx_std_17
-    )
+    # The Standard machine's routing from hand-built records, and its exit
+    # reasons on whole pixels. See tests/ccd/machine/test_machine.cpp.
+    ccd_add_gtest(test_machine INTERNAL SOURCES tests/ccd/machine/test_machine.cpp)
 
     # The preprocessing plan: the "ccdc" plan (plan_of()) against the
     # hand-written chains, custom plans through detect(), plan
     # validation, and a microbenchmark of apply(). See
     # tests/ccd/machine/test_preprocess.cpp.
-    add_executable(
-        test_preprocess
-
-        tests/ccd/machine/test_preprocess.cpp
-    )
-
-
-    target_link_libraries(
-        test_preprocess
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_preprocess
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # Entry-point input checks: band count and timestep agreement.
-    add_executable(
-        test_validation
-
-        tests/ccd/machine/test_validation.cpp
-    )
-
-
-    target_link_libraries(
-        test_validation
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_validation
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # The per-pixel records below Run::pixel: MaskedSeries, BandNoise.
-    add_executable(
-        test_masked_series
-
-        tests/ccd/machine/test_masked_series.cpp
-    )
-
-
-    target_link_libraries(
-        test_masked_series
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_masked_series
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # The strategy registry and parameter schemas. See
-    # tests/ccd/strategies/test_registry.cpp.
-    add_executable(
-        test_registry
-
-        tests/ccd/strategies/test_registry.cpp
-    )
-
-    target_link_libraries(
-        test_registry
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-    target_compile_features(
-        test_registry
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # The shared kernels against the per-site loops they stand for, bit for
-    # bit. See tests/ccd/machine/test_kernels.cpp.
-    add_executable(
-        test_kernels
-
-        tests/ccd/machine/test_kernels.cpp
-    )
-
-
-    target_link_libraries(
-        test_kernels
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_kernels
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    target_compile_definitions(
-        test_kernels
-
-        PRIVATE
-            CCD_PYCCD_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_3657_3610_observations.csv"
-            CCD_C2_PIXEL_CSV="${PROJECT_SOURCE_DIR}/tests/ccd/machine/test002_c2.csv"
-    )
-
-    # The Standard machine's routing from hand-built records, and its exit
-    # reasons on whole pixels. See tests/ccd/machine/test_machine.cpp.
-    add_executable(
-        test_machine
-
-        tests/ccd/machine/test_machine.cpp
-    )
-
-
-    target_link_libraries(
-        test_machine
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_machine
-
-        PRIVATE
-            cxx_std_17
-    )
+    ccd_add_gtest(test_preprocess SOURCES tests/ccd/machine/test_preprocess.cpp DEFINES ${data_dir})
 
     # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
-    add_executable(
+    ccd_add_gtest(
         test_golden
-
-        tests/ccd/golden/test_golden.cpp
-    )
-
-
-    target_link_libraries(
-        test_golden
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_golden
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    target_compile_definitions(
-        test_golden
-
-        PRIVATE
+        SOURCES tests/ccd/golden/test_golden.cpp
+        DEFINES
+            ${data_dir}
             CCD_GOLDEN_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/golden_fixture.txt"
     )
 
     # The Standard procedure's transitions, guards and pyccd quirks that the
     # golden corpus misses, on pixels built for them, against a fixture
     # written by v0.6.1. See tests/ccd/golden/test_transitions.cpp.
-    add_executable(
+    ccd_add_gtest(
         test_transitions
-
-        tests/ccd/golden/test_transitions.cpp
-    )
-
-
-    target_link_libraries(
-        test_transitions
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_transitions
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    target_compile_definitions(
-        test_transitions
-
-        PRIVATE
+        SOURCES tests/ccd/golden/test_transitions.cpp
+        DEFINES
             CCD_TRANSITIONS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/transitions_fixture.txt"
-    )
-
-    # Resume equals the full run. See tests/ccd/golden/test_resume.cpp.
-    add_executable(
-        test_resume
-
-        tests/ccd/golden/test_resume.cpp
-    )
-
-
-    target_link_libraries(
-        test_resume
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_resume
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    target_compile_definitions(
-        test_resume
-
-        PRIVATE
-            CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
     )
 
     # The resume record: what detect() with RunSpec::record writes. See
     # tests/ccd/machine/test_record.cpp.
-    add_executable(
-        test_record
+    ccd_add_gtest(test_record SOURCES tests/ccd/machine/test_record.cpp)
+    target_include_directories(test_record PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/golden)
 
-        tests/ccd/machine/test_record.cpp
-    )
-
-
-    target_include_directories(
-        test_record
-
-        PRIVATE
-            ${PROJECT_SOURCE_DIR}/tests/ccd/golden
-    )
-
-
-    target_link_libraries(
-        test_record
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_record
-
-        PRIVATE
-            cxx_std_17
+    # Resume equals the full run. See tests/ccd/golden/test_resume.cpp.
+    ccd_add_gtest(
+        test_resume NO_DISCOVER
+        SOURCES tests/ccd/golden/test_resume.cpp
+        DEFINES CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
     )
 
     # Prefix stability: a run on the observations up to a date keeps every
     # final segment of the run on the whole series. See
     # tests/ccd/golden/test_prefix.cpp.
-    add_executable(
-        test_prefix
-
-        tests/ccd/golden/test_prefix.cpp
+    ccd_add_gtest(
+        test_prefix NO_DISCOVER
+        SOURCES tests/ccd/golden/test_prefix.cpp
+        DEFINES CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
     )
-
-
-    target_link_libraries(
-        test_prefix
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_prefix
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    target_compile_definitions(
-        test_prefix
-
-        PRIVATE
-            CCD_PREFIX_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/machine"
-    )
-
-    # Band layouts other than Landsat's: a second fixture of synthetic
-    # profiles, and the layout equivalences. See tests/ccd/golden/test_bands.cpp.
-    add_executable(
-        test_bands
-
-        tests/ccd/golden/test_bands.cpp
-    )
-
-
-    target_link_libraries(
-        test_bands
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_bands
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    target_compile_definitions(
-        test_bands
-
-        PRIVATE
-            CCD_BANDS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/bands_fixture.txt"
-    )
-
-    # The cadence and change-probability options: defaults spelled out equal
-    # the defaults, and each option moves the result its way. See
-    # tests/ccd/golden/test_cadence.cpp.
-    add_executable(
-        test_cadence
-
-        tests/ccd/golden/test_cadence.cpp
-    )
-
-
-    target_link_libraries(
-        test_cadence
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_cadence
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # QA lookup tables: raw QA decoded through a table against the codes
-    # passed directly. See tests/ccd/golden/test_qa_tables.cpp.
-    add_executable(
-        test_qa_tables
-
-        tests/ccd/golden/test_qa_tables.cpp
-    )
-
-
-    target_link_libraries(
-        test_qa_tables
-
-        PRIVATE
-            ccd_core
-            GTest::gtest_main
-    )
-
-
-    target_compile_features(
-        test_qa_tables
-
-        PRIVATE
-            cxx_std_17
-    )
-
-    # The tests that reach the library's internal headers (src/), which the
-    # library does not export.
-    foreach(internal_test IN ITEMS
-        test_kernels
-        test_machine
-        test_masked_series
-        test_qa_tables
-        test_standard
-    )
-        target_include_directories(
-            ${internal_test}
-
-            PRIVATE
-                ${PROJECT_SOURCE_DIR}/src
-        )
-    endforeach()
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/test002_c2.csv
-        ${PROJECT_BINARY_DIR}/test002_c2.csv
-        COPYONLY
-    )
-
-    # Copy Python reference data into the build directory, where the
-    # tests open it (CCD_TEST_DATA_DIR below).
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/regression/lasso_reference.csv
-        ${PROJECT_BINARY_DIR}/lasso_reference.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/regression/robust_reference.csv
-        ${PROJECT_BINARY_DIR}/robust_reference.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_3657_3610_observations.csv
-        ${PROJECT_BINARY_DIR}/test_3657_3610_observations.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/test_atlanta_024013_00030008_481_393.csv
-        ${PROJECT_BINARY_DIR}/test_atlanta_024013_00030008_481_393.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/clear_reference.csv
-        ${PROJECT_BINARY_DIR}/clear_reference.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/clear_mask_reference.csv
-        ${PROJECT_BINARY_DIR}/clear_mask_reference.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/snow_reference.csv
-        ${PROJECT_BINARY_DIR}/snow_reference.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/snow_mask_reference.csv
-        ${PROJECT_BINARY_DIR}/snow_mask_reference.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/standard_reference.csv
-        ${PROJECT_BINARY_DIR}/standard_reference.csv
-        COPYONLY
-    )
-
-    configure_file(
-        ${PROJECT_SOURCE_DIR}/tests/ccd/machine/standard_mask_reference.csv
-        ${PROJECT_BINARY_DIR}/standard_mask_reference.csv
-        COPYONLY
-    )
-    # The tests that read the CSVs copied above open them under the build
-    # directory by absolute path, so they pass from any working directory,
-    # not only under ctest.
-    foreach(
-        csv_test
-
-        test_lasso
-        test_robust
-        test_clear
-        test_snow
-        test_standard
-        test_units
-        test_preprocess
-        test_golden
-    )
-        target_compile_definitions(
-            ${csv_test}
-
-            PRIVATE
-                CCD_TEST_DATA_DIR="${PROJECT_BINARY_DIR}"
-        )
-    endforeach()
-
-    include(GoogleTest)
-
-    gtest_discover_tests(test_lasso)
-    gtest_discover_tests(test_robust)
-    gtest_discover_tests(test_clear)
-    gtest_discover_tests(test_snow)
-    gtest_discover_tests(test_standard)
-    gtest_discover_tests(test_units)
-    gtest_discover_tests(test_filters)
-    gtest_discover_tests(test_validation)
-    gtest_discover_tests(test_masked_series)
-    gtest_discover_tests(test_kernels)
-    gtest_discover_tests(test_registry)
-    gtest_discover_tests(test_machine)
-    gtest_discover_tests(test_preprocess)
-    gtest_discover_tests(test_golden)
-    gtest_discover_tests(test_transitions)
-    gtest_discover_tests(test_record)
 
     # The sweeps over cuts (tests/ccd/golden/series_corpus.hpp) run as shards:
     # "sample" in every run, "restN" labelled corpus, so `ctest -LE corpus` is
@@ -1063,9 +468,44 @@ if(CCD_BUILD_TESTS)
             PROPERTIES TIMEOUT 600 LABELS corpus
         )
     endif()
-    gtest_discover_tests(test_bands)
-    gtest_discover_tests(test_qa_tables)
-    gtest_discover_tests(test_cadence)
+
+    # Band layouts other than Landsat's: a second fixture of synthetic
+    # profiles, and the layout equivalences. See tests/ccd/golden/test_bands.cpp.
+    ccd_add_gtest(
+        test_bands
+        SOURCES tests/ccd/golden/test_bands.cpp
+        DEFINES CCD_BANDS_FIXTURE="${PROJECT_SOURCE_DIR}/tests/ccd/golden/bands_fixture.txt"
+    )
+
+    # The cadence and change-probability options: defaults spelled out equal
+    # the defaults, and each option moves the result its way. See
+    # tests/ccd/golden/test_cadence.cpp.
+    ccd_add_gtest(test_cadence SOURCES tests/ccd/golden/test_cadence.cpp)
+
+    # QA lookup tables: raw QA decoded through a table against the codes
+    # passed directly. See tests/ccd/golden/test_qa_tables.cpp.
+    ccd_add_gtest(test_qa_tables INTERNAL SOURCES tests/ccd/golden/test_qa_tables.cpp)
+
+    # Copy the reference data into the build directory, where the tests open
+    # it (CCD_TEST_DATA_DIR above).
+    foreach(
+        csv
+
+        tests/ccd/regression/lasso_reference.csv
+        tests/ccd/regression/robust_reference.csv
+        tests/ccd/machine/test_3657_3610_observations.csv
+        tests/ccd/machine/test_atlanta_024013_00030008_481_393.csv
+        tests/ccd/machine/test002_c2.csv
+        tests/ccd/machine/clear_reference.csv
+        tests/ccd/machine/clear_mask_reference.csv
+        tests/ccd/machine/snow_reference.csv
+        tests/ccd/machine/snow_mask_reference.csv
+        tests/ccd/machine/standard_reference.csv
+        tests/ccd/machine/standard_mask_reference.csv
+    )
+        get_filename_component(csv_name ${csv} NAME)
+        configure_file(${PROJECT_SOURCE_DIR}/${csv} ${PROJECT_BINARY_DIR}/${csv_name} COPYONLY)
+    endforeach()
 
 endif()
 
@@ -1171,81 +611,34 @@ if(CCD_BUILD_PYTHON)
             cxx_std_17
     )
 
-    # The Python entry points, against the module just built.
+    # The Python entry points, against the module just built: tests/python/
+    # test_<name>.py as python_<name>. real_fixtures runs the HLS and
+    # Sentinel-2 presets on real pixels against pinned outputs
+    # (tests/python/fixtures/t16sgc_2020_2023).
     if(CCD_BUILD_TESTS)
 
-        add_test(
-            NAME python_resume
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_resume.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
-        )
+        foreach(
+            python_test
 
-        add_test(
-            NAME python_config
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_config.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
+            resume
+            config
+            bindings
+            stub
+            qa_tables
+            profiles
+            preprocess
+            real_fixtures
+            qa_references
         )
-        add_test(
-            NAME python_bindings
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_bindings.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
-        )
-
-        add_test(
-            NAME python_stub
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_stub.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
-        )
-
-        add_test(
-            NAME python_qa_tables
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_qa_tables.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
-        )
-
-        add_test(
-            NAME python_profiles
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_profiles.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
-        )
-
-        add_test(
-            NAME python_preprocess
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_preprocess.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
-        )
-
-        # The HLS and Sentinel-2 presets on real pixels, against pinned
-        # outputs (tests/python/fixtures/t16sgc_2020_2023).
-        add_test(
-            NAME python_real_fixtures
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_real_fixtures.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
-        )
+            add_test(
+                NAME python_${python_test}
+                COMMAND
+                    ${Python_EXECUTABLE}
+                    ${PROJECT_SOURCE_DIR}/tests/python/test_${python_test}.py
+                    $<TARGET_FILE_DIR:ccd_python>
+                    ${PROJECT_SOURCE_DIR}
+            )
+        endforeach()
 
         # The Landsat QA tables against the millworks nlcd plugin's table and
         # pyccd's qabitval. Both are found through PYTHONPATH, set for this
@@ -1254,15 +647,6 @@ if(CCD_BUILD_PYTHON)
         set(
             CCD_REFERENCE_PYTHONPATH "" CACHE STRING
             "PYTHONPATH for python_qa_references: the nlcd plugin's src and pyccd"
-        )
-
-        add_test(
-            NAME python_qa_references
-            COMMAND
-                ${Python_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/tests/python/test_qa_references.py
-                $<TARGET_FILE_DIR:ccd_python>
-                ${PROJECT_SOURCE_DIR}
         )
 
         set_tests_properties(
