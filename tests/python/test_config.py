@@ -121,6 +121,20 @@ class Presets(unittest.TestCase):
                 self.assertEqual(variant.params(stage), base.params(stage), stage)
         self.assertNotEqual(variant.hash(), base.hash())
 
+    def test_a_stage_table_holds_its_strategy_and_params_only(self):
+        # A parameter written beside strategy, not under [refit.params], is refused by name.
+        path = os.path.join(_ROOT, "beside.toml")
+        with open(path, "w") as f:
+            f.write('extends = "ccdc"\n\n[refit]\nstrategy = "span-factor"\nfactor = 2.0\n'
+                    'min_obs = 30\n')
+        with self.assertRaisesRegex(ValueError, r"stage 'refit' holds factor, min_obs; a stage "
+                                                r"table holds strategy and \[refit\.params\]"):
+            ccdcpp.config(path)
+        with open(path, "w") as f:
+            f.write('extends = "ccdc"\n\n[refit]\nstrategy = "span-factor"\nparams = 2.0\n')
+        with self.assertRaisesRegex(ValueError, r"\[refit\.params\] is a table of parameters"):
+            ccdcpp.config(path)
+
     def test_to_toml_reads_back_as_the_same_configuration(self):
         path = os.path.join(_ROOT, "written.toml")
         for cfg in (ccdcpp.config(),

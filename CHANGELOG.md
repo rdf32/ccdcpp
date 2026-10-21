@@ -111,6 +111,8 @@ its replacement.
   `MEOW_SIZE` 0 (`min_observations`), a negative or NaN Lasso constant (`alpha`, `coef_floor`,
   `tolerance`), a NaN change or outlier probability.
 - A build without OpenMP compiles and runs a cube on one thread.
+- A TOML stage table holding anything but `strategy` and `[<stage>.params]` (a parameter
+  written beside `strategy`, which was dropped silently) is refused, naming the keys.
 - A Start or End segment is written only on more observations than the edge fit's
   coefficients (`coefficient_min`), as well as more than the peek: a `peek_size` below
   `coefficient_min` (2 or 3, or `coefficient_min` 7 or 8 with the default peek) wrote a

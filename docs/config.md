@@ -180,8 +180,10 @@ print(ccdcpp.plan_of(colder, ccdcpp.Input()).standard.chain[1])  # the plan, in 
 A preset is a TOML file: a `[shared]` table, one table per stage and one
 `[preprocess.<procedure>]` table per procedure. `ccdcpp.config(name)` reads
 `ccdcpp/configs/<name>.toml`, or else the library registry's preset of that name (an
-extension's, `Registry::add_preset()`), built once; `ccdcpp.config(path)` reads any file. A file
-may extend another and list only what differs:
+extension's, `Registry::add_preset()`), built once; `ccdcpp.config(path)` reads any file. A
+stage's table holds its `strategy` and a `[<stage>.params]` table of parameters; any other key in
+it (a parameter written beside `strategy`, say) is refused by name. A file may extend another
+and list only what differs:
 
 ```toml
 # my_variant.toml

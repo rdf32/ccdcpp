@@ -492,7 +492,13 @@ def _load(path: str, seen: frozenset[str]) -> Config:
     for stage, entry in data.items():
         if not isinstance(entry, dict) or "strategy" not in entry:
             raise ValueError(f"{path}: stage '{stage}' needs strategy = \"...\"")
+        unknown = sorted(set(entry) - {"strategy", "params"})
+        if unknown:
+            raise ValueError(f"{path}: stage '{stage}' holds {', '.join(unknown)}; a stage "
+                             f"table holds strategy and [{stage}.params], its parameters")
         strategy = entry["strategy"]
+        if not isinstance(entry.get("params", {}), dict):
+            raise ValueError(f"{path}: [{stage}.params] is a table of parameters")
         params = dict(entry.get("params", {}))
         stages = tree["stages"]
         if stage in stages and stages[stage]["strategy"] == strategy:
