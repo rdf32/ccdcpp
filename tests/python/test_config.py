@@ -183,13 +183,13 @@ class Replace(unittest.TestCase):
         self.assertEqual(ccdcpp.config().shared()["change_probability"], 0.99)
 
     def test_a_stage_cannot_set_a_shared_value(self):
-        with self.assertRaisesRegex(ValueError, "parameter 'alpha' is the shared value 'alpha'; "
-                                                "set shared__alpha instead"):
+        with self.assertRaisesRegex(ValueError, "^model 'lasso' parameter 'alpha' is the shared "
+                                                "value 'alpha'; set shared 'alpha' instead$"):
             ccdcpp.config().replace(model__alpha=1.0)
-        with self.assertRaisesRegex(ValueError, "parameter 'change_threshold' is the shared "
-                                                "value 'change_probability'"):
+        with self.assertRaisesRegex(ValueError, "parameter 'change_threshold' is derived from "
+                                                "the shared value 'change_probability'"):
             ccdcpp.config().replace(change_test__change_threshold=1.0)
-        with self.assertRaisesRegex(ValueError, "there is no shared value 'alfa'"):
+        with self.assertRaisesRegex(ValueError, "^shared has no value 'alfa'; it has "):
             ccdcpp.config().replace(shared__alfa=1.0)
 
     def test_a_strategy_swap_starts_from_its_defaults(self):
@@ -263,7 +263,8 @@ class Replace(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"^segment_fit 'model-fit' has no parameter "
                                                 r"'x'$"):
             ccdcpp.config().replace(segment_fit__x=1)
-        with self.assertRaisesRegex(ValueError, r"^step 'dedupe' has no parameter 'x'$"):
+        with self.assertRaisesRegex(ValueError, r"^preprocess standard step 3 'dedupe' has no "
+                                                r"parameter 'x'$"):
             ccdcpp.config().replace(preprocess__dedupe__x=1)
         with self.assertRaises(TypeError):
             ccdcpp.ccdcpp._config_digest(None)  # pyright: ignore[reportArgumentType]  # None, refused

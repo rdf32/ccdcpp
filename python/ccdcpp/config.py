@@ -63,7 +63,7 @@ from __future__ import annotations
 import copy
 import os
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from . import ccdcpp as _extension
@@ -100,98 +100,21 @@ def shared_values() -> list[dict[str, Any]]:
     return copy.deepcopy(list(_SHARED.values()))
 
 
-def _parameters(stage: str, strategy: str) -> list[dict[str, Any]]:
-    if stage not in _SCHEMA:
-        raise ValueError(f"there is no stage '{stage}'; the stages are {', '.join(sorted(_SCHEMA))}")
-    if strategy not in _SCHEMA[stage]:
-        raise ValueError(f"{stage} has no strategy '{strategy}'; it has "
-                         f"{', '.join(sorted(_SCHEMA[stage]))}")
-    return _SCHEMA[stage][strategy]
-
-
-def _defaults(stage: str, strategy: str) -> dict[str, Any]:
-    """The parameters a stage of `strategy` sets, at their defaults."""
-    return {p["name"]: copy.deepcopy(p["default"]) for p in _parameters(stage, strategy)
-            if p["source"] == "own"}
-
-
-def _value(v: Any, default: Any = None) -> Any:
-    """A value as a configuration holds it: a tuple as a list, numpy scalars as Python's,
-    and a whole number given for a real value (its default a float) as a float, so equal
-    configurations hash equal."""
-    if getattr(v, "ndim", 0) > 0 and hasattr(v, "tolist"):
-        v = v.tolist()   # a numpy array: a band list
-    if isinstance(v, tuple):
-        v = list(v)
-    if isinstance(v, list):
-        if all(isinstance(b, str) for b in v):
-            return [str(b) for b in v]
-        return [int(b) for b in v] if all(hasattr(b, "__index__") and not isinstance(b, bool)
-                                           for b in v) else v
-    if not isinstance(v, (bool, int, float, str)) and hasattr(v, "item"):
-        v = v.item()   # a numpy scalar
-    if isinstance(default, float) and isinstance(v, int) and not isinstance(v, bool):
-        return float(v)
-    return v
-
-
-def _shared_value(name: str, v: Any) -> Any:
-    if name == "statistics_end" and v is None:
-        return _extension.NO_STATISTICS_END
-    known = _SHARED.get(name)
-    return _value(v, known["default"] if known else None)
-
-
-def _normalized(stage: str, strategy: str, params: Mapping[Any, Any]) -> dict[str, Any]:
-    try:
-        defaults = _defaults(stage, strategy)
-    except ValueError:
-        defaults = {}   # unknown names: the run refuses them, naming them
-    return {str(k): _value(v, defaults.get(str(k))) for k, v in params.items()}
-
-
-def _step_defaults(step: str) -> dict[str, Any]:
-    """The parameters a step of type `step` sets, at their defaults; {} for an unknown type
-    (the run refuses it, naming the types)."""
-    return {p["name"]: copy.deepcopy(p["default"]) for p in _STEPS.get(step, ())
-            if p["source"] == "own"}
-
-
-def _step(value: object, where: str) -> dict[str, Any]:
-    """A step as a Config holds it: {"step": name, param: value}, every parameter of a known
-    type spelled out (its default where not given)."""
-    step = step_dict(value)
-    name = str(step.pop("step"))
-    defaults = _step_defaults(name)
-    out = {"step": name}
-    out.update(defaults)
-    out.update({str(k): _value(v, defaults.get(str(k))) for k, v in step.items()})
-    return out
-
-
-def _chain(value: object, where: str, base: dict[str, Any] | None = None) -> dict[str, Any]:
-    """A procedure as a Config holds it: {"thermal_transform": bool, "steps": [...]}, from a
-    ProcedureChain, a dict (missing keys from `base`) or a list of steps (base's
-    thermal_transform)."""
+def _chain(value: object, base: dict[str, Any] | None = None) -> object:
+    """A procedure as a configuration's dict holds it, from a ProcedureChain, a list of steps
+    (``base``'s thermal_transform) or a dict (missing keys from ``base``); the steps as dicts.
+    Anything else goes to the extension as it is, which refuses it."""
     if isinstance(value, ProcedureChain):
         value = value.to_dict()
     elif isinstance(value, (list, tuple)):
         value = {"steps": list(value)}
     if not isinstance(value, dict):
-        raise TypeError(f"{where} is a ccdcpp.ProcedureChain, a list of steps or a dict "
-                        f"{{'thermal_transform': ..., 'steps': [...]}}, not {value!r}")
-    chain: dict[str, Any] = value
-    unknown = set(chain) - {"thermal_transform", "steps"}
-    if unknown:
-        raise ValueError(f"{where} holds 'thermal_transform' and 'steps', not "
-                         f"{', '.join(sorted(unknown))}")
-    base = base or {"thermal_transform": False, "steps": []}
-    transform = chain.get("thermal_transform", base["thermal_transform"])
-    if not isinstance(transform, bool):
-        raise ValueError(f"{where} thermal_transform is {transform!r}; it is True or False")
-    steps = chain.get("steps", base["steps"])
-    return {"thermal_transform": transform,
-            "steps": [_step(s, f"{where} step {i}") for i, s in enumerate(steps)]}
+        return value
+    chain: dict[str, Any] = dict(base or {})
+    chain.update(value)
+    if isinstance(chain.get("steps"), (list, tuple)):
+        chain["steps"] = [step_dict(s) for s in chain["steps"]]
+    return chain
 
 
 def _set_step(tree: dict[str, Any], procedures: Sequence[str], step: str, param: str,
@@ -205,16 +128,7 @@ def _set_step(tree: dict[str, Any], procedures: Sequence[str], step: str, param:
             raise ValueError(f"preprocess {procedure} has {len(matches)} '{step}' steps; "
                              f"replace its chain (preprocess__{procedure}=...) instead")
         for s in matches:
-            defaults = _step_defaults(step)
-            info = {p["name"]: p for p in _STEPS.get(step, ())}
-            if param in info and info[param]["source"] != "own":
-                raise ValueError(f"step '{step}' parameter '{param}' is the shared value "
-                                 f"'{info[param]['from']}'; set shared__{info[param]['from']} "
-                                 f"instead")
-            if param not in defaults:
-                raise ValueError(f"step '{step}' has no parameter '{param}'"
-                                 + (f"; it has {', '.join(defaults)}" if defaults else ""))
-            s[param] = _value(value, defaults[param])
+            s[param] = value
             found += 1
     if not found:
         raise ValueError(f"the configuration's preprocess has no '{step}' step")
@@ -223,7 +137,10 @@ def _set_step(tree: dict[str, Any], procedures: Sequence[str], step: str, param:
 class Config:
     """An algorithm configuration (see the module's documentation). Building one checks it
     (ValueError for what a run would refuse on any input) and compiles it once: every call
-    that runs it reuses the compilation, and its resolution against each input it meets.
+    that runs it reuses the compilation, and its resolution against each input it meets. It
+    holds the configuration in full, as the extension writes it out: every shared value and
+    every stage's and step's parameters spelled out, a whole number given for a real as the
+    real, so equal configurations compare and hash equal.
 
     The input says only how to read the data. The configuration says what to do with it, in
     physical units. The run translates once: 0–1 reflectance × 10000 = the 0–10000 DN check,
@@ -244,36 +161,11 @@ class Config:
     def __init__(self, tree: Config | dict[str, Any]) -> None:
         if isinstance(tree, Config):
             tree = tree._tree
-        if not isinstance(tree, dict) or not set(tree) <= {"shared", "stages", "preprocess"}:
-            raise TypeError('a Config is built from a dict {"shared": {...}, "stages": {...}, '
-                            '"preprocess": {...}}')
-        shared = tree.get("shared", {})
-        stages = tree.get("stages", {})
-        preprocess = tree.get("preprocess", {})
-        if not isinstance(preprocess, dict):
-            raise ValueError("preprocess is a dict of procedures")
-        if not isinstance(shared, dict):
-            raise ValueError("shared is a dict of values")
-        if not isinstance(stages, dict):
-            raise ValueError("stages is a dict of stages")
-        clean: dict[str, Any] = {}
-        for stage, entry in stages.items():
-            if not isinstance(entry, dict) or "strategy" not in entry:
-                raise ValueError(f"stage '{stage}' is a dict {{'strategy': ..., 'params': ...}}")
-            params = entry.get("params", {})
-            if not isinstance(params, dict):
-                raise ValueError(f"stage '{stage}' params is a dict of parameters")
-            clean[str(stage)] = {
-                "strategy": str(entry["strategy"]),
-                "params": _normalized(str(stage), str(entry["strategy"]), params),
-            }
-        object.__setattr__(self, "_tree", {
-            "shared": {str(k): _shared_value(str(k), v) for k, v in shared.items()},
-            "stages": clean,
-            "preprocess": {str(k): _chain(v, f"preprocess {k}") for k, v in preprocess.items()},
-        })
         # The compiled configuration (an _extension.Algorithm): what the entry points run.
-        object.__setattr__(self, "_algorithm", _extension.Algorithm(self._tree))
+        # It checks the tree, and holds it in full: every value spelled out (config()).
+        algorithm = _extension.Algorithm(tree)
+        object.__setattr__(self, "_algorithm", algorithm)
+        object.__setattr__(self, "_tree", algorithm.config())
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("a Config is immutable; replace() returns a changed copy")
@@ -319,12 +211,11 @@ class Config:
             if not isinstance(given, dict):
                 raise TypeError("preprocess= is a ccdcpp.Preprocess or a dict of procedures")
             for procedure, chain in given.items():
-                tree["preprocess"][procedure] = _chain(
-                    chain, f"preprocess {procedure}", tree["preprocess"].get(procedure))
+                tree["preprocess"][procedure] = _chain(chain, tree["preprocess"].get(procedure))
         swaps = {k: v for k, v in changes.items() if "__" not in k}
         sets = {k: v for k, v in changes.items() if "__" in k}
         for stage, strategy in swaps.items():
-            tree["stages"][stage] = {"strategy": strategy, "params": _defaults(stage, strategy)}
+            tree["stages"][stage] = {"strategy": strategy, "params": {}}
         chains = {k: v for k, v in sets.items()
                   if k.startswith("preprocess__") and k.count("__") == 1}
         for key, value in chains.items():
@@ -332,8 +223,7 @@ class Config:
             if procedure not in PROCEDURES:
                 raise ValueError(f"preprocess has no procedure '{procedure}'; the procedures "
                                  f"are {', '.join(PROCEDURES)}")
-            tree["preprocess"][procedure] = _chain(value, f"preprocess {procedure}",
-                                                   tree["preprocess"].get(procedure))
+            tree["preprocess"][procedure] = _chain(value, tree["preprocess"].get(procedure))
         for key, value in sets.items():
             if key in chains:
                 continue
@@ -344,8 +234,6 @@ class Config:
                     if parts[0] not in tree["preprocess"]:
                         raise ValueError(f"the configuration has no preprocess '{parts[0]}'")
                     if parts[1:] == ["thermal_transform"]:
-                        if not isinstance(value, bool):
-                            raise ValueError(f"{key} is {value!r}; it is True or False")
                         tree["preprocess"][parts[0]]["thermal_transform"] = value
                     elif len(parts) == 3:
                         _set_step(tree, [parts[0]], parts[1], parts[2], value)
@@ -358,24 +246,13 @@ class Config:
                                      f"preprocess__procedure__step__param")
                 continue
             if stage == "shared":
-                if param not in _SHARED:
-                    raise ValueError(f"there is no shared value '{param}'; the shared values "
-                                     f"are {', '.join(_SHARED)}")
-                tree["shared"][param] = _shared_value(param, value)
+                if param == "statistics_end" and value is None:
+                    value = _extension.NO_STATISTICS_END
+                tree["shared"][param] = value
                 continue
             if stage not in tree["stages"]:
                 raise ValueError(f"the configuration has no stage '{stage}'")
-            entry = tree["stages"][stage]
-            info = {p["name"]: p for p in _parameters(stage, entry["strategy"])}
-            known = _defaults(stage, entry["strategy"])
-            if param in info and info[param]["source"] != "own":
-                source = info[param]["from"]
-                raise ValueError(f"{stage} '{entry['strategy']}' parameter '{param}' is the "
-                                 f"shared value '{source}'; set shared__{source} instead")
-            if param not in known:
-                raise ValueError(f"{stage} '{entry['strategy']}' has no parameter '{param}'"
-                                 + (f"; it has {', '.join(known)}" if known else ""))
-            entry["params"][param] = _value(value, known[param])
+            tree["stages"][stage]["params"][param] = value
         return Config(tree)
 
     def check(self, input: _extension.Input | None = None) -> None:
@@ -487,8 +364,7 @@ def _load(path: str, seen: frozenset[str]) -> Config:
     if not isinstance(preprocess, dict):
         raise ValueError(f"{path}: [preprocess] is a table of procedures")
     for procedure, chain in preprocess.items():
-        tree["preprocess"][procedure] = _chain(chain, f"{path}: preprocess {procedure}",
-                                               tree["preprocess"].get(procedure))
+        tree["preprocess"][procedure] = _chain(chain, tree["preprocess"].get(procedure))
     for stage, entry in data.items():
         if not isinstance(entry, dict) or "strategy" not in entry:
             raise ValueError(f"{path}: stage '{stage}' needs strategy = \"...\"")
@@ -504,9 +380,7 @@ def _load(path: str, seen: frozenset[str]) -> Config:
         if stage in stages and stages[stage]["strategy"] == strategy:
             stages[stage]["params"].update(params)
         else:
-            merged = _defaults(stage, strategy)
-            merged.update(params)
-            stages[stage] = {"strategy": strategy, "params": merged}
+            stages[stage] = {"strategy": strategy, "params": params}
     return Config(tree)
 
 

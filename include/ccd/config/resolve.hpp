@@ -29,7 +29,8 @@ namespace config
 //     const config::Registry& r = strategies::library_registry();
 //     config::Resolved run = config::resolve(r, r.preset("ccdc"), input);
 //
-// check() refuses what resolve() refuses on any input, without one.
+// check() refuses what resolve() refuses on any input, without one, and
+// canonical() writes a configuration out in full, in its own terms.
 //
 //==============================================================================
 
@@ -63,6 +64,14 @@ struct Resolved
 // unknown step type, a chain of more than preprocess::CHAIN_CAPACITY steps,
 // and a step's parameters as a stage's.
 void check(const Registry& registry, const Config& config);
+
+// `config` in its own terms, as one form for every way of writing it: every
+// shared value and every stage's and step's own parameters spelled out (the
+// defaults filling what it leaves out), and a whole number given for a real
+// value as that real. Refuses what check() refuses. Two configurations that
+// differ only in the defaults they leave out, or in a real written as a
+// whole number, are equal here, and so are their digests.
+Config canonical(const Registry& registry, const Config& config);
 
 // `config` against `input`: every stage's and step's parameters resolved
 // (its defaults filling what `config` leaves out, reflectance and Celsius

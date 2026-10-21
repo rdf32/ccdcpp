@@ -329,6 +329,32 @@ TEST(Registry, ResolveFillsTheDefaults)
     expect_refused([&] { ccd::config::check(r, partial); }, "shared has no value 'nope'; it has detection_bands");
 }
 
+// canonical() writes a configuration out in full, in its own terms: the
+// defaults it leaves out spelled out, a whole number for a real as the real.
+// The Algorithm holds that form.
+TEST(Registry, CanonicalSpellsOutTheConfiguration)
+{
+    const ccd::config::Registry& r = ccd::strategies::library_registry();
+    const ccd::config::Config& ccdc = r.preset("ccdc");
+    EXPECT_EQ(ccd::config::canonical(r, ccdc), ccdc);
+
+    ccd::config::Config partial = ccdc;
+    partial.shared = {{"change_probability", ccd::config::real(0.95)}};
+    partial.stages["refit"].params = {{"factor", ccd::config::integer(2)}};
+    for (auto& step : partial.preprocess.at("snow").steps)
+        step.params.clear();
+    ccd::config::Config full = ccdc;
+    full.shared["change_probability"] = ccd::config::real(0.95);
+    full.stages["refit"].params["factor"] = ccd::config::real(2.0);
+    EXPECT_EQ(ccd::config::canonical(r, partial), full);
+    EXPECT_EQ(ccd::config::digest(ccd::config::canonical(r, partial)), ccd::config::digest(full));
+    EXPECT_EQ(ccd::Algorithm(partial).config(), full);
+
+    partial.stages["refit"].params = {{"nope", ccd::config::integer(2)}};
+    expect_refused([&] { ccd::config::canonical(r, partial); },
+                   "refit 'span-factor' has no parameter 'nope'");
+}
+
 // The shared values reach every stage that reads them, resolved against the
 // input; a stage cannot hold its own copy.
 TEST(Registry, SharedValuesReachTheirStages)

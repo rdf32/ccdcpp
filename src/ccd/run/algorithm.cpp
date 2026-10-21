@@ -4,9 +4,8 @@ namespace ccd
 {
 
 Algorithm::Algorithm(config::Config config, const config::Registry& registry)
-    : config_(std::move(config)), registry_(&registry)
+    : config_(config::canonical(registry, config)), registry_(&registry)
 {
-    config::check(*registry_, config_);
 }
 
 std::shared_ptr<const Algorithm> Algorithm::preset(const std::string& name)

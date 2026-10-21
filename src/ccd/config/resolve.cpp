@@ -185,6 +185,25 @@ preprocess::PreprocessPlan build_plan(const Registry& registry, const Preprocess
     return plan;
 }
 
+// The Own values of `info`: given, or at their defaults, a whole number given
+// for a real default as that real.
+Values spelled_out(const std::vector<ParameterInfo>& info, const Values& given)
+{
+    Values out;
+    for (const ParameterInfo& p : info)
+    {
+        if (p.source != Source::Own)
+            continue;
+        const auto it = given.find(p.name);
+        Value value = it != given.end() ? it->second : *p.default_value;
+        if (const auto* whole = std::get_if<std::int64_t>(&value))
+            if (std::holds_alternative<double>(*p.default_value))
+                value = real(static_cast<double>(*whole));
+        out[p.name] = std::move(value);
+    }
+    return out;
+}
+
 } // namespace
 
 Strategies build_strategies(const Registry& registry, const ConfigTree& config)
@@ -213,6 +232,19 @@ void check(const Registry& registry, const Config& config)
     const SectionContext with{nullptr, shared.named, shared.detection_bands};
     build_strategies(registry, resolve_stages(registry, config.stages, with));
     resolve_preprocess(registry, config.preprocess, with);
+}
+
+Config canonical(const Registry& registry, const Config& config)
+{
+    check(registry, config);
+    Config out = config;
+    out.shared = spelled_out(info_of(shared_schema()), config.shared);
+    for (auto& [stage, chosen] : out.stages)
+        chosen.params = spelled_out(registry.strategy(stage, chosen.strategy).info, chosen.params);
+    for (auto& [procedure, chain] : out.preprocess)
+        for (StepConfig& step : chain.steps)
+            step.params = spelled_out(registry.step(step.step, procedure).info, step.params);
+    return out;
 }
 
 Resolved resolve(const Registry& registry, const Config& config, const Input& input)

@@ -24,8 +24,8 @@ namespace ccd
 //
 // A compiled configuration: a config::Config checked once, at construction,
 // by its schemas (config::check(): the strategies, every parameter and
-// shared value as written, what each strategy needs), and resolved against
-// each input it runs on once. Immutable, so one Algorithm serves every call
+// shared value as written, what each strategy needs), held in full
+// (config::canonical()), and resolved against each input it runs on once. Immutable, so one Algorithm serves every call
 // and thread.
 //
 // for_input() resolves the configuration against an input and builds its
@@ -58,6 +58,8 @@ public:
     // shared after; std::invalid_argument for a name it does not hold.
     static std::shared_ptr<const Algorithm> preset(const std::string& name);
 
+    // The configuration, canonical() (config/resolve.hpp): every value
+    // spelled out, in physical terms.
     const config::Config& config() const { return config_; }
 
     const config::Registry& registry() const { return *registry_; }

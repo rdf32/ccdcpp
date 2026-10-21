@@ -376,7 +376,7 @@ class Replace(unittest.TestCase):
     def test_refusals_in_replace(self):
         with self.assertRaisesRegex(ValueError, "2 'dedupe' steps"):
             CCDC.replace(preprocess__snow__dedupe__x=1)
-        with self.assertRaisesRegex(ValueError, "step 'green_median' parameter 'max_date' is "
+        with self.assertRaisesRegex(ValueError, "step 4 'green_median' parameter 'max_date' is "
                                                 "the shared value 'statistics_end'"):
             CCDC.replace(preprocess__green_median__max_date=1)
         with self.assertRaisesRegex(ValueError, "has no parameter 'width'"):

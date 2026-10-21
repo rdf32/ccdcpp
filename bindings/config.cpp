@@ -28,8 +28,10 @@ namespace py = pybind11;
 // "preprocess": {procedure: {"thermal_transform": bool, "steps": [{"step":
 // name, name: value, ...}, ...]}}}: a value is a bool, an int, a float, a
 // str, a list of ints (band rows, QA codes) or a list of strs (band roles, QA
-// code names). python/ccdcpp/config.py wraps it (ccdcpp.Config) and
-// holds its compiled Algorithm; these functions are their C++ half.
+// code names); a numpy array is its list, a numpy scalar its Python value.
+// python/ccdcpp/config.py wraps it (ccdcpp.Config) and holds its compiled
+// Algorithm, whose config() is the configuration in full
+// (config::canonical()); these functions are their C++ half.
 //
 //==============================================================================
 
@@ -59,6 +61,9 @@ ccd::config::Value value_from_python(const py::handle& v, const std::string& whe
     static const char* const MIXED =
         " is a list of strs (band roles, QA code names) or of ints (band rows, QA codes), "
         "not a mix";
+    // A numpy array or scalar: its list or its Python value.
+    if (py::hasattr(v, "ndim") && py::hasattr(v, "tolist"))
+        return value_from_python(v.attr("tolist")(), where);
     // bool before int: a Python bool is an int.
     if (py::isinstance<py::bool_>(v))
         return ccd::config::flag(v.cast<bool>());
@@ -347,12 +352,14 @@ void bind_config(py::module_& m)
         "A compiled configuration: checked once, as it is built, and resolved "
         "against each input it runs on once. Immutable; ccdcpp.Config holds "
         "one.")
-    .def(py::init([](const py::dict& config)
+    .def(py::init([](const py::object& config)
                   { return std::make_shared<ccd::Algorithm>(config_from_python(config)); }),
          py::arg("config"),
-         "The Algorithm of a configuration's dict; ValueError for what it refuses.")
+         "The Algorithm of a configuration's dict; TypeError for another object, ValueError "
+         "for what it refuses.")
     .def("config", [](const ccd::Algorithm& a) { return config_to_python(a.config()); },
-         "The configuration, as a dict.")
+         "The configuration in full, as a dict: every value spelled out, a whole number "
+         "given for a real as the real.")
     .def("resolve",
          [](const ccd::Algorithm& a, const ccd::Input& input)
          { return resolved_to_python(*a.for_input(input)); },
