@@ -30,6 +30,45 @@ public:
     std::vector<scalar_t> magnitude;
 };
 
+// The observations of `peek`, nearest the window first, copied into
+// s.peek_dates (p) and s.peek_spectral (B, p, row-major).
+void reverse_peek(
+    ArrayView<const std::int64_t, 1> masked_dates,
+    ArrayView<const scalar_t, 2> masked_spectral,
+    const ReversePeek& peek_window,
+    LookbackScratch& s
+)
+{
+    std::vector<std::int64_t>& peek_dates = s.peek_dates;
+    std::vector<scalar_t>& peek_spectral = s.peek_spectral;
+
+    peek_dates.clear();
+    peek_dates.reserve(s.peek);
+    for (std::ptrdiff_t i = peek_window.start; i > peek_window.stop; --i)
+    {
+        peek_dates.push_back(masked_dates[i]);
+    }
+
+    const index_t bands   = masked_spectral.extent(0);
+    const index_t samples = peek_dates.size();
+
+    peek_spectral.resize(bands * samples);
+    for (index_t band = 0; band < bands; ++band)
+    {
+        for (index_t j = 0; j < samples; ++j)
+        {
+            std::ptrdiff_t source =
+                peek_window.start - static_cast<std::ptrdiff_t>(j);
+
+            assert(source >= 0);
+            assert(source < static_cast<std::ptrdiff_t>(masked_spectral.extent(1)));
+
+            peek_spectral[band * samples + j] =
+                masked_spectral(band, static_cast<index_t>(source));
+        }
+    }
+}
+
 } // namespace
 
 ReversePeek lookback_peek(index_t window_start, index_t prev_break, index_t peek)
@@ -95,9 +134,6 @@ LookbackJudgement PyccdLookback::judge(Model& model, ArrayView<const std::int64_
 {
     LookbackScratch& s = static_cast<LookbackScratch&>(scratch);
 
-    std::vector<std::int64_t>& peek_dates = s.peek_dates;
-    std::vector<scalar_t>& peek_spectral = s.peek_spectral;
-
     // Indexed by band; only the detection bands' are written.
     std::vector<std::vector<scalar_t>>& residuals = s.residuals;
     residuals.resize(masked_spectral.extent(0));
@@ -111,41 +147,18 @@ LookbackJudgement PyccdLookback::judge(Model& model, ArrayView<const std::int64_
     const ReversePeek peek_window =
         lookback_peek(window.start, prev_break, s.peek);
 
-    peek_dates.clear();
-    peek_dates.reserve(s.peek);
-    for (std::ptrdiff_t i = peek_window.start; i > peek_window.stop; --i)
-    {
-        peek_dates.push_back(masked_dates[i]);
-    }
+    reverse_peek(masked_dates, masked_spectral, peek_window, s);
 
     auto masked_dates_window =
         ArrayView<const std::int64_t, 1>::contiguous(
-            peek_dates.data(),
-            {peek_dates.size()}
+            s.peek_dates.data(),
+            {s.peek_dates.size()}
         );
 
-    const index_t bands   = masked_spectral.extent(0);
-    const index_t samples = peek_dates.size();
-
-    peek_spectral.resize(bands * samples);
-    for (index_t band = 0; band < bands; ++band)
-    {
-        for (index_t j = 0; j < samples; ++j)
-        {
-            std::ptrdiff_t source =
-                peek_window.start - static_cast<std::ptrdiff_t>(j);
-
-            assert(source >= 0);
-            assert(source < static_cast<std::ptrdiff_t>(masked_spectral.extent(1)));
-
-            peek_spectral[band * samples + j] =
-                masked_spectral(band, static_cast<index_t>(source));
-        }
-    }
     auto masked_spectral_window =
         ArrayView<const scalar_t, 2>::contiguous(
-            peek_spectral.data(),
-            {bands, samples}
+            s.peek_spectral.data(),
+            {masked_spectral.extent(0), s.peek_dates.size()}
         );
 
     model.peek_residuals(
