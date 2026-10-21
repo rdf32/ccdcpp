@@ -33,7 +33,7 @@ namespace preprocess
 // that builds the processing mask.
 //
 //   PreprocessPlan     one ProcedurePlan per procedure (standard, snow,
-//                      insufficient_clear); Run::pixel picks the one of
+//                      insufficient_clear); Run::prepare picks the one of
 //                      the procedure it selected (of()).
 //   ProcedurePlan      the transform and the chain of one procedure.
 //   Chain              up to CHAIN_CAPACITY steps, stored inline, run in
@@ -296,7 +296,7 @@ struct Chain
 //
 //     value <- value * scale + offset
 //
-// Run::pixel applies it (apply()) to its private scalar_t copy; the caller's
+// Run::prepare applies it (apply()) to its private scalar_t copy; the caller's
 // buffer is never written.
 //
 //------------------------------------------------------------------------------

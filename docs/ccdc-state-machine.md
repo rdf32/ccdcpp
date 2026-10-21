@@ -13,7 +13,8 @@ otherwise (the rules in section 7); see the README's
 
 ## 1. One pixel, end to end
 
-`Run::pixel` (`src/ccd/run/run.cpp`) is a straight pipeline, not a machine. A `Run` is built
+`Run::pixel` (`src/ccd/run/run.cpp`) is a straight pipeline, not a machine: `Run::prepare`
+makes steps 1 to 4, `Run::fresh` or `Run::resumed` steps 5 and 6. A `Run` is built
 once per call (`src/ccd/run/run_pixel.hpp`, internal): it checks the input, dates and QA, takes the
 configuration resolved for the input (its strategies and preprocessing plan) and holds
 what every pixel shares. `detect_cube` runs a cube's pixels on OpenMP threads
@@ -28,7 +29,11 @@ detector it reuses from pixel to pixel. The steps of one pixel:
 4. apply that procedure's transform to the pixel's private copy and run its filter chain to
    build the processing mask (`include/ccd/input/mask/chain.hpp`);
 5. fit the mask with the run's change detector, `standard::Detector::fit`
-   (`src/ccd/machine/standard.hpp`).
+   (`src/ccd/machine/standard.hpp`), or, on a resume, continue the stored run from where it
+   stopped (`Detector::resume`, section 6);
+6. with `record` (or on a resume), finish the pixel's record for the next resume: where the
+   machine stopped and the days it dropped (`fill_record()`, `src/ccd/run/resume.cpp`), and the
+   pixel's input fingerprint.
 
 The procedure choice (the `pyccd` mode's, with its parameters):
 
@@ -167,7 +172,7 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 
 | Field | What it is | Shared or Standard's |
 |---|---|---|
-| `phase`, `exit` | where the machine is, and why it stopped | each machine has its own enums |
+| `phase`, `exit` | where the machine is, and why it stopped | Standard's |
 | `series` (`MaskedSeries`, `include/ccd/input/masked_series.hpp`) | the processing mask and the observations it keeps, always in step | shared |
 | `cursor` (`Cursor`) | the model window and `prev_break`, in masked coordinates | Standard's |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
@@ -364,7 +369,7 @@ registry's listing is `library_registry().names()`.
 
 ## 4. Shared functions and Standard's own
 
-What any change-detection machine can use, each taking narrow arguments and never a machine's
+What the machine and the strategies share, each taking narrow arguments and never the machine's
 record:
 
 | Function or type | File |
@@ -390,8 +395,7 @@ Each strategy holds its own code, beside its class:
 
 What only the Standard machine uses lives with it, in `ccd::standard`
 (`src/ccd/machine/standard.hpp`): `initialize_step` with `InitializeOutcome`, `Cursor`, the
-phases, the transitions and the routing. A function moves to the shared list once a second machine or a strategy uses
-it.
+phases, the transitions and the routing. A function moves to the shared list once a strategy uses it.
 
 ## 5. The driver and the trace
 

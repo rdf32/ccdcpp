@@ -96,12 +96,13 @@ void change_magnitude(
     std::vector<scalar_t>& magnitude
 );
 
-// window models
+// A change: every peek magnitude above the threshold (false for no magnitude).
 bool detect_change(
     const std::vector<scalar_t>& magnitudes,
     scalar_t change_threshold
 );
 
+// An outlier: the observation's magnitude above the threshold.
 inline bool detect_outlier(
     scalar_t magnitude,
     scalar_t outlier_threshold

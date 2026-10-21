@@ -128,7 +128,7 @@ struct Input
     // 1 / 2.75e-5 and reflectance_offset 0.2 / 2.75e-5.
     scalar_t reflectance_offset = 0.0;
 
-    // Applied to the thermal row of Run::pixel's per-pixel copy before a
+    // Applied to the thermal row of Run::prepare's per-pixel copy before a
     // procedure whose configuration reads thermal = "celsius" runs:
     //
     //     thermal <- thermal * thermal_scale + thermal_offset

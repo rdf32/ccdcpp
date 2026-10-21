@@ -479,7 +479,7 @@ class Detector
 public:
 
     // Fits the observations of `series` that `mask` keeps (the procedure's
-    // processing mask, with the mode's extra mask steps applied: Run::pixel
+    // processing mask, with the mode's extra mask steps applied: Run::prepare
     // builds it with the procedure's filter chain) with the mode's
     // procedure, under the run's `shared` values: the Standard machine,
     // driven from Prepare to Done with the mode's cap on the segments'

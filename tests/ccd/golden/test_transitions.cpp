@@ -45,8 +45,8 @@
 //      into the previous segment;
 //   3  Lookback compares against the stable start window's RMSE, refitting
 //      nothing;
-//   4  Initialize fits coefficient_min coefficients and both peek bases are
-//      coefficient_max wide;
+//   4  Initialize fits coefficients.min coefficients and both peek bases are
+//      coefficients.max wide;
 //   5  the early exits return the processing mask, as every exit does;
 //   6  a curve ends at the series end once its peek reaches the last
 //      observation, before the observation the peek starts at, and it is the
@@ -137,10 +137,10 @@
 //     compare: seasonal RMSE             series_end_after_outlier
 //     coefficients 4 / 6 / 8             select_clear_at_threshold (4, 6),
 //                                        lookback_near_break (4, 8)
-//     coefficient_min Initialize,
-//       coefficient_max peek basis
+//     coefficients.min Initialize,
+//       coefficients.max peek basis
 //       (rule 4)                         every Extend step above; with
-//                                        coefficient_min = 6,
+//                                        coefficients.min = 6,
 //                                        coefficient_min_6
 //     change                             lookback_near_break, peek_guard_tail
 //     outlier drop                       series_end_after_outlier
@@ -465,7 +465,7 @@ TEST(Transitions, PathsAsDocumented)
     }
     {
         // Rule 4 decides the fits of the first two segments: Initialize
-        // fits coefficient_min = 6 coefficients.
+        // fits coefficients.min = 6 coefficients.
         const auto r = run_detect(pixel(all, "coefficient_min_6"));
         expect_shapes("coefficient_min_6", r,
             {{8, 1.0, 107}, {8, 1.0, 33}, {8, 0.0, 307}});

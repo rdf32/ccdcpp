@@ -54,7 +54,7 @@ ChangeModel catch_segment(
 //
 // `procedure` is PermanentSnow or InsufficientClear; `mask` is that
 // procedure's processing mask over series's series, built by the
-// caller (Run::pixel builds it with the procedure's filter chain).
+// caller (Run::prepare builds it with the procedure's filter chain).
 FitResult fit_whole_series(
     PixelProcedure procedure,
     const PixelSeries& series,

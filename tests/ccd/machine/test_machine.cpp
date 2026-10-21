@@ -181,7 +181,7 @@ struct Record
 
     // Initialize's stable fits over (start, stop), as a Stable step leaves
     // them for Lookback: the detection bands, the stability fit's
-    // coefficient_min coefficients, residuals kept.
+    // coefficients.min coefficients, residuals kept.
     void with_stability_fit(index_t start, index_t stop)
     {
         state.init_model->fit(
@@ -403,7 +403,7 @@ TEST(StandardPrepare, SetsThePeekPlanAndTheCursor)
     EXPECT_EQ(r.state.peek_plan.peek, r.count("change_test", "peek_size"));
 
     // Initialize's coefficients, once for the pixel: the stability fit's
-    // (coefficient_min coefficients in a coefficient_max-wide basis).
+    // (coefficients.min coefficients in a coefficients.max-wide basis).
     const ccd::CoefficientRule& c = r.state.stability_coefficients;
     EXPECT_EQ(c.min, r.count("stability_fit", "coefficients.min"));
     EXPECT_EQ(c.max, r.count("stability_fit", "coefficients.max"));
