@@ -42,7 +42,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -55,6 +54,7 @@
 #include "ccd/ccd.hpp"
 
 #include "dump.hpp"
+#include "fixture.hpp"
 #include "units.hpp"
 #include "synthetic.hpp"
 
@@ -297,76 +297,11 @@ std::string run_corpus()
     return dump;
 }
 
-std::vector<std::string> split_pixels(const std::string& dump)
-{
-    std::vector<std::string> out;
-    std::istringstream in(dump);
-    std::string line;
-    while (std::getline(in, line))
-    {
-        if (line.rfind("P ", 0) == 0 || out.empty())
-            out.emplace_back();
-        out.back() += line;
-        out.back() += '\n';
-    }
-    return out;
-}
-
 } // namespace
 
 TEST(Golden, BitIdenticalToFixture)
 {
-    const std::string dump = run_corpus();
-    const std::string header = "# platform: " + golden::platform() + "\n";
-
-    if (std::getenv("CCD_GOLDEN_WRITE"))
-    {
-        std::ofstream out(CCD_GOLDEN_FIXTURE, std::ios::binary);
-        out << header << dump;
-        GTEST_SKIP() << "fixture written to " << CCD_GOLDEN_FIXTURE;
-    }
-
-    std::ifstream in(CCD_GOLDEN_FIXTURE, std::ios::binary);
-    ASSERT_TRUE(in) << "missing fixture " << CCD_GOLDEN_FIXTURE;
-
-    std::string fixture_header;
-    std::getline(in, fixture_header);
-    fixture_header += '\n';
-    const std::string expected(
-        (std::istreambuf_iterator<char>(in)),
-        std::istreambuf_iterator<char>());
-
-    if (dump == expected)
-        return;
-
-    if (fixture_header != header)
-    {
-        GTEST_SKIP()
-            << "output differs from a fixture written on another platform\n"
-            << "  fixture: " << fixture_header
-            << "  this:    " << header
-            << "exact equality is only claimed on the fixture's platform";
-    }
-
-    const auto actual_px = split_pixels(dump);
-    const auto expected_px = split_pixels(expected);
-
-    ASSERT_EQ(actual_px.size(), expected_px.size()) << "pixel count differs";
-
-    std::size_t differing = 0;
-    for (std::size_t i = 0; i < actual_px.size(); ++i)
-    {
-        if (actual_px[i] == expected_px[i])
-            continue;
-
-        if (++differing <= 3)
-        {
-            ADD_FAILURE()
-                << "expected:\n" << expected_px[i]
-                << "actual:\n" << actual_px[i];
-        }
-    }
-    FAIL() << differing << " of " << actual_px.size() << " pixels differ from the fixture";
+    golden::expect_matches_fixture(run_corpus(), CCD_GOLDEN_FIXTURE, "CCD_GOLDEN_WRITE");
 }
 
 //------------------------------------------------------------------------------

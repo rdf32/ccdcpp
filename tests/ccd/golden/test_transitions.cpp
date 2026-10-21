@@ -172,10 +172,7 @@
 //==============================================================================
 
 #include <cstdint>
-#include <cstdlib>
-#include <fstream>
 #include <iterator>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -189,6 +186,7 @@
 
 #include "characterization.hpp"
 #include "dump.hpp"
+#include "fixture.hpp"
 
 #ifndef CCD_TRANSITIONS_FIXTURE
 #define CCD_TRANSITIONS_FIXTURE "transitions_fixture.txt"
@@ -323,59 +321,7 @@ TEST(Transitions, BitIdenticalToFixture)
     for (const auto& p : golden::characterization_pixels())
         golden::dump_pixel(dump, "transitions:" + p.name, run_detect(p));
 
-    const std::string header = "# platform: " + golden::platform() + "\n";
-
-    if (std::getenv("CCD_TRANSITIONS_WRITE"))
-    {
-        std::ofstream out(CCD_TRANSITIONS_FIXTURE, std::ios::binary);
-        out << header << dump;
-        GTEST_SKIP() << "fixture written to " << CCD_TRANSITIONS_FIXTURE;
-    }
-
-    std::ifstream in(CCD_TRANSITIONS_FIXTURE, std::ios::binary);
-    ASSERT_TRUE(in) << "missing fixture " << CCD_TRANSITIONS_FIXTURE;
-
-    std::string fixture_header;
-    std::getline(in, fixture_header);
-    fixture_header += '\n';
-    const std::string expected(
-        (std::istreambuf_iterator<char>(in)),
-        std::istreambuf_iterator<char>());
-
-    if (dump == expected)
-        return;
-
-    if (fixture_header != header)
-    {
-        GTEST_SKIP()
-            << "output differs from a fixture written on another platform\n"
-            << "  fixture: " << fixture_header
-            << "  this:    " << header
-            << "exact equality is only claimed on the fixture's platform";
-    }
-
-    // Name the pixels that differ.
-    std::istringstream a(dump), e(expected);
-    std::string la, le, label;
-    std::size_t differing = 0;
-    std::string last_reported;
-    while (std::getline(e, le))
-    {
-        if (!std::getline(a, la))
-        {
-            ADD_FAILURE() << "output ends before the fixture";
-            break;
-        }
-        if (le.rfind("P ", 0) == 0)
-            label = le;
-        if (la != le && label != last_reported)
-        {
-            ++differing;
-            last_reported = label;
-            ADD_FAILURE() << "differs: " << label << "\n  expected: " << le << "\n  actual:   " << la;
-        }
-    }
-    FAIL() << differing << " pixels differ from the fixture";
+    golden::expect_matches_fixture(dump, CCD_TRANSITIONS_FIXTURE, "CCD_TRANSITIONS_WRITE");
 }
 
 TEST(Transitions, PathsAsDocumented)
