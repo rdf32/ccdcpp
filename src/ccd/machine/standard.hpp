@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,121 +26,6 @@ namespace ccd
 
 namespace standard
 {
-
-//==============================================================================
-//
-// Cadence
-//
-// The Standard procedure's per-pixel cadence, set in Prepare: the peek size
-// the run's change test chose for the pixel (ChangeTest::prepare()), which
-// Extend and the machine's guards read, and the stability rule and Lookback
-// are prepared with; the fewest observations a peek it tests holds, and a
-// window it tests (its PeekPlan's full and min_window).
-//
-//==============================================================================
-
-struct Cadence
-{
-    index_t peek;         // observations a peek holds
-    index_t shortest;     // peek for a test of full peeks only, else 0
-    index_t min_window;   // a smaller model window grows untested
-};
-
-//==============================================================================
-//
-// Initialize
-//
-// One step of the search for a stable start window, as a plain function of
-// what it reads: the Initialize phase calls it once per candidate window.
-//
-//==============================================================================
-
-// What Initialize fits a candidate window with, besides its strategies. The
-// machine fills it from its run's shared values (initialize_criteria());
-// initialize_step() does not read them directly. Values throughout (a
-// BandList is a small fixed-capacity array), so a criteria object never
-// refers to what it was filled from.
-struct InitializeCriteria
-{
-    BandList detection_bands;   // the bands fitted and tested for stability
-    index_t num_coefficients;   // of the stability fits
-    index_t max_coefficients;   // the widest model's: their peek basis width
-
-    // The last day the search sees (StartSearch::last_day()): its
-    // exhausted() reads the observations dated through it.
-    std::int64_t last_day = std::numeric_limits<std::int64_t>::max();
-};
-
-// The strategies one Initialize step runs, of the run's stages: the start
-// search, the window screen, the stability fit (its Model, which holds the
-// fits) and the stability rule with its scratch, prepared for the pixel.
-struct InitializeStages
-{
-    const StartSearch& search;
-    const WindowScreen& screen;
-    Model& fit;
-    const StabilityRule& rule;
-    const Scratch& rule_scratch;
-};
-
-// What one step of the start-window search did, in the order the step tests
-// them.
-//
-// The last two are one step that changes two things: Tmask's outliers are
-// dropped from the series (the window shortened by as many), and the
-// shortened window is fitted and tested in the same step, as pyccd does in
-// one pass of its loop. Their routing is Unstable's and Stable's.
-enum class InitializeOutcome : std::uint8_t
-{
-    Exhausted,            // the start search has no candidate left:
-                          // nothing tested or changed
-    ShortSpan,            // the window spans too few days: grown
-    AllOutliers,          // Tmask flags every observation in it: grown
-    RejectedOutliers,     // what Tmask's outliers leave is too short or too
-                          // few: grown, nothing dropped
-    Unstable,             // nothing flagged; fitted, not stable: shifted
-    Stable,               // nothing flagged; fitted and stable
-    DroppedThenUnstable,  // outliers dropped; fitted, not stable: shifted
-    DroppedThenStable     // outliers dropped; fitted and stable
-};
-
-const char* to_string(InitializeOutcome outcome);
-
-// One step of the search for a stable start window: one candidate window.
-// `window` holds at least the search's min_window() observations.
-//
-// In this order:
-//
-//   * the start search finds no candidate left: Exhausted;
-//   * it finds the window spans too few days: the window grows by one;
-//   * the window screen flags every observation of the window: it grows by
-//     one (AllOutliers);
-//   * it flags some: they are dropped from `series` if what is left of
-//     the window is still a candidate (the search's usable();
-//     MaskedSeries::drop_outliers_if(), which shortens the window), and the
-//     step goes on; otherwise the window grows by one with nothing dropped
-//     (RejectedOutliers);
-//   * the detection bands are fitted over the window by the stability fit
-//     (residuals kept): Stable (DroppedThenStable after a drop) when the
-//     stability rule finds the fit stable, with `window` the stable window
-//     and the fit its fits; otherwise the window shifts by one (Unstable,
-//     DroppedThenUnstable).
-//
-// Only the detection bands are fitted, and only on the four fitted
-// outcomes.
-InitializeOutcome initialize_step(
-    MaskedSeries& series,
-    Window& window,
-    const InitializeCriteria& criteria,
-    const Variogram& variogram,
-    const InitializeStages& stages
-);
-
-// What Initialize fits a candidate window with: the shared detection bands,
-// and stability fits of the stability fit's rule's min coefficients in a
-// basis its max wide. Built once per pixel, in Prepare.
-InitializeCriteria initialize_criteria(const config::Shared& shared,
-                                       const CoefficientRule& stability);
 
 //==============================================================================
 //
@@ -183,7 +67,7 @@ InitializeCriteria initialize_criteria(const config::Shared& shared,
 
 enum class Phase : std::uint8_t
 {
-    Prepare,       // the early exits, the statistics window, cadence, variogram
+    Prepare,       // the early exits, the statistics window, peek plan, variogram
     Initialize,    // one candidate start window (initialize_step)
     Lookback,      // one observation before the window, towards prev_break
     StartCatch,    // the leading observations of the first segment
@@ -194,6 +78,29 @@ enum class Phase : std::uint8_t
 };
 
 const char* to_string(Phase phase);
+
+// What one step of the start-window search did, in the order the step tests
+// them.
+//
+// The last two are one step that changes two things: Tmask's outliers are
+// dropped from the series (the window shortened by as many), and the
+// shortened window is fitted and tested in the same step, as pyccd does in
+// one pass of its loop. Their routing is Unstable's and Stable's.
+enum class InitializeOutcome : std::uint8_t
+{
+    Exhausted,            // the start search has no candidate left:
+                          // nothing tested or changed
+    ShortSpan,            // the window spans too few days: grown
+    AllOutliers,          // Tmask flags every observation in it: grown
+    RejectedOutliers,     // what Tmask's outliers leave is too short or too
+                          // few: grown, nothing dropped
+    Unstable,             // nothing flagged; fitted, not stable: shifted
+    Stable,               // nothing flagged; fitted and stable
+    DroppedThenUnstable,  // outliers dropped; fitted, not stable: shifted
+    DroppedThenStable     // outliers dropped; fitted and stable
+};
+
+const char* to_string(InitializeOutcome outcome);
 
 // What one Lookback step did: the lookback's verdict, applied.
 enum class LookbackOutcome : std::uint8_t
@@ -265,6 +172,13 @@ enum class ExtendOutcome : std::uint8_t
 
 const char* to_string(ExtendOutcome outcome);
 
+// The fewest observations a peek the change test reads holds: the plan's
+// peek for a test of full peeks only, else 0.
+inline index_t shortest_peek(const PeekPlan& plan)
+{
+    return plan.full ? plan.peek : 0;
+}
+
 //------------------------------------------------------------------------------
 // Cursor
 //
@@ -305,12 +219,15 @@ struct State
     // `start`, is segments.empty() && carried == 0.
     index_t carried = 0;
 
-    // Standard's own: set in Prepare, read by every later phase. Extend's
-    // coefficients are the monitoring model's rule's.
-    Cadence cadence{};
+    // Standard's own: set in Prepare, read by every later phase. The peek
+    // plan the run's change test chose for the pixel (ChangeTest::
+    // prepare()), which Extend and the guards read and the stability rule
+    // and Lookback are prepared with; Initialize's stability fits take the
+    // stability fit's coefficient rule, Extend's the monitoring model's.
+    PeekPlan peek_plan{};
+    CoefficientRule stability_coefficients{};
     CoefficientRule coefficients{};
     Variogram variogram;
-    InitializeCriteria initialize_criteria{};
 
     // Initialize's fits of the detection bands, made by the run's
     // stability-fit strategy: the stable window's, which Lookback tests
@@ -357,9 +274,8 @@ struct State
     void bind(const Strategies& strategies);
 
     // Starts a pixel: Prepare, no exit, the series of `pixel` that
-    // `mask` keeps, the cursor at 0, no segments and none carried, the
-    // cadence and Initialize's criteria cleared, Extend untrained, no
-    // suspension.
+    // `mask` keeps, the cursor at 0, no segments and none carried, the peek
+    // plan cleared, Extend untrained, no suspension.
     void reset(const PixelSeries& pixel, ProcessingMask mask);
 
     // The pixel's result once Done: the segments (none after an early exit)
@@ -394,7 +310,7 @@ struct Context
 //------------------------------------------------------------------------------
 
 // Done (TooFewObservations) when the start search finds too few observations
-// (too_few()). Otherwise sets the cadence, Initialize's criteria and the
+// (too_few()). Otherwise sets the peek plan, the coefficient rules and the
 // variogram from the statistics window (the observations dated <= statistics_end); Done
 // (VariogramNaN) on a NaN in it. Puts the window at the search's first(0)
 // and prev_break at 0. Next: Initialize (begin_search()), or EndCatch
@@ -410,23 +326,46 @@ Phase begin_search(const Context& context, State& state);
 // The work of the phases, apart from their routes, which tests and a trace
 // call one at a time.
 //
-//   initialize_outcome()  initialize()'s step, without the route;
 //   write_start_segment() the Start segment over (prev_break, window.start);
 //   move_past_segment()   restart()'s cursor move;
 //   write_end_segment()   the End segment over (prev_break, size), unguarded.
-InitializeOutcome initialize_outcome(const Context& context, State& state);
 void write_start_segment(const Context& context, State& state);
 void move_past_segment(const Context& context, State& state);
 void write_end_segment(const Context& context, State& state);
 
-// One ccd::initialize_step() on the window against the pixel's
-// initialize_criteria (the stability fit's min-coefficient fits), with the run's
-// stability fit (into init_model) and stability rule. Next: Initialize after
-// a grow or a shift; after_stable_start() when stable. When no candidate is
-// left, as the search's plan says: EndCatch (InitializeExhausted), the series as it
-// was or (Restore) as the search began; or (Force) the search's forced
-// start, its window the forced one, then the peek guard (no Lookback and no
-// Start segment).
+// One step of the search for a stable start window: one candidate window,
+// with the run's start search, window screen, stability fit (into
+// init_model, its stability_coefficients) and stability rule, on the
+// detection bands. The window holds at least the search's min_window()
+// observations.
+//
+// In this order:
+//
+//   * the start search finds no candidate left: Exhausted;
+//   * it finds the window spans too few days: the window grows by one;
+//   * the window screen flags every observation of the window: it grows by
+//     one (AllOutliers);
+//   * it flags some: they are dropped from the series if what is left of
+//     the window is still a candidate (the search's usable();
+//     MaskedSeries::drop_outliers_if(), which shortens the window), and the
+//     step goes on; otherwise the window grows by one with nothing dropped
+//     (RejectedOutliers);
+//   * the detection bands are fitted over the window by the stability fit
+//     (residuals kept): Stable (DroppedThenStable after a drop) when the
+//     stability rule finds the fit stable, the window the stable window and
+//     init_model its fits; otherwise the window shifts by one (Unstable,
+//     DroppedThenUnstable).
+//
+// Only the detection bands are fitted, and only on the four fitted
+// outcomes.
+InitializeOutcome initialize_step(const Context& context, State& state);
+
+// One initialize_step() on the window. Next: Initialize after a grow or a
+// shift; after_stable_start() when stable. When no candidate is left, as the
+// search's plan says: EndCatch (InitializeExhausted), the series as it was or
+// (Restore) as the search began; or (Force) the search's forced start, its
+// window the forced one, then the peek guard (no Lookback and no Start
+// segment).
 Phase initialize(const Context& context, State& state);
 
 // One Lookback step: the run's lookback judges the observation before the
@@ -461,7 +400,7 @@ Phase start_catch(const Context& context, State& state);
 //     window.stop) dropped, the window keeping its coordinates;
 //   * its EndSeries: SeriesEnd;
 //   * no change, and no peek the test reads is left after the next
-//     observation (window.stop + shortest >= size): SeriesEnd, the window
+//     observation (window.stop + shortest_peek() >= size): SeriesEnd, the window
 //     as it is;
 //   * otherwise Grown, the window one longer.
 //
@@ -496,8 +435,8 @@ Phase end_catch(const Context& context, State& state);
 // Room for a start window after the cursor: the start search's room().
 bool room_to_initialize(const Context& context, const State& state);
 
-// A peek the change test reads after the window: window.stop + shortest <=
-// size (a full peek for a test of full peeks only).
+// A peek the change test reads after the window: window.stop +
+// shortest_peek() <= size (a full peek for a test of full peeks only).
 bool peek_fits(const State& state);
 
 // The first segment's leading observations need a Start segment: no

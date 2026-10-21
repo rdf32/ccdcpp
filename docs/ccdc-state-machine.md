@@ -95,7 +95,7 @@ call and say what they did as an outcome value, so the trace and the tests see e
 
 | Phase | One call | Next |
 |---|---|---|
-| `Prepare` (`prepare`) | The early exits; the statistics window; the cadence (the change test's `prepare()`, the pixel's peek); the stability rule's and the lookback's `prepare()`; Initialize's criteria (`initialize_criteria`); the variogram; the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
+| `Prepare` (`prepare`) | The early exits; the statistics window; the peek plan (the change test's `prepare()`, the pixel's peek); the stability rule's and the lookback's `prepare()`; the stability fit's and the monitoring model's coefficient rules; the variogram; the cursor at the start search's `first(0)` | Initialize, EndCatch or Done |
 | `Initialize` (`initialize`) | One candidate start window: `ccd::initialize_step` returns an `InitializeOutcome` | itself after a grow or a shift; then Lookback, StartCatch, Extend or EndCatch |
 | `Lookback` (`lookback`) | One observation before the window: `lookback_step` returns a `LookbackOutcome` | itself while `window.start > prev_break`; then StartCatch, Extend or EndCatch |
 | `StartCatch` (`start_catch`) | The first segment's leading observations as a Start segment (curve_qa 14) | Extend or EndCatch |
@@ -171,9 +171,9 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 | `cursor` (`Cursor`) | the model window and `prev_break`, in masked coordinates | Standard's |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
-| `cadence` (`Cadence`) | the peek size the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | Standard's |
+| `peek_plan` (`PeekPlan`, `include/ccd/strategies/stages.hpp`) | the peek the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | a shared type, chosen by the change test |
 | `variogram` (`Variogram`, `include/ccd/strategies/stages.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
-| `initialize_criteria` | what a candidate start window is tested against | a shared type, filled by Standard |
+| `stability_coefficients`, `coefficients` (`CoefficientRule`) | the stability fit's and the monitoring model's coefficient rules: Initialize's and Extend's fits | a shared type, the strategies' |
 | `init_model`, `stability`, `lookback`, `edges`, `segment_report` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's, the lookback's, edge_segments' and segment_report's per-pixel scratch, each a `PerThread` of its strategy, made by `State::bind` before the pixel | Standard's |
 | `extend` (`ExtendState`) | what Extend carries from one peek test to the next | Standard's |
 
@@ -388,9 +388,8 @@ Each strategy holds its own code, beside its class:
 | `adjust_peek`, `adjust_change_threshold`, `ThresholdPeek`, `ChangeThresholdMemo`, `change_magnitude`, `detect_change`, `detect_outlier`, `SeasonalOrder`, `seasonal_rmse` | pyccd's peek statistics, read by the pyccd strategies of four stages (`chi2`, the `pyccd` stability rule and lookback, `floored`) | `include/ccd/strategies/pyccd/peek_statistics.hpp` |
 
 What only the Standard machine uses lives with it, in `ccd::standard`
-(`src/ccd/machine/standard.hpp`): `initialize_criteria`, `initialize_step` with
-`InitializeCriteria`, `InitializeStages` and `InitializeOutcome`, `Cursor`, the phases, the
-transitions and the routing. A function moves to the shared list once a second machine or a strategy uses
+(`src/ccd/machine/standard.hpp`): `initialize_step` with `InitializeOutcome`, `Cursor`, the
+phases, the transitions and the routing. A function moves to the shared list once a second machine or a strategy uses
 it.
 
 ## 5. The driver and the trace
@@ -447,8 +446,8 @@ returns it inside a `PixelRecord`, with the pixel's input fingerprint and the da
 `standard::Detector::resume()` continues from it on the longer series:
 
 1. Prepare runs as for any run, on the series as the filters leave it, with the statistics
-   cutoffs capped at the first run's series end, so its cadence, variogram and criteria are the
-   stored run's.
+   cutoffs capped at the first run's series end, so its peek plan and variogram are the stored
+   run's.
 2. The stored drops leave the series, the latest first.
 3. The record is checked against the series, then the cursor is put back and the guard that
    failed is tested again: Initialize for NoRoomToInitialize and InitializeExhausted, the peek
@@ -483,8 +482,8 @@ leaves the machine implicit:
 - results travel back up as tuples, so each function is a fragment its caller reassembles.
 
 In ccdcpp each of these is a named thing: a transition returns its next phase; the record has
-`extend.trained` and `segments`; `Cadence` holds the per-pixel values and the configuration is
-const; `MaskedSeries` keeps the mask and the kept observations in step and owns the coordinate
+`extend.trained` and `segments`; `peek_plan` and the change test's scratch hold the per-pixel
+values and the configuration is const; `MaskedSeries` keeps the mask and the kept observations in step and owns the coordinate
 rule; the result is taken from the record once the machine is done.
 
 ### Testability per transition
@@ -511,7 +510,7 @@ is that function and its test (the numbers are those of the tests and the CHANGE
 | 1. Far from the previous break, Lookback peeks the adjusted peek of observations | `strategies::lookback_peek`, first case |
 | 2. Near it, Lookback peeks down to the previous break, never below | `strategies::lookback_peek`, second case |
 | 3. Lookback compares against the stable start window's RMSE | the `pyccd` lookback's `judge()` |
-| 4. Initialize fits the stability fit's `coefficient_min` coefficients; both peek bases are `coefficient_max` wide | `initialize_criteria` (from the stability fit's `CoefficientRule`: `max_coefficients`, which Lookback's peek reads), and Extend's monitoring model (its rule's `max` as its fits' basis width) |
+| 4. Initialize fits the stability fit's `coefficient_min` coefficients; both peek bases are `coefficient_max` wide | `State::stability_coefficients` (the stability fit's `CoefficientRule`: its `max`, which Lookback's peek reads), and Extend's monitoring model (its rule's `max` as its fits' basis width) |
 | 5. Every exit, the early ones too, returns the processing mask | `State::take_result`; `fit_whole_series` |
 | 6. A curve ends once its peek reaches the last observation, and is the last curve | `extend_step`'s `SeriesEnd`; `extend` |
 | 7. Extend refits while the window holds at most the refit's `min_obs` observations | `extend_step`'s refit schedule |

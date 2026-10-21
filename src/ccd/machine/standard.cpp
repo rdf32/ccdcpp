@@ -5,6 +5,7 @@
 #include <vector>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -16,16 +17,6 @@ namespace ccd
 
 namespace standard
 {
-
-InitializeCriteria initialize_criteria(const config::Shared& shared,
-                                       const CoefficientRule& stability)
-{
-    return InitializeCriteria{
-        shared.detection_bands,
-        stability.min,
-        stability.max
-    };
-}
 
 namespace
 {
@@ -153,8 +144,7 @@ void State::reset(const PixelSeries& pixel, ProcessingMask mask)
     carried = 0;
 
     // Prepare's derived values, set again before anything reads them.
-    cadence = Cadence{};
-    initialize_criteria = InitializeCriteria{};
+    peek_plan = PeekPlan{};
     extend.trained = false;
     forced.reset();
     search = SearchPlan{};
@@ -241,7 +231,7 @@ bool room_to_initialize(const Context& context, const State& state)
 
 bool peek_fits(const State& state)
 {
-    return state.cursor.window.stop + state.cadence.shortest <= state.series.size();
+    return state.cursor.window.stop + shortest_peek(state.peek_plan) <= state.series.size();
 }
 
 bool start_catch_due(const Context& context, const State& state)
@@ -251,7 +241,7 @@ bool start_catch_due(const Context& context, const State& state)
 
     return state.segments.empty() && state.carried == 0 &&
         context.strategies.edge_segments->start_due(cursor.window.start - cursor.prev_break,
-                                               state.cadence.peek);
+                                               state.peek_plan.peek);
 }
 
 Phase after_stable_start(const Context& context, State& state)
@@ -317,7 +307,7 @@ Phase prepare(const Context& context, State& state)
     LOG_DEBUG("stat dates: " << stat_dates);
 
     //----------------------------------------------------------
-    // The pixel's cadence and variogram, read by every step
+    // The pixel's peek plan and variogram, read by every step
     // below; the run's shared values are never written
     //----------------------------------------------------------
     const index_t detection_bands = shared.detection_bands.size();
@@ -327,7 +317,7 @@ Phase prepare(const Context& context, State& state)
     // A peek holds an observation at least; chi2's schema refuses fewer than
     // two (a change is consecutive observations over the threshold).
     assert(plan.peek >= 1);
-    state.cadence = Cadence{plan.peek, plan.full ? plan.peek : 0, plan.min_window};
+    state.peek_plan = plan;
     // A resume continues full peeks only (resume_series_end()).
     if (!plan.full)
         state.resumable = false;
@@ -335,11 +325,10 @@ Phase prepare(const Context& context, State& state)
         plan, detection_bands, *state.stability);
     context.strategies.lookback->prepare(
         plan, detection_bands, *state.lookback);
-    state.initialize_criteria =
-        initialize_criteria(shared, context.strategies.stability_fit->coefficients());
+    state.stability_coefficients = context.strategies.stability_fit->coefficients();
     state.coefficients = context.strategies.model->coefficients();
 
-    LOG_DEBUG("Peek size: " << state.cadence.peek);
+    LOG_DEBUG("Peek size: " << state.peek_plan.peek);
 
     state.variogram.bands = context.strategies.noise->estimate(stat_dates, stat_spectral);
 
@@ -364,7 +353,6 @@ Phase begin_search(const Context& context, State& state)
 {
     state.search = context.strategies.start_search->begin(
         state.series.dates(), state.cursor.prev_break, input_end(context));
-    state.initialize_criteria.last_day = state.search.last_day;
     if (!state.search.resumable)
         state.resumable = false;
     if (state.search.exhausted == Exhaustion::Restore)
@@ -372,23 +360,22 @@ Phase begin_search(const Context& context, State& state)
     return Phase::Initialize;
 }
 
-InitializeOutcome initialize_step(
-    MaskedSeries& series,
-    Window& window,
-    const InitializeCriteria& criteria,
-    const Variogram& variogram,
-    const InitializeStages& stages
-)
+InitializeOutcome initialize_step(const Context& context, State& state)
 {
-    const StartSearch& search = stages.search;
+    MaskedSeries& series = state.series;
+    Window& window = state.cursor.window;
+    const Variogram& variogram = state.variogram;
+    const BandList& detection_bands = context.shared.detection_bands;
+    const StartSearch& search = *context.strategies.start_search;
     assert(window.size() >= search.min_window());
 
     //--------------------------------------------------------------------------
     // No candidate left before the end of the series
     //--------------------------------------------------------------------------
-    const index_t seen = criteria.last_day == std::numeric_limits<std::int64_t>::max()
+    const std::int64_t last_day = state.search.last_day;
+    const index_t seen = last_day == std::numeric_limits<std::int64_t>::max()
         ? series.size()
-        : count_through(series.dates(), criteria.last_day);
+        : count_through(series.dates(), last_day);
     if (search.exhausted(window, seen))
     {
         LOG_DEBUG("Final model window: (" << window.start << ", " << window.stop << ")");
@@ -420,7 +407,7 @@ InitializeOutcome initialize_step(
     //--------------------------------------------------------------------------
     // The window screen (Tmask)
     //--------------------------------------------------------------------------
-    auto outliers = stages.screen.screen(dates, spectral, variogram);
+    auto outliers = context.strategies.window_screen->screen(dates, spectral, variogram);
     LOG_DEBUG("Number of Tmask outliers found: " << outliers.count());
     //--------------------------------------------------------------------------
     // The screen removed everything
@@ -473,24 +460,25 @@ InitializeOutcome initialize_step(
     //
     // Only these are read: the stability rule here and Lookback after it.
     //--------------------------------------------------------------------------
-    stages.fit.fit(
+    Model& fit = *state.init_model;
+    fit.fit(
         dates,
         spectral,
-        criteria.num_coefficients,
-        criteria.max_coefficients,
-        criteria.detection_bands,
+        state.stability_coefficients.min,
+        state.stability_coefficients.max,
+        detection_bands,
         KeepResiduals::Yes
     );
 
     //--------------------------------------------------------------------------
     // Stability check
     //--------------------------------------------------------------------------
-    if (stages.rule.stable(
-            stages.fit,
+    if (context.strategies.stability_rule->stable(
+            fit,
             dates,
             variogram,
-            criteria.detection_bands,
-            stages.rule_scratch))
+            detection_bands,
+            *state.stability))
     {
         LOG_DEBUG("Stable start found: (" << window.start << ", " << window.stop << ")");
         return dropped ? InitializeOutcome::DroppedThenStable : InitializeOutcome::Stable;
@@ -501,26 +489,11 @@ InitializeOutcome initialize_step(
     return dropped ? InitializeOutcome::DroppedThenUnstable : InitializeOutcome::Unstable;
 }
 
-InitializeOutcome initialize_outcome(const Context& context, State& state)
-{
-    LOG_DEBUG("Initialize for change model #: " << state.segments.size());
-
-    const InitializeOutcome outcome = initialize_step(
-        state.series,
-        state.cursor.window,
-        state.initialize_criteria,
-        state.variogram,
-        InitializeStages{*context.strategies.start_search, *context.strategies.window_screen,
-                         *state.init_model, *context.strategies.stability_rule,
-                         *state.stability}
-    );
-    LOG_DEBUG("Initialize: " << to_string(outcome));
-    return outcome;
-}
-
 Phase initialize(const Context& context, State& state)
 {
-    const InitializeOutcome outcome = initialize_outcome(context, state);
+    LOG_DEBUG("Initialize for change model #: " << state.segments.size());
+    const InitializeOutcome outcome = initialize_step(context, state);
+    LOG_DEBUG("Initialize: " << to_string(outcome));
 
     switch (outcome)
     {
@@ -754,7 +727,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
 {
     MaskedSeries& series = state.series;
     Window& window = state.cursor.window;
-    const Cadence& cadence = state.cadence;
+    const PeekPlan& plan = state.peek_plan;
     ExtendState& extend = state.extend;
 
     const BandList& detection_bands = context.shared.detection_bands;
@@ -765,7 +738,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
     //--------------------------------------------------------------------------
     // A window too small to test grows untested
     //--------------------------------------------------------------------------
-    if (window.size() < cadence.min_window)
+    if (window.size() < plan.min_window)
     {
         if (window.stop >= series.size())
             return ExtendOutcome::NoFit;
@@ -788,7 +761,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
 
     // The next `peek` observations, fewer at the series end.
     const Window& peek_window = extend.peek =
-        Window(window.stop, std::min(window.stop + cadence.peek, series.size()));
+        Window(window.stop, std::min(window.stop + plan.peek, series.size()));
 
     // # Used for comparison against fit_span
     auto model_span = span(masked_dates, window);
@@ -886,7 +859,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
         LOG_DEBUG("Updating processing mask extend");
         // A drop that leaves no full peek ends the curve at this test: its
         // other bands are this test's, before the drop moves the peek.
-        if (window.stop + cadence.shortest > series.size() - 1)
+        if (window.stop + shortest_peek(plan) > series.size() - 1)
             complete_models(context, state);
         CCD_OBSERVE_EVENT(context.observe, day_event(ObserverEvent::Kind::Drop,
                                                      masked_dates(peek_window.start), "outlier"));
@@ -906,7 +879,7 @@ ExtendOutcome extend_step(const Context& context, State& state)
     // is left after the next observation)
     //--------------------------------------------------------------------------
     assert(peek_fits(state));
-    if (window.stop + cadence.shortest >= series.size())
+    if (window.stop + shortest_peek(plan) >= series.size())
         return ExtendOutcome::SeriesEnd;
 
     //--------------------------------------------------------------------------
@@ -1019,7 +992,7 @@ Phase end_catch(const Context& context, State& state)
         ? state.carried > 0 && state.carried_change
         : state.segments.back().change_probability == 1.0;
     if (context.strategies.edge_segments->end_due(state.series.size() - prev_break,
-                                             state.cadence.peek, after_change))
+                                             state.peek_plan.peek, after_change))
         write_end_segment(context, state);
     return Phase::Done;
 }
@@ -1201,7 +1174,7 @@ Phase resume_series_end(const Context& context, State& state, const Suspended& f
     // continues once it holds one more, and the grow is applied (testing
     // that peek again would give the same outcome). After a drop no full
     // peek was left.
-    const index_t reach = window.stop + state.cadence.peek;
+    const index_t reach = window.stop + state.peek_plan.peek;
     if (from.grow ? reach < state.series.size() : reach <= state.series.size())
     {
         if (from.grow)

@@ -71,7 +71,7 @@ using ccd::standard::Phase;
 //
 // `n` clear observations 16 days apart from `first_day` with a smooth
 // seasonal signal, every one kept by the mask, and a Context over them. The record's phase, cursor,
-// cadence and segments are set by each test.
+// peek plan and segments are set by each test.
 //------------------------------------------------------------------------------
 struct Record
 {
@@ -120,13 +120,12 @@ struct Record
         return golden::parameter<double>(resolved.stages, stage, name);
     }
 
-    // The record at a cursor, with a cadence, past Prepare.
+    // The record at a cursor, with a peek plan, past Prepare.
     void at(index_t start, index_t stop, index_t prev_break, index_t peek = 6)
     {
         state.cursor = ccd::standard::Cursor{ccd::Window(start, stop), prev_break};
-        state.cadence = ccd::standard::Cadence{peek, peek, 0};   // chi2: full peeks only
-        state.initialize_criteria = ccd::standard::initialize_criteria(
-            shared, strategies.stability_fit->coefficients());
+        state.peek_plan = ccd::PeekPlan{peek, true, 0};   // chi2: full peeks only
+        state.stability_coefficients = strategies.stability_fit->coefficients();
         state.coefficients = strategies.model->coefficients();
 
         // The change test as Prepare leaves it on a series at the reference
@@ -247,7 +246,7 @@ TEST(StandardRouting, PeekFitsIsAFullPeekAfterTheWindow)
     r.at(0, 35, 0, 6);
     EXPECT_FALSE(ccd::standard::peek_fits(r.state));
     r.at(0, 30, 0, 11);
-    EXPECT_FALSE(ccd::standard::peek_fits(r.state));   // the cadence's peek, not peek_size
+    EXPECT_FALSE(ccd::standard::peek_fits(r.state));   // the plan's peek, not peek_size
 }
 
 TEST(StandardRouting, StartCatchIsDueOnlyBeforeTheFirstSegmentPastAPeek)
@@ -391,7 +390,7 @@ TEST(StandardPrepare, ANaNVariogramIsDoneWithTheMaskOnly)
     EXPECT_EQ(result.mask.count(), 40u);
 }
 
-TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
+TEST(StandardPrepare, SetsThePeekPlanAndTheCursor)
 {
     Record r(40);
     EXPECT_EQ(ccd::standard::prepare(r.context, r.state), Phase::Initialize);
@@ -401,15 +400,13 @@ TEST(StandardPrepare, SetsTheCadenceAndTheCursor)
     EXPECT_EQ(r.state.cursor.prev_break, 0u);
 
     // 16-day cadence: the caller's peek.
-    EXPECT_EQ(r.state.cadence.peek, r.count("change_test", "peek_size"));
+    EXPECT_EQ(r.state.peek_plan.peek, r.count("change_test", "peek_size"));
 
-    // Initialize's criteria, once for the pixel: the stability fit's
-    // (coefficient_min coefficients in a coefficient_max-wide basis among
-    // them).
-    const ccd::standard::InitializeCriteria& c = r.state.initialize_criteria;
-    EXPECT_EQ(c.detection_bands.size(), r.shared.detection_bands.size());
-    EXPECT_EQ(c.num_coefficients, r.count("stability_fit", "coefficient_min"));
-    EXPECT_EQ(c.max_coefficients, r.count("stability_fit", "coefficient_max"));
+    // Initialize's coefficients, once for the pixel: the stability fit's
+    // (coefficient_min coefficients in a coefficient_max-wide basis).
+    const ccd::CoefficientRule& c = r.state.stability_coefficients;
+    EXPECT_EQ(c.min, r.count("stability_fit", "coefficient_min"));
+    EXPECT_EQ(c.max, r.count("stability_fit", "coefficient_max"));
     EXPECT_EQ(r.state.variogram.bands.size(), 7u);
 }
 
@@ -441,12 +438,7 @@ InitializeOutcome outcome_of(index_t n, Setup setup)
 {
     Record r(n);
     setup(r);
-    return ccd::standard::initialize_step(r.state.series, r.state.cursor.window, r.state.initialize_criteria,
-                                r.state.variogram,
-                                ccd::standard::InitializeStages{*r.strategies.start_search,
-                                                      *r.strategies.window_screen, *r.state.init_model,
-                                                      *r.strategies.stability_rule,
-                                                      *r.state.stability});
+    return ccd::standard::initialize_step(r.context, r.state);
 }
 
 TEST(StandardInitialize, NoCandidateLeftIsExhausted)
@@ -1014,7 +1006,7 @@ struct HookTest final : ccd::ChangeTest
 };
 
 // A record whose change test is a HookTest, set up by `hooks`, in Extend at
-// (start, stop) with the cadence the test's hooks give.
+// (start, stop) with the peek plan the test's hooks give.
 template<typename Hooks>
 void with_hooks(Record& r, index_t start, index_t stop, Hooks hooks)
 {
@@ -1022,7 +1014,7 @@ void with_hooks(Record& r, index_t start, index_t stop, Hooks hooks)
     hooks(*test);
     r.strategies.change_test = test;
     in_extend(r, start, stop);
-    r.state.cadence = ccd::standard::Cadence{6, test->full ? 6u : 0u, test->min};
+    r.state.peek_plan = ccd::PeekPlan{6, test->full, test->min};
 }
 
 TEST(StandardHooks, ShortenedPeeksGrowTheCurveToTheLastObservation)
@@ -1188,7 +1180,7 @@ TEST(StandardHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
     r.strategies.start_search =
         std::make_shared<Forcing>(r.strategies.start_search, ccd::Exhaustion::Force);
     r.at(58, 70, 58);   // exhausted: 70 + 12 >= 80
-    r.state.cadence = ccd::standard::Cadence{6, 0, 30};
+    r.state.peek_plan = ccd::PeekPlan{6, false, 30};
     EXPECT_EQ(ccd::standard::begin_search(r.context, r.state), Phase::Initialize);
     r.state.phase = Phase::Initialize;
 
