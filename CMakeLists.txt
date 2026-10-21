@@ -597,7 +597,11 @@ if(CCD_BUILD_PYTHON)
             stub
             package
             qa_tables
-            profiles
+            profiles_landsat
+            profiles_api
+            profiles_qa_options
+            profiles_band_order
+            profiles_sensors
             preprocess
             real_fixtures
             qa_references
