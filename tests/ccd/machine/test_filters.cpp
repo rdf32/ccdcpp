@@ -102,7 +102,7 @@ std::vector<ccd::scalar_t> spectral_of(
 } // namespace
 
 
-TEST(Bounds, InRange)
+TEST(Bounds, InRangeKeepsEachEndAsItsFlagSays)
 {
     for (const auto& mode : MODES)
     {

@@ -46,7 +46,7 @@ std::vector<LassoReference> load_reference(const std::string& filename)
 }
 
 
-TEST(LassoSolver, MultiBandRegression)
+TEST(LassoSolver, MatchesSklearnReference)
 {   
     constexpr index_t n_samples = 12;
     constexpr index_t n_bands   = 7;

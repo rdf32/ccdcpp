@@ -340,7 +340,7 @@ FixtureInput random_series(golden::Rng& rng, const Unit& unit)
 //==============================================================================
 
 // The steps of each procedure, in order, and the transform on Standard only.
-TEST(CcdcPlan, Shape)
+TEST(CcdcPlan, StepsInOrderAndTheTransformOnStandardOnly)
 {
     using K = pp::StepKind;
     const std::vector<K> common = {K::KeepQa, K::ThermalRange, K::BandRange, K::OnePerDate};

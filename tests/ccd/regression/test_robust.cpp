@@ -43,7 +43,7 @@ std::vector<RobustReference> load_reference(const std::string& filename)
 }
 
 
-TEST(RobustSolver, MultiBandRegression)
+TEST(RobustSolver, MatchesPyccdReference)
 {   
     constexpr index_t n_samples = 12;
     constexpr index_t n_bands   = 7;

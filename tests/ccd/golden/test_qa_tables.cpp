@@ -373,7 +373,7 @@ TEST(QaTables, StridedRawQa)
 // at the precedence boundaries where it is a bitmask.
 //------------------------------------------------------------------------------
 
-TEST(QaTables, Definitions)
+TEST(QaTables, EachTableDecodesAsItsProductDefines)
 {
     const Input o;
     const auto FILL = o.qa_fill, CLEAR = o.qa_clear, WATER = o.qa_water,

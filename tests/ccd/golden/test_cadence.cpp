@@ -160,7 +160,7 @@ std::string dump_pixels(
 // Defaults
 //==============================================================================
 
-TEST(Cadence, Defaults)
+TEST(Cadence, DefaultsArePyccdsValues)
 {
     using golden::parameter;
     const ccd::config::ConfigTree c = golden::resolved().stages;
@@ -205,7 +205,7 @@ TEST(Cadence, DefaultsSpelledOutEqualDefault)
 // longer peek window, which a short-lived disturbance does not fill.
 //==============================================================================
 
-TEST(Cadence, PeekReferenceDays)
+TEST(Cadence, ALongerPeekReferenceOutlastsAShortDisturbance)
 {
     std::vector<std::int64_t> dates16(100), dates8(100);
     for (std::size_t i = 0; i < 100; ++i)
@@ -256,7 +256,7 @@ TEST(Cadence, PeekReferenceDays)
 // must be larger to count as change.
 //==============================================================================
 
-TEST(Cadence, VariogramMinLagDays)
+TEST(Cadence, ALongerVariogramLagNeedsALargerStep)
 {
     // A ramp of 10 per observation at a 16-day cadence: the variogram is 10
     // times the lag chosen.
@@ -297,7 +297,7 @@ TEST(Cadence, VariogramMinLagDays)
 // refits more often.
 //==============================================================================
 
-TEST(Cadence, RetrainSpanFactor)
+TEST(Cadence, ALargerRefitFactorBreaksSoonerOnDrift)
 {
     const auto drifting = make_pixel(0.0, 0.5, {});
 
@@ -320,7 +320,7 @@ TEST(Cadence, RetrainSpanFactor)
 // The span rule disabled, so that only refit's min_obs refits: the models
 // are refitted while the window holds at most that many observations (and
 // change_test's model RMSE is the model's own up to the same count).
-TEST(Cadence, RetrainMinObs)
+TEST(Cadence, ALargerRefitMinObsBreaksLaterOnDrift)
 {
     const auto drifting = make_pixel(0.0, 0.5, {});
 
@@ -352,7 +352,7 @@ TEST(Cadence, RetrainMinObs)
 // count as change.
 //==============================================================================
 
-TEST(Cadence, SeasonalRmseDivisor)
+TEST(Cadence, ALargerSeasonalDivisorCountsASmallerStep)
 {
     const ccd::config::Config larger =
         golden::with(golden::pyccd(), "change_test", "seasonal_divisor", ccd::config::real(8.0));
@@ -368,7 +368,7 @@ TEST(Cadence, SeasonalRmseDivisor)
     EXPECT_EQ(breaks(run(medium, smaller)), 0);
 }
 
-TEST(Cadence, SeasonalRmseCount)
+TEST(Cadence, FewerSeasonalResidualsCountASmallerStep)
 {
     const ccd::config::Config fewer =
         golden::with(golden::pyccd(), "change_test", "seasonal_count", ccd::config::integer(6));
@@ -390,7 +390,7 @@ TEST(Cadence, SeasonalRmseCount)
 // tested there and through detect() on a dense series.
 //==============================================================================
 
-TEST(Cadence, ChangeProbability)
+TEST(Cadence, AHigherChangeProbabilityRaisesALongPeeksThreshold)
 {
     constexpr double DEFAULT = 15.086272469388987;
 
@@ -418,7 +418,7 @@ TEST(Cadence, ChangeProbability)
 // At an 8-day cadence the peek window is 12 and the threshold is the chi2(5)
 // quantile at 1 - (1 - p)^(6 / 12): 9.24 at 0.99, 12.24 at 0.999. A step of 58
 // clears the first and not the second; a step of 65 clears both.
-TEST(Cadence, ChangeProbabilityThroughDetect)
+TEST(Cadence, AHigherChangeProbabilityNeedsALargerStep)
 {
     const ccd::config::Config higher =
         golden::with_shared(golden::pyccd(), "change_probability", ccd::config::real(0.999));
