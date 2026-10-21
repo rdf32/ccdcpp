@@ -511,7 +511,8 @@ endif()
 # The golden check's driver: dumps every output of detect() and detect_cube()
 # on the synthetic corpus and the CSV pixels (tools/linux-compare/README.md).
 # Its one source is tools/linux-compare/golden_driver.cpp, which
-# linux-compare also compiles against older trees by hand.
+# linux-compare also compiles by hand; it builds only against trees with
+# tests/ccd/support (tools/linux-compare/README.md).
 if(CCD_BUILD_GOLDEN_DRIVER)
 
     add_executable(

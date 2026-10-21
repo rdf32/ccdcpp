@@ -18,12 +18,10 @@
 // linux-compare's.
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
-#include <sstream>
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -34,6 +32,7 @@
 #include "dump.hpp"
 #include "units.hpp"
 #include "config.hpp"
+#include "series.hpp"
 
 struct CubeSpec { const char* name; std::uint64_t seed; golden::Regime regime; std::size_t H, W; };
 
@@ -83,34 +82,6 @@ static golden::Cube read_cube(const std::string& path)
     if (std::fread(c.qas.data(), 1, c.qas.size(), f) != c.qas.size()) std::exit(1);
     std::fclose(f);
     return c;
-}
-
-struct Csv { std::vector<std::int64_t> dates; std::vector<double> spectral; std::vector<std::uint8_t> qas; std::size_t T; };
-
-static Csv read_csv(const std::string& path)
-{
-    std::ifstream file(path);
-    if (!file) { std::perror(path.c_str()); std::exit(1); }
-    std::string line;
-    std::array<std::vector<double>, 7> bands;
-    Csv out;
-    std::getline(file, line);
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string v;
-        std::getline(ss, v, ',');
-        out.dates.push_back(static_cast<std::int64_t>(std::stod(v)));
-        for (int b = 0; b < 7; ++b) { std::getline(ss, v, ','); bands[b].push_back(std::stod(v)); }
-        std::getline(ss, v, ',');
-        out.qas.push_back(static_cast<std::uint8_t>(std::stod(v)));
-    }
-    out.T = out.dates.size();
-    out.spectral.resize(7 * out.T);
-    for (int b = 0; b < 7; ++b)
-        for (std::size_t t = 0; t < out.T; ++t)
-            out.spectral[b * out.T + t] = bands[b][t];
-    return out;
 }
 
 static void write_text(const std::string& path, const std::string& s)
@@ -208,7 +179,18 @@ int main(int argc, char** argv)
         const char* files[] = {"test_3657_3610_observations.csv", "test_c2.csv", "test002_c2.csv"};
         for (const char* fn : files)
         {
-            auto csv = read_csv(csvdir + "/" + fn);
+            // The first line skipped, as the golden fixtures read these files.
+            golden::Series csv;
+            try
+            {
+                csv = golden::read_csv(csvdir + "/" + fn, true);
+            }
+            catch (const std::exception& e)
+            {
+                std::fprintf(stderr, "%s\n", e.what());
+                return 1;
+            }
+            const std::size_t T = csv.size();
             struct Set { std::string name; ccd::Input input; ccd::config::Config config; };
             const std::vector<Set> sets = {
                 {"dn", ccd::Input{}, golden::pyccd()},
@@ -218,11 +200,11 @@ int main(int argc, char** argv)
             for (auto& set : sets)
             {
                 std::vector<double> spec = csv.spectral;
-                if (set.name == "phys") golden::to_physical(spec.data(), csv.T);
+                if (set.name == "phys") golden::to_physical(spec.data(), T);
                 auto r = ccd::detect(golden::spec_of(set.input, set.config),
-                    ccd::ArrayView<const std::int64_t, 1>::contiguous(csv.dates.data(), {csv.T}),
-                    ccd::ArrayView<const double, 2>::contiguous(spec.data(), {7, csv.T}),
-                    ccd::ArrayView<const std::uint8_t, 1>::contiguous(csv.qas.data(), {csv.T})).result;
+                    ccd::ArrayView<const std::int64_t, 1>::contiguous(csv.dates.data(), {T}),
+                    ccd::ArrayView<const double, 2>::contiguous(spec.data(), {7, T}),
+                    ccd::ArrayView<const std::uint8_t, 1>::contiguous(csv.qas.data(), {T})).result;
                 golden::dump_pixel(s, std::string(fn) + ":" + set.name, r);
             }
         }
