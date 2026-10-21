@@ -35,28 +35,28 @@ S2_STORE_ORDER = ("B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11",
 
 
 class Permutation(unittest.TestCase):
-    def test_landsat(self):
-        order = [6, 3, 0, 5, 1, 4, 2]
-        base = presets.landsat_c1_dn()
-        profile = permuted(base, order)
-        h = profile.input()
-        self.assertEqual(h.index("green"), order.index(1))
-        self.assertEqual(h.index("thermal"), order.index(6))
-        self.assertEqual(ccdcpp.config("ccdc").resolve(h)["shared"]["detection_bands"],
-                         [order.index(i) for i in (1, 2, 3, 4, 5)])
-        expected = every_entry(DATES, CUBE_DN, CODES, input=base)
-        got = every_entry(DATES, np.ascontiguousarray(CUBE_DN[:, :, order]), CODES,
-                          input=profile)
-        assert_same(self, unpermute(got, order), expected)
-
-    def test_ten_bands(self):
-        order = [9, 0, 8, 1, 7, 2, 6, 3, 5, 4]
-        base = ten_band_profile()
-        dates, cube, scl = ten_band_inputs()
-        expected = every_entry(dates, cube, scl, input=base)
-        got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), scl,
-                          input=permuted(base, order))
-        assert_same(self, unpermute(got, order), expected)
+    def test_rows_in_any_order_are_the_same_run(self):
+        # A profile's rows in another order, the spectral rows with them: each role
+        # is at its new row, and the outputs, put back in the profile's order, are
+        # the profile's.
+        runs = [
+            (presets.landsat_c1_dn(), (DATES, CUBE_DN, CODES), [6, 3, 0, 5, 1, 4, 2]),
+            (ten_band_profile(), ten_band_inputs(), [9, 0, 8, 1, 7, 2, 6, 3, 5, 4]),
+            (presets.hls_s30(), preset_inputs("hls_s30"), [10, 0, 9, 1, 8, 2, 7, 3, 6, 4, 5]),
+        ]
+        for base, (dates, cube, qa), order in runs:
+            with self.subTest(profile=base.name):
+                profile = permuted(base, order)
+                h = profile.input()
+                for row, role in enumerate(base.roles):
+                    self.assertEqual(h.index(role), order.index(row), role)
+                detection = ccdcpp.config("ccdc").resolve(base.input())["shared"]["detection_bands"]
+                self.assertEqual(ccdcpp.config("ccdc").resolve(h)["shared"]["detection_bands"],
+                                 [order.index(i) for i in detection])
+                expected = every_entry(dates, cube, qa, threads=2, input=base)
+                got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), qa, threads=2,
+                                  input=profile)
+                assert_same(self, unpermute(got, order), expected)
 
 
 class BandNamesCheck(unittest.TestCase):

@@ -29,10 +29,11 @@ from ccdcpp import ccdcpp as ext  # noqa: E402
 from ccdcpp import presets  # noqa: E402
 
 from _compare import assert_same  # noqa: E402
-from _corpus import (CODES, CUBE_DN, DATES, TEN_BAND_CONFIG, every_entry,  # noqa: E402
-                     ten_band_profile, without)
-from _profiles import (C2_RAW, band_range_rows, change_threshold, fields,  # noqa: E402
-                       option_params, outlier_threshold, resolved, with_table)
+from _corpus import (CODES, CUBE_DN, CUBE_PHYS, DATES, TEN_BAND_CONFIG, every_entry,  # noqa: E402
+                     strip_band_names, ten_band_profile, without)
+from _profiles import (C2_RAW, FMASK_CODES, FMASK_VALUES, SCL_ALL, SCL_CODES,  # noqa: E402
+                       band_range_rows, change_threshold, fields, option_params,
+                       outlier_threshold, preset_inputs, qa_table_of, resolved, with_table)
 
 
 class Check(unittest.TestCase):
@@ -239,8 +240,7 @@ class Unprofiled(unittest.TestCase):
 
 class Profiles(unittest.TestCase):
     def test_immutable_hashable_picklable(self):
-        for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2,
-                       ten_band_profile):
+        for preset in [getattr(presets, name) for name in presets.__all__] + [ten_band_profile]:
             with self.subTest(preset=preset.__name__):
                 p = preset()
                 self.assertEqual(p, preset())
@@ -250,6 +250,30 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(fields(q.input()), fields(p.input()))
                 with self.assertRaises(dataclasses.FrozenInstanceError):
                     p.saturation_code = 2.0  # pyright: ignore[reportAttributeAccessIssue]  # frozen, refused
+
+    def test_raw_qa_is_the_decoded_codes(self):
+        # A preset with a QA table: raw QA runs as the codes the table decodes it to,
+        # given without the table.
+        c2 = np.vectorize(C2_RAW.get, otypes=[np.uint16])(CODES)
+        fmask = dict(zip(FMASK_VALUES.tolist(), FMASK_CODES.tolist()))
+        runs = {"landsat_c2": ((DATES, CUBE_PHYS, c2), {raw: code for code, raw in C2_RAW.items()}),
+                "hls_l30": (preset_inputs("hls_l30"), fmask),
+                "hls_s30": (preset_inputs("hls_s30"), fmask),
+                "hls": (preset_inputs("hls"), fmask),
+                "sentinel2_l2a": (preset_inputs("sentinel2_l2a"),
+                                  dict(zip(SCL_ALL.tolist(), SCL_CODES.tolist())))}
+        for name, ((dates, cube, qa), lookup) in runs.items():
+            with self.subTest(preset=name):
+                preset = getattr(presets, name)
+                values = np.array(list(lookup))
+                np.testing.assert_array_equal(qa_table_of(preset().input()).codes[values],
+                                              [lookup[v] for v in values.tolist()])
+                decoded = np.vectorize(lookup.get, otypes=[np.uint8])(qa)
+                assert_same(self,
+                            strip_band_names(every_entry(dates, cube, qa, threads=2,
+                                                         input=preset())),
+                            every_entry(dates, cube, decoded, threads=2,
+                                        input=with_table(preset().input(), None)))
 
     def test_input_is_built_once_and_immutable(self):
         p = presets.landsat_c1_dn()

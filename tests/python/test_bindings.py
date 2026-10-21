@@ -194,11 +194,6 @@ def ten_band_layout() -> ext.Input:
     return ext.Input(roles=TEN_ROLES)
 
 
-def ten_band_config(**changes: object) -> dict[str, Any]:
-    """The configuration for ten_band_layout(): the preset."""
-    return preset(**changes)
-
-
 def noisy(bands: int, timesteps: int, seed: int = 1) -> Series:
     """inputs() with noise, so every band gets a non-trivial fit."""
     d, s, q = inputs(bands, timesteps)
@@ -293,7 +288,7 @@ class BandLayout(unittest.TestCase):
             repr(ext.detect(*args, **options())))
 
     def test_outputs_follow_the_band_count(self):
-        h, cfg = ten_band_layout(), ext.Algorithm(ten_band_config())
+        h, cfg = ten_band_layout(), ext.Algorithm(preset())
         d, s, q = noisy(10, 120)
         out = ext.detect(d, s, q, input=h, config=cfg)
         self.assertEqual(out["num_bands"], 10)
@@ -370,7 +365,7 @@ class LayoutValidation(unittest.TestCase):
                                 (["green", "coastal"], "holds 'coastal', which the input does "
                                                        "not have")):
             self.assert_rejected(self.broken(), 10, detection + expected,
-                                 config=ten_band_config(shared__detection_bands=bands))
+                                 config=preset(shared__detection_bands=bands))
 
         # The Tmask bands are window_screen's parameter, checked against the
         # input's bands.
@@ -379,7 +374,7 @@ class LayoutValidation(unittest.TestCase):
                                 ([8, 8], "holds band 8 twice"),
                                 ([], "is empty")):
             self.assert_rejected(self.broken(), 10, tmask + expected,
-                                 config=ten_band_config(window_screen__bands=bands))
+                                 config=preset(window_screen__bands=bands))
 
         # band_range's bands are its parameter, checked against the input's
         # bands.
@@ -389,7 +384,7 @@ class LayoutValidation(unittest.TestCase):
                                 ([], "is empty"),
                                 ("optical", "is 'optical'; a band list is roles or rows")):
             self.assert_rejected(self.broken(), 10, band + expected,
-                                 config=ten_band_config(preprocess__band_range__bands=bands))
+                                 config=preset(preprocess__band_range__bands=bands))
 
     def test_cadence_rules(self):
         # The cadence parameters are the configuration's: the schemas refuse

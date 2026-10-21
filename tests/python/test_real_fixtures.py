@@ -309,14 +309,6 @@ class Findings(unittest.TestCase):
                 self.assertFalse(other["processing_mask"][coastal_only].any())
                 self.assertNotEqual(as_stored(other), as_stored(out))
 
-    def test_s2_store_order_is_refused(self):
-        dates, spectral, scl, names = preset_input("sentinel2_l2a", "water")
-        store = ("B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12")
-        rows = [names.index(b) for b in store]
-        with self.assertRaises(ValueError):
-            ccdcpp.detect(dates, np.ascontiguousarray(spectral[rows]), scl,
-                          input=presets.sentinel2_l2a(), band_names=store)
-
 
 if __name__ == "__main__":
     if WRITE:

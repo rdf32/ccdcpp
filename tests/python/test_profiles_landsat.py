@@ -17,7 +17,6 @@ from _harness import use_package
 
 use_package()
 
-import numpy as np  # noqa: E402
 
 import ccdcpp  # noqa: E402
 # The extension module, which ccdcpp/ccdcpp.pyi types.
@@ -27,8 +26,8 @@ from ccdcpp import presets  # noqa: E402
 from _compare import assert_same  # noqa: E402
 from _corpus import (CODES, CUBE_DN, CUBE_PHYS, DATES, PYCCD, every_entry,  # noqa: E402
                      strip_band_names, without)
-from _profiles import (C2_RAW, change_threshold, doc_of, fields, outlier_threshold,  # noqa: E402
-                       qa_table_of, with_table)
+from _profiles import (change_threshold, doc_of, fields, outlier_threshold,  # noqa: E402
+                       with_table)
 
 
 LANDSAT_PRESETS = (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2)
@@ -85,16 +84,6 @@ class LandsatPhysical(unittest.TestCase):
                                config=cfg)
         plain = every_entry(DATES, CUBE_PHYS, CODES, input=h, config=cfg)
         assert_same(self, strip_band_names(profiled), plain)
-
-    def test_c2_raw_qa_pixel_is_the_decoded_codes(self):
-        raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(CODES)
-        profile = presets.landsat_c2()
-        np.testing.assert_array_equal(qa_table_of(profile.input()).codes[raw], CODES)
-        decoded = every_entry(DATES, CUBE_PHYS, raw, input=profile)
-        codes = every_entry(DATES, CUBE_PHYS, CODES, input=with_table(profile.input(), None))
-        assert_same(self, strip_band_names(decoded), codes)
-        h, _ = explicit_physical()
-        assert_same(self, codes, every_entry(DATES, CUBE_PHYS, CODES, input=h))
 
     def test_presets_state_units_and_band_order(self):
         for preset in LANDSAT_PRESETS:

@@ -10,7 +10,6 @@ ctest runs this as `python_profiles_sensors`.
 from __future__ import annotations
 
 import inspect
-import pickle
 import unittest
 
 from _harness import use_package
@@ -27,11 +26,10 @@ from ccdcpp.results import PixelResult  # noqa: E402
 from _compare import assert_same  # noqa: E402
 from _corpus import (TEN_BAND_CONFIG, every_entry, strip_band_names,  # noqa: E402
                      ten_band_inputs, ten_band_profile)
-from _profiles import (BAND_NAMES, BUILDERS, DETECTION, FMASK_CODES, FMASK_VALUES,  # noqa: E402
-                       NEW_PRESETS, S2_OFFSET_DATE, SCL_ALL, SCL_CODES, TMASK, band_range_rows,
-                       change_threshold, doc_of, fields, hand_built, hls_inputs, models,
-                       option_params, outlier_threshold, permuted, preset_inputs, qa_table_of,
-                       s2_inputs, unpermute, with_table)
+from _profiles import (BAND_NAMES, BUILDERS, DETECTION, NEW_PRESETS, S2_OFFSET_DATE,  # noqa: E402
+                       TMASK, band_range_rows, change_threshold, doc_of, fields, hand_built,
+                       hls_inputs, models, option_params, outlier_threshold, preset_inputs,
+                       qa_table_of, s2_inputs, with_table)
 
 
 class TenBand(unittest.TestCase):
@@ -246,13 +244,6 @@ class SensorPresets(unittest.TestCase):
                         word = rest if end < 0 else rest[:end + 2]
                     self.assertGreater(len(line) + 1 + len(word), 70, (line, following))
 
-    def test_profiles_are_hashable_and_picklable(self):
-        for preset in NEW_PRESETS:
-            with self.subTest(preset=preset.__name__):
-                p = preset()
-                self.assertEqual(hash(p), hash(preset()))
-                self.assertEqual(pickle.loads(pickle.dumps(p)), p)
-
     def test_is_the_hand_built_run(self):
         for preset in NEW_PRESETS:
             name = preset.__name__
@@ -268,29 +259,6 @@ class SensorPresets(unittest.TestCase):
                 self.assertEqual(cols["band_names"], BAND_NAMES[name])
                 self.assertEqual(set(cols["curve_qa"].tolist()), {8})  # Standard
                 self.assertGreater(len(cols["row"]), 4)  # every pixel breaks
-
-    def test_raw_qa_is_the_decoded_codes(self):
-        for preset, values, codes in ((presets.hls_l30, FMASK_VALUES, FMASK_CODES),
-                                      (presets.sentinel2_l2a, SCL_ALL, SCL_CODES)):
-            with self.subTest(preset=preset.__name__):
-                np.testing.assert_array_equal(qa_table_of(preset().input()).codes[values], codes)
-                dates, cube, qa = preset_inputs(preset.__name__)
-                lookup = dict(zip(values.tolist(), codes.tolist()))
-                decoded = np.vectorize(lookup.get, otypes=[np.uint8])(qa)
-                assert_same(self,
-                            strip_band_names(every_entry(dates, cube, qa, threads=2,
-                                                         input=preset())),
-                            every_entry(dates, cube, decoded, threads=2,
-                                        input=with_table(preset().input(), None)))
-
-    def test_permutation(self):
-        order = [10, 0, 9, 1, 8, 2, 7, 3, 6, 4, 5]
-        base = presets.hls_s30()
-        dates, cube, fmask = preset_inputs("hls_s30")
-        expected = every_entry(dates, cube, fmask, threads=2, input=base)
-        got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), fmask, threads=2,
-                          input=permuted(base, order))
-        assert_same(self, unpermute(got, order), expected)
 
 
 class HlsInput(unittest.TestCase):
