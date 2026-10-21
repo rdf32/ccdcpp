@@ -1381,11 +1381,13 @@ FitResult Detector::resume(
     state.reset(series, std::move(mask));
     // The statistics are the stored run's, and the series is no shorter, so
     // Prepare neither exits early nor computes other values: it reads the
-    // series before any drop, as the stored run's did.
+    // series before any drop, as the stored run's did. Should it exit early
+    // all the same, the pixel ends there, as a fresh run's would.
     const Phase prepared = prepare(context, state);
-    report_transition(context, state, Phase::Prepare, prepared);
     if (prepared == Phase::Done)
     {
+        report_transition(context, state, Phase::Prepare, prepared);
+        state.phase = prepared;
         report_exit(context, state);
         return state.take_result();
     }
@@ -1418,6 +1420,9 @@ FitResult Detector::resume(
             assert(false && "resume() from an exit with nothing to resume");
             state.phase = Phase::Done;
     }
+    // The observer sees Prepare go where the stored run continues, with the
+    // cursor it continues from.
+    report_transition(context, state, Phase::Prepare, state.phase);
 
     drive(context, state);
     report_exit(context, state);

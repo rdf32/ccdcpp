@@ -789,3 +789,46 @@ TEST(Diagnostics, AnObserverSeesTheRunAndChangesNothing)
     EXPECT_NE(text.str().find("pixel 1: transition Prepare -> "), std::string::npos) << text.str();
 #endif
 }
+
+// A resumed pixel's transitions chain as a fresh one's do: Prepare goes to the
+// phase the stored run continues in, and each transition starts where the
+// one before it went.
+TEST(Diagnostics, AResumedRunTellsTheObserverWhereItContinues)
+{
+    const std::vector<Series> all = golden::synthetic_series();
+    std::size_t continued = 0;
+    for (std::size_t i = 0; i < 40 && i < all.size(); ++i)
+    {
+        const Series& s = all[i];
+        const Series cut = s.prefix(s.size() * 2 / 3);
+        const ccd::PixelOutput stored = ccd::detect(
+            golden::spec_of(s.h, s.config, true), cut.date_view(), cut.spectral_view(),
+            cut.qa_view());
+        auto recording = std::make_shared<Recording>();
+        ccd::RunSpec spec = golden::spec_of(s.h, s.config);
+        spec.observer = recording;
+        const ccd::PixelOutput resumed = ccd::detect(
+            spec, s.date_view(), s.spectral_view(), s.qa_view(),
+            ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+        EXPECT_EQ(dump(resumed.result), dump(resume_on(s, stored).result)) << s.name;
+
+#if CCD_OBSERVE
+        const char* went = nullptr;
+        for (const auto& [pixel, e] : recording->events)
+        {
+            if (e.kind != ccd::ObserverEvent::Kind::Transition)
+                continue;
+            if (went == nullptr)
+                EXPECT_STREQ(e.phase, "Prepare") << s.name;
+            else
+                EXPECT_STREQ(e.phase, went) << s.name;
+            went = e.next;
+        }
+        if (went != nullptr && stored.record.standard.exit == ccd::standard::Exit::SeriesEnd)
+            ++continued;
+#endif
+    }
+#if CCD_OBSERVE
+    EXPECT_GT(continued, 0u);
+#endif
+}
