@@ -111,6 +111,15 @@ its replacement.
   `MEOW_SIZE` 0 (`min_observations`), a negative or NaN Lasso constant (`alpha`, `coef_floor`,
   `tolerance`), a NaN change or outlier probability.
 - A build without OpenMP compiles and runs a cube on one thread.
+- An infinite value of a parameter whose bounds are numbers (`shared__alpha=inf`) is refused
+  ("it must be a finite number at least 0"); the thermal and reflectance bounds, which take any
+  number, still take an infinity. A NaN `saturation_code` or `thermal_saturation_code` is
+  refused when the run checks the input.
+- `ccdcpp.Input` equality and hash agree: -0.0 and 0.0 are one value in `digest()`.
+- Shape and length mismatches of `dates`, `spectral` and `qas` raise `ValueError` (they raised
+  `RuntimeError`). A list mixing strs and ints names what each may be (QA code names or codes,
+  band roles or rows); a strategy or step without parameters no longer ends its unknown-parameter
+  message with an empty "it has".
 - A TOML stage table holding anything but `strategy` and `[<stage>.params]` (a parameter
   written beside `strategy`, which was dropped silently) is refused, naming the keys.
 - A Start or End segment is written only on more observations than the edge fit's

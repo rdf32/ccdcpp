@@ -51,6 +51,10 @@ bool operator==(const Input& a, const Input& b)
 
 std::uint64_t digest(const Input& o)
 {
+    // -0 and +0 are one value: they compare equal (operator==), and every use
+    // of a field (a product, a sum, the identity transform's test) treats
+    // them alike, so the digest, as the hash of equal Inputs, is the same.
+    const auto real = [](scalar_t v) { return v == 0 ? scalar_t(0) : v; };
     detail::Fnv h;
     for (const std::uint8_t v : {o.qa_fill, o.qa_clear, o.qa_water, o.qa_shadow, o.qa_snow,
                                  o.qa_cloud, o.qa_cirrus1, o.qa_cirrus2, o.qa_occlusion})
@@ -63,12 +67,12 @@ std::uint64_t digest(const Input& o)
         h.text(role);
     for (const scalar_t v : {o.reflectance_scale, o.reflectance_offset, o.thermal_scale,
                              o.thermal_offset, o.thermal_at_100c})
-        h.real(v);
+        h.real(real(v));
     for (const std::optional<scalar_t>& code : {o.saturation_code, o.thermal_saturation_code})
     {
         h.flag(code.has_value());
         if (code)
-            h.real(*code);
+            h.real(real(*code));
     }
     return h.value();
 }

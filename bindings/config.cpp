@@ -55,6 +55,9 @@ bool is_index(const py::handle& v)
 
 ccd::config::Value value_from_python(const py::handle& v, const std::string& where)
 {
+    static const char* const MIXED =
+        " is a list of strs (band roles, QA code names) or of ints (band rows, QA codes), "
+        "not a mix";
     // bool before int: a Python bool is an int.
     if (py::isinstance<py::bool_>(v))
         return ccd::config::flag(v.cast<bool>());
@@ -73,7 +76,7 @@ ccd::config::Value value_from_python(const py::handle& v, const std::string& whe
             for (const py::handle& b : items)
             {
                 if (!py::isinstance<py::str>(b))
-                    throw py::value_error(where + " is a list of band roles (strs) or rows (ints)");
+                    throw py::value_error(where + MIXED);
                 roles.push_back(b.cast<std::string>());
             }
             return ccd::config::roles(std::move(roles));
@@ -82,13 +85,13 @@ ccd::config::Value value_from_python(const py::handle& v, const std::string& whe
         for (const py::handle& b : items)
         {
             if (!is_index(b))
-                throw py::value_error(where + " is a list of band roles (strs) or rows (ints)");
+                throw py::value_error(where + MIXED);
             bands.push_back(index_of(b, where));
         }
         return ccd::config::Value(std::move(bands));
     }
-    throw py::value_error(where + " is a bool, an int, a float, a str or a list of band roles "
-                          "or rows, not " +
+    throw py::value_error(where + " is a bool, an int, a float, a str or a list of strs or "
+                          "ints, not " +
                           std::string(py::str(py::type::of(v).attr("__name__"))));
 }
 

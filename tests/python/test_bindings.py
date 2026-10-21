@@ -468,6 +468,23 @@ class CadenceParameters(unittest.TestCase):
                 with self.assertRaises(AttributeError):
                     setattr(h, name, 1)
 
+    def test_input_equality_and_hash_agree(self):
+        # -0 and +0 are one value: equal Inputs hash alike.
+        zero = ccdcpp.Input(reflectance_offset=0.0, saturation_code=0.0)
+        negative = ccdcpp.Input(reflectance_offset=-0.0, saturation_code=-0.0)
+        self.assertEqual(zero, negative)
+        self.assertEqual(hash(zero), hash(negative))
+        self.assertEqual(len({zero, negative}), 1)
+        self.assertNotEqual(hash(zero), hash(ccdcpp.Input(reflectance_offset=1.0)))
+
+    def test_a_nan_saturation_code_is_refused(self):
+        nan = float("nan")
+        for field, h in (("saturation_code", ccdcpp.Input(saturation_code=nan)),
+                         ("thermal_saturation_code", ccdcpp.Input(thermal_saturation_code=nan))):
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(ValueError, f"^{field} is nan; it is a number"):
+                    ccdcpp.detect(*noisy(7, 120), input=h)
+
     def test_chi2_quantile_is_the_change_threshold(self):
         tree = resolved()
         for stage in ("change_test", "stability_rule", "lookback"):
@@ -636,13 +653,13 @@ class TimestepMismatch(unittest.TestCase):
     def test_detect(self):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
             with self.subTest(dates=dates, qas=qas):
-                with self.assertRaises(RuntimeError):
+                with self.assertRaises(ValueError):
                     ccdcpp.detect(*inputs(7, 40, dates=dates, qas=qas), **options())
 
     def test_cubes(self):
         for dates, qas in ((39, None), (41, None), (None, 39), (None, 41)):
             with self.subTest(dates=dates, qas=qas):
-                with self.assertRaises(RuntimeError):
+                with self.assertRaises(ValueError):
                     ccdcpp.detect_cube(*cube(7, 40, dates=dates, qas=qas), **options(), threads=1)
 
 

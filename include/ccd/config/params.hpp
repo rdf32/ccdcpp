@@ -120,7 +120,9 @@ inline Value names(std::vector<std::string> v)
     return Value(std::in_place_type<std::vector<std::string>>, std::move(v));
 }
 
-// The allowed values of a number: lo <(=) value <(=) hi. NaN never passes.
+// The allowed values of a number: lo <(=) value <(=) hi. NaN never passes,
+// and an infinity does not where a bound is a number (numeric()): any()
+// alone admits them.
 struct Bounds
 {
     double lo = -INFINITY;
@@ -128,8 +130,15 @@ struct Bounds
     bool lo_inclusive = true;
     bool hi_inclusive = true;
 
+    bool numeric() const
+    {
+        return std::isfinite(lo) || std::isfinite(hi);
+    }
+
     bool contains(double v) const
     {
+        if (std::isinf(v) && numeric())
+            return false;
         return (lo_inclusive ? v >= lo : v > lo) && (hi_inclusive ? v <= hi : v < hi);
     }
 };
@@ -284,8 +293,9 @@ void apply(const std::vector<Field<P>>& schema, const Values& values, P& params,
                         }
                     }
                     if (!field->bounds.contains(v))
-                        throw std::invalid_argument(at + " is " + number(v) + "; it must be " +
-                                                    describe(field->bounds));
+                        throw std::invalid_argument(
+                            at + " is " + number(v) + "; it must be " +
+                            (std::isinf(v) ? "a finite number " : "") + describe(field->bounds));
                     if constexpr (std::is_same_v<T, double>)
                         params.*member = v;
                     else

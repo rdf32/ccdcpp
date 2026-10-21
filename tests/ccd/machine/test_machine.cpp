@@ -1219,10 +1219,13 @@ TEST(StandardHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
     r.strategies.start_search =
         std::make_shared<Forcing>(r.strategies.start_search, ccd::Exhaustion::Restore);
     r.with_variogram(kVariogram);
-    r.at(60, 72, 60);
+    // A window of 13: a window screen drops only what leaves a usable window
+    // of at least min_window (12) observations.
+    r.at(60, 73, 60);
     EXPECT_EQ(ccd::standard::begin_search(r.context, r.state), Phase::Initialize);
     r.state.series.drop(65, r.state.cursor.window);   // as a window screen's
     ASSERT_EQ(r.state.series.size(), 79u);
+    ASSERT_EQ(r.state.cursor.window.size(), r.strategies.start_search->min_window());
 
     r.state.phase = Phase::Initialize;
     EXPECT_EQ(r.step(), Phase::EndCatch);

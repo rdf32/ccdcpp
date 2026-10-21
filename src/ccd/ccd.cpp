@@ -3,6 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "core/fnv.hpp"
 
@@ -102,6 +103,19 @@ void validate(const Input& input, index_t bands)
             "thermal_at_100c is " + config::number(input.thermal_at_100c) +
             "; it must be a positive number"
         );
+    }
+
+    for (const auto& [name, code] : {std::pair<const char*, const std::optional<scalar_t>&>{
+                                         "saturation_code", input.saturation_code},
+                                     {"thermal_saturation_code", input.thermal_saturation_code}})
+    {
+        if (code && std::isnan(*code))
+        {
+            throw std::invalid_argument(
+                std::string(name) + " is nan; it is a number, the value a saturated "
+                "observation holds, or none"
+            );
+        }
     }
 }
 

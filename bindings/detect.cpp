@@ -291,19 +291,19 @@ static py::dict detect_wrapper(
     auto qas_buf = qas.request();
 
     if (dates_buf.ndim != 1)
-        throw std::runtime_error("dates must have shape (time)");
+        throw std::invalid_argument("dates must have shape (time)");
     if (spectral_buf.ndim != 2)
-        throw std::runtime_error("spectral must have shape (bands,time)");
+        throw std::invalid_argument("spectral must have shape (bands,time)");
     if (qas_buf.ndim != 1)
-        throw std::runtime_error("qas must have shape (time)");
+        throw std::invalid_argument("qas must have shape (time)");
 
     const auto timesteps = static_cast<ccd::index_t>(dates_buf.shape[0]);
     const auto bands = static_cast<ccd::index_t>(spectral_buf.shape[0]);
 
     if (static_cast<ccd::index_t>(qas_buf.shape[0]) != timesteps)
-        throw std::runtime_error("qas length must match dates length");
+        throw std::invalid_argument("qas length must match dates length");
     if (static_cast<ccd::index_t>(spectral_buf.shape[1]) != timesteps)
-        throw std::runtime_error("spectral time dimension must match dates");
+        throw std::invalid_argument("spectral time dimension must match dates");
 
     // ValueError, raised here, before the GIL is released.
     ccd::validate(input, bands);
@@ -434,11 +434,11 @@ static CubeInput check_cube(
     py::array qas = accept_qas(qas_obj, input.qa_table != nullptr);
 
     if (dates.ndim() != 1)
-        throw std::runtime_error("dates must have shape (timesteps)");
+        throw std::invalid_argument("dates must have shape (timesteps)");
     if (spectral.ndim() != 4)
-        throw std::runtime_error("spectral must have shape (height,width,bands,timesteps)");
+        throw std::invalid_argument("spectral must have shape (height,width,bands,timesteps)");
     if (qas.ndim() != 3)
-        throw std::runtime_error("qas must have shape (height,width,timesteps)");
+        throw std::invalid_argument("qas must have shape (height,width,timesteps)");
 
     const auto H = static_cast<ccd::index_t>(spectral.shape(0));
     const auto W = static_cast<ccd::index_t>(spectral.shape(1));
@@ -446,12 +446,12 @@ static CubeInput check_cube(
     const auto T = static_cast<ccd::index_t>(spectral.shape(3));
 
     if (static_cast<ccd::index_t>(dates.shape(0)) != T)
-        throw std::runtime_error("dates length must equal spectral time dimension");
+        throw std::invalid_argument("dates length must equal spectral time dimension");
 
     if (static_cast<ccd::index_t>(qas.shape(0)) != H ||
         static_cast<ccd::index_t>(qas.shape(1)) != W ||
         static_cast<ccd::index_t>(qas.shape(2)) != T)
-        throw std::runtime_error("qas must have shape (height,width,timesteps)");
+        throw std::invalid_argument("qas must have shape (height,width,timesteps)");
 
     // ValueError, raised here, before the GIL is released.
     ccd::validate(input, B);

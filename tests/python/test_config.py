@@ -229,6 +229,31 @@ class Replace(unittest.TestCase):
     def test_bad_values_raise_value_errors(self):
         with self.assertRaisesRegex(ValueError, "does not fit a 64-bit integer"):
             ccdcpp.config().replace(refit__min_obs=2**70).check()
+        # A number with numeric bounds is finite; NaN is refused by the bounds themselves.
+        inf = float("inf")
+        for change, message in (
+                (dict(shared__alpha=inf), "shared parameter 'alpha' is inf; it must be a finite "
+                                          "number at least 0"),
+                (dict(refit__factor=inf), "refit 'span-factor' parameter 'factor' is inf; it "
+                                          "must be a finite number greater than 0"),
+                (dict(change_test__peek_reference_days=-inf), "is -inf; it must be a finite "
+                                                              "number greater than 0"),
+                (dict(shared__alpha=float("nan")), "is nan; it must be at least 0")):
+            with self.subTest(change=change):
+                with self.assertRaisesRegex(ValueError, message):
+                    ccdcpp.config().replace(**change)
+        # The thermal and reflectance bounds take any number: an infinity is an open end.
+        ccdcpp.config().replace(preprocess__thermal_range__min=-inf).check(ccdcpp.Input())
+        # A list mixes no names and numbers; a strategy without parameters names none.
+        with self.assertRaisesRegex(ValueError, r"'codes' is a list of strs \(band roles, QA "
+                                                r"code names\) or of ints \(band rows, QA "
+                                                r"codes\), not a mix"):
+            ccdcpp.config().replace(preprocess__standard__keep_qa__codes=["clear", 1])
+        with self.assertRaisesRegex(ValueError, r"^segment_fit 'model-fit' has no parameter "
+                                                r"'x'$"):
+            ccdcpp.config().replace(segment_fit__x=1)
+        with self.assertRaisesRegex(ValueError, r"^step 'dedupe' has no parameter 'x'$"):
+            ccdcpp.config().replace(preprocess__dedupe__x=1)
         with self.assertRaises(TypeError):
             ccdcpp.ccdcpp._config_digest(None)  # pyright: ignore[reportArgumentType]  # None, refused
 

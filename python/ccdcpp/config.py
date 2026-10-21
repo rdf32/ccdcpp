@@ -212,8 +212,8 @@ def _set_step(tree: dict[str, Any], procedures: Sequence[str], step: str, param:
                                  f"'{info[param]['from']}'; set shared__{info[param]['from']} "
                                  f"instead")
             if param not in defaults:
-                raise ValueError(f"step '{step}' has no parameter '{param}'; it has "
-                                 f"{', '.join(defaults) or 'none'}")
+                raise ValueError(f"step '{step}' has no parameter '{param}'"
+                                 + (f"; it has {', '.join(defaults)}" if defaults else ""))
             s[param] = _value(value, defaults[param])
             found += 1
     if not found:
@@ -373,8 +373,8 @@ class Config:
                 raise ValueError(f"{stage} '{entry['strategy']}' parameter '{param}' is the "
                                  f"shared value '{source}'; set shared__{source} instead")
             if param not in known:
-                raise ValueError(f"{stage} '{entry['strategy']}' has no parameter '{param}'; "
-                                 f"it has {', '.join(known)}")
+                raise ValueError(f"{stage} '{entry['strategy']}' has no parameter '{param}'"
+                                 + (f"; it has {', '.join(known)}" if known else ""))
             entry["params"][param] = _value(value, known[param])
         return Config(tree)
 
