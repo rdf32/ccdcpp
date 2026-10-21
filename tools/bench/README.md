@@ -13,6 +13,7 @@ has the results.
 | `bench_pixel.py` | Times `detect` per pixel, single-threaded, with an Input, a profile and a named configuration, each in its own process (`--only <form>` runs one). |
 | `bench_resume.py` | An annual update of the same cell: a recorded run on the dates before a cut, `detect_cube(resume=)` on all of them, and the full run; checks the update equals the full run on every pixel and times the three, each in its own process (`--only <phase>` runs one). |
 | `bench_pyccd.py` | Times PyCCD's `ccd.detect` and `ccdcpp.detect` on the same pixels, one thread each (corpus pixels and PyCCD-format CSVs), and counts the pixels whose segments agree; each runs in its own process (`--only pyccd` or `--only ccdcpp` runs one). |
+| `bench_preprocess.cpp` | Times `apply()` of each `ccdc` preprocessing chain against the chain written out by hand (`tests/ccd/support/preprocess_reference.hpp`) on PyCCD's reference pixel, and prints its peak memory; exits 1 if a mask differs. Built with the tests as the target `bench_preprocess`; ctest does not run it. |
 | `_common.py` | What the scripts share: loading the build under test (each checks `import ccdcpp` loaded from the directory given), reading the corpus and the cell, the C2 conversion, best-of-N timing, the peak memory, and running each side of a comparison in its own process. |
 | `patch_pyccd.py` | Copies PyCCD and applies ccdcpp's corrections to it (README, "Differences from pyccd"), so the two can be timed on the same algorithm. |
 

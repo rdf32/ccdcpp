@@ -387,10 +387,21 @@ if(CCD_BUILD_TESTS)
     ccd_add_gtest(test_machine INTERNAL SOURCES tests/ccd/machine/test_machine.cpp)
 
     # The preprocessing plan: the "ccdc" plan (plan_of()) against the
-    # hand-written chains, custom plans through detect(), plan
-    # validation, and a microbenchmark of apply(). See
-    # tests/ccd/machine/test_preprocess.cpp.
+    # hand-written chains, custom plans through detect(), and plan
+    # validation. See tests/ccd/machine/test_preprocess.cpp.
     ccd_add_gtest(test_preprocess SOURCES tests/ccd/machine/test_preprocess.cpp)
+
+    # apply() timed against the hand-written chains
+    # (tools/bench/bench_preprocess.cpp): built with the tests, so it keeps
+    # building, and not a test.
+    if(UNIX)
+        add_executable(bench_preprocess tools/bench/bench_preprocess.cpp)
+        target_link_libraries(bench_preprocess PRIVATE ccd_core)
+        target_compile_features(bench_preprocess PRIVATE cxx_std_17)
+        target_include_directories(bench_preprocess PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/support)
+        target_compile_definitions(
+            bench_preprocess PRIVATE CCD_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/data")
+    endif()
 
     # The bit-exact gate: detect() and detect_cube() against a committed
     # hexfloat fixture. See tests/ccd/golden/test_golden.cpp.
