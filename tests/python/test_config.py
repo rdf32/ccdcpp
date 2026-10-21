@@ -325,6 +325,31 @@ class Runs(unittest.TestCase):
         self.assertEqual(list(out["traces"]), [(1, 0)])
         self.assertEqual(out["traces"][(1, 0)], rows)
 
+    def test_an_edge_segment_has_more_observations_than_coefficients(self):
+        # A peek below coefficient_min: the first k observations are another cover, so the
+        # Start segment holds k. It is written only when k exceeds both the peek (2) and the
+        # edge fit's 4 coefficients, so its RMSE has a degree of freedom.
+        rng = np.random.default_rng(3)
+        dates = 724642 + 16 * np.arange(400, dtype=np.int64)
+        cycle = 80.0 * np.cos(2 * np.pi * (dates - dates[0]) / 365.25)
+        base = np.array([500, 800, 700, 2500, 1800, 1000, 2950], dtype=np.float64)
+        qas = np.zeros(dates.size, np.uint8)
+        cfg = ccdcpp.config("ccdc").replace(change_test__peek_size=2)
+        for k, start in ((3, None), (4, None), (5, 5), (8, 8)):
+            with self.subTest(k=k):
+                spectral = np.round(base[:, None] + cycle[None, :] +
+                                    rng.normal(0, 15, (7, dates.size)))
+                spectral[3, :k] += 3000.0
+                spectral[2, :k] -= 300.0
+                models = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
+                                       config=cfg)["models"]
+                starts = [m["observation_count"] for m in models if m["curve_qa"] == 14]
+                self.assertEqual(starts, [] if start is None else [start])
+                for m in models:
+                    for band in m["bands"]:
+                        self.assertTrue(np.isfinite(band["rmse"]))
+                        self.assertTrue(np.all(np.isfinite(band["coefficients"])))
+
     def test_a_bad_configuration_is_refused_before_any_pixel(self):
         d, s, q = pixel()
         h = ccdcpp.Input()

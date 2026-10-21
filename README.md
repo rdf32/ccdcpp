@@ -486,7 +486,7 @@ A value several stages read is written once, in `shared`, and the stages that re
 | `outlier_probability` | `0.999999` | probability | `outlier`'s and `lookback`'s outlier threshold, its chi-squared quantile |
 | `alpha`, `coef_floor` | `1e-4`, `1e-4` | reflectance | the Lasso of `model`, `stability_fit` and `edge_fit` |
 | `max_iter`, `tolerance` | `1000`, `1e-4` | none | the same three |
-| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | `4`, `6`, `8`, `3` | none | the coefficient rule of `model` and `stability_fit`; `edge_fit` fits `coefficient_min` |
+| `coefficient_min`, `_mid`, `_max`, `num_obs_factor` | `4`, `6`, `8`, `3` | none | the coefficient rule of `model` and `stability_fit`; `edge_fit` fits `coefficient_min`, and writes a Start or End segment only on more observations than the peek and than `coefficient_min` |
 | `min_observations` | `12` | observations | the fewest observations a curve is fitted on: `start_search`'s start window, `edge_fit`'s whole-series curve |
 | `statistics_end` | none (`NO_STATISTICS_END`) | ordinal day | the last date the QA statistics, the cadence, the variogram and the green median read |
 

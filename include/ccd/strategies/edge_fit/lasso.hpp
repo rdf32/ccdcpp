@@ -18,7 +18,9 @@ namespace strategies
 // fit_whole_series()), solved with the Lasso parameters; the whole series
 // has no segment with fewer than min_observations kept observations. The
 // Start and End segments are written when more than a peek of observations
-// is before the first stable start, or after the last segment.
+// is before the first stable start, or after the last segment, and more
+// than `coefficients`, so that the fit's RMSE has a degree of freedom (a
+// peek_size below coefficient_min leaves those observations without one).
 //------------------------------------------------------------------------------
 struct LassoEdges final : EdgeFit
 {
@@ -37,8 +39,14 @@ struct LassoEdges final : EdgeFit
     explicit LassoEdges(const Params& p) : p_(p) {}
 
     std::unique_ptr<Scratch> make_scratch() const override;
-    bool start_due(index_t before, index_t peek) const override { return before > peek; }
-    bool end_due(index_t after, index_t peek, bool) const override { return after > peek; }
+    bool start_due(index_t before, index_t peek) const override
+    {
+        return before > peek && before > p_.coefficients;
+    }
+    bool end_due(index_t after, index_t peek, bool) const override
+    {
+        return after > peek && after > p_.coefficients;
+    }
     ChangeModel catch_window(ArrayView<const std::int64_t, 1> dates,
                              ArrayView<const scalar_t, 2> spectral, const Window& window,
                              CurveQA curve_qa, Scratch& scratch) const override;
