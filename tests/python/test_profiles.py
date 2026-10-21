@@ -442,12 +442,15 @@ class Roles(unittest.TestCase):
 
     def test_nir_broad_is_a_band_role(self):
         # B08 as nir_broad next to B8A as nir: it is fitted, reported and may
-        # be listed, and it is not the "nir" row.
+        # be listed ("ccdc"'s band_range does not), and it is not the "nir"
+        # row.
         p = ten_band_profile()
         h = p.input()
         self.assertEqual(p.index("nir_broad"), 6)
         self.assertEqual(h.index("nir"), 7)
-        self.assertIn(6, band_range_rows(h))
+        self.assertNotIn(6, band_range_rows(h))
+        listed = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=["blue", "nir_broad"])
+        self.assertEqual(band_range_rows(h, listed), [0, 6])
         cfg = ccdcpp.config("ccdc").replace(
             shared__detection_bands=["green", "red", "nir_broad", "nir", "swir1", "swir2"])
         self.assertEqual(cfg.resolve(h)["shared"]["detection_bands"], [1, 2, 6, 7, 8, 9])
@@ -1241,14 +1244,13 @@ class SensorPresets(unittest.TestCase):
                                      name, (("exclude_high_aerosol", False),)))
                 np.testing.assert_array_equal(qa_table_of(preset().input()).codes, table.codes)
 
-    def test_band_range_tests_the_rows_the_profiles_listed(self):
-        # Each shipped profile listed the rows a saturated value can appear
-        # in, in row order: its every row but thermal, which is what "ccdc"'s
-        # band_range tests ("reflective"), in every procedure.
+    def test_band_range_tests_blue_to_swir2(self):
+        # "ccdc"'s band_range tests the rows of blue, green, red, nir, swir1
+        # and swir2, in every procedure: not coastal, the red edges or B08.
         listed = {"landsat_c1_dn": list(range(6)), "landsat_c1_physical": list(range(6)),
-                  "landsat_c2": list(range(6)), "hls_l30": list(range(7)),
-                  "hls_s30": list(range(11)), "hls": list(range(7)),
-                  "sentinel2_l2a": list(range(10))}
+                  "landsat_c2": list(range(6)), "hls_l30": list(range(1, 7)),
+                  "hls_s30": [1, 2, 3, 8, 9, 10], "hls": list(range(1, 7)),
+                  "sentinel2_l2a": [0, 1, 2, 7, 8, 9]}
         self.assertEqual(sorted(listed), sorted(presets.__all__))
         for name, rows in listed.items():
             with self.subTest(preset=name):
@@ -1258,7 +1260,7 @@ class SensorPresets(unittest.TestCase):
                              if s.kind == ccdcpp.StepKind.BandRange]
                     self.assertEqual([s.bands for s in steps], [rows])
 
-    def test_red_edge_and_broad_nir_are_fitted_not_detected(self):
+    def test_red_edge_and_broad_nir_are_fitted_not_tested(self):
         for preset in (presets.hls_s30, presets.sentinel2_l2a):
             with self.subTest(preset=preset.__name__):
                 p = preset()
@@ -1266,7 +1268,7 @@ class SensorPresets(unittest.TestCase):
                 detection = ccdcpp.config("ccdc").resolve(h)["shared"]["detection_bands"]
                 for role in ("red_edge_1", "red_edge_2", "red_edge_3", "nir_broad"):
                     self.assertNotIn(p.index(role), detection)
-                    self.assertIn(p.index(role), band_range_rows(h))
+                    self.assertNotIn(p.index(role), band_range_rows(h))
                 self.assertEqual(p.band_names[p.index("nir")], "B8A")
                 self.assertEqual(p.band_names[p.index("nir_broad")], "B08")
 
@@ -1547,8 +1549,9 @@ class HlsInput(unittest.TestCase):
         assert_same(self, models(out),
                     models(self.run_pixel(profile, dates, filled, fmask[0, 0], keep)))
 
-    def test_coastal_is_screened(self):
-        # 10000 (1.0) is out of the exclusive reflectance range, 9999 in.
+    def test_coastal_is_screened_where_listed(self):
+        # "ccdc"'s band_range does not test coastal; listed, 10000 (1.0) is
+        # out of the exclusive reflectance range, 9999 in.
         dates, cube, fmask, raw = hls_inputs(8, thermal=True, H=1, W=1)
         clear = np.flatnonzero(fmask[0, 0] == 0)
         high, edge = clear[7::40], clear[27::40]
@@ -1556,6 +1559,11 @@ class HlsInput(unittest.TestCase):
         raw[0, high] = 10000
         raw[0, edge] = 9999
         out = self.run_pixel(presets.hls_l30(), dates, raw * 1e-4, fmask[0, 0])
+        self.assertTrue(out["processing_mask"][high].all())
+        listed = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=[
+            "coastal", "blue", "green", "red", "nir", "swir1", "swir2"])
+        out = ccdcpp.detect(dates, np.ascontiguousarray(raw * 1e-4), fmask[0, 0],
+                            input=presets.hls_l30(), config=listed)
         self.assertFalse(out["processing_mask"][high].any())
         self.assertTrue(out["processing_mask"][edge].all())
 

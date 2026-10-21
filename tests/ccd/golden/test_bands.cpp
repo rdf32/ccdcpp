@@ -416,9 +416,8 @@ TEST(Bands, GenericLayoutEqualsDefault)
 // Row r of the permuted input holds row perm[r] of the original, and its
 // role. The configuration's lists, by role, follow their bands, and each
 // keeps its order of roles, so the detection sums run over the same bands in
-// the same order; band_range's "reflective" is the same rows in the permuted
-// row order (its test does not depend on the order), and a list by row is
-// remapped. The fits come back in the permuted row order; put back, they are
+// the same order (band_range's test does not depend on its order), and a
+// list by row is remapped. The fits come back in the permuted row order; put back, they are
 // bit-identical.
 //==============================================================================
 

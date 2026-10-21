@@ -158,23 +158,11 @@ std::optional<Value> to_codes(const Value& value, const std::string& at, const I
     return Value(std::move(codes));
 }
 
-// A band list by role, or REFLECTIVE, as the input's rows; rows as given.
+// A band list by role as the input's rows; rows as given.
 std::optional<Value> to_rows(const Value& value, const std::string& at, const Input* input)
 {
-    if (const auto* selector = std::get_if<std::string>(&value))
-    {
-        if (*selector != REFLECTIVE)
-            throw std::invalid_argument(at + " is '" + *selector +
-                                        "'; a band list is roles, rows or \"" + REFLECTIVE +
-                                        "\"");
-        if (!input)
-            return std::nullopt;
-        std::vector<std::int64_t> rows;
-        for (index_t row = 0; row < input->bands(); ++row)
-            if (input->roles[row] != "thermal" && input->roles[row] != "other")
-                rows.push_back(static_cast<std::int64_t>(row));
-        return Value(std::move(rows));
-    }
+    if (const auto* text = std::get_if<std::string>(&value))
+        throw std::invalid_argument(at + " is '" + *text + "'; a band list is roles or rows");
     const auto* roles = std::get_if<std::vector<std::string>>(&value);
     if (!roles)
         return value;

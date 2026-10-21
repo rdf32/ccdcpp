@@ -249,7 +249,7 @@ The outputs are in the input's units: DN in, DN out. [docs/units.md](docs/units.
 
 `roles` says which row of `spectral` plays which role (`ccdcpp.ROLES` lists them). The default is the Landsat layout, seven bands in the order blue, green, red, nir, swir1, swir2, thermal. Every row is fitted and reported, so results have one band per row, in row order. `"green"` is required (the green median filter reads it); without `"thermal"` the thermal transform and range are skipped.
 
-The configuration names its bands by role (the shared `detection_bands`; `window_screen__bands`; `band_range`'s `bands`, `"reflective"` in `ccdc`: every row whose role is not thermal or other, in row order), resolved to the input's rows when a run resolves the configuration, so one configuration fits any band order. An input that does not fit (wrong band count, an unknown or repeated role, no green row, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs, as does a configuration naming a role the input lacks.
+The configuration names its bands by role (the shared `detection_bands`; `window_screen__bands`; `band_range`'s `bands`, blue, green, red, nir, swir1 and swir2 in `ccdc`), resolved to the input's rows when a run resolves the configuration, so one configuration fits any band order. An input that does not fit (wrong band count, an unknown or repeated role, no green row, more than `ccdcpp.CCD_MAX_BANDS` bands) raises `ValueError` before any pixel runs, as does a configuration naming a role the input lacks.
 
 ## QA input
 
@@ -323,7 +323,7 @@ A `ccdcpp.SensorProfile` describes one sensor's data in one immutable object: th
 
 `landsat_c1_dn().input()` is `ccdcpp.Input(saturation_code=20000.0, thermal_saturation_code=20000.0)`, field for field: the defaults with the values a Collection-1 saturated observation holds, which the other presets, whose data is in reflectance, do not declare: a code does not survive the conversion ([docs/units.md](docs/units.md#saturation-codes) lists which products store one). `landsat_c1_physical()` has `reflectance_scale` 1 and the identity thermal transform, so the configuration's values resolve to the DN ones divided by 10000: the same fit, with coefficients in the input's units. `landsat_c2()` reads the same way (reflectance 0..1 is Collection 2's DN 7273..43636, which `band_range` under `ccdc` keeps) and decodes `QA_PIXEL`.
 
-The HLS and Sentinel-2 presets read reflectance and degrees Celsius / 100 as `landsat_c1_physical()` does. Under `ccdc`, `band_range` tests every optical row, change is detected on green, red, nir, swir1 and swir2 with the chi-squared(5) thresholds, Tmask reads green and swir1, and the cadence values are pyccd's.
+The HLS and Sentinel-2 presets read reflectance and degrees Celsius / 100 as `landsat_c1_physical()` does. Under `ccdc`, `band_range` tests blue, green, red, nir, swir1 and swir2 (not coastal, the red edges or B08), change is detected on green, red, nir, swir1 and swir2 with the chi-squared(5) thresholds, Tmask reads green and swir1, and the cadence values are pyccd's.
 
 | Preset | Rows (role) | Left out |
 |--------|-------------|----------|
@@ -334,7 +334,7 @@ The HLS and Sentinel-2 presets read reflectance and degrees Celsius / 100 as `la
 
 - **HLS scaling.** Every HLS layer is `int16` times 0.0001; for L30 B10 (degrees Celsius, scale 0.01) that is degrees Celsius / 100, so one divisor serves every row. The fill, -9999, becomes -0.9999, which `band_range` and `thermal_range` under `ccdc` drop.
 - **HLS QA.** `Fmask` decodes with the aerosol level ignored; `dataclasses.replace(preset, qa_table_options={"exclude_high_aerosol": True})` treats high aerosol as cloud.
-- **S30 and Sentinel-2 bands.** Under `ccdc` the red edges and B08 are fitted, reported and tested by `band_range`, but change is not detected on them.
+- **S30 and Sentinel-2 bands.** Under `ccdc` the red edges and B08 are fitted and reported, but neither tested by `band_range` nor detected on; a configuration that lists them in `band_range`'s `bands` tests them.
 - **Sentinel-2 offset.** From processing baseline 04.00 (25 January 2022) L2A stores `DN = reflectance * 10000 - BOA_ADD_OFFSET`, with a band-dependent offset in each product's metadata. ccdcpp never sees the metadata, so the caller applies it; a series that mixes corrected and uncorrected scenes jumps at the baseline change and detects a false break. Some archives distribute corrected bands while their metadata still declares the offset (earth-search's `sentinel-2-l2a` COGs); there it must not be applied twice.
 - **Sentinel-2 QA.** `SCL` class 7 (unclassified) is cloud, which costs water pixels (below). A caller who wants them runs a copy of `input()` whose `qa_table` is `ccdcpp.QaTable(codes)` with entry 7 changed.
 - **L30 and S30 in one series.** An L30 and an S30 observation on one date are deduplicated like any other pair, the first in array order kept: put L30 before S30 on a shared date.
@@ -577,7 +577,7 @@ Before a procedure fits a pixel it builds the processing mask, the observations 
 | `keep_qa` (`KeepQa(codes)`) | keep only observations whose QA code is in `codes` (names: `ccdcpp.QA_CODE_NAMES`, or ints) |
 | `add_qa` (`AddQa(codes)`) | also keep every observation whose code is in `codes`; must be followed by `one_per_date` |
 | `thermal_range` (`ThermalRange(celsius, inclusive)`) | keep only observations whose thermal value is in the range `celsius = [min, max]`, degrees Celsius (an end `inclusive = [min, max]` keeps a value equal to it); skipped without a thermal row |
-| `band_range` (`BandRange(bands, reflectance, inclusive)`) | keep only observations on which every band (roles, tested in order, or `"reflective"`, the default: every row whose role is not thermal or other) is in the range `reflectance = [min, max]`, reflectance (`inclusive` as above); an empty list is refused |
+| `band_range` (`BandRange(bands, reflectance, inclusive)`) | keep only observations on which every band (roles, tested in order; by default blue, green, red, nir, swir1 and swir2) is in the range `reflectance = [min, max]`, reflectance (`inclusive` as above); an empty list is refused |
 | `green_median` (`GreenMedian(offset, scope)`) | drop observations at or above the median green over the kept observations dated up to the shared `statistics_end`, plus `offset` (reflectance), at the dates `scope` names |
 | `one_per_date` (`OnePerDate()`) | keep the first kept observation of each date |
 

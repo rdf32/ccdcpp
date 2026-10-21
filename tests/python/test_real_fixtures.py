@@ -56,9 +56,9 @@ PIXELS = {
 }
 
 #: Pixels held in the HLS products only: "coastal" is HLS window row 10,
-#: column 142 (0-based), chosen because its runs depend on the coastal B01
-#: low bound (B01 <= 0 on 7 L30 and 2 S30 observations whose other bands
-#: are in range).
+#: column 142 (0-based), chosen because a run that tests the coastal B01
+#: low bound differs (B01 <= 0 on 7 L30 and 2 S30 observations whose other
+#: bands are in range).
 HLS_ONLY = {"coastal"}
 
 #: Preset -> the product files its input is read from.
@@ -282,9 +282,10 @@ class Findings(unittest.TestCase):
                          ["2022-01-26"])
 
     def test_coastal_hls10_142_depends_on_the_coastal_low_bound(self):
-        # Observations QA keeps with every band in range but B01 <= 0 are
-        # dropped, and without coastal in the saturation screen the result
-        # is another one.
+        # Observations QA keeps with every band in range but B01 <= 0:
+        # "ccdc"'s band_range does not test coastal, so they are kept; with
+        # coastal in its bands they are dropped, and the result is another
+        # one.
         for preset, count in (("hls_l30", 7), ("hls_s30", 2)):
             with self.subTest(preset=preset):
                 dates, spectral, qa, names = preset_input(preset, "coastal")
@@ -298,12 +299,13 @@ class Findings(unittest.TestCase):
                                           (ccdcpp.Input().qa_clear,
                                            ccdcpp.Input().qa_water)))
                 self.assertEqual(int(coastal_only.sum()), count)
-                self.assertFalse(out["processing_mask"][coastal_only].any())
+                self.assertTrue(out["processing_mask"][coastal_only].all())
                 profile = getattr(presets, preset)()
-                unscreened = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=[
-                    r for r in profile.roles if r not in ("coastal", "thermal", "other")])
+                screened = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=[
+                    r for r in profile.roles if r not in ("thermal", "other")])
                 other = ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                                      input=profile, config=unscreened, band_names=names)
+                                      input=profile, config=screened, band_names=names)
+                self.assertFalse(other["processing_mask"][coastal_only].any())
                 self.assertNotEqual(as_stored(other), as_stored(out))
 
     def test_s2_store_order_is_refused(self):

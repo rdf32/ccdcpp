@@ -139,18 +139,12 @@ struct Bounds
     std::int64_t statistics_end;
 };
 
-// band_range's bands as rows of `input`: "reflective" is every row whose
-// role is not thermal or other, in row order; roles are their rows.
+// band_range's bands as rows of `input`: roles are their rows, rows as
+// given.
 ccd::BandList band_rows(const ccd::config::Value& bands, const ccd::Input& input)
 {
     ccd::BandList rows;
-    if (std::holds_alternative<std::string>(bands))
-    {
-        for (index_t r = 0; r < input.bands(); ++r)
-            if (input.roles[r] != "thermal" && input.roles[r] != "other")
-                rows.push_back(r);
-    }
-    else if (const auto* roles = std::get_if<std::vector<std::string>>(&bands))
+    if (const auto* roles = std::get_if<std::vector<std::string>>(&bands))
     {
         for (const std::string& role : *roles)
             rows.push_back(input.index(role));
@@ -778,7 +772,7 @@ std::string fields(const pp::PreprocessPlan& plan)
 // The "ccdc" plan of `input` written out with the Step constructors: the
 // thermal range on the thermal row when it has one, (therm_lo, therm_hi) in
 // Standard and (stored_lo, stored_hi) in the other two (the snow chain's
-// again at its end), the reflectance range (0, refl_hi) on its reflective rows, the green
+// again at its end), the reflectance range (0, refl_hi) on its blue to swir2 rows, the green
 // median `green` above, up to statistics_end 736694, Standard transformed by
 // `transform`.
 pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double therm_hi,
@@ -796,7 +790,8 @@ pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double th
         out.push_back(pp::Step::keep_qa(pp::qa_set({input.qa_clear, input.qa_water})));
         thermal(out, lo, hi);
         out.push_back(pp::Step::band_range(
-            band_rows(ccd::config::Value(std::string("reflective")), input),
+            band_rows(ccd::config::roles({"blue", "green", "red", "nir", "swir1", "swir2"}),
+                      input),
             {{0.0, false}, {refl_hi, false}}));
         out.push_back(pp::Step::one_per_date());
         return out;
@@ -930,7 +925,8 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
     using ccd::config::real;
     const ccd::config::Values thermal = {{"celsius", ccd::config::reals({-93.2, 70.7})},
                                          {"inclusive", ccd::config::flags({false, false})}};
-    const ccd::config::Values band = {{"bands", ccd::config::Value(std::string("reflective"))},
+    const ccd::config::Values band = {{"bands", ccd::config::roles({"blue", "green", "red", "nir",
+                                                                     "swir1", "swir2"})},
                                       {"reflectance", ccd::config::reals({0.0, 1.0})},
                                       {"inclusive", ccd::config::flags({false, false})}};
     using ccd::config::Thermal;

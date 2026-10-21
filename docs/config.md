@@ -214,8 +214,8 @@ tolerance = 0.0001               # a sweep's relative update at which it checks 
 thermal = "celsius"              # through the input's thermal transform (degrees Celsius)
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", celsius = [-93.2, 70.7] },                      # degrees Celsius
-    { step = "band_range", bands = "reflective", reflectance = [0.0, 1.0] },  # reflectance
+    { step = "thermal_range", celsius = [-93.2, 70.7] },                                                           # degrees Celsius
+    { step = "band_range", bands = ["blue", "green", "red", "nir", "swir1", "swir2"], reflectance = [0.0, 1.0] },  # reflectance
     { step = "one_per_date" },
 ]
 

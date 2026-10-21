@@ -17,6 +17,10 @@ its replacement.
 
 ### Changed
 
+- **`ccdc`'s `band_range` lists its bands**: blue, green, red, nir, swir1 and swir2. A band list
+  is roles or rows; `"reflective"` (`ccdcpp.REFLECTIVE`) is gone. On HLS and Sentinel-2 inputs
+  coastal, the red edges and B08 are not range-checked unless a configuration lists them;
+  Landsat outputs do not change.
 - **No statistics cutoff by default.** `ccdc`'s `shared.statistics_end` is `"none"`:
   the QA statistics, the cadence, the variogram and the green median read the whole series.
   0.10.0 and pyccd stopped them at 2017-12-31 (ordinal 736694), LCMAP's 2018 production

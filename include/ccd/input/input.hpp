@@ -82,9 +82,8 @@ struct Input
     // thermal transform and filter are skipped.
     //
     // The configuration names bands by role (its detection bands, Tmask's
-    // bands, band_range's), or band_range's as "reflective", every row whose
-    // role is not "thermal" or "other", in row order; either resolves to
-    // rows through this list, so one configuration fits any band order.
+    // bands, band_range's), which resolve to rows through this list, so one
+    // configuration fits any band order.
     //
     // The default is the Landsat layout: blue, green, red, nir, swir1,
     // swir2, thermal.

@@ -238,12 +238,12 @@ TEST(Validation, LayoutRules)
                             ten_band_layout(), "preprocess standard step 2 'band_range'",
                             "parameter 'bands' is empty");
 
-    // band_range's one selector is "reflective".
+    // A band list is roles or rows, never a name.
     expect_config_error(
         golden::with_steps(golden::pyccd(), "band_range", "bands",
                            ccd::config::Value(std::string("optical"))),
         ten_band_layout(), "preprocess standard step 2 'band_range' parameter 'bands'",
-        "is 'optical'; a band list is roles, rows or \"reflective\"");
+        "is 'optical'; a band list is roles or rows");
 
     // Roles: green required, each known, none but "other" twice.
     {

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 __all__ = ["AddQa", "BandRange", "OnePerDate", "GreenMedian", "KeepQa", "PROCEDURES", "Preprocess",
-           "ProcedureChain", "QA_CODE_NAMES", "REFLECTIVE", "ThermalRange"]
+           "ProcedureChain", "QA_CODE_NAMES", "ThermalRange"]
 
 #: The procedures of a configuration's preprocess section.
 PROCEDURES = ("standard", "snow", "insufficient_clear")
@@ -31,9 +31,6 @@ PROCEDURES = ("standard", "snow", "insufficient_clear")
 #: How a procedure reads the thermal row: through the input's thermal transform, in degrees
 #: Celsius, or as the input stores it.
 _THERMAL = ("celsius", "stored")
-
-#: The band list of every row whose role is not thermal or other, in row order.
-REFLECTIVE = "reflective"
 
 #: The QA code names a step takes; each is the ``ccdcpp.Input`` field ``qa_<name>``.
 QA_CODE_NAMES = ("fill", "clear", "water", "shadow", "snow", "cloud", "cirrus1", "cirrus2",
@@ -142,26 +139,24 @@ class ThermalRange:
 class BandRange:
     """band_range: keep only the observations on which every band of ``bands`` lies in
     ``reflectance``, ``(min, max)`` in reflectance; an end ``inclusive`` also keeps a value
-    equal to it. ``bands`` is roles (or rows), tested in order, or ``"reflective"``: every row
-    whose role is not thermal or other, in row order. An empty list is refused. None:
-    ``"reflective"``, 0 and 1, exclusive."""
+    equal to it. ``bands`` is roles (or rows), tested in order. An empty list is refused. None:
+    blue, green, red, nir, swir1 and swir2, 0 and 1, exclusive."""
 
     bands: str | tuple[str | int, ...] | None = None
     reflectance: tuple[float, float] | None = None
     inclusive: tuple[bool, bool] | None = None
 
     def __post_init__(self) -> None:
-        if self.bands is not None and self.bands != REFLECTIVE:
+        if self.bands is not None:
             bands = (self.bands,) if isinstance(self.bands, str) else tuple(self.bands)
             if not bands:
-                raise ValueError(f"BandRange: bands is empty; name the bands tested, or "
-                                 f"{REFLECTIVE!r}")
+                raise ValueError("BandRange: bands is empty; name the bands tested")
             object.__setattr__(self, "bands", bands)
         object.__setattr__(self, "reflectance", _ends(self.reflectance, "BandRange: reflectance"))
         object.__setattr__(self, "inclusive", _flags(self.inclusive, "BandRange: inclusive"))
 
     def to_dict(self) -> dict[str, Any]:
-        bands = self.bands if self.bands is None or self.bands == REFLECTIVE else list(self.bands)
+        bands = None if self.bands is None else list(self.bands)
         return _given("band_range", bands=bands, reflectance=_list(self.reflectance),
                       inclusive=_list(self.inclusive))
 

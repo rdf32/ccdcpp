@@ -89,6 +89,10 @@ corpus's 2,900 pixels change (snow and insufficient-clear pixels, and 8 without 
 whose thermal values range far beyond the bounds. Physical-unit outputs are 0.10.0's, and the
 DN run segments as the physical-unit run does. On the Atlanta cell (Collection 2) no pixel changes.
 
+On HLS and Sentinel-2 inputs `ccdc`'s `band_range` tests blue, green, red, nir, swir1 and swir2,
+where 0.10.0's profiles listed every row but thermal: coastal, the red edges and B08 are not
+range-checked unless a configuration lists them. Landsat outputs do not change.
+
 ## Resume records
 
 A 0.10.0 record does not continue: its header has `options_digest` where 1.0's has `digest`, and
@@ -262,7 +266,7 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 | `NUM_BANDS`, `BLUE_IDX` ... `THERMAL_IDX` | 7, 0 ... 6 | `Input.roles`, one role per row (`Input.bands()`, `Input.index(role)`) |
 | `QA_IDX` | | none (nothing read it) |
 | `CLEAR_OBSERVATION_THRESHOLD` | | none (nothing read it) |
-| `SATURATION_BANDS` | [0, 1, 2, 3, 4, 5] | `preprocess` `band_range`'s `bands`: `"reflective"` (every row but thermal and other) or roles |
+| `SATURATION_BANDS` | [0, 1, 2, 3, 4, 5] | `preprocess` `band_range`'s `bands`: roles (blue, green, red, nir, swir1 and swir2 in `ccdc`) |
 | `REFL_MIN`, `REFL_MAX`, `REFL_MIN_INCLUSIVE`, `REFL_MAX_INCLUSIVE` | 0, 10000, false, false | `preprocess` `band_range`'s `reflectance = [0.0, 1.0]` and `inclusive = [false, false]` |
 | `THERM_MIN`, `THERM_MAX`, `THERM_MIN_INCLUSIVE`, `THERM_MAX_INCLUSIVE` | -9320, 7070, false, false | `preprocess` `thermal_range`'s `celsius = [-93.2, 70.7]` (degrees Celsius) and `inclusive` |
 | `MEDIAN_GREEN_FILTER` | 400 | `preprocess` `green_median`'s `offset` (reflectance: 0.04) |
@@ -304,7 +308,7 @@ the configuration's, the same for every profile.
 | `profile.options()` (`(HarmonicOptions, LassoOptions)`) | `profile.input()` (the `ccdcpp.Input`, its QA table included) |
 | `profile.qa_table(h)` | `profile.input().qa_table` |
 | `detection`, `tmask` | `shared__detection_bands`, `window_screen__bands` |
-| `saturation` | `band_range`'s `bands` (`"reflective"` in `ccdc`, the rows the profiles listed) |
+| `saturation` | `band_range`'s `bands` (blue to swir2 in `ccdc`) |
 | `alpha`, `coef_floor` | `shared__lasso__alpha`, `shared__lasso__coef_floor`, in reflectance for every profile |
 | `cadence` | `stage__parameter` changes of the configuration |
 | `stat_ord` | `shared__statistics_end` (none by default; 0.10.0's Landsat profiles had 736694) |
@@ -347,7 +351,7 @@ The chain is part of the configuration. `preprocess=`, the profile's `preprocess
 | `detect(..., preprocess=plan)` | `config=cfg.replace(preprocess__<procedure>=ProcedureChain(...))`, or `preprocess__<procedure>__<step>__<param>=` |
 | `ProcedureChain(steps, transform="default")` / `transform=None` | `ProcedureChain(steps, thermal="celsius")` (through the input's transform) / `thermal="stored"` |
 | `Transform(role, scale, offset)` | the input's `thermal_scale`, `thermal_offset` |
-| `BandRange(roles=...)` | `BandRange(bands=...)` (roles or `"reflective"`) |
+| `BandRange(roles=...)` | `BandRange(bands=...)` (roles) |
 | `Dedupe()`, `StepKind.Dedupe` (C++ `preprocess::Step::dedupe()`, `StepKind::Dedupe`) | `OnePerDate()`, `StepKind.OnePerDate` (`Step::one_per_date()`, `StepKind::OnePerDate`): the step `one_per_date` |
 | `GreenMedian(offset, scope, max_date, role)` | `GreenMedian(offset, scope)`; its date is the shared `statistics_end`, its band the green role |
 | the bounds in the input's units | the bounds in physical units: reflectance, degrees Celsius |

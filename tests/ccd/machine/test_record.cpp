@@ -350,7 +350,7 @@ TEST(Digest, EveryGroupOfFieldsMoves)
     const std::pair<const char*, Set> input[] = {
         {"qa_snow", [](auto& h) { h.qa_snow = 7; }},
         {"qa_occlusion", [](auto& h) { h.qa_occlusion = 11; }},
-        {"roles", [](auto& h) { h.roles[0] = "coastal"; }},
+        {"roles", [](auto& h) { std::swap(h.roles[0], h.roles[1]); }},
         {"reflectance_scale", [](auto& h) { h.reflectance_scale = 1.0; }},
         {"reflectance_offset", [](auto& h) { h.reflectance_offset = 0.5; }},
         {"saturation_code", [](auto& h) { h.saturation_code = 65535.0; }},
@@ -461,8 +461,9 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
             {
                 if (name == "max_date")
                     continue;   // the shared statistics_end's, moved above
+                const bool roles = name == "bands";
                 const ccd::config::Value moved = std::visit(
-                    [](auto v) -> ccd::config::Value
+                    [roles](auto v) -> ccd::config::Value
                     {
                         using T = decltype(v);
                         if constexpr (std::is_same_v<T, bool>)
@@ -470,14 +471,15 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
                         else if constexpr (std::is_same_v<T, double>)
                             return ccd::config::real(v + 0.5);
                         else if constexpr (std::is_same_v<T, std::string>)
-                        {
-                            if (v == ccd::config::REFLECTIVE)
-                                return ccd::config::roles({"blue", "green"});
                             return std::string(v == "all" ? "off" : "all");
-                        }
                         else if constexpr (std::is_same_v<T, std::vector<std::string>>)
                         {
-                            v.push_back("cloud");
+                            // band_range's roles lose one, a QA step's code
+                            // names gain one.
+                            if (roles)
+                                v.pop_back();
+                            else
+                                v.push_back("cloud");
                             return ccd::config::names(v);
                         }
                         else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>)

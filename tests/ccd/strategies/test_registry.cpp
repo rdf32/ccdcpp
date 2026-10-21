@@ -498,16 +498,22 @@ TEST(Registry, RolesAreTheInputsRows)
               (std::vector<std::int64_t>{4, 0}));
     EXPECT_NE(got.digest, ccd::config::resolve(r, golden::ccdc(), ccd::Input{}).digest);
 
-    // band_range's "reflective": every row but thermal and other, in row
-    // order; a list by role keeps its own order.
+    // band_range's list by role keeps its own order: ccdc's blue to swir2,
+    // whatever rows they are; a listed role the input lacks is refused.
     ccd::Input mixed;
-    mixed.roles = {"thermal", "swir1", "other", "green", "red", "nir", "swir2"};
+    mixed.roles = {"thermal", "swir1", "blue", "other", "green", "red", "nir", "swir2"};
     const auto band_rows = [&](const ccd::config::Config& c)
     { return golden::plan_of(c, mixed).standard.chain[2].bands; };
-    EXPECT_EQ(band_rows(golden::ccdc()), (ccd::BandList{1, 3, 4, 5, 6}));
+    EXPECT_EQ(band_rows(golden::ccdc()), (ccd::BandList{2, 4, 5, 6, 1, 7}));
     EXPECT_EQ(band_rows(golden::with_steps(golden::ccdc(), "band_range", "bands",
                                            ccd::config::roles({"red", "swir1"}))),
-              (ccd::BandList{4, 1}));
+              (ccd::BandList{5, 1}));
+    ccd::Input no_blue;
+    no_blue.roles = {"coastal", "green", "red", "nir", "swir1", "swir2", "thermal"};
+    expect_refused([&] { ccd::config::resolve(r, golden::ccdc(), no_blue); },
+                   "preprocess standard step 2 'band_range' parameter 'bands' holds 'blue', "
+                   "which the input does not have; its rows are coastal, green, red, nir, "
+                   "swir1, swir2, thermal");
 
     ccd::Input four;
     four.roles = {"blue", "green", "red", "nir"};

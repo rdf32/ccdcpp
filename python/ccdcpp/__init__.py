@@ -46,7 +46,6 @@ from .config import config as _config
 from .preprocess import (
     PROCEDURES,
     QA_CODE_NAMES,
-    REFLECTIVE,
     AddQa,
     BandRange,
     OnePerDate,

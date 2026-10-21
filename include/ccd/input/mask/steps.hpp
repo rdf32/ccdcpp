@@ -95,9 +95,8 @@ struct ThermalRange
 
 // band_range: keep only the observations on which every one of `bands`
 // lies within `reflectance`, (min, max) in reflectance (an end `inclusive`
-// keeps a value equal to it), the bands tested in order: roles, rows, or
-// "reflective" (the default), every row whose role is not thermal or other,
-// in row order. An empty list is refused.
+// keeps a value equal to it), the bands tested in order: roles or rows (by
+// default blue, green, red, nir, swir1 and swir2). An empty list is refused.
 struct BandRange
 {
     struct Params

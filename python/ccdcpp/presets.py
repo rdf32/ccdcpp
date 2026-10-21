@@ -178,8 +178,8 @@ def hls_l30() -> SensorProfile:
     True})`` treats high aerosol as cloud.
 
     Under "ccdc" change is detected on B03, B04, B05, B06, B07 (green to
-    swir2) with the default thresholds, and ``band_range`` tests every
-    optical row, coastal included. The data's cadence is 16 days with
+    swir2) with the default thresholds, and ``band_range`` tests B02 to
+    B07 (blue to swir2), not coastal. The data's cadence is 16 days with
     Landsat 8 alone (from 2013) and 8 with Landsat 9 (from late 2021); the
     peek window follows it.
 
@@ -224,8 +224,8 @@ def hls_s30() -> SensorProfile:
     HLS adjusts B03, B04, B8A, B11 and B12, and B01 and B02, to the OLI
     bandpasses; the red edges and B08 are not adjusted. Under "ccdc" change
     is detected on B03, B04, B8A, B11 and B12 with the default thresholds,
-    and the red edges and B08 are fitted and reported, and tested by
-    ``band_range``, with every other row. The data's cadence is 10 days with
+    the red edges and B08 are fitted and reported, and ``band_range`` tests
+    B02, B03, B04, B8A, B11 and B12. The data's cadence is 10 days with
     Sentinel-2A alone (from 2015) and 5 with two satellites (2B from 2017,
     2C from 2024), denser where orbits overlap; the peek window follows it.
 
@@ -273,12 +273,12 @@ def hls() -> SensorProfile:
     ignored.
 
     Under "ccdc" change is detected on green, red, nir, swir1 and swir2 with
-    the default thresholds, and ``band_range`` tests every row. On the
-    validation cell the series ran at a median gap of 4-5 days, and the
-    peek window grew to 19-24 observations (19 at 5 days, 24 at 4; change
-    threshold 6.83 to 5.90); the shared ``min_observations`` and the refit's
-    ``min_obs`` stay pyccd's observation counts, so 12 observations span
-    about 50-60 days.
+    the default thresholds, and ``band_range`` tests blue to swir2, not
+    coastal. On the validation cell the series ran at a median gap of 4-5
+    days, and the peek window grew to 19-24 observations (19 at 5 days, 24
+    at 4; change threshold 6.83 to 5.90); the shared ``min_observations``
+    and the refit's ``min_obs`` stay pyccd's observation counts, so 12
+    observations span about 50-60 days.
 
     An L30 and an S30 observation on one date: the filters keep the first in
     array order, so put L30 before S30 on a shared date.
@@ -339,12 +339,12 @@ def sentinel2_l2a() -> SensorProfile:
     the table's codes and entry 7 changed.
 
     Under "ccdc" change is detected on B03, B04, B8A, B11 and B12 with the
-    default thresholds, and the red edges and B08 are fitted and reported,
-    and tested by ``band_range``. The data's cadence is 10 days with
-    Sentinel-2A alone (from mid-2015) and 5 with two satellites (2B from
-    2017, 2C from 2024), denser where orbits overlap. Two observations on
-    one date (overlapping granules or datastrips): the filters keep the
-    first in array order; merge them first to choose.
+    default thresholds, the red edges and B08 are fitted and reported, and
+    ``band_range`` tests B02, B03, B04, B8A, B11 and B12. The data's cadence
+    is 10 days with Sentinel-2A alone (from mid-2015) and 5 with two
+    satellites (2B from 2017, 2C from 2024), denser where orbits overlap.
+    Two observations on one date (overlapping granules or datastrips): the
+    filters keep the first in array order; merge them first to choose.
 
     Validation: one cell of MGRS tile T16SGC near Atlanta (Landsat ARD
     h024v013 chunk 00030008), 2020-2023, read from Planetary Computer

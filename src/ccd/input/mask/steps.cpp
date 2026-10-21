@@ -92,9 +92,9 @@ std::optional<Step> ThermalRange::make(const Params& params, const Input& input,
 const std::vector<Field<BandRange::Params>>& BandRange::schema()
 {
     static const std::vector<Field<Params>> s = {
-        {"bands", &Params::bands, Unit::Bands, config::any(),
-         "the bands tested, in order: roles, rows, or \"reflective\" (every row but "
-         "thermal and other)", Source::Own, nullptr, Value(std::string(config::REFLECTIVE))},
+        {"bands", &Params::bands, Unit::Bands, config::any(), "the bands tested, in order",
+         Source::Own, nullptr,
+         config::roles({"blue", "green", "red", "nir", "swir1", "swir2"})},
         {"reflectance", &Params::reflectance, Unit::Reflectance, config::any(),
          "the range of every band, [min, max]", Source::Own, nullptr, config::reals({0.0, 1.0})},
         {"inclusive", &Params::inclusive, Unit::None, config::any(),
@@ -106,8 +106,7 @@ const std::vector<Field<BandRange::Params>>& BandRange::schema()
 void BandRange::validate(const Params& params)
 {
     if (params.bands.empty())
-        throw std::invalid_argument("parameter 'bands' is empty; it names the bands tested, "
-                                    "or \"reflective\"");
+        throw std::invalid_argument("parameter 'bands' is empty; it names the bands tested");
 }
 
 std::optional<Step> BandRange::make(const Params& params, const Input&, const config::StepContext&)

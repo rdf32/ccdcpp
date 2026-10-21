@@ -74,8 +74,6 @@ namespace config
 //                              are -9320 and 7070 on Collection-1 DN and -0.932
 //                              and 0.707 on Celsius / 100, exactly;
 //   Bands                      band roles to the input's rows (rows as given);
-//                              the name REFLECTIVE to every row whose role is
-//                              not "thermal" or "other", in row order;
 //   QaCodes                    QA code names ("fill", "clear", "water",
 //                              "shadow", "snow", "cloud", "cirrus1",
 //                              "cirrus2", "occlusion") to the input's codes
@@ -92,9 +90,6 @@ enum class Unit : std::uint8_t
     Bands,
     QaCodes
 };
-
-// The band list of every reflective row (Unit::Bands).
-constexpr const char* REFLECTIVE = "reflective";
 
 // One parameter's value, as a configuration holds it: a flag, a whole
 // number, a real, a name, a list of whole numbers (band rows, QA codes), a

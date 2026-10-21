@@ -198,7 +198,8 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(resolved()["window_screen"]["bands"], [1, 4])
         band_range = [s for s in preset()["preprocess"]["standard"]["steps"]
                       if s["step"] == "band_range"]
-        self.assertEqual([s["bands"] for s in band_range], ["reflective"])
+        self.assertEqual([s["bands"] for s in band_range],
+                         [["blue", "green", "red", "nir", "swir1", "swir2"]])
         # The millworks nlcd plugin checks these.
         self.assertEqual([h.index(r) for r in h.roles], [0, 1, 2, 3, 4, 5, 6])
         self.assertEqual(h.index("coastal"), ccdcpp.NO_BAND)
@@ -361,8 +362,7 @@ class LayoutValidation(unittest.TestCase):
         for bands, expected in (([0, 31], "holds band 31; the input has 10 bands"),
                                 ([3, 3], "holds band 3 twice"),
                                 ([], "is empty"),
-                                ("optical", "is 'optical'; a band list is roles, rows or "
-                                            "\"reflective\"")):
+                                ("optical", "is 'optical'; a band list is roles or rows")):
             self.assert_rejected(self.broken(), 10, band + expected,
                                  config=ten_band_config(preprocess__band_range__bands=bands))
 
