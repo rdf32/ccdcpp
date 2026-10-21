@@ -163,7 +163,7 @@ from ccdcpp import BandRange, OnePerDate, KeepQa, ProcedureChain, ThermalRange
 
 keeps_snow = cfg.replace(preprocess__standard=ProcedureChain(
     steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
-    thermal_transform=True,
+    thermal="celsius",
 ))
 colder = cfg.replace(preprocess__thermal_range__celsius=[-80.0, 70.7])   # every thermal_range step
 print(ccdcpp.plan_of(keeps_snow, ccdcpp.Input()).standard.chain[0])
@@ -222,7 +222,7 @@ True
 
 A stage the file names with the base's strategy changes only the parameters it gives; with
 another strategy, the stage starts from that strategy's defaults. A procedure the file names
-takes the file's `thermal_transform` and `steps` where it gives them, each step's parameters
+takes the file's `thermal` and `steps` where it gives them, each step's parameters
 from the step's defaults. A relative path in `extends` is the extending file's directory's. The
 shipped preset is `ccdc`; `python/ccdcpp/configs/ccdc.toml` is its `to_toml()`.
 
@@ -280,7 +280,7 @@ your own registered and named.
 | another preprocessing | `cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)`, `cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(...))` |
 | a sweep | `[ccdcpp.detect_cube(..., config=cfg.replace(refit__factor=f)) for f in (1.2, 1.33, 1.5, 2.0)]` |
 | a new decision rule | a C++ strategy class for its stage, registered by name (below) |
-| a new preprocessing step | a C++ step type, registered by name (`Registry::add_step()`, `include/ccd/input/mask/steps.hpp`); its `make()` is handed each step's context (`config::StepContext`: the procedure, whether it applies the thermal transform, the position) |
+| a new preprocessing step | a C++ step type, registered by name (`Registry::add_step()`, `include/ccd/input/mask/steps.hpp`); its `make()` is handed each step's context (`config::StepContext`: the procedure, how it reads the thermal row, the position) |
 
 ```python
 sweep = {f: ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4,

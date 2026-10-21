@@ -39,8 +39,8 @@ for input in (ccdcpp.Input(), physical):
   it resolves it against the input: levels as `r * reflectance_scale + reflectance_offset`,
   differences as `r * reflectance_scale`, degrees Celsius as `c * 100 * thermal_at_100c /
   10000`. The one conversion of the data is the thermal transform, `thermal * thermal_scale +
-  thermal_offset`, applied to the thermal row of the procedures whose chain sets
-  `thermal_transform`, with its output unit stated by `thermal_at_100c` (the value 100 °C has
+  thermal_offset`, applied to the thermal row of the procedures whose chain reads
+  `thermal = "celsius"`, with its output unit stated by `thermal_at_100c` (the value 100 °C has
   after it).
 
 On Collection-1 DN (`ccdcpp.Input()`: `reflectance_scale` 10000, `reflectance_offset` 0, the

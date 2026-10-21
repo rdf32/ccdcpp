@@ -2,8 +2,8 @@
 decides it and that strategy's parameters, and each procedure's preprocessing.
 
 A ``Config`` is immutable, and checked and compiled when it is built. It holds a dict ``{"shared": {name: value}, "stages": {stage:
-{"strategy": name, "params": {name: value}}}, "preprocess": {procedure: {"thermal_transform":
-bool, "steps": [{"step": name, name: value, ...}, ...]}}}``; a value is a bool, an int, a
+{"strategy": name, "params": {name: value}}}, "preprocess": {procedure: {"thermal":
+"celsius" or "stored", "steps": [{"step": name, name: value, ...}, ...]}}}``; a value is a bool, an int, a
 float, a str, a list of names (band roles, QA code names) or a list of ints (band rows, QA
 codes). Pass it as ``config=`` to
 ``ccdcpp.detect`` and ``ccdcpp.detect_cube``: it is checked when it is built (unknown stages,
@@ -34,7 +34,7 @@ The preprocessing (``ccdcpp.Preprocess``, ``ProcedureChain`` and the step classe
 
     cfg.replace(preprocess__insufficient_clear__green_median__offset=0.05)  # one step
     cfg.replace(preprocess__thermal_range__celsius=[-80.0, 70.7])   # every thermal_range step
-    cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(steps=(...), thermal_transform=True))
+    cfg.replace(preprocess__standard=ccdcpp.ProcedureChain(steps=(...), thermal="celsius"))
 
 Presets are TOML files (``ccdcpp/configs/<name>.toml``, or any path): a ``[shared]`` table, one
 table per stage and one ``[preprocess.<procedure>]`` table per procedure:
@@ -54,7 +54,7 @@ table per stage and one ``[preprocess.<procedure>]`` table per procedure:
 
 A stage a file names with the base's strategy changes only the parameters it gives; with
 another strategy, the stage starts from that strategy's defaults. A procedure a file names
-takes the file's ``thermal_transform`` and ``steps`` where it gives them, its base's otherwise.
+takes the file's ``thermal`` and ``steps`` where it gives them, its base's otherwise.
 ``statistics_end`` is ``"none"`` (no statistics cutoff), a date ``"YYYY-MM-DD"`` or an ordinal
 day; a lookback's and a stability rule's ``peek`` is ``"change_test"`` (the change test's) or a
 number.
@@ -105,7 +105,7 @@ def shared_values() -> list[dict[str, Any]]:
 
 def _chain(value: object, base: dict[str, Any] | None = None) -> object:
     """A procedure as a configuration's dict holds it, from a ProcedureChain, a list of steps
-    (``base``'s thermal_transform) or a dict (missing keys from ``base``); the steps as dicts.
+    (``base``'s thermal) or a dict (missing keys from ``base``); the steps as dicts.
     Anything else goes to the extension as it is, which refuses it."""
     if isinstance(value, ProcedureChain):
         value = value.to_dict()
@@ -196,7 +196,7 @@ class Config:
         return copy.deepcopy(self._tree["shared"])
 
     def preprocess(self, procedure: str) -> dict[str, Any]:
-        """A copy of a procedure's preprocessing: {"thermal_transform", "steps"}."""
+        """A copy of a procedure's preprocessing: {"thermal", "steps"}."""
         return copy.deepcopy(self._tree["preprocess"][procedure])
 
     def replace(self, **changes: Any) -> Config:
@@ -208,7 +208,8 @@ class Config:
           strategy's defaults), ``stage__param=value`` sets one parameter;
         - ``preprocess=ccdcpp.Preprocess(...)`` replaces the procedures it gives,
           ``preprocess__procedure=chain`` one procedure (a ``ccdcpp.ProcedureChain``, a list of
-          steps, or a dict), ``preprocess__procedure__thermal_transform=flag`` its transform,
+          steps, or a dict), ``preprocess__procedure__thermal="celsius"`` (or ``"stored"``) how it
+          reads the thermal row,
           ``preprocess__procedure__step__param=value`` a parameter of its one step of that
           type, and ``preprocess__step__param=value`` that parameter of every step of that
           type.
@@ -243,8 +244,8 @@ class Config:
                 if parts[0] in PROCEDURES:
                     if parts[0] not in tree["preprocess"]:
                         raise ValueError(f"the configuration has no preprocess '{parts[0]}'")
-                    if parts[1:] == ["thermal_transform"]:
-                        tree["preprocess"][parts[0]]["thermal_transform"] = value
+                    if parts[1:] == ["thermal"]:
+                        tree["preprocess"][parts[0]]["thermal"] = value
                     elif len(parts) == 3:
                         _set_step(tree, [parts[0]], parts[1], parts[2], value)
                     else:
@@ -326,7 +327,7 @@ class Config:
                 continue
             chain = self._tree["preprocess"][procedure]
             lines.append(f"[preprocess.{procedure}]")
-            lines.append(f"thermal_transform = {text(chain['thermal_transform'])}")
+            lines.append(f"thermal = {text(chain['thermal'])}")
             lines.append("steps = [")
             for step in chain["steps"]:
                 fields = [f"step = {text(step['step'])}"] + [
@@ -355,7 +356,7 @@ class Config:
             steps = "; ".join(
                 s["step"] + "(" + ", ".join(f"{k}={s[k]!r}" for k in sorted(s) if k != "step")
                 + ")" for s in chain["steps"])
-            transform = "thermal_transform, " if chain["thermal_transform"] else ""
+            transform = f"thermal {chain['thermal']}, "
             rows.append(f"  preprocess {procedure}: {transform}{steps}")
         return "Config(\n" + "\n".join(rows) + "\n)"
 

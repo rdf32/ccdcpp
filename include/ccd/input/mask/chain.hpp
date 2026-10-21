@@ -378,8 +378,8 @@ struct PreprocessPlan
 // Celsius x 100 (the collection-2 form `* 0.00341802 + 149.0 - 273.15`
 // yields plain Celsius).
 //
-// A procedure whose configuration sets thermal_transform reads its thermal
-// row through it: "ccdc" sets it for Standard only, matching pyccd, where
+// A procedure whose configuration reads thermal = "celsius" (config::Thermal)
+// reads its thermal row through it: "ccdc" does for Standard only, matching pyccd, where
 // kelvin_to_celsius() is called inside standard_procedure(). The thermal
 // range of the procedures that do not read it transformed tests the stored
 // row against the bounds taken back through it (stored_range()), so every

@@ -51,7 +51,7 @@ def keeps_snow(base: ccdcpp.Config = CCDC) -> ccdcpp.Config:
     """`base` with the Standard procedure keeping snow observations, by name."""
     return base.replace(preprocess__standard=ProcedureChain(
         steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
-        thermal_transform=True,
+        thermal="celsius",
     ))
 
 
@@ -59,7 +59,7 @@ def written_default() -> Preprocess:
     """pyccd's chain, written out step by step with every field left to its default."""
     common = (KeepQa(), ThermalRange(), BandRange(), OnePerDate())
     return Preprocess(
-        standard=ProcedureChain(steps=common, thermal_transform=True),
+        standard=ProcedureChain(steps=common, thermal="celsius"),
         snow=ProcedureChain(steps=common + (AddQa(), OnePerDate(), ThermalRange())),
         insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), OnePerDate())),
     )
@@ -73,7 +73,7 @@ def written_default_explicit() -> Preprocess:
     band = BandRange(bands=sat, reflectance=(0.0, 1.0), inclusive=(False, False))
     common = (keep, thermal, band, OnePerDate())
     return Preprocess(
-        standard=ProcedureChain(steps=common, thermal_transform=True),
+        standard=ProcedureChain(steps=common, thermal="celsius"),
         snow=ProcedureChain(steps=common + (AddQa(("snow",)), OnePerDate(), thermal)),
         insufficient_clear=ProcedureChain(steps=common + (
             GreenMedian(offset=0.04, scope="stat_window"), OnePerDate(),
@@ -219,7 +219,7 @@ class WrittenChains(unittest.TestCase):
         dates, cube, scl = tp.ten_band_inputs()
         common = (KeepQa(), BandRange(), OnePerDate())
         written = Preprocess(
-            standard=ProcedureChain(steps=common, thermal_transform=True),
+            standard=ProcedureChain(steps=common, thermal="celsius"),
             snow=ProcedureChain(steps=common + (AddQa(), OnePerDate())),
             insufficient_clear=ProcedureChain(steps=common + (GreenMedian(), OnePerDate())),
         )
@@ -268,8 +268,8 @@ class CustomChains(unittest.TestCase):
         # Thermal handed over in Kelvin x 10 and transformed on every procedure
         # is the preset on input converted beforehand with the identity
         # transform.
-        everywhere = CCDC.replace(preprocess__snow__thermal_transform=True,
-                                  preprocess__insufficient_clear__thermal_transform=True)
+        everywhere = CCDC.replace(preprocess__snow__thermal="celsius",
+                                  preprocess__insufficient_clear__thermal="celsius")
         cube = CUBE_DN.copy()
         cube[..., 6, ::7] = 1000.0
         converted = cube.copy()
@@ -357,12 +357,12 @@ class Replace(unittest.TestCase):
                      if s["step"] == "thermal_range"]
             self.assertEqual([s["celsius"] for s in steps], [[-80.0, 70.7]] * len(steps))
             self.assertEqual(len(steps), 2 if procedure == "snow" else 1)
-        flag = CCDC.replace(preprocess__snow__thermal_transform=True)
-        self.assertTrue(flag.preprocess("snow")["thermal_transform"])
+        flag = CCDC.replace(preprocess__snow__thermal="celsius")
+        self.assertEqual(flag.preprocess("snow")["thermal"], "celsius")
         chain = CCDC.replace(preprocess__snow=[KeepQa(), OnePerDate()])
         self.assertEqual([s["step"] for s in chain.preprocess("snow")["steps"]],
                          ["keep_qa", "one_per_date"])
-        self.assertFalse(chain.preprocess("snow")["thermal_transform"])
+        self.assertEqual(chain.preprocess("snow")["thermal"], "stored")
         as_dict = CCDC.replace(preprocess__snow={"steps": [{"step": "one_per_date"}]})
         self.assertEqual(as_dict.preprocess("snow")["steps"], [{"step": "one_per_date"}])
         whole = CCDC.replace(preprocess=Preprocess(snow=ProcedureChain(steps=(OnePerDate(),))))
@@ -466,8 +466,12 @@ class Validation(unittest.TestCase):
             ThermalRange(inclusive=(True,))  # pyright: ignore[reportArgumentType]  # one flag, refused
         with self.assertRaises(TypeError):
             ProcedureChain(steps=(object(),))
-        with self.assertRaises(TypeError):
-            ProcedureChain(thermal_transform=1)  # pyright: ignore[reportArgumentType]  # not a bool, refused
+        with self.assertRaisesRegex(ValueError, "thermal is 'kelvin'; it is 'celsius' or 'stored'"):
+            ProcedureChain(thermal="kelvin")  # pyright: ignore[reportArgumentType]  # not a name, refused
+        with self.assertRaisesRegex(ValueError, r"^preprocess snow thermal is 'kelvin'; it is "
+                                                r"\"celsius\" \(through the input's thermal "
+                                                r"transform\) or \"stored\"$"):
+            CCDC.replace(preprocess__snow__thermal="kelvin")
         with self.assertRaises(TypeError):
             Preprocess(standard=(KeepQa(),))  # pyright: ignore[reportArgumentType]  # not a chain, refused
         self.assertEqual(KeepQa().to_dict(), {"step": "keep_qa"})

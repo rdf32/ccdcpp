@@ -41,7 +41,7 @@ namespace preprocess
 // converts them first), or none where the step does not apply to the input;
 // of the input it reads only the layout, which row is thermal or green, and
 // the thermal transform. `context` is where the step is (its procedure,
-// whether the procedure applies the thermal transform, its position;
+// how the procedure reads the thermal row, its position;
 // config/preprocess.hpp). A std::invalid_argument it throws is refused
 // naming the step ("preprocess standard step 2 'band_range': ..."). A
 // registry's other step types are the same, and return a Step::of() a

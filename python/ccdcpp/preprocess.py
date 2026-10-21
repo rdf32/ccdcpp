@@ -1,8 +1,9 @@
 """The preprocessing steps of a configuration, by name and in physical terms.
 
 A configuration's ``preprocess`` section says, per procedure (``standard``, ``snow``,
-``insufficient_clear``), whether it reads the thermal row through the input's thermal transform
-and which steps build its processing mask, in order. A step's parameters are physical: QA codes
+``insufficient_clear``), how it reads the thermal row (``thermal``: ``"celsius"`` through the
+input's thermal transform, or ``"stored"``) and which steps build its processing mask, in
+order. A step's parameters are physical: QA codes
 by name, bands by role, bounds in reflectance and degrees Celsius. The run resolves them against
 its input with the rest of the configuration; ``ccdcpp.plan_of(config, input)`` shows the
 result. The classes here write a chain; a field left None is the step's default
@@ -12,20 +13,24 @@ result. The classes here write a chain; a field left None is the step's default
 
     keeps_snow = ccdcpp.config("ccdc").replace(preprocess__standard=ProcedureChain(
         steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
-        thermal_transform=True,
+        thermal="celsius",
     ))
 """
 from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 __all__ = ["AddQa", "BandRange", "OnePerDate", "GreenMedian", "KeepQa", "PROCEDURES", "Preprocess",
            "ProcedureChain", "QA_CODE_NAMES", "REFLECTIVE", "ThermalRange"]
 
 #: The procedures of a configuration's preprocess section.
 PROCEDURES = ("standard", "snow", "insufficient_clear")
+
+#: How a procedure reads the thermal row: through the input's thermal transform, in degrees
+#: Celsius, or as the input stores it.
+_THERMAL = ("celsius", "stored")
 
 #: The band list of every row whose role is not thermal or other, in row order.
 REFLECTIVE = "reflective"
@@ -116,10 +121,11 @@ class AddQa:
 class ThermalRange:
     """thermal_range: keep only the observations whose thermal row lies in ``celsius``,
     ``(min, max)`` in degrees Celsius; an end ``inclusive`` also keeps a value equal to it
-    (``inclusive=(False, True)``). None: pyccd's -93.2 and 70.7, exclusive. A procedure with
-    ``thermal_transform`` tests the transformed row; one without it tests the row as the input
-    holds it against the bounds taken back through the input's transform, so the range is in
-    degrees Celsius on every input. An input without a ``"thermal"`` row skips the step."""
+    (``inclusive=(False, True)``). None: pyccd's -93.2 and 70.7, exclusive. A procedure reading
+    ``thermal="celsius"`` tests the transformed row; one reading it ``"stored"`` tests the row as
+    the input holds it against the bounds taken back through the input's transform, so the
+    range is in degrees Celsius on every input. An input without a ``"thermal"`` row skips the
+    step."""
 
     celsius: tuple[float, float] | None = None
     inclusive: tuple[bool, bool] | None = None
@@ -199,24 +205,24 @@ def step_dict(step: object) -> dict[str, Any]:
 @dataclass(frozen=True)
 class ProcedureChain:
     """One procedure's preprocessing: its ``steps`` in order (at most
-    ``ccdcpp.CHAIN_CAPACITY``), and whether it reads the thermal row through the input's
-    thermal transform (``thermal_transform``; "ccdc" sets it for standard only, as pyccd)."""
+    ``ccdcpp.CHAIN_CAPACITY``), and how it reads the thermal row: ``thermal="celsius"``
+    through the input's thermal transform ("ccdc"'s standard, as pyccd), or ``"stored"`` as
+    the input holds it."""
 
     steps: tuple[object, ...] = ()
-    thermal_transform: bool = False
+    thermal: Literal["celsius", "stored"] = "stored"
 
     def __post_init__(self) -> None:
         steps = tuple(self.steps)
         for step in steps:
             step_dict(step)
         object.__setattr__(self, "steps", steps)
-        if not isinstance(self.thermal_transform, bool):
-            raise TypeError(f"ProcedureChain: thermal_transform is {self.thermal_transform!r}; "
-                            f"it is True or False")
+        if self.thermal not in _THERMAL:
+            raise ValueError(f"ProcedureChain: thermal is {self.thermal!r}; it is "
+                             f"{' or '.join(repr(t) for t in _THERMAL)}")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"thermal_transform": self.thermal_transform,
-                "steps": [step_dict(s) for s in self.steps]}
+        return {"thermal": self.thermal, "steps": [step_dict(s) for s in self.steps]}
 
 
 @dataclass(frozen=True)

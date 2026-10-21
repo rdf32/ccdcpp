@@ -1521,11 +1521,11 @@ TEST(Preprocess, ARegistryAddsAStepType)
     const ccd::preprocess::Step& step = resolved.plan.standard.chain[1];
     ASSERT_EQ(step.kind, ccd::preprocess::StepKind::Custom);
 
-    // make() is handed where the step is: its procedure, whether that
-    // procedure applies the thermal transform, its position.
+    // make() is handed where the step is: its procedure, how that procedure
+    // reads the thermal row, its position.
     ASSERT_EQ(DropDayStep::contexts().size(), 1u);
     EXPECT_EQ(DropDayStep::contexts()[0].procedure, "standard");
-    EXPECT_TRUE(DropDayStep::contexts()[0].thermal_transform);
+    EXPECT_EQ(DropDayStep::contexts()[0].thermal, ccd::config::Thermal::Celsius);
     EXPECT_EQ(DropDayStep::contexts()[0].position, 1u);
     {
         ccd::config::Config snow = golden::pyccd();
@@ -1535,7 +1535,7 @@ TEST(Preprocess, ARegistryAddsAStepType)
         ccd::config::resolve(r, snow, ccd::Input{});
         ASSERT_EQ(DropDayStep::contexts().size(), 1u);
         EXPECT_EQ(DropDayStep::contexts()[0].procedure, "snow");
-        EXPECT_FALSE(DropDayStep::contexts()[0].thermal_transform);
+        EXPECT_EQ(DropDayStep::contexts()[0].thermal, ccd::config::Thermal::Stored);
         EXPECT_EQ(DropDayStep::contexts()[0].position, 3u);
 
         // A refusal of make() names the step.

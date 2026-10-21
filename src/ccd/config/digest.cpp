@@ -88,7 +88,7 @@ void hash(detail::Fnv& h, const PreprocessConfig& preprocess)
     for (const auto& [procedure, chain] : preprocess)
     {
         h.text(procedure);
-        h.flag(chain.thermal_transform);
+        h.text(name(chain.thermal));
         h.integer(static_cast<std::int64_t>(chain.steps.size()));
         for (const StepConfig& step : chain.steps)
         {

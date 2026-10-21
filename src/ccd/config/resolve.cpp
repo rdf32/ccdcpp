@@ -107,11 +107,11 @@ PreprocessConfig resolve_preprocess(const Registry& registry, const PreprocessCo
                                         " steps; a chain holds at most " +
                                         std::to_string(preprocess::CHAIN_CAPACITY));
         ProcedureConfig& resolved = out[procedure];
-        resolved.thermal_transform = chain.thermal_transform;
+        resolved.thermal = chain.thermal;
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
         {
             const StepConfig& step = chain.steps[i];
-            const std::string at = StepContext{procedure, chain.thermal_transform, i}.where();
+            const std::string at = StepContext{procedure, chain.thermal, i}.where();
             const StepType& type = registry.step(step.step, at);
             const std::string where = at + " '" + step.step + "'";
             resolved.steps.push_back(
@@ -170,12 +170,12 @@ preprocess::PreprocessPlan build_plan(const Registry& registry, const Preprocess
     for (const auto& [procedure, chain] : resolved)
     {
         preprocess::ProcedurePlan& of = plan.of(*procedure_named(procedure));
-        if (chain.thermal_transform)
+        if (chain.thermal == Thermal::Celsius)
             of.transform = preprocess::thermal_transform(input);
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
         {
             const StepConfig& step = chain.steps[i];
-            const StepContext context{procedure, chain.thermal_transform, i};
+            const StepContext context{procedure, chain.thermal, i};
             const std::string at = context.where() + " '" + step.step + "'";
             if (auto built = registry.step(step.step, at).make(step.params, input, context, at))
                 of.chain.push_back(*built);
@@ -248,7 +248,7 @@ Config canonical(const Registry& registry, const Config& config)
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
         {
             StepConfig& step = chain.steps[i];
-            const std::string at = StepContext{procedure, chain.thermal_transform, i}.where();
+            const std::string at = StepContext{procedure, chain.thermal, i}.where();
             step.params = spelled_out(registry.step(step.step, at).info, step.params);
         }
     return out;

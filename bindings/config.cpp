@@ -26,7 +26,7 @@ namespace py = pybind11;
 // A configuration crosses into Python as a dict {"shared": {name: value,
 // table: {name: value}},
 // "stages": {stage: {"strategy": name, "params": {name: value}}},
-// "preprocess": {procedure: {"thermal_transform": bool, "steps": [{"step":
+// "preprocess": {procedure: {"thermal": "celsius" or "stored", "steps": [{"step":
 // name, name: value, ...}, ...]}}}: a value is a bool, an int, a float, a
 // str, a list of ints (band rows, QA codes) or a list of strs (band roles, QA
 // code names); a numpy array is its list, a numpy scalar its Python value.
@@ -242,18 +242,23 @@ ccd::config::PreprocessConfig preprocess_from_python(const py::handle& preproces
         const std::string name = py::str(name_obj);
         if (!py::isinstance<py::dict>(chain_obj))
             throw py::value_error("preprocess " + name +
-                                  " is a dict {\"thermal_transform\": ..., \"steps\": [...]}");
+                                  " is a dict {\"thermal\": ..., \"steps\": [...]}");
         const py::dict chain = chain_obj.cast<py::dict>();
         ccd::config::ProcedureConfig procedure;
         for (const auto& [key, value] : chain)
         {
             const std::string k = py::str(key);
-            if (k == "thermal_transform")
+            if (k == "thermal")
             {
-                if (!py::isinstance<py::bool_>(value))
-                    throw py::value_error("preprocess " + name +
-                                          " thermal_transform is a flag (True or False)");
-                procedure.thermal_transform = value.cast<bool>();
+                const auto thermal = py::isinstance<py::str>(value)
+                                         ? ccd::config::thermal_named(value.cast<std::string>())
+                                         : std::nullopt;
+                if (!thermal)
+                    throw py::value_error("preprocess " + name + " thermal is " +
+                                          std::string(py::repr(value)) +
+                                          "; it is \"celsius\" (through the input's thermal "
+                                          "transform) or \"stored\"");
+                procedure.thermal = *thermal;
             }
             else if (k == "steps")
             {
@@ -281,7 +286,7 @@ ccd::config::PreprocessConfig preprocess_from_python(const py::handle& preproces
             }
             else
                 throw py::value_error("preprocess " + name +
-                                      " holds \"thermal_transform\" and \"steps\", not '" + k +
+                                      " holds \"thermal\" and \"steps\", not '" + k +
                                       "'");
         }
         out[name] = std::move(procedure);
@@ -304,7 +309,7 @@ py::dict preprocess_to_python(const ccd::config::PreprocessConfig& preprocess)
             steps.append(d);
         }
         py::dict chain;
-        chain["thermal_transform"] = procedure.thermal_transform;
+        chain["thermal"] = ccd::config::name(procedure.thermal);
         chain["steps"] = steps;
         out[py::str(name)] = chain;
     }

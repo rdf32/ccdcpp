@@ -933,9 +933,10 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
     const ccd::config::Values band = {{"bands", ccd::config::Value(std::string("reflective"))},
                                       {"reflectance", ccd::config::reals({0.0, 1.0})},
                                       {"inclusive", ccd::config::flags({false, false})}};
-    const auto chain = [&](bool transform, std::vector<ccd::config::StepConfig> after)
+    using ccd::config::Thermal;
+    const auto chain = [&](Thermal reads, std::vector<ccd::config::StepConfig> after)
     {
-        ccd::config::ProcedureConfig procedure{transform,
+        ccd::config::ProcedureConfig procedure{reads,
                                                {{"keep_qa", {{"codes", names({"clear", "water"})}}},
                                                 {"thermal_range", thermal},
                                                 {"band_range", band},
@@ -945,13 +946,15 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
     };
     ccd::config::Config written = golden::pyccd();
     written.preprocess = {
-        {"standard", chain(true, {})},
-        {"snow", chain(false, {{"add_qa", {{"codes", names({"snow"})}}}, {"one_per_date", {}},
-                               {"thermal_range", thermal}})},
+        {"standard", chain(Thermal::Celsius, {})},
+        {"snow", chain(Thermal::Stored, {{"add_qa", {{"codes", names({"snow"})}}},
+                                         {"one_per_date", {}},
+                                         {"thermal_range", thermal}})},
         {"insufficient_clear",
-         chain(false, {{"green_median", {{"offset", real(0.04)},
-                                         {"scope", ccd::config::Value(std::string("stat_window"))}}},
-                       {"one_per_date", {}}})},
+         chain(Thermal::Stored, {{"green_median", {{"offset", real(0.04)},
+                                                   {"scope", ccd::config::Value(
+                                                                 std::string("stat_window"))}}},
+                                 {"one_per_date", {}}})},
     };
 
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
@@ -1046,8 +1049,8 @@ TEST(CustomPlan, TransformOnEveryProcedure)
     const ccd::Input h;
 
     ccd::config::Config everywhere = golden::pyccd();
-    everywhere.preprocess.at("snow").thermal_transform = true;
-    everywhere.preprocess.at("insufficient_clear").thermal_transform = true;
+    everywhere.preprocess.at("snow").thermal = ccd::config::Thermal::Celsius;
+    everywhere.preprocess.at("insufficient_clear").thermal = ccd::config::Thermal::Celsius;
 
     // Kelvin x 10 integers times 10 less 27315: exact in double.
     std::vector<double> converted = c.spectral;

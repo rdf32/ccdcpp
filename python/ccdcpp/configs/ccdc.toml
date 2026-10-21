@@ -90,7 +90,7 @@ bands = ["green", "swir1"]
 t_const = 4.89
 
 [preprocess.standard]
-thermal_transform = true
+thermal = "celsius"
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
@@ -99,7 +99,7 @@ steps = [
 ]
 
 [preprocess.snow]
-thermal_transform = false
+thermal = "stored"
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },
@@ -111,7 +111,7 @@ steps = [
 ]
 
 [preprocess.insufficient_clear]
-thermal_transform = false
+thermal = "stored"
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", celsius = [-93.2, 70.7], inclusive = [false, false] },

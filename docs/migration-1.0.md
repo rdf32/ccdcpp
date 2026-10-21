@@ -345,7 +345,7 @@ The chain is part of the configuration. `preprocess=`, the profile's `preprocess
 | 0.10.0 | 1.0 |
 |---|---|
 | `detect(..., preprocess=plan)` | `config=cfg.replace(preprocess__<procedure>=ProcedureChain(...))`, or `preprocess__<procedure>__<step>__<param>=` |
-| `ProcedureChain(steps, transform="default")` / `transform=None` | `ProcedureChain(steps, thermal_transform=True)` / `False` (the input's transform) |
+| `ProcedureChain(steps, transform="default")` / `transform=None` | `ProcedureChain(steps, thermal="celsius")` (through the input's transform) / `thermal="stored"` |
 | `Transform(role, scale, offset)` | the input's `thermal_scale`, `thermal_offset` |
 | `BandRange(roles=...)` | `BandRange(bands=...)` (roles or `"reflective"`) |
 | `Dedupe()`, `StepKind.Dedupe` (C++ `preprocess::Step::dedupe()`, `StepKind::Dedupe`) | `OnePerDate()`, `StepKind.OnePerDate` (`Step::one_per_date()`, `StepKind::OnePerDate`): the step `one_per_date` |

@@ -74,7 +74,7 @@ class Presets(unittest.TestCase):
         self.assertNotIn("alpha", ccdcpp.config("ccdc").params("model"))
         # pyccd's chain, in physical terms.
         clear = ccdcpp.config("ccdc").preprocess("insufficient_clear")
-        self.assertFalse(clear["thermal_transform"])
+        self.assertEqual(clear["thermal"], "stored")
         self.assertEqual([s["step"] for s in clear["steps"]],
                          ["keep_qa", "thermal_range", "band_range", "one_per_date", "green_median",
                           "one_per_date"])
@@ -84,7 +84,7 @@ class Presets(unittest.TestCase):
         self.assertEqual(clear["steps"][2]["reflectance"], [0.0, 1.0])
         self.assertEqual(clear["steps"][4], {"step": "green_median", "offset": 0.04,
                                              "scope": "stat_window"})
-        self.assertTrue(ccdcpp.config("ccdc").preprocess("standard")["thermal_transform"])
+        self.assertEqual(ccdcpp.config("ccdc").preprocess("standard")["thermal"], "celsius")
 
     def test_a_preset_by_name_is_built_once(self):
         self.assertIs(ccdcpp.config("ccdc"), ccdcpp.config("ccdc"))

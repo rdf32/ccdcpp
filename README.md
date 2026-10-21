@@ -237,7 +237,7 @@ True
 |-------|---------|---------|
 | `reflectance_scale` | `10000.0` | reflectance `r` is held as `r * reflectance_scale + reflectance_offset` (Collection-1 DN 10000, reflectance 1) |
 | `reflectance_offset` | `0.0` | the data's value of reflectance 0; Collection-2 DN (`r = DN * 2.75e-5 - 0.2`) is `reflectance_scale = 1 / 2.75e-5`, `reflectance_offset = 0.2 / 2.75e-5` |
-| `thermal_scale`, `thermal_offset` | `10.0`, `-27315.0` | the thermal transform, `thermal * scale + offset`, applied by a procedure whose chain sets `thermal_transform` (Standard in `ccdc`); the default takes Kelvin x 10 to Celsius x 100 |
+| `thermal_scale`, `thermal_offset` | `10.0`, `-27315.0` | the thermal transform, `thermal * scale + offset`, applied by a procedure whose chain reads `thermal = "celsius"` (Standard in `ccdc`); the default takes Kelvin x 10 to Celsius x 100 |
 | `thermal_at_100c` | `10000.0` | the value 100 °C has after the transform (Celsius x 100: 10000; Celsius / 100: 1) |
 | `saturation_code`, `thermal_saturation_code` | `None`, `None` | the value a saturated observation holds in the reflective rows and in the thermal row, as the data stores it (Collection-1 DN: 20000 and 20000), or `None`; no step of the `ccdc` configuration reads them |
 | `roles` | the Landsat seven | one role per row ([Band layout](#band-layout)) |
@@ -621,18 +621,18 @@ insufficient_clear
   5  OnePerDate
 ```
 
-Only `standard` sets `thermal_transform` (the input's `thermal_scale`/`thermal_offset`, none when that is the identity) and tests the thermal range on the transformed row; the other two read the thermal band in the caller's unit and test it against the same degrees Celsius taken back through the transform: 1799.5 to 3438.5, Kelvin x 10, here. Each chain's thermal range covers every observation its fit uses: `snow` tests it again as its last step, after adding the snow observations back ([docs/units.md](docs/units.md#the-thermal-range)).
+Only `standard` reads `thermal = "celsius"` (through the input's `thermal_scale`/`thermal_offset`, none when that is the identity) and tests the thermal range on the transformed row; the other two read the thermal band in the caller's unit and test it against the same degrees Celsius taken back through the transform: 1799.5 to 3438.5, Kelvin x 10, here. Each chain's thermal range covers every observation its fit uses: `snow` tests it again as its last step, after adding the snow observations back ([docs/units.md](docs/units.md#the-thermal-range)).
 
 ### A custom chain
 
-A chain is part of the configuration: `Config.replace()` edits one step's parameter (`preprocess__<procedure>__<step>__<param>`), every step of a type (`preprocess__<step>__<param>`), a procedure's transform (`preprocess__<procedure>__thermal_transform`) or a whole chain (`preprocess__<procedure>=ccdcpp.ProcedureChain(...)`); a TOML preset holds `[preprocess.<procedure>]` tables. Here the Standard procedure keeps snow observations too:
+A chain is part of the configuration: `Config.replace()` edits one step's parameter (`preprocess__<procedure>__<step>__<param>`), every step of a type (`preprocess__<step>__<param>`), how a procedure reads the thermal row (`preprocess__<procedure>__thermal="celsius"` or `"stored"`) or a whole chain (`preprocess__<procedure>=ccdcpp.ProcedureChain(...)`); a TOML preset holds `[preprocess.<procedure>]` tables. Here the Standard procedure keeps snow observations too:
 
 ```python
 from ccdcpp import BandRange, OnePerDate, KeepQa, ProcedureChain, ThermalRange
 
 snowy_cfg = ccdcpp.config("ccdc").replace(preprocess__standard=ProcedureChain(
     steps=(KeepQa(("clear", "water", "snow")), ThermalRange(), BandRange(), OnePerDate()),
-    thermal_transform=True))
+    thermal="celsius"))
 print(ccdcpp.plan_of(snowy_cfg, ccdcpp.Input()).standard.chain[0])
 snowy = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), config=snowy_cfg)
 ```
@@ -651,8 +651,8 @@ from ccdcpp import Thermal
 c2_raw_thermal = dataclasses.replace(presets.landsat_c2(), name="landsat_c2_raw_thermal",
                                      thermal=Thermal(scale=3.41802e-5, offset=-1.2415,
                                                      at_100c=1.0))
-everywhere = ccdcpp.config("ccdc").replace(preprocess__snow__thermal_transform=True,
-                                           preprocess__insufficient_clear__thermal_transform=True)
+everywhere = ccdcpp.config("ccdc").replace(preprocess__snow__thermal="celsius",
+                                           preprocess__insufficient_clear__thermal="celsius")
 
 raw = spectral.copy()
 raw[6] = (spectral[6] * 100 + 273.15 - 149.0) / 0.00341802   # ST_B10 DN

@@ -19,5 +19,18 @@ const std::vector<std::string>& procedures()
     return names;
 }
 
+const char* name(Thermal thermal)
+{
+    return thermal == Thermal::Celsius ? "celsius" : "stored";
+}
+
+std::optional<Thermal> thermal_named(const std::string& name)
+{
+    for (const Thermal thermal : {Thermal::Stored, Thermal::Celsius})
+        if (name == config::name(thermal))
+            return thermal;
+    return std::nullopt;
+}
+
 } // namespace config
 } // namespace ccd

@@ -84,7 +84,7 @@ std::optional<Step> ThermalRange::make(const Params& params, const Input& input,
     // A procedure that does not transform its thermal row tests the stored row
     // against the bounds taken back through the transform.
     const std::optional<Affine> transform = thermal_transform(input);
-    if (context.thermal_transform || !transform)
+    if (context.thermal == config::Thermal::Celsius || !transform)
         return Step::thermal_range(thermal, range);
     return Step::thermal_range(thermal, stored_range(range, *transform));
 }

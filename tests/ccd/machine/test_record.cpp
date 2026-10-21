@@ -452,7 +452,9 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
     for (const auto& [procedure, chain] : preset.preprocess)
     {
         ccd::config::Config flipped = preset;
-        flipped.preprocess[procedure].thermal_transform = !chain.thermal_transform;
+        flipped.preprocess[procedure].thermal = chain.thermal == ccd::config::Thermal::Celsius
+                                                    ? ccd::config::Thermal::Stored
+                                                    : ccd::config::Thermal::Celsius;
         EXPECT_NE(digest_of(h, flipped), base) << procedure;
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
             for (const auto& [name, value] : chain.steps[i].params)
