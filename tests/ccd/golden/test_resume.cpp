@@ -19,13 +19,16 @@
 //     not a change.
 //   * ResumeWithNothingNew.*: observations after T that the filters drop
 //     give the stored run's output again (the series ends where it did).
-//   * ResumeRefuses.*: another format, results version or options, a
-//     shorter series, too few stored segments.
+//   * ResumeRefuses/WhatItCannotContinue.Case/<case>, one test per case:
+//     another format, results version or configuration, a shorter series,
+//     too few stored segments, two records for one pixel; ResumeAccepts.*:
+//     exactly the final segments.
 //
 //==============================================================================
 
 #include <algorithm>
 #include <memory>
+#include <ostream>
 #include <set>
 #include <sstream>
 #include <cstdint>
@@ -358,64 +361,131 @@ TEST(ResumeWithNothingNew, TheStoredOutputAgain)
 // ResumeRefuses
 //------------------------------------------------------------------------------
 
-TEST(ResumeRefuses, WhatItCannotContinue)
+namespace
 {
-    const auto all = golden::characterization_pixels();
-    const Series& s = golden::named(all, "start_catch");
-    const Series cut = s.prefix(2 * s.size() / 3);
-    const ccd::PixelOutput stored = golden::recorded_at(cut, s.statistics_end());
-    ASSERT_GT(stored.record.standard.final_segments, 0u);
 
-    const auto refuse = [&](ccd::ResumeHeader header, const Series& input,
-                            const ccd::Input& h, std::size_t segments)
+// start_catch cut two thirds of the way, and its run recorded on the cut.
+struct Stored
+{
+    Series s;
+    Series cut;
+    ccd::PixelOutput stored;
+};
+
+const Stored& stored_cut()
+{
+    static const Stored st = []
     {
-        const std::vector<ccd::ChangeModel> given(
-            stored.result.models.begin(), stored.result.models.begin() + segments);
-        EXPECT_THROW(
-            ccd::detect(
-                golden::spec_of(h, input.config),
-                input.date_view(),
-                input.spectral_view(),
-                input.qa_view(),
-                ccd::Resume{header, {stored.record}, {given}}),
-            std::invalid_argument);
-    };
-    const std::size_t all_segments = stored.result.models.size();
+        const auto all = golden::characterization_pixels();
+        const Series& s = golden::named(all, "start_catch");
+        const Series cut = s.prefix(2 * s.size() / 3);
+        return Stored{s, cut, golden::recorded_at(cut, s.statistics_end())};
+    }();
+    return st;
+}
 
-    ccd::ResumeHeader h = stored.header;
-    h.format += 1;
-    refuse(h, s, s.h, all_segments);
+// detect() on `input` resuming the stored run under `header`, with its first
+// `segments` segments, throws invalid_argument.
+void expect_refused(const ccd::ResumeHeader& header, const Series& input, std::size_t segments)
+{
+    const Stored& st = stored_cut();
+    const std::vector<ccd::ChangeModel> given(
+        st.stored.result.models.begin(), st.stored.result.models.begin() + segments);
+    EXPECT_THROW(
+        ccd::detect(
+            golden::spec_of(st.s.h, input.config),
+            input.date_view(),
+            input.spectral_view(),
+            input.qa_view(),
+            ccd::Resume{header, {st.stored.record}, {given}}),
+        std::invalid_argument);
+}
 
-    h = stored.header;
-    h.results_version += 1;
-    refuse(h, s, s.h, all_segments);
+// The stored run's final segments.
+std::vector<ccd::ChangeModel> final_only(const Stored& st)
+{
+    return std::vector<ccd::ChangeModel>(
+        st.stored.result.models.begin(),
+        st.stored.result.models.begin() + st.stored.record.standard.final_segments);
+}
 
-    Series other = s;   // another configuration
-    other.config = golden::with_shared(s.config, "change_probability", ccd::config::real(0.95));
-    refuse(stored.header, other, s.h, all_segments);
+// What a resume cannot continue, named.
+struct Refusal
+{
+    const char* name;
+    void (*refuse)(const Stored& st);
+};
 
-    refuse(stored.header, cut.prefix(cut.size() - 1), s.h, all_segments);
-    refuse(stored.header, s, s.h, stored.record.standard.final_segments - 1);
+void PrintTo(const Refusal& refusal, std::ostream* os)
+{
+    *os << refusal.name;
+}
 
-    // What it does accept: the same, with exactly the final segments.
-    const std::vector<ccd::ChangeModel> final_only(
-        stored.result.models.begin(),
-        stored.result.models.begin() + stored.record.standard.final_segments);
-    EXPECT_NO_THROW(ccd::detect(
-        golden::spec_of(s.h, s.config),
-        s.date_view(),
-        s.spectral_view(),
-        s.qa_view(),
-        ccd::Resume{stored.header, {stored.record}, {final_only}}));
-
+const Refusal REFUSALS[] = {
+    {"another_format", [](const Stored& st)
+     {
+         ccd::ResumeHeader h = st.stored.header;
+         h.format += 1;
+         expect_refused(h, st.s, st.stored.result.models.size());
+     }},
+    {"another_results_version", [](const Stored& st)
+     {
+         ccd::ResumeHeader h = st.stored.header;
+         h.results_version += 1;
+         expect_refused(h, st.s, st.stored.result.models.size());
+     }},
+    {"another_configuration", [](const Stored& st)
+     {
+         Series other = st.s;
+         other.config = golden::with_shared(st.s.config, "change_probability", ccd::config::real(0.95));
+         expect_refused(st.stored.header, other, st.stored.result.models.size());
+     }},
+    {"a_shorter_series", [](const Stored& st)
+     { expect_refused(st.stored.header, st.cut.prefix(st.cut.size() - 1), st.stored.result.models.size()); }},
+    {"fewer_than_the_final_segments", [](const Stored& st)
+     { expect_refused(st.stored.header, st.s, st.stored.record.standard.final_segments - 1); }},
     // A pixel's resume holds one record and one segment list.
-    EXPECT_THROW(ccd::detect(
-        golden::spec_of(s.h, s.config),
-        s.date_view(),
-        s.spectral_view(),
-        s.qa_view(),
-        ccd::Resume{stored.header, {stored.record, stored.record}, {final_only, final_only}}),
-                 std::invalid_argument);
+    {"two_records_for_one_pixel", [](const Stored& st)
+     {
+         EXPECT_THROW(ccd::detect(
+             golden::spec_of(st.s.h, st.s.config),
+             st.s.date_view(),
+             st.s.spectral_view(),
+             st.s.qa_view(),
+             ccd::Resume{st.stored.header, {st.stored.record, st.stored.record},
+                         {final_only(st), final_only(st)}}),
+                      std::invalid_argument);
+     }},
+};
+
+class WhatItCannotContinue : public ::testing::TestWithParam<Refusal>
+{
+};
+
+} // namespace
+
+// One test per refusal, named for it.
+TEST_P(WhatItCannotContinue, Case)
+{
+    const Stored& st = stored_cut();
+    ASSERT_GT(st.stored.record.standard.final_segments, 0u);
+    GetParam().refuse(st);
+}
+
+INSTANTIATE_TEST_SUITE_P(ResumeRefuses, WhatItCannotContinue, ::testing::ValuesIn(REFUSALS),
+                         [](const auto& info) { return std::string(info.param.name); });
+
+// What it does accept: the same, with exactly the final segments.
+TEST(ResumeAccepts, ExactlyTheFinalSegments)
+{
+    const Stored& st = stored_cut();
+    ASSERT_GT(st.stored.record.standard.final_segments, 0u);
+    EXPECT_NO_THROW(ccd::detect(
+        golden::spec_of(st.s.h, st.s.config),
+        st.s.date_view(),
+        st.s.spectral_view(),
+        st.s.qa_view(),
+        ccd::Resume{st.stored.header, {st.stored.record}, {final_only(st)}}));
 }
 
 //------------------------------------------------------------------------------
