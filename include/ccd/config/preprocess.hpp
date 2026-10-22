@@ -18,7 +18,7 @@ namespace config
 //
 // The configuration's preprocess section
 //
-// For each procedure ("standard", "snow", "insufficient_clear"): how it reads
+// For each procedure ("standard", "insufficient_clear", "snow"): how it reads
 // the thermal row (Thermal), and its chain,
 // the steps in order, each a step type by name (Registry::add_step()) with its
 // parameters in physical terms -- QA codes by name, bands by role, bounds in

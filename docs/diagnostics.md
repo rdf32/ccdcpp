@@ -67,7 +67,7 @@ and `ccdcpp.to_pixels()` gives each pixel detect()'s.
 
 | pixel | |
 |---|---|
-| `procedure` | 0 standard, 1 insufficient_clear, 2 snow (the record's codes) |
+| `procedure` | 0 standard, 1 insufficient_clear, 2 snow (the record's codes), named by `ccdcpp.PROCEDURES[procedure]` |
 | `exit` | why the machine stopped, a code of `ccdcpp.EXITS` (`SeriesEnd`, `InitializeExhausted`, `NoFit`, ...); 0, `None`, for the whole-series procedures |
 | `clear` | the observations the preprocessing kept |
 | `kept` | the observations the processing mask keeps after the fit: those of the codes below `ccdcpp.FIRST_DROP` (`in_segment`, `no_fit`, `no_segment`) |

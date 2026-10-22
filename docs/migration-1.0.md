@@ -391,6 +391,7 @@ back ([change (b)](#what-changes-in-the-outputs)).
 | `ccdcpp.OUTLIER_PROBABILITY` | `ccdcpp.config("ccdc").shared()["outlier_probability"]` |
 | `ccdcpp.QA_CODE_FIELDS` | `ccdcpp.QA_CODE_NAMES` (the names a configuration's `codes` take) |
 | `ccdcpp.GREEN_FILTER_SCOPES` | the names `green_median`'s `scope` takes: `"all"`, `"stat_window"`, `"off"` |
+| `ccdcpp.PROCEDURES`, `("standard", "snow", "insufficient_clear")` | `("standard", "insufficient_clear", "snow")`, in code order: `PROCEDURES[code]` names a record's or the diagnostics' `procedure` |
 | `qa_tables.<builder>(options)` | `qa_tables.<builder>(input)`, an `Input` |
 
 ## Newly refused values

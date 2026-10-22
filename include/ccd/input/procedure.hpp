@@ -20,8 +20,8 @@ namespace ccd
 // preprocess section:
 //
 //     for (PixelProcedure procedure : PROCEDURES)
-//         std::cout << name(procedure) << '\n';   // standard, snow,
-//                                                 // insufficient_clear
+//         std::cout << name(procedure) << '\n';   // standard,
+//                                                 // insufficient_clear, snow
 //
 //==============================================================================
 
@@ -32,15 +32,16 @@ enum class PixelProcedure
     PermanentSnow
 };
 
-// Every procedure, in the order a preprocess section lists them.
+// Every procedure, in code order (PROCEDURES[code], the code the record and
+// the diagnostics hold): the order a preprocess section lists them.
 constexpr std::array<PixelProcedure, 3> PROCEDURES = {
     PixelProcedure::Standard,
-    PixelProcedure::PermanentSnow,
     PixelProcedure::InsufficientClear,
+    PixelProcedure::PermanentSnow,
 };
 
-// The procedure's name in a preprocess section: "standard", "snow",
-// "insufficient_clear".
+// The procedure's name in a preprocess section: "standard",
+// "insufficient_clear", "snow".
 const char* name(PixelProcedure procedure);
 
 // The procedure of a preprocess section's name, none for another:

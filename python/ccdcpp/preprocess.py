@@ -25,8 +25,9 @@ from typing import Any, Literal
 __all__ = ["AddQa", "BandRange", "OnePerDate", "GreenMedian", "KeepQa", "PROCEDURES", "Preprocess",
            "ProcedureChain", "QA_CODE_NAMES", "ThermalRange"]
 
-#: The procedures of a configuration's preprocess section.
-PROCEDURES = ("standard", "snow", "insufficient_clear")
+#: The procedures of a configuration's preprocess section, in code order: the record's and the
+#: diagnostics' ``procedure`` code ``c`` is ``PROCEDURES[c]``.
+PROCEDURES = ("standard", "insufficient_clear", "snow")
 
 #: How a procedure reads the thermal row: through the input's thermal transform, in degrees
 #: Celsius, or as the input stores it.

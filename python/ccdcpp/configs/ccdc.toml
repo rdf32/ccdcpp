@@ -39,6 +39,17 @@ steps = [
     { step = "one_per_date" },
 ]
 
+[preprocess.insufficient_clear]
+thermal = "stored"               # as stored; the range still compares in degrees Celsius
+steps = [
+    { step = "keep_qa", codes = ["clear", "water"] },
+    { step = "thermal_range", celsius = [-93.2, 70.7] },                                                           # degrees Celsius
+    { step = "band_range", bands = ["blue", "green", "red", "nir", "swir1", "swir2"], reflectance = [0.0, 1.0] },  # reflectance
+    { step = "one_per_date" },
+    { step = "green_median", offset = 0.04, scope = "stat_window" },                                               # reflectance
+    { step = "one_per_date" },
+]
+
 [preprocess.snow]
 thermal = "stored"               # as stored; the range still compares in degrees Celsius
 steps = [
@@ -49,17 +60,6 @@ steps = [
     { step = "add_qa", codes = ["snow"] },
     { step = "one_per_date" },
     { step = "thermal_range", celsius = [-93.2, 70.7] },                                                           # degrees Celsius
-]
-
-[preprocess.insufficient_clear]
-thermal = "stored"               # as stored; the range still compares in degrees Celsius
-steps = [
-    { step = "keep_qa", codes = ["clear", "water"] },
-    { step = "thermal_range", celsius = [-93.2, 70.7] },                                                           # degrees Celsius
-    { step = "band_range", bands = ["blue", "green", "red", "nir", "swir1", "swir2"], reflectance = [0.0, 1.0] },  # reflectance
-    { step = "one_per_date" },
-    { step = "green_median", offset = 0.04, scope = "stat_window" },                                               # reflectance
-    { step = "one_per_date" },
 ]
 
 # --- The stages, in the order a pixel meets them ------------------------------------------

@@ -33,8 +33,8 @@ namespace preprocess
 // an optional affine transform of one band, then a chain of filter steps
 // that builds the processing mask.
 //
-//   PreprocessPlan     one ProcedurePlan per procedure (standard, snow,
-//                      insufficient_clear); Run::prepare picks the one of
+//   PreprocessPlan     one ProcedurePlan per procedure (standard,
+//                      insufficient_clear, snow); Run::prepare picks the one of
 //                      the procedure it selected (of()).
 //   ProcedurePlan      the transform and the chain of one procedure.
 //   Chain              up to CHAIN_CAPACITY steps, stored inline, run in

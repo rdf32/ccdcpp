@@ -179,8 +179,8 @@ TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
     ccd::config::Config extra = golden::ccdc();
     extra.preprocess["water"] = extra.preprocess.at("snow");
     expect_refused([&] { build(extra); },
-                   "preprocess has no procedure 'water'; the procedures are standard, snow, "
-                   "insufficient_clear");
+                   "preprocess has no procedure 'water'; the procedures are standard, "
+                   "insufficient_clear, snow");
 
     ccd::config::Config long_chain = golden::ccdc();
     auto& steps = long_chain.preprocess.at("standard").steps;

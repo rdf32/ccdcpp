@@ -353,8 +353,8 @@ void bind_preprocess(py::module_& m)
         m,
         "PreprocessPlan",
         "A configuration's preprocessing resolved against an input "
-        "(plan_of()): a ProcedurePlan per procedure, standard, snow "
-        "(PermanentSnow) and insufficient_clear. A run runs the one of the "
+        "(plan_of()): a ProcedurePlan per procedure, standard, insufficient_clear "
+        "and snow (PermanentSnow). A run runs the one of the "
         "procedure each pixel selects."
     )
     .def_readonly("standard", &pp::PreprocessPlan::standard)

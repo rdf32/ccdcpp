@@ -595,6 +595,9 @@ TEST(Diagnostics, EachExitAndCounterOnAGoldenPixel)
         const ccd::PixelDiagnostics d =
             run(with_diagnostics(golden::spec_of(s.h, s.config)), s).diagnostics;
         EXPECT_EQ(d.procedure, pin.procedure) << pin.pixel;
+        // PROCEDURES is in code order.
+        EXPECT_EQ(ccd::PROCEDURES[static_cast<std::size_t>(d.procedure)], pin.procedure)
+            << pin.pixel;
         EXPECT_EQ(d.exit, pin.exit) << pin.pixel;
         EXPECT_EQ(d.clear, pin.clear) << pin.pixel;
         EXPECT_EQ(d.kept, pin.kept) << pin.pixel;

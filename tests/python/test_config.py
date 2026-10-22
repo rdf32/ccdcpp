@@ -542,6 +542,19 @@ class Runs(unittest.TestCase):
             for key, column in seg.items():
                 np.testing.assert_array_equal(own[key], column)
 
+    def test_a_procedure_code_names_its_procedure(self):
+        d, s, q = pixel()
+        cloudy = np.full_like(q, 4)
+        cloudy[::10] = 0
+        snowy = np.full_like(q, 3)
+        for qa, name in ((q, "standard"), (cloudy, "insufficient_clear"), (snowy, "snow")):
+            with self.subTest(procedure=name):
+                out = ccdcpp.detect(d, s, qa, input=ccdcpp.Input(), diagnostics=True,
+                                    record=True)
+                assert "pixel_diagnostics" in out and "resume" in out
+                self.assertEqual(ccdcpp.PROCEDURES[out["pixel_diagnostics"]["procedure"]], name)
+                self.assertEqual(ccdcpp.PROCEDURES[out["resume"]["procedure"]], name)
+
     def test_an_edge_segment_has_more_observations_than_coefficients(self):
         # A peek below coefficient_min: the first k observations are another cover, so the
         # Start segment holds k. It is written only when k exceeds both the peek (2) and
