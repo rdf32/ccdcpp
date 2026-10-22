@@ -33,6 +33,8 @@ struct Floored final : OutlierRule
     Capabilities needs() const override;
     std::vector<std::string> statistics() const override;
     OutlierOutcome judge(const Peek& peek, const PeekResult& result) const override;
+    // The first peek observation's statistic and the threshold.
+    std::vector<scalar_t> explain(const PeekResult& result) const override;
 
 private:
     Params p_;

@@ -482,6 +482,16 @@ class Runs(unittest.TestCase):
                    if reasons[t] >= ccdcpp.REASONS.index("window_screen")}
         if traced["trace"]:
             self.assertEqual(drops, machine)
+            # Prepare's transition holds each band's noise; an outlier drop the statistic
+            # above its threshold.
+            prepare = [r for r in traced["trace"] if r["kind"] == "transition"][0]
+            self.assertEqual(prepare["phase"], "Prepare")
+            self.assertEqual(len(prepare["values"]), s.shape[0])
+            self.assertTrue(all(v > 0 for v in prepare["values"]))
+            for r in traced["trace"]:
+                if r["kind"] == "drop" and r["outcome"] == "outlier":
+                    statistic, threshold = r["values"]
+                    self.assertGreater(statistic, threshold)
 
         # A cube's: each pixel's, in one (H, W, T) array; to_pixels() gives each its row.
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))

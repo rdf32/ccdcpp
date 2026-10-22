@@ -505,6 +505,9 @@ struct OutlierRule
     // refuses a configuration whose change test does not provide them.
     virtual std::vector<std::string> statistics() const { return {}; }
     virtual OutlierOutcome judge(const Peek& peek, const PeekResult& result) const = 0;
+    // What judge() compared for a drop, for the observer's drop event (called
+    // only with an observer); none by default.
+    virtual std::vector<scalar_t> explain(const PeekResult&) const { return {}; }
 };
 
 //------------------------------------------------------------------------------

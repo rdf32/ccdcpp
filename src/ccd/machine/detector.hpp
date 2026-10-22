@@ -275,9 +275,11 @@ struct State
     // Where the segment loop stopped (set with every Exit).
     Suspended suspended;
 
-    // What the last step decided (its outcome's to_string()), kept for the
+    // What the last step decided (its outcome's to_string()) and the values
+    // it reports with it (Prepare's: each band's noise), kept for the
     // observer's transition until it is reported; set only with an observer.
     const char* outcome = "";
+    std::vector<scalar_t> values;
 
     // Makes the objects of the run's `strategies` the State holds: each
     // PerThread's of its strategy, kept when that strategy made it and made

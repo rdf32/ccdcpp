@@ -18,6 +18,7 @@
 //==============================================================================
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -31,6 +32,7 @@
 #include "ccd/ccd.hpp"
 #include "ccd/strategies/change_test/chi2.hpp"
 #include "ccd/strategies/model/lasso.hpp"
+#include "ccd/strategies/outlier/floored.hpp"
 #include "ccd/strategies/start_search/pyccd.hpp"
 
 #include "characterization.hpp"
@@ -199,6 +201,60 @@ TEST(Reasons, TheObserversDropsAreTheMachinesCodes)
         EXPECT_FALSE(machine.empty()) << pixel;
         EXPECT_EQ(drops->by_day, machine) << pixel;
     }
+#else
+    GTEST_SKIP() << "built with CCD_OBSERVE=OFF";
+#endif
+}
+
+// Prepare's transition holds each band's noise, NaN in a NaN variogram; an
+// Extend outlier's drop the statistic it was dropped for above its
+// threshold; the other drops none.
+TEST(Reasons, ThePrepareTransitionHoldsTheNoiseAndAnOutlierDropItsStatistic)
+{
+#if CCD_OBSERVE
+    struct Values final : ccd::Observer
+    {
+        std::vector<std::vector<double>> prepare;
+        std::vector<std::pair<std::string, std::vector<double>>> drops;
+        void event(index_t, const ccd::ObserverEvent& e) override
+        {
+            if (e.kind == ccd::ObserverEvent::Kind::Transition &&
+                std::string(e.phase) == "Prepare")
+                prepare.push_back(e.values);
+            if (e.kind == ccd::ObserverEvent::Kind::Drop)
+                drops.emplace_back(e.outcome, e.values);
+        }
+    };
+    const auto observed = [](const Series& s)
+    {
+        auto values = std::make_shared<Values>();
+        ccd::RunSpec spec = golden::spec_of(s.h, s.config);
+        spec.observer = values;
+        run(spec, s);
+        return values;
+    };
+
+    const Series& outlier = golden::named(pixels(), "series_end_after_outlier");
+    const auto v = observed(outlier);
+    ASSERT_EQ(v->prepare.size(), 1u);
+    ASSERT_EQ(v->prepare[0].size(), outlier.spectral_view().extent(0));
+    for (const double noise : v->prepare[0])
+        EXPECT_GT(noise, 0.0);
+    ASSERT_EQ(v->drops.size(), 1u);
+    EXPECT_EQ(v->drops[0].first, "outlier");
+    ASSERT_EQ(v->drops[0].second.size(), 2u);
+    EXPECT_GT(v->drops[0].second[0], v->drops[0].second[1]);
+    EXPECT_EQ(v->drops[0].second[1], ccd::strategies::Floored::Params{}.threshold);
+
+    const auto nan = observed(golden::named(pixels(), "variogram_nan"));
+    ASSERT_EQ(nan->prepare.size(), 1u);
+    EXPECT_TRUE(std::any_of(nan->prepare[0].begin(), nan->prepare[0].end(),
+                            [](double x) { return std::isnan(x); }));
+
+    const auto others = observed(golden::named(pixels(), "lookback_far_peek_decides"));
+    for (const auto& [why, values] : others->drops)
+        if (why != "outlier")
+            EXPECT_TRUE(values.empty()) << why;
 #else
     GTEST_SKIP() << "built with CCD_OBSERVE=OFF";
 #endif

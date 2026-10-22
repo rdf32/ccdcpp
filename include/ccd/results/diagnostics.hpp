@@ -85,11 +85,13 @@ struct ObserverEvent
     {
         Transition,   // phase -> next; outcome (what an Initialize, Lookback
                       // or Extend step decided), window, prev_break,
-                      // observations
+                      // observations; values, Prepare's: each band's noise
         Test,         // an Extend change test: day (the peek's first), outcome, values
                       // (the change test's first statistic, chi2's change_magnitude)
         Drop,         // an observation dropped: day, outcome (its reason code's
-                      // name, input/processing_mask.hpp)
+                      // name, input/processing_mask.hpp), values (what the
+                      // stage compared: an Extend outlier's, the outlier
+                      // rule's explain(), floored's statistic and threshold)
         Segment,      // a segment written: day and day_to (its first and last
                       // day), outcome (its curve_qa, break day and change
                       // probability), observations (its count)

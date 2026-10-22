@@ -52,12 +52,16 @@ struct OutlierRule
     // refuses a configuration whose change test does not provide them.
     virtual std::vector<std::string> statistics() const { return {}; }
     virtual OutlierOutcome judge(const Peek& peek, const PeekResult& result) const = 0;
+    // What judge() compared for a drop, for the observer's drop event (called
+    // only with an observer); none by default.
+    virtual std::vector<scalar_t> explain(const PeekResult&) const { return {}; }
 };
 ```
 
 `judge()` reads the `Peek` (the model, the windows, each detection band's residuals over the
 peek, the band noise, the detection bands) and the `PeekResult` the change test wrote (its
 comparison RMSE and statistics by name). It returns an outcome; the machine routes on it.
+`explain()` is optional: what it returns is the trace's `values` of the drop.
 
 ## 2. Scaffold it
 

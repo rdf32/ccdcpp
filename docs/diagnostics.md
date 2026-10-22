@@ -162,7 +162,8 @@ Each event is a dict:
 | `kind` | `transition`, `test`, `drop`, `segment` or `exit` |
 | `phase`, `next`, `outcome` | a transition: the phase it leaves and enters, and what an Initialize, Lookback or Extend step decided (`stable`, `unstable, shifted`, `exhausted, restored`, `included`, `grown`, `change`, ...; empty for the other phases) |
 | `window_start`, `window_stop`, `prev_break`, `observations` | a transition: the cursor (positions in the masked series) and the series length |
-| `day`, `outcome`, `values` | a test: the peek's first day, `change` or `no change`, each peek observation's value of the change test's first statistic (chi2's `change_magnitude`); a drop: the dropped day and why, its reason code's name (`window_screen`, `lookback_outlier`, `outlier`, `before_change`) |
+| `values` | a transition from Prepare: each band's noise, in row order (the noise stage's estimate, which every test scales by) |
+| `day`, `outcome`, `values` | a test: the peek's first day, `change` or `no change`, each peek observation's value of the change test's first statistic (chi2's `change_magnitude`); a drop: the dropped day and why, its reason code's name (`window_screen`, `lookback_outlier`, `outlier`, `before_change`), and for an `outlier` what the outlier rule compared (`floored`'s statistic of the observation and its threshold) |
 | `day`, `day_to`, `outcome`, `observations` | a segment: its first and last day, its curve_qa, break day and change probability, its observation count |
 | `outcome`, `observations` | the exit: why the pixel ended, its name in `ccdcpp.EXITS` (`series_end`, `initialize_exhausted`, ...), and its segment count |
 
@@ -199,8 +200,8 @@ void observed(const ccd::Input& input, ccd::ArrayView<const std::int64_t, 1> dat
 Its lines read like these:
 
 ```text
-pixel 0: transition Prepare -> Initialize window (0, 12) prev_break 0 n 392
-pixel 0: transition Initialize -> Initialize (short span, grown) window (0, 13) prev_break 0 n 392
+pixel 0: transition Prepare -> Initialize window (0, 12) prev_break 0 n 376 [0.00643501, 0.00981668, 0.00894088, 0.0294285, 0.0261624, 0.0138035, 0.0451253]
+pixel 0: transition Initialize -> Initialize (short span, grown) window (0, 13) prev_break 0 n 376
 ```
 
 An `Observer` implements one call, `event(pixel, const ObserverEvent&)`; in a cube run it is

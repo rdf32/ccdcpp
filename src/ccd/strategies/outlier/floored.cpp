@@ -45,5 +45,12 @@ OutlierOutcome Floored::judge(const Peek&, const PeekResult& result) const
     return OutlierOutcome::Keep;
 }
 
+std::vector<scalar_t> Floored::explain(const PeekResult& result) const
+{
+    const std::vector<scalar_t>* statistic = result.find(p_.statistic);
+    assert(statistic && !statistic->empty());
+    return {(*statistic)[0], p_.threshold};
+}
+
 } // namespace strategies
 } // namespace ccd

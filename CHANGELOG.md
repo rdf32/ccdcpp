@@ -132,7 +132,9 @@ its replacement.
   `ccdcpp.to_pixels()` reads the columns per pixel.
 - Diagnostics ([docs/diagnostics.md](docs/diagnostics.md)): `ccd::Observer`,
   `ccd::TextObserver`, `detect(trace=True)` and `detect_cube(trace_pixels=)`, compiled out with
-  `CCD_OBSERVE=OFF`. A transition says what its Initialize, Lookback or Extend step decided.
+  `CCD_OBSERVE=OFF`. A transition says what its Initialize, Lookback or Extend step decided;
+  Prepare's holds each band's noise, and an Extend outlier's drop the statistic and threshold the
+  outlier rule compared.
 - Reason codes: `reasons=True` (`RunSpec::reasons`) returns `"mask_reasons"`, one code per
   observation saying why it is where the run left it: kept in a segment (`in_segment`), kept
   after a model that could not be fitted (`no_fit`) or in no segment (`no_segment`), or the

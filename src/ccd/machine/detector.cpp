@@ -52,14 +52,29 @@ Peek peek_of(const Context& context, const State& state)
                     state.noise, context.shared.detection_bands};
 }
 
-// Drops the observation at `position` for `why`, told to the observer, and
+// Drops the observation at `position` for `why`, told to the observer with
+// `values()` (what the stage compared; called only with an observer), and
 // moves `window` with the observations after it.
-void drop(const Context& context, State& state, index_t position, Window& window, Reason why)
+template<typename Values>
+void drop(const Context& context, State& state, index_t position, Window& window, Reason why,
+          const Values& values)
 {
-    CCD_OBSERVE_EVENT(context.observe, day_event(ObserverEvent::Kind::Drop,
-                                                 state.series.dates()(position), name(why)));
+    CCD_OBSERVE_EVENT(context.observe, [&] {
+        ObserverEvent e = day_event(ObserverEvent::Kind::Drop, state.series.dates()(position),
+                                    name(why));
+        e.values = values();
+        return e;
+    }());
+#if !CCD_OBSERVE
+    (void)values;
+#endif
     state.series.drop(position, window, why);
     ++state.work.dropped;
+}
+
+void drop(const Context& context, State& state, index_t position, Window& window, Reason why)
+{
+    drop(context, state, position, window, why, [] { return std::vector<scalar_t>(); });
 }
 
 // What the step decided, for the observer's transition (report_transition()).
@@ -72,6 +87,20 @@ void note(const Context& context, State& state, const char* outcome)
     (void)context;
     (void)state;
     (void)outcome;
+#endif
+}
+
+// The values the step reports with its outcome, for the observer's
+// transition (report_transition()).
+void note_values(const Context& context, State& state, const std::vector<scalar_t>& values)
+{
+#if CCD_OBSERVE
+    if (context.observe.observer)
+        state.values = values;
+#else
+    (void)context;
+    (void)state;
+    (void)values;
 #endif
 }
 
@@ -185,6 +214,7 @@ void State::reset(const PixelSeries& pixel, ProcessingMask mask,
     carried_change = false;
     suspended = Suspended{};
     outcome = "";
+    values.clear();
 }
 
 void State::bind(const Strategies& strategies)
@@ -379,6 +409,7 @@ Phase prepare(const Context& context, State& state)
     prepare_stages(context, state, stat_dates);
 
     state.noise.bands = context.strategies.noise->estimate(stat_dates, stat_spectral);
+    note_values(context, state, state.noise.bands);
 
     if (!state.noise.usable())
     {
@@ -925,7 +956,8 @@ ExtendOutcome after_no_change(const Context& context, State& state, const Peek& 
         // other bands are this test's, before the drop moves the peek.
         if (window.stop + shortest > series.size() - 1)
             complete_models(context, state);
-        drop(context, state, peek_window.start, window, Reason::Outlier);
+        drop(context, state, peek_window.start, window, Reason::Outlier,
+             [&] { return context.strategies.outlier->explain(state.extend.result); });
         return ExtendOutcome::Dropped;
     }
     // A peek too short for the outlier rule to tell: the curve ends here.
@@ -1165,6 +1197,8 @@ void report_transition(const Context& context, State& state, Phase from, Phase t
         e.next = to_string(to);
         e.outcome = state.outcome;
         state.outcome = "";
+        e.values = std::move(state.values);
+        state.values.clear();
         e.window_start = state.cursor.window.start;
         e.window_stop = state.cursor.window.stop;
         e.prev_break = state.cursor.prev_break;
