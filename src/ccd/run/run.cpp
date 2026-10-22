@@ -167,25 +167,25 @@ PixelDiagnostics diagnose(PixelProcedure procedure, index_t clear, const FitResu
     return d;
 }
 
-// Step 6, with RunSpec::reasons: the code of each kept observation of
-// `result`, Reason::Kept inside a segment's days, Reason::NoFit after the
-// last segment of a pixel whose machine ended in Exit::NoFit (`no_fit`),
-// Reason::NoSegment otherwise. The segments are in date order.
-void settle_reasons(FitResult& result, ArrayView<const std::int64_t, 1> dates, bool no_fit)
+// Step 6, with RunSpec::reasons: the code in `reasons` of each kept
+// observation, Reason::Kept inside the days of a segment of `models` (in
+// date order), Reason::NoFit after the last segment of a pixel whose machine
+// ended in Exit::NoFit (`no_fit`), Reason::NoSegment otherwise.
+void settle_reasons(std::vector<std::uint8_t>& reasons, const std::vector<ChangeModel>& models,
+                    ArrayView<const std::int64_t, 1> dates, bool no_fit)
 {
-    const std::vector<ChangeModel>& models = result.models;
     const auto kept = static_cast<std::uint8_t>(Reason::Kept);
     std::size_t m = 0;
     for (index_t t = 0; t < dates.size(); ++t)
     {
-        if (result.reasons[t] != kept)
+        if (reasons[t] != kept)
             continue;
         const std::int64_t day = dates(t);
         while (m < models.size() && models[m].end_day < day)
             ++m;
         if (m < models.size() && models[m].start_day <= day)
             continue;
-        result.reasons[t] = static_cast<std::uint8_t>(
+        reasons[t] = static_cast<std::uint8_t>(
             no_fit && m == models.size() ? Reason::NoFit : Reason::NoSegment);
     }
 }
@@ -289,7 +289,9 @@ PixelOutput Run::fresh(PreparedPixel& pixel, Worker& worker) const
     // The record keeps the mask the chain built; the fit takes it.
     const ProcessingMask filtered = spec_.record ? pixel.mask : ProcessingMask();
     out.result = detector.fit(pixel.mode, pixel.series, std::move(pixel.mask), shared_,
-                              resolved_->strategies, worker.observe, std::move(pixel.reasons));
+                              resolved_->strategies, worker.observe,
+                              spec_.reasons ? &pixel.reasons : nullptr);
+    out.reasons = std::move(pixel.reasons);
     if (spec_.record)
         fill_record(out.record, pixel.mode.procedure, pixel.mode.extra_mask.empty(), detector,
                     filtered, out.result, dates_);
@@ -335,12 +337,11 @@ PixelOutput Run::pixel(
         out.record.procedure = prepared.mode.procedure;
     }
     if (spec_.reasons)
-        settle_reasons(out.result, dates_,
+        settle_reasons(out.reasons, out.result.models, dates_,
                        prepared.mode.procedure == PixelProcedure::Standard &&
                            worker.detector.exit() == machine::Exit::NoFit);
     if (spec_.diagnostics)
-        out.result.diagnostics =
-            diagnose(prepared.mode.procedure, clear, out.result, worker.detector);
+        out.diagnostics = diagnose(prepared.mode.procedure, clear, out.result, worker.detector);
     if (!spec_.masks)
         out.result.mask = ProcessingMask();
     return out;

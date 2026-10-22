@@ -43,9 +43,10 @@ void place(const std::vector<std::uint8_t>& bytes, index_t T, std::size_t at,
 }
 
 // The pixel at (row, col) of a cube, run with the thread's `worker`. With
-// RunSpec::masks its mask goes straight into its T bytes of `masks`, the
-// cube's (H, W, T) array, and the pixel keeps none; with RunSpec::reasons
-// its reason codes into `reasons` the same way.
+// RunSpec::masks its mask goes straight into its T bytes of the cube's
+// (H, W, T) masks, and the pixel keeps none; with RunSpec::reasons its reason
+// codes into the cube's reasons the same way, and with RunSpec::diagnostics
+// its diagnostics into its place of the cube's.
 template<typename Value, typename Qa>
 CubePixel cube_pixel(
     const Run& run,
@@ -54,8 +55,7 @@ CubePixel cube_pixel(
     index_t row,
     index_t col,
     Worker& worker,
-    std::vector<std::uint8_t>& masks,
-    std::vector<std::uint8_t>& reasons
+    CubeOutput& cube
 )
 {
     const index_t T = spectral.extent(3);
@@ -75,14 +75,13 @@ CubePixel cube_pixel(
 
     if (run.spec().masks)
     {
-        place(outcome.result.mask.data(), T, at, masks);
+        place(outcome.result.mask.data(), T, at, cube.masks);
         outcome.result.mask = ProcessingMask();
     }
     if (run.spec().reasons)
-    {
-        place(outcome.result.reasons, T, at, reasons);
-        outcome.result.reasons = std::vector<std::uint8_t>();
-    }
+        place(outcome.reasons, T, at, cube.reasons);
+    if (run.spec().diagnostics)
+        cube.diagnostics[at] = std::move(outcome.diagnostics);
 
     return CubePixel{row, col, std::move(outcome.result), std::move(outcome.record),
                      outcome.status};
@@ -176,6 +175,8 @@ CubeOutput cube_loop(
         merged.masks.assign(static_cast<std::size_t>(npixels) * T, std::uint8_t{0});
     if (run.spec().reasons)
         merged.reasons.assign(static_cast<std::size_t>(npixels) * T, REASON_COUNT);
+    if (run.spec().diagnostics)
+        merged.diagnostics.resize(static_cast<std::size_t>(npixels));
 
     int used = requested;
 
@@ -216,8 +217,7 @@ CubeOutput cube_loop(
             {
                 const std::size_t at = static_cast<std::size_t>(pixel);
                 by_pixel[at] =
-                    cube_pixel<Value, Qa>(run, spectral, qas, row, col, worker, merged.masks,
-                                          merged.reasons);
+                    cube_pixel<Value, Qa>(run, spectral, qas, row, col, worker, merged);
                 succeeded[at] = 1;
             }
             catch (const std::exception& e)

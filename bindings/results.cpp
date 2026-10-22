@@ -1,6 +1,5 @@
 #include "results.hpp"
 
-#include <algorithm>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -862,11 +861,6 @@ void add_cube_diagnostics(py::dict& output, const ccd::CubeOutput& cube, index_t
     const std::vector<py::ssize_t> shape{static_cast<py::ssize_t>(H), static_cast<py::ssize_t>(W)};
     py::array_t<std::uint8_t> procedure(shape), exit(shape);
     py::array_t<std::int32_t> clear(shape), kept(shape), peek(shape);
-    std::fill_n(procedure.mutable_data(), H * W, std::uint8_t{0});
-    std::fill_n(exit.mutable_data(), H * W, std::uint8_t{0});
-    std::fill_n(clear.mutable_data(), H * W, 0);
-    std::fill_n(kept.mutable_data(), H * W, 0);
-    std::fill_n(peek.mutable_data(), H * W, 0);
     auto procedure_v = procedure.mutable_unchecked<2>();
     auto exit_v = exit.mutable_unchecked<2>();
     auto clear_v = clear.mutable_unchecked<2>();
@@ -874,11 +868,11 @@ void add_cube_diagnostics(py::dict& output, const ccd::CubeOutput& cube, index_t
     auto peek_v = peek.mutable_unchecked<2>();
 
     std::vector<ccd::SegmentDiagnostics> segments;
-    for (const auto& pixel : cube.pixels)
+    for (index_t at = 0; at < H * W; ++at)
     {
-        const ccd::PixelDiagnostics& d = pixel.result.diagnostics;
-        const auto r = static_cast<py::ssize_t>(pixel.row);
-        const auto c = static_cast<py::ssize_t>(pixel.col);
+        const ccd::PixelDiagnostics& d = cube.diagnostics[at];
+        const auto r = static_cast<py::ssize_t>(at / W);
+        const auto c = static_cast<py::ssize_t>(at % W);
         procedure_v(r, c) = static_cast<std::uint8_t>(d.procedure);
         exit_v(r, c) = static_cast<std::uint8_t>(d.exit);
         clear_v(r, c) = static_cast<std::int32_t>(d.clear);

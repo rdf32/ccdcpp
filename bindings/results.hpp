@@ -80,8 +80,9 @@ py::list failures_to_python(const std::vector<ccd::CubeFailure>& failures);
 
 // diagnostics=: detect()'s "pixel_diagnostics", a dict of its counts and
 // codes, and the "segment_diagnostics" of `segments`, one int32 column per
-// counter; detect_cube()'s both into `output`, the pixels' as (H, W) arrays
-// (zeros for a failed pixel), the segments' in the segment columns' order.
+// counter; detect_cube()'s both into `output`, from CubeOutput::diagnostics:
+// the pixels' as (H, W) arrays (zeros for a failed pixel), the segments' in
+// the segment columns' order.
 py::dict pixel_diagnostics_to_python(const ccd::PixelDiagnostics& diagnostics);
 py::dict segment_diagnostics_columns(const std::vector<ccd::SegmentDiagnostics>& segments);
 void add_cube_diagnostics(py::dict& output, const ccd::CubeOutput& cube, ccd::index_t H,

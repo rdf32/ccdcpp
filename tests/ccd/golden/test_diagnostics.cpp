@@ -84,18 +84,19 @@ const std::vector<Series>& pixels()
 // What every result with reason codes holds: one code per observation, below
 // REASON_COUNT; the mask keeps exactly those below FIRST_DROP; a kept
 // observation is Kept exactly when a segment's days hold it.
-void expect_consistent(const ccd::FitResult& r, const Series& s)
+void expect_consistent(const ccd::PixelOutput& r, const Series& s)
 {
     ASSERT_EQ(r.reasons.size(), s.size()) << s.name;
     for (std::size_t t = 0; t < s.size(); ++t)
     {
         const std::uint8_t code = r.reasons[t];
         ASSERT_LT(code, ccd::REASON_COUNT) << s.name << " " << t;
-        EXPECT_EQ(code < static_cast<std::uint8_t>(ccd::FIRST_DROP), r.mask[t]) << s.name << " " << t;
+        EXPECT_EQ(code < static_cast<std::uint8_t>(ccd::FIRST_DROP), r.result.mask[t])
+            << s.name << " " << t;
         bool in_segment = false;
-        for (const ccd::ChangeModel& m : r.models)
+        for (const ccd::ChangeModel& m : r.result.models)
             in_segment = in_segment || (m.start_day <= s.dates[t] && s.dates[t] <= m.end_day);
-        if (r.mask[t])
+        if (r.result.mask[t])
             EXPECT_EQ(code == static_cast<std::uint8_t>(Reason::Kept), in_segment)
                 << s.name << " " << t;
     }
@@ -109,10 +110,10 @@ TEST(Reasons, EveryObservationHasOneAndTheRunIsTheSame)
     for (const Series& s : pixels())
     {
         const ccd::RunSpec plain = golden::spec_of(s.h, s.config);
-        const ccd::FitResult without = run(plain, s).result;
-        const ccd::FitResult with = run(with_reasons(plain), s).result;
+        const ccd::PixelOutput without = run(plain, s);
+        const ccd::PixelOutput with = run(with_reasons(plain), s);
         EXPECT_TRUE(without.reasons.empty()) << s.name;
-        EXPECT_EQ(golden::dump(without), golden::dump(with)) << s.name;
+        EXPECT_EQ(golden::dump(without.result), golden::dump(with.result)) << s.name;
         expect_consistent(with, s);
         for (const auto& [code, n] : counts(with.reasons))
             seen[code] += n;
@@ -163,7 +164,7 @@ TEST(Reasons, EachPathGivesItsCode)
     for (const Pin& pin : pins)
     {
         const Series& s = golden::named(pixels(), pin.pixel);
-        const ccd::FitResult r = run(with_reasons(golden::spec_of(s.h, s.config)), s).result;
+        const ccd::PixelOutput r = run(with_reasons(golden::spec_of(s.h, s.config)), s);
         EXPECT_EQ(counts(r.reasons)[pin.code], pin.count) << pin.pixel << " " << ccd::name(pin.code);
     }
 }
@@ -188,7 +189,7 @@ TEST(Reasons, TheObserversDropsAreTheMachinesCodes)
         auto drops = std::make_shared<Drops>();
         ccd::RunSpec spec = with_reasons(golden::spec_of(s.h, s.config));
         spec.observer = drops;
-        const ccd::FitResult r = run(spec, s).result;
+        const ccd::PixelOutput r = run(spec, s);
         std::map<std::int64_t, std::string> machine;
         for (std::size_t t = 0; t < s.size(); ++t)
             if (r.reasons[t] >= static_cast<std::uint8_t>(Reason::WindowScreen))
@@ -214,15 +215,15 @@ TEST(Reasons, ACubesCodesAreEachPixels)
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {2, 3, T}), 2);
     ASSERT_EQ(cube.reasons.size(), 6 * T);
     EXPECT_TRUE(cube.masks.empty());
+    EXPECT_TRUE(cube.diagnostics.empty());
     for (index_t p = 0; p < 6; ++p)
     {
-        const ccd::FitResult one = ccd::detect(
+        const ccd::PixelOutput one = ccd::detect(
             spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(c.spectral.data() + p * 7 * T, {7, T}),
-            ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T})).result;
+            ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T}));
         const auto codes = cube.reasons_of(p / 3, p % 3);
         EXPECT_EQ(std::vector<std::uint8_t>(&codes(0), &codes(0) + T), one.reasons) << p;
-        EXPECT_TRUE(cube.pixels[p].result.reasons.empty()) << p;
     }
 }
 
@@ -368,12 +369,11 @@ ccd::config::Config with_strategy(ccd::config::Config config, const std::string&
     return config;
 }
 
-ccd::FitResult run_in_test_registry(const Series& s, const ccd::config::Config& config)
+ccd::PixelOutput run_in_test_registry(const Series& s, const ccd::config::Config& config)
 {
     return run(with_reasons(golden::spec_of(
                    s.h, std::make_shared<const ccd::Algorithm>(config, test_registry()))),
-               s)
-        .result;
+               s);
 }
 
 } // namespace
@@ -381,8 +381,8 @@ ccd::FitResult run_in_test_registry(const Series& s, const ccd::config::Config& 
 TEST(Reasons, ARegistrysStepAndStrategiesGiveTheirCodes)
 {
     const Series& s = golden::named(pixels(), "lookback_near_break");
-    const ccd::FitResult plain = run(with_reasons(golden::spec_of(s.h, s.config)), s).result;
-    ASSERT_EQ(plain.models.size(), 2u);
+    const ccd::PixelOutput plain = run(with_reasons(golden::spec_of(s.h, s.config)), s);
+    ASSERT_EQ(plain.result.models.size(), 2u);
 
     // A step a registry adds: its code, CustomStep, where it removes one.
     std::size_t kept = 0;
@@ -391,26 +391,26 @@ TEST(Reasons, ARegistrysStepAndStrategiesGiveTheirCodes)
     ccd::config::Config config = s.config;
     auto& steps = config.preprocess.at("standard").steps;
     steps.insert(steps.begin() + 1, {"drop_day", {{"day", ccd::config::integer(s.dates[kept])}}});
-    const ccd::FitResult stepped = run_in_test_registry(s, config);
+    const ccd::PixelOutput stepped = run_in_test_registry(s, config);
     EXPECT_EQ(stepped.reasons[kept], static_cast<std::uint8_t>(Reason::CustomStep));
     expect_consistent(stepped, s);
 
     // A change test breaking past the peek's first observation: that one is
     // BeforeChange, the first observation after the first segment.
-    const ccd::FitResult skipped =
+    const ccd::PixelOutput skipped =
         run_in_test_registry(s, with_strategy(s.config, "change_test", "skip-chi2"));
-    ASSERT_GE(skipped.models.size(), 2u);
+    ASSERT_GE(skipped.result.models.size(), 2u);
     ASSERT_EQ(counts(skipped.reasons)[Reason::BeforeChange], 1u);
     for (std::size_t t = 0; t < s.size(); ++t)
         if (skipped.reasons[t] == static_cast<std::uint8_t>(Reason::BeforeChange))
-            EXPECT_GT(s.dates[t], skipped.models[0].end_day);
+            EXPECT_GT(s.dates[t], skipped.result.models[0].end_day);
     expect_consistent(skipped, s);
 
     // A model that cannot fit: Extend's first refit is NoFit, and every kept
     // observation from its window on (there is no segment) is NoFit.
-    const ccd::FitResult unfitted =
+    const ccd::PixelOutput unfitted =
         run_in_test_registry(s, with_strategy(s.config, "model", "never-fits"));
-    EXPECT_TRUE(unfitted.models.empty());
+    EXPECT_TRUE(unfitted.result.models.empty());
     const auto unfit = counts(unfitted.reasons);
     EXPECT_GT(unfit.at(Reason::NoFit), 0u);
     EXPECT_EQ(unfit.count(Reason::Kept), 0u);
@@ -438,15 +438,15 @@ TEST(Reasons, AResumeGivesTheStoredDropsTheirOwnCode)
         capped.algorithm = golden::algorithm(golden::with_shared(
             s.config, "statistics_end",
             ccd::config::integer(std::min(s.statistics_end(), stored.header.statistics_end))));
-        const ccd::FitResult full = run(capped, s).result;
-        ASSERT_EQ(golden::dump(resumed.result), golden::dump(full)) << s.name;
+        const ccd::PixelOutput full = run(capped, s);
+        ASSERT_EQ(golden::dump(resumed.result), golden::dump(full.result)) << s.name;
 
         std::vector<std::uint8_t> expected = full.reasons;
         for (std::size_t t = 0; t < s.size(); ++t)
             for (const std::int64_t day : stored.record.excluded_days)
-                if (s.dates[t] == day && !full.mask[t])
+                if (s.dates[t] == day && !full.result.mask[t])
                     expected[t] = static_cast<std::uint8_t>(Reason::Stored);
-        EXPECT_EQ(resumed.result.reasons, expected) << s.name;
+        EXPECT_EQ(resumed.reasons, expected) << s.name;
         ++with_stored;
         if (with_stored == 10)
             break;
@@ -477,8 +477,8 @@ TEST(Diagnostics, AreTheRunsAndChangeNothing)
         const ccd::PixelOutput with = run(spec, s);
         EXPECT_EQ(golden::dump(without.result), golden::dump(with.result)) << s.name;
 
-        const ccd::PixelDiagnostics& d = with.result.diagnostics;
-        EXPECT_TRUE(without.result.diagnostics.segments.empty()) << s.name;
+        const ccd::PixelDiagnostics& d = with.diagnostics;
+        EXPECT_TRUE(without.diagnostics.segments.empty()) << s.name;
         EXPECT_EQ(d.procedure, with.record.procedure) << s.name;
         if (with.record.standard.exit != ccd::machine::Exit::None)
             EXPECT_EQ(d.exit, with.record.standard.exit) << s.name;
@@ -490,7 +490,7 @@ TEST(Diagnostics, AreTheRunsAndChangeNothing)
 
         // The counts are the reason codes': the preprocessing's removals, the mask's.
         std::size_t removed = 0, kept = 0, dropped = 0;
-        for (const std::uint8_t code : with.result.reasons)
+        for (const std::uint8_t code : with.reasons)
         {
             removed += code >= first_drop && code < machine_drop;
             kept += code < first_drop;
@@ -544,7 +544,7 @@ TEST(Diagnostics, EachExitAndCounterOnAGoldenPixel)
     {
         const Series& s = golden::named(pixels(), pin.pixel);
         const ccd::PixelDiagnostics d =
-            run(with_diagnostics(golden::spec_of(s.h, s.config)), s).result.diagnostics;
+            run(with_diagnostics(golden::spec_of(s.h, s.config)), s).diagnostics;
         EXPECT_EQ(d.procedure, pin.procedure) << pin.pixel;
         EXPECT_EQ(d.exit, pin.exit) << pin.pixel;
         EXPECT_EQ(d.clear, pin.clear) << pin.pixel;
@@ -557,7 +557,7 @@ TEST(Diagnostics, EachExitAndCounterOnAGoldenPixel)
     // outliers among its 13 drops.
     const Series& s = golden::named(pixels(), "lookback_far_peek_decides");
     const ccd::PixelDiagnostics d =
-        run(with_diagnostics(golden::spec_of(s.h, s.config)), s).result.diagnostics;
+        run(with_diagnostics(golden::spec_of(s.h, s.config)), s).diagnostics;
     ASSERT_EQ(d.segments.size(), 3u);
     const index_t expected[3][5] = {{13, 0, 77, 6, 1}, {46, 24, 86, 4, 13}, {13, 0, 38, 4, 1}};
     for (std::size_t i = 0; i < 3; ++i)
@@ -572,7 +572,7 @@ TEST(Diagnostics, EachExitAndCounterOnAGoldenPixel)
     // A Start segment holds none of the work: its search is the next curve's.
     const Series& start = golden::named(pixels(), "start_catch");
     const ccd::PixelDiagnostics sd =
-        run(with_diagnostics(golden::spec_of(start.h, start.config)), start).result.diagnostics;
+        run(with_diagnostics(golden::spec_of(start.h, start.config)), start).diagnostics;
     ASSERT_EQ(sd.segments.size(), 2u);
     EXPECT_EQ(sd.segments[0].initialize_steps + sd.segments[0].lookback_steps, 0u);
     EXPECT_EQ(sd.segments[1].initialize_steps, 23u);
@@ -583,7 +583,7 @@ TEST(Diagnostics, EachExitAndCounterOnAGoldenPixel)
     ccd::RunSpec spec = with_diagnostics(golden::spec_of(
         unfit.h, std::make_shared<const ccd::Algorithm>(
                      with_strategy(unfit.config, "model", "never-fits"), test_registry())));
-    EXPECT_EQ(run(spec, unfit).result.diagnostics.exit, ccd::machine::Exit::NoFit);
+    EXPECT_EQ(run(spec, unfit).diagnostics.exit, ccd::machine::Exit::NoFit);
 }
 
 // A cube's are each pixel's detect() diagnostics; a resume's carried
@@ -604,8 +604,8 @@ TEST(Diagnostics, ACubesAreEachPixelsAndAResumesCarriedSegmentsHoldNone)
             spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(c.spectral.data() + p * 7 * T, {7, T}),
             ccd::ArrayView<const std::uint8_t, 1>::contiguous(c.qas.data() + p * T, {T}))
-            .result.diagnostics;
-        const ccd::PixelDiagnostics& d = cube.pixels[p].result.diagnostics;
+            .diagnostics;
+        const ccd::PixelDiagnostics& d = cube.diagnostics_of(p / 3, p % 3);
         EXPECT_EQ(d.procedure, one.procedure) << p;
         EXPECT_EQ(d.exit, one.exit) << p;
         EXPECT_EQ(d.clear, one.clear) << p;
@@ -629,7 +629,7 @@ TEST(Diagnostics, ACubesAreEachPixelsAndAResumesCarriedSegmentsHoldNone)
             s.qa_view(), ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
         if (resumed.status != ccd::ResumeStatus::Resumed)
             continue;
-        const ccd::PixelDiagnostics& d = resumed.result.diagnostics;
+        const ccd::PixelDiagnostics& d = resumed.diagnostics;
         ASSERT_EQ(d.segments.size(), resumed.result.models.size()) << s.name;
         for (std::size_t i = 0; i < final_segments; ++i)
             EXPECT_EQ(d.segments[i].initialize_steps + d.segments[i].tests +

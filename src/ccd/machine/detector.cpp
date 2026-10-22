@@ -201,7 +201,7 @@ void State::bind(const Strategies& strategies)
     extend.test.get(strategies.change_test, [](const ChangeTest& c) { return c.make_scratch(); });
 }
 
-FitResult State::take_result()
+FitResult State::take_result(std::vector<std::uint8_t>* reasons)
 {
     assert(phase == Phase::Done);
 
@@ -209,7 +209,8 @@ FitResult State::take_result()
     FitResult result;
     result.models = std::move(segments);
     result.mask = series.take_mask();
-    result.reasons = series.take_reasons();
+    if (reasons)
+        *reasons = series.take_reasons();
     return result;
 }
 
@@ -1216,27 +1217,24 @@ FitResult Detector::fit(
     const config::Shared& shared,
     const Strategies& strategies,
     Observe observe,
-    std::vector<std::uint8_t> reasons
+    std::vector<std::uint8_t>* reasons
 )
 {
     state_.bind(strategies);
     if (mode.procedure != PixelProcedure::Standard)
-    {
-        FitResult result = strategies.edge_segments->whole_series(
-            mode.procedure, series, std::move(mask), *state_.edges);
-        result.reasons = std::move(reasons);
-        return result;
-    }
+        return strategies.edge_segments->whole_series(mode.procedure, series, std::move(mask),
+                                                      *state_.edges);
 
     const Context context{shared, series, strategies, observe, mode.max_coefficients};
     State& state = state_;
 
-    state.reset(series, std::move(mask), std::move(reasons));
+    state.reset(series, std::move(mask),
+                reasons ? std::move(*reasons) : std::vector<std::uint8_t>());
     if (context.max_coefficients > 0)
         state.resumable = false;   // a resume does not cap
     drive(context, state);
     report_exit(context, state);
-    return state.take_result();
+    return state.take_result(reasons);
 }
 
 //------------------------------------------------------------------------------
@@ -1374,14 +1372,15 @@ FitResult Detector::resume(
     const std::vector<std::int64_t>& excluded_days,
     Observe observe,
     bool carried_change,
-    std::vector<std::uint8_t> reasons
+    std::vector<std::uint8_t>* reasons
 )
 {
     const Context context{shared, series, strategies, observe};
     State& state = state_;
 
     state.bind(strategies);
-    state.reset(series, std::move(mask), std::move(reasons));
+    state.reset(series, std::move(mask),
+                reasons ? std::move(*reasons) : std::vector<std::uint8_t>());
     // The statistics are the stored run's, and the series is no shorter, so
     // Prepare neither exits early nor computes other values: it reads the
     // series before any drop, as the stored run's did. Should it exit early
@@ -1392,7 +1391,7 @@ FitResult Detector::resume(
         report_transition(context, state, Phase::Prepare, prepared);
         state.phase = prepared;
         report_exit(context, state);
-        return state.take_result();
+        return state.take_result(reasons);
     }
     state.exit = Exit::None;
     state.suspended = Suspended{};
@@ -1429,7 +1428,7 @@ FitResult Detector::resume(
 
     drive(context, state);
     report_exit(context, state);
-    return state.take_result();
+    return state.take_result(reasons);
 }
 
 const Suspended& Detector::suspended() const

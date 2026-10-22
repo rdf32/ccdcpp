@@ -292,9 +292,10 @@ struct State
     void reset(const PixelSeries& pixel, ProcessingMask mask,
                std::vector<std::uint8_t> reasons = {});
 
-    // The pixel's result once Done: the segments (none after an early exit),
-    // the processing mask and the reason codes. Moves them out.
-    FitResult take_result();
+    // The pixel's result once Done: the segments (none after an early exit)
+    // and the processing mask, and into `reasons` (when given) the reason
+    // codes. Moves them out.
+    FitResult take_result(std::vector<std::uint8_t>* reasons = nullptr);
 };
 
 //------------------------------------------------------------------------------
@@ -498,8 +499,8 @@ public:
     // procedure, under the run's `shared` values: the machine,
     // driven from Prepare to Done with the mode's cap on the segments'
     // coefficients, or edge_segments' whole_series(). The result carries the
-    // mask, after an early exit too, and with `reasons` (the preprocessing's
-    // codes, preprocess::apply()) the codes with the machine's drops.
+    // mask, after an early exit too. With `reasons`, the preprocessing's
+    // codes (preprocess::apply()), the machine's drops write theirs into it.
     FitResult fit(
         const PixelMode& mode,
         const PixelSeries& series,
@@ -507,7 +508,7 @@ public:
         const config::Shared& shared,
         const Strategies& strategies,
         Observe observe = {},
-        std::vector<std::uint8_t> reasons = {}
+        std::vector<std::uint8_t>* reasons = nullptr
     );
 
     // Continues a Standard run that stopped at `from` on a longer series:
@@ -534,7 +535,7 @@ public:
         const std::vector<std::int64_t>& excluded_days,
         Observe observe = {},
         bool carried_change = false,
-        std::vector<std::uint8_t> reasons = {}
+        std::vector<std::uint8_t>* reasons = nullptr
     );
 
     // Where the last Standard fit() or resume() stopped; no suspension

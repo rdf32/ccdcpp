@@ -53,7 +53,7 @@ True
 
 A cube pixel that failed has `len(ccdcpp.REASONS)` (no code) throughout. In C++ the codes are
 `ccd::Reason` (`ccd/input/processing_mask.hpp`), asked for with `RunSpec::reasons`:
-`FitResult::reasons` for `detect`, `CubeOutput::reasons` and `reasons_of(row, col)` for
+`PixelOutput::reasons` for `detect`, `CubeOutput::reasons` and `reasons_of(row, col)` for
 `detect_cube`. Without them the run writes none: the preprocessing notes each step's removals
 and the machine its drops only when asked.
 
@@ -101,10 +101,11 @@ print(pd.DataFrame(out["segment_diagnostics"]).to_string())
 1                14               3    107       7        0
 ```
 
-In C++, `RunSpec::diagnostics` fills `FitResult::diagnostics`, a `ccd::PixelDiagnostics` with
-one `ccd::SegmentDiagnostics` per segment (`ccd/results/diagnostics.hpp`). The machine counts
-on every pixel, a few additions per step; the counts are copied into the result only when asked
-for.
+In C++, `RunSpec::diagnostics` fills `PixelOutput::diagnostics` for `detect`, and for
+`detect_cube` `CubeOutput::diagnostics`, one per pixel in raster order, read by
+`diagnostics_of(row, col)`: a `ccd::PixelDiagnostics` with one `ccd::SegmentDiagnostics` per
+segment (`ccd/results/diagnostics.hpp`). The machine counts on every pixel, a few additions per
+step; the counts are copied out only when asked for, so a cube without them holds none.
 
 ## The trace from Python
 

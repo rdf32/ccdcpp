@@ -7,7 +7,6 @@
 #include "ccd/core/constants.hpp"
 #include "ccd/core/types.hpp"
 #include "ccd/input/processing_mask.hpp"
-#include "ccd/results/diagnostics.hpp"
 
 namespace ccd
 {
@@ -17,9 +16,8 @@ namespace ccd
 // Segments
 //
 // What a run reports of one pixel: its segments (ChangeModel), each with one
-// fit per band (BandFit) and its curve QA, the processing mask they were
-// fitted under and, when asked for, each observation's reason code and the
-// pixel's diagnostics (FitResult).
+// fit per band (BandFit) and its curve QA, and the processing mask they were
+// fitted under (FitResult).
 //
 //==============================================================================
 
@@ -80,16 +78,10 @@ struct ChangeModel {
     std::vector<BandFit> bands;
 };
 
-// `reasons`, with RunSpec::reasons: T codes (Reason, input/processing_mask.hpp)
-// saying why each observation is where the run left it; empty otherwise.
-// `diagnostics`, with RunSpec::diagnostics: what the run did on the pixel
-// (results/diagnostics.hpp); default otherwise.
 struct FitResult
 {
     std::vector<ChangeModel> models;
     ProcessingMask mask;
-    std::vector<std::uint8_t> reasons;
-    PixelDiagnostics diagnostics;
 };
 
 } // namespace ccd

@@ -64,13 +64,14 @@ using CubeQa = std::variant<
 //   reasons             also return each pixel's reason codes (Reason,
 //                       input/processing_mask.hpp; T bytes per pixel): why
 //                       each observation is where the run left it,
-//                       detect's FitResult::reasons, detect_cube's
+//                       detect's PixelOutput::reasons, detect_cube's
 //                       CubeOutput::reasons. Without it none is kept
 //   diagnostics         also return each pixel's diagnostics
 //                       (PixelDiagnostics, results/diagnostics.hpp): its
 //                       procedure, exit, observation counts and peek, and
-//                       the machine's work on each segment, in
-//                       FitResult::diagnostics
+//                       the machine's work on each segment, detect's
+//                       PixelOutput::diagnostics, detect_cube's
+//                       CubeOutput::diagnostics
 //   observer, observe   where the observed pixels report each step
 //                       (results/diagnostics.hpp): detect's pixel, or
 //                       detect_cube's pixels at the flat indices `observe`
@@ -149,7 +150,9 @@ struct CubeFailure
 // take T bytes per pixel once. A failed pixel's are zeros. Without
 // RunSpec::masks `masks` is empty. The same with RunSpec::reasons for
 // `reasons`, every pixel's reason codes, a failed pixel's REASON_COUNT (no
-// code).
+// code), and with RunSpec::diagnostics for `diagnostics`, one PixelDiagnostics
+// per pixel in raster order, a failed pixel's the default. A CubePixel holds
+// none of them, so a cube without them takes no memory for them.
 //
 //==============================================================================
 
@@ -182,6 +185,16 @@ struct CubeOutput
     {
         return ArrayView<const std::uint8_t, 1>::contiguous(
             reasons.data() + (row * width + col) * timesteps, {timesteps});
+    }
+
+    // Every pixel's diagnostics, H * W in raster order, with
+    // RunSpec::diagnostics.
+    std::vector<PixelDiagnostics> diagnostics;
+
+    // The diagnostics of pixel (row, col).
+    const PixelDiagnostics& diagnostics_of(index_t row, index_t col) const
+    {
+        return diagnostics[row * width + col];
     }
 
     // The call's resume header (RunSpec::record, or a resume).
@@ -224,6 +237,8 @@ struct CubeOutput
 struct PixelOutput
 {
     FitResult result;
+    std::vector<std::uint8_t> reasons;   // with RunSpec::reasons, T codes
+    PixelDiagnostics diagnostics;        // with RunSpec::diagnostics
     PixelRecord record;
     ResumeStatus status = ResumeStatus::Resumed;
     ResumeHeader header;

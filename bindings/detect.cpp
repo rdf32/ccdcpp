@@ -125,12 +125,12 @@ py::dict pixel_to_python(
     output["num_bands"] = B;
     output["processing_mask"] = bytes_array(run.result.mask.data());
     if (reasons)
-        output["mask_reasons"] = bytes_array(run.result.reasons);
+        output["mask_reasons"] = bytes_array(run.reasons);
     if (diagnostics)
     {
-        output["pixel_diagnostics"] = pixel_diagnostics_to_python(run.result.diagnostics);
+        output["pixel_diagnostics"] = pixel_diagnostics_to_python(run.diagnostics);
         output["segment_diagnostics"] =
-            segment_diagnostics_columns(run.result.diagnostics.segments);
+            segment_diagnostics_columns(run.diagnostics.segments);
     }
 
     if (record || resumed)

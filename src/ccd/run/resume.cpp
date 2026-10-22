@@ -171,12 +171,14 @@ PixelOutput Run::resumed(
     machine::Detector& detector = worker.detector;
     const Strategies& strategies = resolved_->strategies;
     const ProcessingMask filtered = pixel.mask;
+    std::vector<std::uint8_t>* reasons = spec_.reasons ? &pixel.reasons : nullptr;
     out.result = continues
         ? detector.resume(pixel.series, std::move(pixel.mask), shared_, strategies,
                           from.standard, from.excluded_days, worker.observe, carried_change,
-                          std::move(pixel.reasons))
+                          reasons)
         : detector.fit(mode, pixel.series, std::move(pixel.mask), shared_, strategies,
-                       worker.observe, std::move(pixel.reasons));
+                       worker.observe, reasons);
+    out.reasons = std::move(pixel.reasons);
     fill_record(out.record, mode.procedure, mode.extra_mask.empty(), detector, filtered,
                 out.result, dates_);
 
