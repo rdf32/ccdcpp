@@ -62,7 +62,7 @@ using CubeQa = std::variant<
 //                       CubeOutput::masks; without it the mask is dropped
 //                       once the pixel is done
 //   reasons             also return each pixel's reason codes (Reason,
-//                       input/processing_mask.hpp; T bytes per pixel): why
+//                       input/mask/reason.hpp; T bytes per pixel): why
 //                       each observation is where the run left it,
 //                       detect's PixelOutput::reasons, detect_cube's
 //                       CubeOutput::reasons. Without it none is kept

@@ -183,10 +183,10 @@ add_library(
     src/ccd/input/qa_statistics.cpp
 
     src/ccd/input/mask/chain.cpp
+    src/ccd/input/mask/reason.cpp
     src/ccd/input/mask/steps.cpp
 
     src/ccd/input/masked_series.cpp
-    src/ccd/input/processing_mask.cpp
     src/ccd/machine/detector.cpp
 
     src/ccd/run/algorithm.cpp

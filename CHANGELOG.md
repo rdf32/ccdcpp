@@ -57,9 +57,9 @@ its replacement.
   returns 0.10.0's `detect_cube_columns` columns, names and dtypes unchanged; `resume=` is an
   earlier call's output.
 - **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{input,
-  algorithm, record, masks, reasons, diagnostics, observer, observe}` on views of float64, float32 or uint16 values,
-  replacing the 20 `detect`, `detect_recorded`, `resume`, `detect_cube` and `resume_cube`
-  overloads. `RunSpec::masks` is off by default (0.10.0's `keep_masks` was on).
+  algorithm, record, masks, reasons, diagnostics, observer, observe}` on views of float64,
+  float32 or uint16 values, replacing the 20 `detect`, `detect_recorded`, `resume`,
+  `detect_cube` and `resume_cube` overloads. `RunSpec::masks` is off by default (0.10.0's `keep_masks` was on).
 - **Profiles describe the data only**: `SensorProfile(name, band_names, roles, units, thermal,
   saturation_code, thermal_saturation_code, qa_table_builder, qa_table_options)`, with
   `Units(scale, offset)` and `Thermal(scale, offset, at_100c)`; `profile.input()` replaces

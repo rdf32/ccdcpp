@@ -170,7 +170,7 @@ except for the Standard procedure's thermal transform on a private copy.
 | Tier | What | How |
 |---|---|---|
 | outputs | the segments; the processing mask (the observations a fit used); the resume record and its status | always; `RunSpec::masks`; `RunSpec::record` (Python's `processing_mask`, `record=`) |
-| reason codes | why each observation is where the run left it: kept in a segment or not, or the preprocessing step or machine stage that removed it (`ccd::Reason`, `include/ccd/input/processing_mask.hpp`); the chain notes each step's removals, `MaskedSeries` each drop's, the run the kept observations no segment holds | `RunSpec::reasons` (Python's `reasons=`, `"mask_reasons"`) |
+| reason codes | why each observation is where the run left it: kept in a segment or not, or the preprocessing step or machine stage that removed it (`ccd::Reason`, `include/ccd/input/mask/reason.hpp`); the chain notes each step's removals, `MaskedSeries` each drop's, the run the kept observations no segment holds | `RunSpec::reasons` (Python's `reasons=`, `"mask_reasons"`) |
 | diagnostics columns | each pixel's procedure, exit, observation counts and peek; the machine's work on each segment (`ccd::PixelDiagnostics`, `include/ccd/results/diagnostics.hpp`), counted on every pixel and copied out when asked for | `RunSpec::diagnostics` (Python's `diagnostics=`) |
 | observer | every phase transition with the cursor, every Extend test with its outcome and statistics, every dropped observation, every segment, the exit | `RunSpec::observer` and `RunSpec::observe`; `ccd::TextObserver` prints them; Python's `trace=True` and `trace_pixels=` return them as rows |
 | compiled out | the observer's hooks | CMake's `CCD_OBSERVE=OFF` |

@@ -17,6 +17,7 @@
 #include "ccd/core/array_view.hpp"
 #include "ccd/input/input.hpp"
 #include "ccd/input/mask/filter.hpp"
+#include "ccd/input/mask/reason.hpp"
 #include "ccd/input/procedure.hpp"
 
 namespace ccd

@@ -52,7 +52,7 @@ True
 ```
 
 A cube pixel that failed has `len(ccdcpp.REASONS)` (no code) throughout. In C++ the codes are
-`ccd::Reason` (`ccd/input/processing_mask.hpp`), asked for with `RunSpec::reasons`:
+`ccd::Reason` (`ccd/input/mask/reason.hpp`), asked for with `RunSpec::reasons`:
 `PixelOutput::reasons` for `detect`, `CubeOutput::reasons` and `reasons_of(row, col)` for
 `detect_cube`. Without them the run writes none: the preprocessing notes each step's removals
 and the machine its drops only when asked.
@@ -84,8 +84,9 @@ of the `(H, W)` arrays.
 | `dropped` | the observations the machine dropped on the way: the window screen's, Lookback's, Extend's outliers, and those the change before it dropped; not those a search that restores its window screen's drops when exhausted gives back |
 
 The Start segment holds zeros (its search is the first curve's), as do the whole-series
-segments and a resume's carried ones; an End segment holds the search that found no stable
-window after the last curve. On the quick-start pixel:
+segments and a resume's carried ones; the first segment a resume writes counts only the resumed
+run's work on its curve, not the stored run's; an End segment holds the search that found no
+stable window after the last curve. On the quick-start pixel:
 
 ```python
 import pandas as pd

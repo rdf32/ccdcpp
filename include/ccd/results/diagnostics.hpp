@@ -46,10 +46,12 @@ namespace ccd
 // writing: its start search's Initialize steps, Lookback's steps, Extend's
 // change tests and refits, and the observations dropped on the way (the
 // window screen's, Lookback's and Extend's, and those the change before it
-// dropped after writing the segment it ended). The Start segment, written
+// dropped after writing the segment it ended; not those an exhausted search
+// gives back, Exhaustion::Restore). The Start segment, written
 // between the first stable window and its Extend, holds zeros (that work is
 // the first curve's), as do the segments of the whole-series procedures and
-// a resume's carried ones.
+// a resume's carried ones; the first segment a resume writes counts only the
+// resumed run's work on its curve, not the stored run's.
 struct SegmentDiagnostics
 {
     index_t initialize_steps = 0;
@@ -89,7 +91,7 @@ struct ObserverEvent
         Test,         // an Extend change test: day (the peek's first), outcome, values
                       // (the change test's first statistic, chi2's change_magnitude)
         Drop,         // an observation dropped: day, outcome (its reason code's
-                      // name, input/processing_mask.hpp), values (what the
+                      // name, input/mask/reason.hpp), values (what the
                       // stage compared: an Extend outlier's, the outlier
                       // rule's explain(), floored's statistic and threshold)
         Segment,      // a segment written: day and day_to (its first and last

@@ -176,16 +176,21 @@ input (`config::resolve(strategies::library_registry(), config, input).strategie
 | `series` (`MaskedSeries`, `include/ccd/input/masked_series.hpp`) | the processing mask and the observations it keeps, always in step | shared |
 | `cursor` (`Cursor`) | the model window and `prev_break`, in masked coordinates | Standard's |
 | `segments`, `carried` | the segments this run wrote, and the count of a resumed run's stored final ones before them; "no segment yet" is `segments.empty() && carried == 0` | shared |
+| `work`, `segment_work` (`SegmentDiagnostics`, `include/ccd/results/diagnostics.hpp`) | the machine's work on the segment being found and grown (its Initialize and Lookback steps, change tests, refits and drops), and each written segment's, in step with `segments`: the diagnostics' | Standard's |
 | `suspended` (`Suspended`) | where the segment loop stopped: what a resume continues from (section 6) | Standard's |
 | `peek_plan` (`PeekPlan`, `include/ccd/strategies/stages.hpp`) | the peek the change test chose for the pixel (`prepare()`), which the stability rule and the lookback are prepared with | a shared type, chosen by the change test |
 | `noise` (`BandNoise`, `include/ccd/strategies/stages.hpp`) | the per-band noise floor of the statistics window | a shared type, computed by Standard |
 | `stability_coefficients`, `coefficients` (`CoefficientRule`) | the stability fit's and the monitoring model's coefficient rules: Initialize's and Extend's fits | a shared type, the strategies' |
 | `stability_model`, `stability`, `lookback`, `edges`, `segment_report` | the stability fit's `Model` (the stable start window's fits, which Lookback tests against), and the stability rule's, the lookback's, edge_segments' and segment_report's per-pixel scratch, each a `PerThread` of its strategy, made by `State::bind` before the pixel | Standard's |
 | `extend` (`ExtendState`) | what Extend carries from one peek test to the next | Standard's |
+| `outcome`, `values` | what the last step decided and the values it reports with it (Prepare's band noise), kept for the observer's transition; set only with an observer | Standard's |
 
-`MaskedSeries` is the only writer of the mask. Its two drops, `drop` (Lookback, Extend) and
+`MaskedSeries` is the only writer of the mask. Its two drops, `drop` (Lookback's and Extend's
+outliers, a change's observations before its break, a resume's replay of the stored drops) and
 `drop_outliers_if` (Initialize's tentative Tmask removal), move the caller's window with the
-observations by one rule: a window bound above the dropped position moves down by one.
+observations by one rule: a window bound above the dropped position moves down by one. With
+reason codes each writes its drop's code (`ccd::Reason`, `include/ccd/input/mask/reason.hpp`)
+at the observation.
 
 The record's buffers keep their capacity across pixels: `State::reset` starts a pixel without
 freeing anything, and `State::bind` makes a strategy's objects again only when the run's

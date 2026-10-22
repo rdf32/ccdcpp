@@ -1,4 +1,4 @@
-#include "ccd/input/processing_mask.hpp"
+#include "ccd/input/mask/reason.hpp"
 
 namespace ccd
 {
