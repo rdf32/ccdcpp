@@ -12,7 +12,8 @@
 //   * Diagnostics.*: each pixel's procedure, exit, counts and peek, and the
 //     machine's work on each segment. Asking for them changes nothing else;
 //     they agree with the reason codes and the record; each exit and the
-//     counters are pinned on the golden pixels that take them.
+//     counters are pinned on the golden pixels that take them, and the
+//     drops of a registry's restoring search and forced start.
 //
 //==============================================================================
 
@@ -30,6 +31,7 @@
 #include "ccd/ccd.hpp"
 #include "ccd/strategies/change_test/chi2.hpp"
 #include "ccd/strategies/model/lasso.hpp"
+#include "ccd/strategies/start_search/pyccd.hpp"
 
 #include "characterization.hpp"
 #include "config.hpp"
@@ -347,6 +349,51 @@ struct NeverFits final : ccd::MonitoringModel
     ccd::strategies::Lasso lasso;
 };
 
+// pyccd's search, but an exhausted one restores the observations its window
+// screen dropped (Exhaustion::Restore) or forces a start (Exhaustion::Force):
+// the min_observations observations from where it began.
+template<ccd::Exhaustion When>
+struct ExhaustedSearch final : ccd::StartSearch
+{
+    using Params = ccd::strategies::PyccdSearch::Params;
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        return ccd::strategies::PyccdSearch::schema();
+    }
+    explicit ExhaustedSearch(const Params& p) : pyccd(p) {}
+
+    bool too_few(index_t n) const override { return pyccd.too_few(n); }
+    ccd::Window first(index_t at) const override { return pyccd.first(at); }
+    bool room(const ccd::Window& w, index_t n) const override { return pyccd.room(w, n); }
+    ccd::SearchPlan begin(ccd::ArrayView<const std::int64_t, 1>, index_t,
+                          std::int64_t) const override
+    {
+        ccd::SearchPlan plan;
+        plan.exhausted = When;
+        return plan;
+    }
+    bool exhausted(const ccd::Window& w, index_t n) const override
+    {
+        return pyccd.exhausted(w, n);
+    }
+    ccd::Window forced(ccd::ArrayView<const std::int64_t, 1>, index_t at,
+                       std::int64_t) const override
+    {
+        return ccd::Window(at, at + pyccd.min_window());
+    }
+    bool short_span(ccd::ArrayView<const std::int64_t, 1> d) const override
+    {
+        return pyccd.short_span(d);
+    }
+    bool usable(ccd::ArrayView<const std::int64_t, 1> d) const override
+    {
+        return pyccd.usable(d);
+    }
+    index_t min_window() const override { return pyccd.min_window(); }
+
+    ccd::strategies::PyccdSearch pyccd;
+};
+
 const ccd::config::Registry& test_registry()
 {
     static const ccd::config::Registry registry = []
@@ -356,6 +403,8 @@ const ccd::config::Registry& test_registry()
         r.add_step<DropDayStep>("drop_day");
         r.add<ccd::ChangeTest, SkipChi2>("skip-chi2");
         r.add<ccd::MonitoringModel, NeverFits>("never-fits");
+        r.add<ccd::StartSearch, ExhaustedSearch<ccd::Exhaustion::Restore>>("restoring");
+        r.add<ccd::StartSearch, ExhaustedSearch<ccd::Exhaustion::Force>>("forcing");
         return r;
     }();
     return registry;
@@ -640,4 +689,81 @@ TEST(Diagnostics, ACubesAreEachPixelsAndAResumesCarriedSegmentsHoldNone)
             break;
     }
     EXPECT_EQ(carried, 10u);
+}
+
+
+// A search that restores its window screen's drops when exhausted takes
+// them out of the count with the observations; a forced start counts its
+// own. Everywhere the drops the segments count are the machine's codes.
+TEST(Diagnostics, ARestoringSearchUncountsWhatItRestoresAndAForcedStartCountsItsDrops)
+{
+    // The (Initialize) transitions' outcomes and the codes and counts of a
+    // pixel's run under `strategy`, the run's start search.
+    struct Run
+    {
+        ccd::PixelOutput out;
+        std::vector<std::string> outcomes;
+        std::size_t machine = 0, counted = 0;
+    };
+    struct Outcomes final : ccd::Observer
+    {
+        std::vector<std::string> seen;
+        void event(index_t, const ccd::ObserverEvent& e) override
+        {
+            if (e.kind == ccd::ObserverEvent::Kind::Transition)
+                seen.push_back(e.outcome);
+        }
+    };
+    const auto run_with = [](const Series& s, const char* strategy)
+    {
+        ccd::RunSpec spec = with_diagnostics(with_reasons(golden::spec_of(
+            s.h, std::make_shared<const ccd::Algorithm>(
+                     with_strategy(s.config, "start_search", strategy), test_registry()))));
+        auto outcomes = std::make_shared<Outcomes>();
+        spec.observer = outcomes;
+        Run r{run(spec, s), {}, 0, 0};
+        r.outcomes = outcomes->seen;
+        for (const std::uint8_t code : r.out.reasons)
+            r.machine += code >= static_cast<std::uint8_t>(Reason::WindowScreen);
+        for (const ccd::SegmentDiagnostics& g : r.out.diagnostics.segments)
+            r.counted += g.dropped;
+        return r;
+    };
+
+    for (const char* strategy : {"restoring", "forcing"})
+        for (const Series& s : pixels())
+        {
+            if (s.config.stages.at("start_search").strategy != "pyccd")
+                continue;
+            const Run r = run_with(s, strategy);
+            expect_consistent(r.out, s);
+            EXPECT_LE(r.counted, r.machine) << strategy << " " << s.name;
+        }
+
+    // c8:dn:26's last search screens four observations out, then finds no
+    // stable window: restored, they are in no segment and not counted.
+    const Series& s = golden::named(pixels(), "c8:dn:26");
+    const Run plain = run_with(s, "pyccd");
+    const Run restored = run_with(s, "restoring");
+    ASSERT_EQ(plain.out.result.models.size(), 2u);
+    ASSERT_EQ(restored.out.result.models.size(), 2u);
+    EXPECT_EQ(counts(plain.out.reasons)[Reason::WindowScreen], 4u);
+    EXPECT_EQ(counts(restored.out.reasons).count(Reason::WindowScreen), 0u);
+    EXPECT_EQ(plain.counted, 12u);
+    EXPECT_EQ(restored.counted, 8u);
+    EXPECT_EQ(restored.counted, restored.machine);
+#if CCD_OBSERVE
+    EXPECT_EQ(std::count(restored.outcomes.begin(), restored.outcomes.end(),
+                         "exhausted, restored"),
+              1);
+    EXPECT_EQ(std::count(plain.outcomes.begin(), plain.outcomes.end(), "exhausted, restored"),
+              0);
+#endif
+
+    // Forced there, the start is a third segment, which counts its drops.
+    const Run forced = run_with(s, "forcing");
+    ASSERT_EQ(forced.out.result.models.size(), 3u);
+    EXPECT_EQ(forced.out.diagnostics.exit, ccd::machine::Exit::SeriesEnd);
+    EXPECT_EQ(forced.counted, 12u);
+    EXPECT_EQ(forced.counted, forced.machine);
 }

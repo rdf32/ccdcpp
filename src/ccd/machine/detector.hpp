@@ -245,10 +245,12 @@ struct State
     PerThread<SegmentReport, Scratch> segment_report;
 
     // The processing mask (and the reason codes, when the run keeps them)
-    // when the current start's search began, kept for a start search that
-    // restores them when exhausted (Exhaustion::Restore).
+    // and the drops counted (work.dropped) when the current start's search
+    // began, kept for a start search that restores them when exhausted
+    // (Exhaustion::Restore).
     ProcessingMask search_mask;
     std::vector<std::uint8_t> search_reasons;
+    index_t search_dropped = 0;
 
     // A forced start (Exhaustion::Force) until Extend fits it: the segment
     // the series reports if it ends first.

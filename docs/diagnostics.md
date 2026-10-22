@@ -79,7 +79,7 @@ and `ccdcpp.to_pixels()` gives each pixel detect()'s.
 | `lookback_steps` | Lookback's steps before the stable window |
 | `tests` | Extend's change tests |
 | `refits` | Extend's model fits |
-| `dropped` | the observations the machine dropped on the way: the window screen's, Lookback's, Extend's outliers, and those the change before it dropped |
+| `dropped` | the observations the machine dropped on the way: the window screen's, Lookback's, Extend's outliers, and those the change before it dropped; not those a search that restores its window screen's drops when exhausted gives back |
 
 The Start segment holds zeros (its search is the first curve's), as do the whole-series
 segments and a resume's carried ones; an End segment holds the search that found no stable
@@ -158,7 +158,7 @@ Each event is a dict:
 | field | for |
 |---|---|
 | `kind` | `transition`, `test`, `drop`, `segment` or `exit` |
-| `phase`, `next`, `outcome` | a transition: the phase it leaves and enters, and what an Initialize, Lookback or Extend step decided (`stable`, `unstable, shifted`, `included`, `grown`, `change`, ...; empty for the other phases) |
+| `phase`, `next`, `outcome` | a transition: the phase it leaves and enters, and what an Initialize, Lookback or Extend step decided (`stable`, `unstable, shifted`, `exhausted, restored`, `included`, `grown`, `change`, ...; empty for the other phases) |
 | `window_start`, `window_stop`, `prev_break`, `observations` | a transition: the cursor (positions in the masked series) and the series length |
 | `day`, `outcome`, `values` | a test: the peek's first day, `change` or `no change`, each peek observation's value of the change test's first statistic (chi2's `change_magnitude`); a drop: the dropped day and why, its reason code's name (`window_screen`, `lookback_outlier`, `outlier`, `before_change`) |
 | `day`, `day_to`, `outcome`, `observations` | a segment: its first and last day, its curve_qa, break day and change probability, its observation count |

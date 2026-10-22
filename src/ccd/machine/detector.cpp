@@ -403,6 +403,7 @@ Phase begin_search(const Context& context, State& state)
     {
         state.search_mask = state.series.mask();
         state.search_reasons = state.series.reasons();
+        state.search_dropped = state.work.dropped;
     }
     return Phase::Initialize;
 }
@@ -588,9 +589,12 @@ Phase initialize(const Context& context, State& state)
                     state.resumable = false;
                     return peek_guard(context, state);
                 case Exhaustion::Restore:
-                    // The window screen's drops of this search come back.
+                    // The window screen's drops of this search come back,
+                    // and are no longer counted.
                     state.series.reset(context.pixel, state.search_mask, state.search_reasons);
+                    state.work.dropped = state.search_dropped;
                     state.resumable = false;
+                    note(context, state, "exhausted, restored");
                     break;
                 case Exhaustion::End:
                     break;

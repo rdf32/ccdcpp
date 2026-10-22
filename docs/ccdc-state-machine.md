@@ -256,8 +256,9 @@ hooks above give other strategies routes of their own, all on the same machine:
 - The outlier rule's `EndSeries` ends the curve at the window, as a test's `Undecided` does.
 - A model whose fit fails (`fit()` false) ends the series without the curve: Done, after a forced
   start's own segment if one is pending.
-- A start search's exhausted search may give back what its window screen dropped (`Restore`), or
-  force a start (`Force`): the window `forced()` names, with no Lookback and no Start segment,
+- A start search's exhausted search may give back what its window screen dropped (`Restore`:
+  their codes and the drop count go back to where the search began, and the transition's outcome
+  is `exhausted, restored`), or force a start (`Force`): the window `forced()` names, with no Lookback and no Start segment,
   straight to Extend. A series that ends before Extend fits it reports segment_report's
   `unfitted()` segment of that window, through the last observation.
 - The mode's `PixelMode` may add mask steps after the procedure's chain (the run applies them
