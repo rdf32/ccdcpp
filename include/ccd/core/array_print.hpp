@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <ostream>
 #include <string>
+#include <typeinfo>
 
 #include "ccd/core/array_view.hpp"
 
@@ -176,7 +178,7 @@ operator<<(
     std::ostream& os,
     const ArrayView<T, Rank>& view
 ) {
-    print(view, os);
+    print_array(view, os);
     return os;
 }
 

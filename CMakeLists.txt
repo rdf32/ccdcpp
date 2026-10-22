@@ -358,6 +358,9 @@ if(CCD_BUILD_TESTS)
         endif()
     endfunction()
 
+    # The ArrayView printer, a development toolkit, on its own.
+    ccd_add_gtest(test_array_print SOURCES tests/ccd/core/test_array_print.cpp)
+
     # The regression solvers against scikit-learn.
     ccd_add_gtest(test_lasso SOURCES tests/ccd/regression/test_lasso.cpp)
     ccd_add_gtest(test_robust SOURCES tests/ccd/regression/test_robust.cpp)
