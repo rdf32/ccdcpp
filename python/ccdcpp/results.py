@@ -106,7 +106,6 @@ class TraceEvent(TypedDict):
     """One event of a traced pixel's run."""
 
     kind: str
-    machine: str
     phase: str
     next: str
     window_start: int

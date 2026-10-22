@@ -1156,7 +1156,6 @@ void report_transition(const Context& context, State& state, Phase from, Phase t
     if (context.observe.observer)
     {
         ObserverEvent e{ObserverEvent::Kind::Transition};
-        e.machine = "standard";
         e.phase = to_string(from);
         e.next = to_string(to);
         e.outcome = state.outcome;

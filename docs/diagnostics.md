@@ -157,7 +157,7 @@ Each event is a dict:
 | field | for |
 |---|---|
 | `kind` | `transition`, `test`, `drop`, `segment` or `exit` |
-| `machine`, `phase`, `next`, `outcome` | a transition: the machine, the phase it leaves and enters, and what an Initialize, Lookback or Extend step decided (`stable`, `unstable, shifted`, `included`, `grown`, `change`, ...; empty for the other phases) |
+| `phase`, `next`, `outcome` | a transition: the phase it leaves and enters, and what an Initialize, Lookback or Extend step decided (`stable`, `unstable, shifted`, `included`, `grown`, `change`, ...; empty for the other phases) |
 | `window_start`, `window_stop`, `prev_break`, `observations` | a transition: the cursor (positions in the masked series) and the series length |
 | `day`, `outcome`, `values` | a test: the peek's first day, `change` or `no change`, each peek observation's value of the change test's first statistic (chi2's `change_magnitude`); a drop: the dropped day and why, its reason code's name (`window_screen`, `lookback_outlier`, `outlier`, `before_change`) |
 | `day`, `day_to`, `outcome`, `observations` | a segment: its first and last day, its curve_qa, break day and change probability, its observation count |

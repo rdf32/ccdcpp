@@ -97,7 +97,6 @@ struct ObserverEvent
     };
 
     Kind kind;
-    const char* machine = "";
     const char* phase = "";
     const char* next = "";
     index_t window_start = 0;

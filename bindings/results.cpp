@@ -908,7 +908,6 @@ py::list trace_rows(const std::vector<ccd::ObserverEvent>& events)
     {
         py::dict d;
         d["kind"] = ccd::to_string(e.kind);
-        d["machine"] = e.machine;
         d["phase"] = e.phase;
         d["next"] = e.next;
         d["window_start"] = e.window_start;
