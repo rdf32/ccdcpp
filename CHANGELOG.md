@@ -131,10 +131,11 @@ its replacement.
   `ccd::TextObserver`, `detect(trace=True)` and `detect_cube(trace_pixels=)`, compiled out with
   `CCD_OBSERVE=OFF`. A transition says what its Initialize, Lookback or Extend step decided.
 - Reason codes: `reasons=True` (`RunSpec::reasons`) returns `"mask_reasons"`, one code per
-  observation saying why it is where the run left it: kept in a segment, kept after a model that
-  could not be fitted (`no_fit`) or in no segment, or the preprocessing step (`qa`, `thermal`,
-  `band_range`, `green`, `duplicate_date`, `custom_step`) or the machine's stage
-  (`window_screen`, `lookback_outlier`, `outlier`, `before_change`, `stored`) that removed it;
+  observation saying why it is where the run left it: kept in a segment (`in_segment`), kept
+  after a model that could not be fitted (`no_fit`) or in no segment (`no_segment`), or the
+  preprocessing step (`qa`, `thermal`, `band_range`, `green`, `duplicate_date`, `custom_step`)
+  or the machine's stage (`window_screen`, `lookback_outlier`, `outlier`, `before_change`,
+  `stored`) that removed it;
   `ccdcpp.REASONS` names them, `ccd::Reason` in C++. The processing mask is the codes below
   `ccdcpp.FIRST_DROP`. Off by default; the default outputs do not change.
 - Diagnostics columns: `diagnostics=True` (`RunSpec::diagnostics`) returns

@@ -208,14 +208,16 @@ private:
 // pixel (RunSpec::reasons). The first three are kept by the processing mask,
 // the others are not: the mask is reasons < FIRST_DROP. A preprocessing
 // step's code is the last step that removed the observation (an add_qa can
-// take one back); the machine's, the stage that dropped it.
+// take one back); the machine's, the stage that dropped it. The
+// preprocessing and the machine leave every observation they keep
+// InSegment; the run then gives those no segment holds NoFit or NoSegment.
 //
 //==============================================================================
 
 enum class Reason : std::uint8_t
 {
     // Kept by the processing mask:
-    Kept,             // in a segment
+    InSegment,        // in a segment
     NoFit,            // after the last segment of a pixel whose model could
                       // not be fitted on its window (machine::Exit::NoFit)
     NoSegment,        // in no segment otherwise: an edge segment not due, the
@@ -247,7 +249,7 @@ inline constexpr Reason FIRST_DROP = Reason::Qa;
 // The number of codes: every Reason is below it.
 inline constexpr std::uint8_t REASON_COUNT = static_cast<std::uint8_t>(Reason::Stored) + 1;
 
-// "kept", "no_fit", "no_segment", "qa", ..., "stored": the code's name, as
+// "in_segment", "no_fit", "no_segment", "qa", ..., "stored": the code's name, as
 // the Python package's REASONS lists them.
 const char* name(Reason reason);
 

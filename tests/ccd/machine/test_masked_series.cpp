@@ -266,15 +266,15 @@ TEST(MaskedSeries, CountUntilAndTakeMask)
 }
 
 // With reason codes, each drop writes its reason at the dropped observation's
-// index in the pixel's series; the codes stay Kept exactly where the mask
+// index in the pixel's series; the codes stay InSegment exactly where the mask
 // keeps. Without them nothing is written.
 TEST(MaskedSeries, DropsWriteTheirReasonAtTheSeriesIndex)
 {
     const Pixel px(40);
     const auto ws = px.workspace();
     const ccd::ProcessingMask mask = thinned(px.T);
-    const auto kept = static_cast<std::uint8_t>(ccd::Reason::Kept);
-    std::vector<std::uint8_t> reasons(px.T, kept);
+    const auto in_segment = static_cast<std::uint8_t>(ccd::Reason::InSegment);
+    std::vector<std::uint8_t> reasons(px.T, in_segment);
     for (index_t t = 0; t < px.T; ++t)
         if (!mask[t])
             reasons[t] = static_cast<std::uint8_t>(ccd::Reason::Qa);
@@ -297,7 +297,7 @@ TEST(MaskedSeries, DropsWriteTheirReasonAtTheSeriesIndex)
     expected[kept_at[0]] = static_cast<std::uint8_t>(ccd::Reason::LookbackOutlier);
     EXPECT_EQ(s.reasons(), expected);
     for (index_t t = 0; t < px.T; ++t)
-        EXPECT_EQ(s.reasons()[t] == kept, s.mask()[t]) << t;
+        EXPECT_EQ(s.reasons()[t] == in_segment, s.mask()[t]) << t;
     EXPECT_EQ(s.take_reasons(), expected);
 
     s.reset(ws, mask);

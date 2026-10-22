@@ -468,12 +468,12 @@ class Runs(unittest.TestCase):
         names = [ccdcpp.REASONS[c] for c in reasons]
         self.assertEqual([names[10], names[20], names[30], names[41]],
                          ["qa", "thermal", "band_range", "duplicate_date"])
-        self.assertEqual(ccdcpp.REASONS[:3], ("kept", "no_fit", "no_segment"))
+        self.assertEqual(ccdcpp.REASONS[:3], ("in_segment", "no_fit", "no_segment"))
         self.assertEqual(ccdcpp.REASONS[ccdcpp.FIRST_DROP], "qa")
         np.testing.assert_array_equal(reasons < ccdcpp.FIRST_DROP, plain["processing_mask"] == 1)
-        # Kept is in a segment's days; the observer's drops are the machine's codes.
+        # in_segment is in a segment's days; the observer's drops are the machine's codes.
         days = [(m["start_day"], m["end_day"]) for m in out["models"]]
-        for t in np.flatnonzero(reasons == 0):
+        for t in np.flatnonzero(reasons == ccdcpp.REASONS.index("in_segment")):
             self.assertTrue(any(a <= d[t] <= b for a, b in days))
         traced = ccdcpp.detect(d, s, q, input=h, reasons=True, trace=True)
         assert "trace" in traced

@@ -17,7 +17,7 @@ so `processing_mask == (mask_reasons < ccdcpp.FIRST_DROP)`.
 
 | code | name | the observation |
 |---|---|---|
-| 0 | `kept` | is kept and in a segment |
+| 0 | `in_segment` | is kept and in a segment |
 | 1 | `no_fit` | is kept, after the last segment of a pixel whose model could not be fitted on its window (exit `NoFit`) |
 | 2 | `no_segment` | is kept and in no segment otherwise: the last peek after a curve that reaches the series end, an edge segment that is not due, the gap a Lookback stopped by a change leaves after a break, a pixel with too few observations or a NaN variogram |
 | 3 | `qa` | was removed by `keep_qa`: its QA code is not kept |
@@ -46,7 +46,7 @@ print([date.fromordinal(int(d)) for d in dates[codes == ccdcpp.REASONS.index("no
 ```
 
 ```text
-{'kept': 370, 'no_segment': 6, 'qa': 81}
+{'in_segment': 370, 'no_segment': 6, 'qa': 81}
 True
 [datetime.date(2019, 8, 1), datetime.date(2019, 8, 17), datetime.date(2019, 9, 2), datetime.date(2019, 10, 4), datetime.date(2019, 11, 5), datetime.date(2019, 11, 21)]
 ```
@@ -70,7 +70,7 @@ and `ccdcpp.to_pixels()` gives each pixel detect()'s.
 | `procedure` | 0 standard, 1 insufficient_clear, 2 snow (the record's codes) |
 | `exit` | why the machine stopped, a code of `ccdcpp.EXITS` (`SeriesEnd`, `InitializeExhausted`, `NoFit`, ...); 0, `None`, for the whole-series procedures |
 | `clear` | the observations the preprocessing kept |
-| `kept` | the observations the processing mask keeps after the fit |
+| `kept` | the observations the processing mask keeps after the fit: those of the codes below `ccdcpp.FIRST_DROP` (`in_segment`, `no_fit`, `no_segment`) |
 | `peek` | the change test's peek for the pixel; 0 without a machine |
 
 | segment | from the segment before it to this one's writing |

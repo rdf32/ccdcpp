@@ -114,8 +114,8 @@ void apply_mask(
 //     a window bound above the dropped position moves down by one.
 //
 // With reason codes (reset()'s `reasons`), each drop also writes why at the
-// dropped observation's index in the pixel's series: they stay Reason::Kept
-// exactly where mask() keeps.
+// dropped observation's index in the pixel's series: they stay
+// Reason::InSegment exactly where mask() keeps.
 //
 // The buffers keep their capacity across reset(), so a MaskedSeries reused
 // across pixels stops allocating.
@@ -127,8 +127,8 @@ class MaskedSeries
 public:
 
     // The observations of `pixel` that `mask` keeps, and with `reasons` (T
-    // codes, Reason::Kept where `mask` keeps) the codes the drops write; none
-    // when it is empty.
+    // codes, Reason::InSegment where `mask` keeps) the codes the drops write;
+    // none when it is empty.
     void reset(const PixelSeries& pixel, ProcessingMask mask,
                std::vector<std::uint8_t> reasons = {});
 

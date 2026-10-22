@@ -176,7 +176,7 @@ TEST(MachineHooks, ABreakIntoThePeekDropsTheObservationsBeforeIt)
     EXPECT_EQ(r.state.cursor.window.start, 0u);
     EXPECT_EQ(r.state.cursor.window.stop, 40u);
     // Their code is BeforeChange.
-    std::vector<std::uint8_t> reasons(80, static_cast<std::uint8_t>(ccd::Reason::Kept));
+    std::vector<std::uint8_t> reasons(80, static_cast<std::uint8_t>(ccd::Reason::InSegment));
     reasons[40] = reasons[41] = static_cast<std::uint8_t>(ccd::Reason::BeforeChange);
     EXPECT_EQ(r.state.series.reasons(), reasons);
 }
@@ -325,7 +325,7 @@ TEST(MachineHooks, ARestoringSearchGivesBackItsDropsWhenExhausted)
     EXPECT_EQ(r.state.series.size(), 80u);
     // Its reason codes come back with it.
     EXPECT_EQ(r.state.series.reasons(),
-              std::vector<std::uint8_t>(80, static_cast<std::uint8_t>(ccd::Reason::Kept)));
+              std::vector<std::uint8_t>(80, static_cast<std::uint8_t>(ccd::Reason::InSegment)));
     EXPECT_FALSE(r.state.resumable);
 }
 

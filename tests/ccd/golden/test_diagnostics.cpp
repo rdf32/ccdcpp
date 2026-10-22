@@ -83,7 +83,7 @@ const std::vector<Series>& pixels()
 
 // What every result with reason codes holds: one code per observation, below
 // REASON_COUNT; the mask keeps exactly those below FIRST_DROP; a kept
-// observation is Kept exactly when a segment's days hold it.
+// observation is InSegment exactly when a segment's days hold it.
 void expect_consistent(const ccd::PixelOutput& r, const Series& s)
 {
     ASSERT_EQ(r.reasons.size(), s.size()) << s.name;
@@ -97,7 +97,7 @@ void expect_consistent(const ccd::PixelOutput& r, const Series& s)
         for (const ccd::ChangeModel& m : r.result.models)
             in_segment = in_segment || (m.start_day <= s.dates[t] && s.dates[t] <= m.end_day);
         if (r.result.mask[t])
-            EXPECT_EQ(code == static_cast<std::uint8_t>(Reason::Kept), in_segment)
+            EXPECT_EQ(code == static_cast<std::uint8_t>(Reason::InSegment), in_segment)
                 << s.name << " " << t;
     }
 }
@@ -120,7 +120,7 @@ TEST(Reasons, EveryObservationHasOneAndTheRunIsTheSame)
     }
     // The codes the corpus takes: all but those of the routes chi2, the
     // Lasso and the library's steps never take.
-    for (const Reason code : {Reason::Kept, Reason::NoSegment, Reason::Qa, Reason::Thermal,
+    for (const Reason code : {Reason::InSegment, Reason::NoSegment, Reason::Qa, Reason::Thermal,
                               Reason::BandRange, Reason::Green, Reason::DuplicateDate,
                               Reason::WindowScreen, Reason::LookbackOutlier, Reason::Outlier})
         EXPECT_GT(seen[code], 0u) << ccd::name(code);
@@ -159,7 +159,7 @@ TEST(Reasons, EachPathGivesItsCode)
         {"standard_too_few", Reason::NoSegment, 12},
         {"variogram_nan", Reason::NoSegment, 61},
         {"snow_too_few", Reason::NoSegment, 11},
-        {"peek_guard_tail", Reason::Kept, 400},
+        {"peek_guard_tail", Reason::InSegment, 400},
     };
     for (const Pin& pin : pins)
     {
@@ -386,7 +386,7 @@ TEST(Reasons, ARegistrysStepAndStrategiesGiveTheirCodes)
 
     // A step a registry adds: its code, CustomStep, where it removes one.
     std::size_t kept = 0;
-    while (plain.reasons[kept] != static_cast<std::uint8_t>(Reason::Kept))
+    while (plain.reasons[kept] != static_cast<std::uint8_t>(Reason::InSegment))
         ++kept;
     ccd::config::Config config = s.config;
     auto& steps = config.preprocess.at("standard").steps;
@@ -413,7 +413,7 @@ TEST(Reasons, ARegistrysStepAndStrategiesGiveTheirCodes)
     EXPECT_TRUE(unfitted.result.models.empty());
     const auto unfit = counts(unfitted.reasons);
     EXPECT_GT(unfit.at(Reason::NoFit), 0u);
-    EXPECT_EQ(unfit.count(Reason::Kept), 0u);
+    EXPECT_EQ(unfit.count(Reason::InSegment), 0u);
     expect_consistent(unfitted, s);
 }
 

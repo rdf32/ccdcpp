@@ -414,9 +414,9 @@ void validate(const PreprocessPlan& plan, index_t bands);
 // codes. `mask` is resized to T, set to keep every observation, and then
 // narrowed or widened by each step in order.
 //
-// With `reasons`, it is resized to T too, Reason::Kept everywhere, and each
-// step writes the code of what it removes (reason_of() its kind) and
-// Reason::Kept where it takes an observation back: reasons[t] is Kept
+// With `reasons`, it is resized to T too, Reason::InSegment everywhere, and
+// each step writes the code of what it removes (reason_of() its kind) and
+// InSegment where it takes an observation back: reasons[t] is InSegment
 // exactly where mask[t] keeps.
 //
 // The chain is assumed valid for `spectral`'s band count (validate()).

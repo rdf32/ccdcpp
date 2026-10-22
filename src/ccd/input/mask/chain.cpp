@@ -317,18 +317,18 @@ Reason reason_of(StepKind kind)
 namespace
 {
 
-// After a step of `kind`: its code where it removed an observation, Kept
-// where it took one back.
+// After a step of `kind`: its code where it removed an observation,
+// InSegment where it took one back.
 void note_step(StepKind kind, const ProcessingMask& mask, std::vector<std::uint8_t>& reasons)
 {
-    const auto kept = static_cast<std::uint8_t>(Reason::Kept);
+    const auto in_segment = static_cast<std::uint8_t>(Reason::InSegment);
     const auto removed = static_cast<std::uint8_t>(reason_of(kind));
     for (index_t i = 0; i < mask.size(); ++i)
     {
-        if (!mask[i] && reasons[i] == kept)
+        if (!mask[i] && reasons[i] == in_segment)
             reasons[i] = removed;
         else if (mask[i])
-            reasons[i] = kept;
+            reasons[i] = in_segment;
     }
 }
 
@@ -345,7 +345,7 @@ void apply(
 {
     mask.data().assign(dates.size(), static_cast<std::uint8_t>(1));
     if (reasons)
-        reasons->assign(dates.size(), static_cast<std::uint8_t>(Reason::Kept));
+        reasons->assign(dates.size(), static_cast<std::uint8_t>(Reason::InSegment));
     apply_steps(chain, dates, spectral, qas, mask, reasons);
 }
 

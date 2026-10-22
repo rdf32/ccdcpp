@@ -168,17 +168,21 @@ PixelDiagnostics diagnose(PixelProcedure procedure, index_t clear, const FitResu
 }
 
 // Step 6, with RunSpec::reasons: the code in `reasons` of each kept
-// observation, Reason::Kept inside the days of a segment of `models` (in
+// observation, Reason::InSegment inside the days of a segment of `models` (in
 // date order), Reason::NoFit after the last segment of a pixel whose machine
-// ended in Exit::NoFit (`no_fit`), Reason::NoSegment otherwise.
+// ended in Exit::NoFit (`no_fit`), Reason::NoSegment otherwise. A segment
+// holds an observation by its day: exact when the chain keeps one
+// observation per date (one_per_date); without it, a kept observation in a
+// gap that shares its date with a segment's last or first one would be
+// InSegment.
 void settle_reasons(std::vector<std::uint8_t>& reasons, const std::vector<ChangeModel>& models,
                     ArrayView<const std::int64_t, 1> dates, bool no_fit)
 {
-    const auto kept = static_cast<std::uint8_t>(Reason::Kept);
+    const auto in_segment = static_cast<std::uint8_t>(Reason::InSegment);
     std::size_t m = 0;
     for (index_t t = 0; t < dates.size(); ++t)
     {
-        if (reasons[t] != kept)
+        if (reasons[t] != in_segment)
             continue;
         const std::int64_t day = dates(t);
         while (m < models.size() && models[m].end_day < day)

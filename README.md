@@ -744,7 +744,7 @@ SeriesEnd
 686
 ```
 
-`reasons=True` on either call also returns `"mask_reasons"`: why each observation is where the run left it, one code of `ccdcpp.REASONS` per observation (`(H, W, T)` for a cube). The codes below `ccdcpp.FIRST_DROP` are the observations the processing mask keeps (`kept` in a segment, `no_fit`, `no_segment`); the others name the preprocessing step or the machine's stage that removed it (`qa`, `thermal`, `band_range`, `green`, `duplicate_date`, `window_screen`, `lookback_outlier`, `outlier`, `before_change`, ...).
+`reasons=True` on either call also returns `"mask_reasons"`: why each observation is where the run left it, one code of `ccdcpp.REASONS` per observation (`(H, W, T)` for a cube). The codes below `ccdcpp.FIRST_DROP` are the observations the processing mask keeps (`in_segment`, `no_fit`, `no_segment`); the others name the preprocessing step or the machine's stage that removed it (`qa`, `thermal`, `band_range`, `green`, `duplicate_date`, `window_screen`, `lookback_outlier`, `outlier`, `before_change`, ...).
 
 ```python
 codes = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), reasons=True)["mask_reasons"]
@@ -752,7 +752,7 @@ print({ccdcpp.REASONS[c]: int(n) for c, n in zip(*np.unique(codes, return_counts
 ```
 
 ```text
-{'kept': 370, 'no_segment': 6, 'qa': 81}
+{'in_segment': 370, 'no_segment': 6, 'qa': 81}
 ```
 
 `diagnostics=True` also returns `"pixel_diagnostics"` (the pixel's procedure, its exit, a code of `ccdcpp.EXITS`, the observations the preprocessing and the fit kept, the peek) and `"segment_diagnostics"` (per segment: Initialize and Lookback steps, change tests, refits, dropped observations), as `(H, W)` and per-segment columns for a cube.

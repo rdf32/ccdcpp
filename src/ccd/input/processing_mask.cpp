@@ -7,7 +7,7 @@ const char* name(Reason reason)
 {
     switch (reason)
     {
-        case Reason::Kept:            return "kept";
+        case Reason::InSegment:       return "in_segment";
         case Reason::NoFit:           return "no_fit";
         case Reason::NoSegment:       return "no_segment";
         case Reason::Qa:              return "qa";

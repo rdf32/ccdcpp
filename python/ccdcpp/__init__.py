@@ -172,8 +172,8 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         CCD_OBSERVE=OFF.
     reasons
         True to also return "mask_reasons", (T,) uint8: why each observation
-        is where the run left it, a code of ccdcpp.REASONS ("kept" in a
-        segment, "qa", "window_screen", "outlier", ...; docs/diagnostics.md).
+        is where the run left it, a code of ccdcpp.REASONS ("in_segment",
+        "qa", "window_screen", "outlier", ...; docs/diagnostics.md).
         The codes below ccdcpp.FIRST_DROP are those processing_mask keeps.
     diagnostics
         True to also return "pixel_diagnostics", what the run did on the
