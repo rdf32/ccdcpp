@@ -305,9 +305,9 @@ void bind_detect(py::module_& m)
         reasons[code] = ccd::name(static_cast<ccd::Reason>(code));
     m.attr("REASONS") = reasons;
     m.attr("FIRST_DROP") = static_cast<std::uint8_t>(ccd::FIRST_DROP);
-    py::tuple exits(static_cast<std::size_t>(ccd::machine::Exit::NoFit) + 1);
-    for (std::size_t code = 0; code < exits.size(); ++code)
-        exits[code] = ccd::machine::to_string(static_cast<ccd::machine::Exit>(code));
+    py::tuple exits(ccd::machine::EXIT_COUNT);
+    for (std::uint8_t code = 0; code < ccd::machine::EXIT_COUNT; ++code)
+        exits[code] = ccd::machine::name(static_cast<ccd::machine::Exit>(code));
     m.attr("EXITS") = exits;
     m.def("resume_schema", &resume_schema);
     m.attr("RESUME_FORMAT") = ccd::RESUME_FORMAT;

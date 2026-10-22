@@ -63,12 +63,14 @@ and the machine its drops only when asked.
 pixel, and `"segment_diagnostics"`, the machine's work on each segment, one int32 array per
 counter in the order of the models; `detect_cube(..., diagnostics=True)` returns the pixels' as
 `(H, W)` arrays (zeros for a failed pixel) and the segments' in the order of the segment columns,
-and `ccdcpp.to_pixels()` gives each pixel detect()'s.
+and `ccdcpp.to_pixels()` gives each pixel detect()'s. `to_pixels()` lists only the pixels with a
+segment, so the diagnostics of a pixel without one, often the pixel to ask why, are its entries
+of the `(H, W)` arrays.
 
 | pixel | |
 |---|---|
 | `procedure` | 0 standard, 1 insufficient_clear, 2 snow (the record's codes), named by `ccdcpp.PROCEDURES[procedure]` |
-| `exit` | why the machine stopped, a code of `ccdcpp.EXITS` (`SeriesEnd`, `InitializeExhausted`, `NoFit`, ...); 0, `None`, for the whole-series procedures |
+| `exit` | why the machine stopped, a code of `ccdcpp.EXITS` (`series_end`, `initialize_exhausted`, `no_fit`, ...); 0, `none`, for the whole-series procedures |
 | `clear` | the observations the preprocessing kept |
 | `kept` | the observations the processing mask keeps after the fit: those of the codes below `ccdcpp.FIRST_DROP` (`in_segment`, `no_fit`, `no_segment`) |
 | `peek` | the change test's peek for the pixel; 0 without a machine |
@@ -95,7 +97,7 @@ print(pd.DataFrame(out["segment_diagnostics"]).to_string())
 ```
 
 ```text
-{'procedure': 0, 'exit': 6, 'clear': 376, 'kept': 376, 'peek': 6} SeriesEnd
+{'procedure': 0, 'exit': 6, 'clear': 376, 'kept': 376, 'peek': 6} series_end
    initialize_steps  lookback_steps  tests  refits  dropped
 0                 9               0    220      13        0
 1                14               3    107       7        0
@@ -162,7 +164,7 @@ Each event is a dict:
 | `window_start`, `window_stop`, `prev_break`, `observations` | a transition: the cursor (positions in the masked series) and the series length |
 | `day`, `outcome`, `values` | a test: the peek's first day, `change` or `no change`, each peek observation's value of the change test's first statistic (chi2's `change_magnitude`); a drop: the dropped day and why, its reason code's name (`window_screen`, `lookback_outlier`, `outlier`, `before_change`) |
 | `day`, `day_to`, `outcome`, `observations` | a segment: its first and last day, its curve_qa, break day and change probability, its observation count |
-| `outcome`, `observations` | the exit: why the pixel ended (`SeriesEnd`, `InitializeExhausted`, ...), and its segment count |
+| `outcome`, `observations` | the exit: why the pixel ended, its name in `ccdcpp.EXITS` (`series_end`, `initialize_exhausted`, ...), and its segment count |
 
 The whole-series pixels (insufficient clear, permanent snow) take no machine and report
 nothing. A resumed pixel reports from its Prepare on, then from where the stored run stopped.

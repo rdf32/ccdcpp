@@ -115,7 +115,7 @@ inline void dump_pixel(
     if (cube.masks.empty())
         dump_mask(out, pixel.result.mask);
     else
-        dump_mask(out, cube.mask(pixel.row, pixel.col));
+        dump_mask(out, cube.mask_of(pixel.row, pixel.col));
 }
 
 // One result's dump, for comparing two runs.

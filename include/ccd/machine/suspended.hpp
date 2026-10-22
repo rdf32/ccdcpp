@@ -38,7 +38,12 @@ enum class Exit : std::uint8_t
                           // be fitted on the window, or it could not be
 };
 
-const char* to_string(Exit exit);
+// The number of exits: every Exit is below it.
+inline constexpr std::uint8_t EXIT_COUNT = static_cast<std::uint8_t>(Exit::NoFit) + 1;
+
+// "none", "too_few_observations", ..., "no_fit": the exit's name, as the
+// Python package's EXITS lists them and the trace's exit event says it.
+const char* name(Exit exit);
 
 // Where the machine stopped, for a later resume (record.hpp): the record at
 // the first size guard that failed, before anything after it wrote. Every

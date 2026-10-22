@@ -171,7 +171,7 @@ struct CubeOutput
     std::vector<std::uint8_t> masks;
 
     // The processing mask of pixel (row, col): T values of `masks`.
-    ArrayView<const std::uint8_t, 1> mask(index_t row, index_t col) const
+    ArrayView<const std::uint8_t, 1> mask_of(index_t row, index_t col) const
     {
         return ArrayView<const std::uint8_t, 1>::contiguous(
             masks.data() + (row * width + col) * timesteps, {timesteps});

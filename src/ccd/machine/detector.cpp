@@ -147,18 +147,18 @@ const char* to_string(ExtendOutcome outcome)
     return "?";
 }
 
-const char* to_string(Exit exit)
+const char* name(Exit exit)
 {
     switch (exit)
     {
-        case Exit::None:                return "None";
-        case Exit::TooFewObservations:  return "TooFewObservations";
-        case Exit::VariogramNaN:        return "VariogramNaN";
-        case Exit::InitializeExhausted: return "InitializeExhausted";
-        case Exit::PeekBeyondEnd:       return "PeekBeyondEnd";
-        case Exit::NoRoomToInitialize:  return "NoRoomToInitialize";
-        case Exit::SeriesEnd:           return "SeriesEnd";
-        case Exit::NoFit:               return "NoFit";
+        case Exit::None:                return "none";
+        case Exit::TooFewObservations:  return "too_few_observations";
+        case Exit::VariogramNaN:        return "variogram_nan";
+        case Exit::InitializeExhausted: return "initialize_exhausted";
+        case Exit::PeekBeyondEnd:       return "peek_beyond_end";
+        case Exit::NoRoomToInitialize:  return "no_room_to_initialize";
+        case Exit::SeriesEnd:           return "series_end";
+        case Exit::NoFit:               return "no_fit";
     }
     return "?";
 }
@@ -1186,7 +1186,7 @@ void report_exit(const Context& context, const State& state)
     if (context.observe.observer)
     {
         ObserverEvent e{ObserverEvent::Kind::Exit};
-        e.outcome = to_string(state.exit);
+        e.outcome = name(state.exit);
         e.observations = state.segments.size();
         context.observe.observer->event(context.observe.pixel, e);
     }
@@ -1274,23 +1274,24 @@ void check_fits(const Context& context, const State& state, const Suspended& fro
     {
         case Exit::NoRoomToInitialize:
             if (w.size() != meow)
-                refuse("NoRoomToInitialize with a window other than the start search's");
+                refuse("no_room_to_initialize with a window other than the start search's");
             break;
         case Exit::InitializeExhausted:
         case Exit::PeekBeyondEnd:
             if (w.size() < meow || w.stop > size)
-                refuse(std::string(to_string(from.exit)) +
+                refuse(std::string(name(from.exit)) +
                        " with a window shorter than the start search's or past the series");
             break;
         case Exit::SeriesEnd:
             if (w.size() < meow || w.stop >= size)
-                refuse("SeriesEnd with a window shorter than the start search's or reaching the series end");
+                refuse("series_end with a window shorter than the start search's or reaching the "
+                       "series end");
             if (!(w.start < from.fit_stop && from.fit_stop <= w.stop))
-                refuse("SeriesEnd with a fit window outside the window");
+                refuse("series_end with a fit window outside the window");
             if (from.num_coef < 1 || from.num_coef > state.coefficients.max)
-                refuse("SeriesEnd with a coefficient count outside 1..the model's widest");
+                refuse("series_end with a coefficient count outside 1..the model's widest");
             if (from.magnitude.size() != state.series.spectral().extent(0))
-                refuse("SeriesEnd with " + std::to_string(from.magnitude.size()) +
+                refuse("series_end with " + std::to_string(from.magnitude.size()) +
                        " magnitudes for " + std::to_string(state.series.spectral().extent(0)) +
                        " bands");
             break;

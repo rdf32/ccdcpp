@@ -123,7 +123,7 @@ class PixelDiagnostics(TypedDict):
 
     #: 0 standard, 1 insufficient_clear, 2 snow (the record's codes): ccdcpp.PROCEDURES[procedure]
     procedure: int
-    #: why the machine stopped, a code of ccdcpp.EXITS; 0 ("None") without a machine
+    #: why the machine stopped, a code of ccdcpp.EXITS; 0 ("none") without a machine
     exit: int
     #: the observations the preprocessing kept
     clear: int

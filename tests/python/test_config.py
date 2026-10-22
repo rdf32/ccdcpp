@@ -508,7 +508,7 @@ class Runs(unittest.TestCase):
         assert "pixel_diagnostics" in out and "segment_diagnostics" in out
         assert "mask_reasons" in out
         px = out["pixel_diagnostics"]
-        self.assertEqual(ccdcpp.EXITS[px["exit"]], "SeriesEnd")
+        self.assertEqual(ccdcpp.EXITS[px["exit"]], "series_end")
         self.assertEqual((px["procedure"], px["clear"], px["kept"], px["peek"]),
                          (0, d.size - 1, int(plain["processing_mask"].sum()), 6))
         # Every counter's column, by name.

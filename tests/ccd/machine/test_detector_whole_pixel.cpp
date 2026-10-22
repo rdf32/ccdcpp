@@ -110,7 +110,7 @@ struct Stop
 
 void PrintTo(const Stop& stop, std::ostream* os)
 {
-    *os << stop.pixel << ": " << ccd::machine::to_string(stop.exit);
+    *os << stop.pixel << ": " << ccd::machine::name(stop.exit);
 }
 
 const Stop STOPS[] = {
@@ -147,7 +147,7 @@ TEST_P(EachWayTheMachineStops, Pixel)
     const auto& [name, exit] = GetParam();
     const golden::Series& p = golden::named(pixels, name);
     const MachineRun run = run_machine(p);
-    EXPECT_EQ(run.exit, exit) << name << ": " << ccd::machine::to_string(run.exit);
+    EXPECT_EQ(run.exit, exit) << name << ": " << ccd::machine::name(run.exit);
     expect_same(run.result, golden::detect(p), name);
 }
 
