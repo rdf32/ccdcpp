@@ -168,7 +168,7 @@ void check_band_list(const BandList& list, index_t bands, const std::string& whe
     {
         if (band >= bands)
             throw std::invalid_argument(where + " holds band " + std::to_string(band) +
-                                        "; the input has " + std::to_string(bands) + " bands");
+                                        "; the data spec has " + std::to_string(bands) + " bands");
         if (!seen.insert(band).second)
             throw std::invalid_argument(where + " holds band " + std::to_string(band) +
                                         " twice");

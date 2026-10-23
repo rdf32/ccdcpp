@@ -119,7 +119,7 @@ TEST(PlanValidation, TransformBandInBandRange)
 TEST(PlanValidation, AddQaNotFollowedByOnePerDate)
 {
     const Options options;
-    const ccd::Input& h = options.input;
+    const ccd::DataSpec& h = options.spec;
     {
         // AddQa last.
         pp::PreprocessPlan plan = plan_of(options);
@@ -153,7 +153,7 @@ TEST(PlanValidation, EntryPointsReject)
 {
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 2, 2);
     const std::size_t T = c.T;
-    const ccd::Input h;
+    const ccd::DataSpec h;
 
     ccd::config::Config bad = golden::pyccd();
     auto& snow_steps = bad.preprocess.at("snow").steps;

@@ -29,7 +29,7 @@ namespace ccd
 // Every index is below CCD_MAX_BANDS; adding one that is not, or adding to a
 // full list, throws std::invalid_argument. Whether an index is below the
 // actual band count, and whether a list repeats a band, is checked per call
-// where the list is used: ccd::validate() for the input's, the configuration's
+// where the list is used: ccd::validate() for the data spec's, the configuration's
 // resolution (config::resolve()) for its lists.
 //
 //==============================================================================

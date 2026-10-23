@@ -15,7 +15,7 @@
 #include "ccd/core/band_list.hpp"
 #include "ccd/input/processing_mask.hpp"
 #include "ccd/core/array_view.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/reason.hpp"
 #include "ccd/input/procedure.hpp"
@@ -43,7 +43,7 @@ namespace preprocess
 //   Step               one filter: a StepKind and the parameters it reads.
 //
 // A plan is the configuration's preprocess section resolved against an
-// input (config::resolve(), plan_of() in run/algorithm.hpp): the
+// data spec (config::resolve(), plan_of() in run/algorithm.hpp): the
 // steps by name with their parameters in physical units, as data units,
 // rows and codes. It is checked against the band count by validate() when it
 // is resolved, never per pixel.
@@ -325,7 +325,7 @@ inline scalar_t apply(const Affine& affine, scalar_t value)
 // of the bound, found by bisection over the doubles in order; another scale
 // or offset is refused (std::invalid_argument). A thermal_range step of a
 // procedure that does not transform its thermal row tests the stored row
-// with it, so its bounds are degrees Celsius on every input (docs/units.md).
+// with it, so its bounds are degrees Celsius on every data spec (docs/units.md).
 // On Collection-1 DN (Kelvin x 10, the default transform) -93.2 and 70.7
 // degrees are 1799.5 and 3438.5 exactly: 179.95 and 343.85 kelvin.
 Range stored_range(const Range& range, const Affine& affine);
@@ -374,8 +374,8 @@ struct PreprocessPlan
 //
 //     thermal <- thermal * thermal_scale + thermal_offset
 //
-// of the input's "thermal" row, which puts it into the unit its ThermalRange
-// step tests; none when that is the identity (1.0, 0.0) or the input has no
+// of the spec's "thermal" row, which puts it into the unit its ThermalRange
+// step tests; none when that is the identity (1.0, 0.0) or the spec has no
 // thermal row. The defaults are pyccd's collection-1 transform, Kelvin x 10 ->
 // Celsius x 100 (the collection-2 form `* 0.00341802 + 149.0 - 273.15`
 // yields plain Celsius).
@@ -388,7 +388,7 @@ struct PreprocessPlan
 // procedure's range is in degrees Celsius (docs/units.md).
 //
 //------------------------------------------------------------------------------
-std::optional<Affine> thermal_transform(const Input& input);
+std::optional<Affine> thermal_transform(const DataSpec& spec);
 
 //------------------------------------------------------------------------------
 //

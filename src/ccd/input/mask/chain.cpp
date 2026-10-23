@@ -133,20 +133,20 @@ Range stored_range(const Range& range, const Affine& affine)
     return out;
 }
 
-std::optional<Affine> thermal_transform(const Input& input)
+std::optional<Affine> thermal_transform(const DataSpec& spec)
 {
     const bool identity =
-        input.thermal_scale  == scalar_t(1.0) &&
-        input.thermal_offset == scalar_t(0.0);
-    const index_t thermal = input.index("thermal");
+        spec.thermal_scale  == scalar_t(1.0) &&
+        spec.thermal_offset == scalar_t(0.0);
+    const index_t thermal = spec.index("thermal");
 
     if (identity || thermal == NO_BAND)
         return std::nullopt;
 
     return Affine{
         thermal,
-        input.thermal_scale,
-        input.thermal_offset
+        spec.thermal_scale,
+        spec.thermal_offset
     };
 }
 

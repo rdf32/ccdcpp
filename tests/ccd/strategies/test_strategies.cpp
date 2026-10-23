@@ -66,7 +66,7 @@ TEST(MonitoringModel, TheLassoIsTheKernelsFit)
     tree.shared["lasso.alpha"] = ccd::config::real(0.5);
     tree.shared["lasso.max_iter"] = ccd::config::integer(300);
     EXPECT_EQ(tree.stages.at("model").strategy, "lasso");
-    ccd::Input reflectance;
+    ccd::DataSpec reflectance;
     reflectance.reflectance_scale = 1.0;
     const auto s = golden::strategies_of(tree, reflectance);
     const auto& lasso = static_cast<const ccd::strategies::Lasso&>(*s.model);
@@ -282,10 +282,10 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
     ccd::strategies::register_core_strategies(r);
     r.add<ccd::MonitoringModel, Opaque>("opaque");
     auto tree = golden::ccdc();
-    const ccd::Input input;
-    EXPECT_NO_THROW(ccd::config::resolve(r, tree, input));
+    const ccd::DataSpec spec;
+    EXPECT_NO_THROW(ccd::config::resolve(r, tree, spec));
     tree.stages["model"] = {"opaque", {}};
-    expect_refused([&] { ccd::config::resolve(r, tree, input); },
+    expect_refused([&] { ccd::config::resolve(r, tree, spec); },
                    "change_test 'chi2' needs peek_residuals, model_rmse, in_window_residuals, "
                    "which model 'opaque' does not provide");
 
@@ -306,13 +306,13 @@ TEST(Capabilities, AStrategyNeedingWhatNoEarlierStageProvidesIsRefused)
     r.add<ccd::StabilityFit, OpaqueFit>("opaque");
     tree = golden::ccdc();
     tree.stages["stability_fit"] = {"opaque", {}};
-    expect_refused([&] { ccd::config::resolve(r, tree, input); },
+    expect_refused([&] { ccd::config::resolve(r, tree, spec); },
                    "stability_rule 'pyccd' needs model_rmse, in_window_residuals, which "
                    "stability_fit 'opaque' does not provide");
 
     r.add<ccd::StabilityFit, NoPeekFit>("no-peek");
     tree.stages["stability_fit"] = {"no-peek", {}};
-    expect_refused([&] { ccd::config::resolve(r, tree, input); },
+    expect_refused([&] { ccd::config::resolve(r, tree, spec); },
                    "lookback 'pyccd' needs peek_residuals, which stability_fit 'no-peek' does not "
                    "provide");
 
@@ -615,7 +615,7 @@ TEST(EdgeSegments, LassoIsTheCatchSegmentAndWholeSeriesKernels)
     config.shared["coefficients.min"] = ccd::config::integer(6);
     config.shared["min_observations"] = ccd::config::integer(15);
     config.shared["lasso.alpha"] = ccd::config::real(0.5);
-    ccd::Input reflectance;
+    ccd::DataSpec reflectance;
     reflectance.reflectance_scale = 1.0;
     const ccd::config::ConfigTree tree = golden::resolved(config, reflectance).stages;
     const auto& edges = tree.at("edge_segments");

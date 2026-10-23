@@ -6,17 +6,17 @@
 #include <cstdint>
 
 #include "ccd/config/config.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 
 namespace ccd
 {
 namespace config
 {
 
-// Over `input` (its digest) and a resolved configuration: its shared values
+// Over `spec` (its digest) and a resolved configuration: its shared values
 // by name, its stages and its preprocessing, in that order. Equal for equal
 // runs, on any platform.
-std::uint64_t resolution_digest(const Input& input, const Values& shared,
+std::uint64_t resolution_digest(const DataSpec& spec, const Values& shared,
                                 const ConfigTree& stages, const PreprocessConfig& preprocess);
 
 } // namespace config

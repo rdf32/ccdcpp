@@ -157,7 +157,7 @@ void expect_whole_series_matches(ccd::PixelProcedure procedure, const std::strin
     const golden::Series data = reference_pixel();
     const golden::PixelView px = data.view();
 
-    const ccd::Input input;
+    const ccd::DataSpec spec;
     const ccd::PixelSeries series(px.dates, px.spectral, px.qas);
 
     ccd::LassoOptions solver_options;
@@ -167,7 +167,7 @@ void expect_whole_series_matches(ccd::PixelProcedure procedure, const std::strin
     const ccd::FitResult result = ccd::fit_whole_series(
         procedure,
         series,
-        golden::chain_mask(series, input, chain, golden::ccdc()),
+        golden::chain_mask(series, spec, chain, golden::ccdc()),
         static_cast<ccd::index_t>(
             golden::parameter<std::int64_t>(golden::resolved().stages, "edge_segments", "min_observations")),
         static_cast<ccd::index_t>(
@@ -208,12 +208,12 @@ TEST(PyccdReference, StandardMatchesPyccd)
     golden::Series data = reference_pixel();
     const std::size_t T = data.size();
 
-    const ccd::Input input;
+    const ccd::DataSpec spec;
     const ccd::config::Shared hshared;
 
     // The Standard chain's thermal transform, applied here: the machine reads
     // the block as it is.
-    const ccd::index_t thermal_idx = input.index("thermal");
+    const ccd::index_t thermal_idx = spec.index("thermal");
     for (std::size_t t = 0; t < T; ++t)
         data.spectral[thermal_idx * T + t] = data.spectral[thermal_idx * T + t] * 10.0 - 27315.0;
 
@@ -224,7 +224,7 @@ TEST(PyccdReference, StandardMatchesPyccd)
     const ccd::FitResult result = detector.fit(
         ccd::PixelProcedure::Standard,
         series,
-        golden::chain_mask(series, input, "standard", golden::ccdc()),
+        golden::chain_mask(series, spec, "standard", golden::ccdc()),
         hshared,
         golden::strategies_of()
     );
@@ -280,7 +280,7 @@ TEST(PyccdReference, HalfDayMedianGapMatchesPyccd)
     const std::size_t T = data.size();
     ASSERT_EQ(T, 1760u);
 
-    const auto result = golden::detect(golden::spec_of(ccd::Input{}), data.view());
+    const auto result = golden::detect(golden::spec_of(ccd::DataSpec{}), data.view());
 
     ASSERT_EQ(result.models.size(), 1u);
     const auto& m = result.models[0];

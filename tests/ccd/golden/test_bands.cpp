@@ -2,7 +2,7 @@
 //
 // Band layouts other than Landsat's.
 //
-// The Input describes the band layout -- a role per row and the saturation
+// The DataSpec describes the band layout -- a role per row and the saturation
 // list -- and the configuration names its bands (the detection bands,
 // Tmask's) by role, resolved through it; the procedures read bands only that
 // way. These tests hold that claim from three sides:
@@ -14,9 +14,9 @@
 //
 //   * Equivalences that need no fixture, on the Landsat corpus and on the
 //     10-band profile: the default layout spelled out, its bands as rows,
-//     equals Input{} with the bands by role; permuting the rows and their
+//     equals DataSpec{} with the bands by role; permuting the rows and their
 //     roles gives the same fits, un-permuted, bit for bit; bands that are in no list
-//     leave the other bands' results bit for bit as they were; and an input
+//     leave the other bands' results bit for bit as they were; and a spec
 //     without a thermal row matches one whose thermal row nothing rejects.
 //
 //   * adjust_change_threshold() takes its chi-squared df from the caller.
@@ -117,7 +117,7 @@ FlatCube with_inert_rows(const FlatCube& s, std::size_t k, std::uint64_t seed)
 template<typename Map>
 std::string dump_series(
     const FlatCube& s,
-    const ccd::Input& h,
+    const ccd::DataSpec& h,
     const ccd::config::Config& config,
     Map map
 )
@@ -135,7 +135,7 @@ std::string dump_series(
 
 std::string dump_series(
     const FlatCube& s,
-    const ccd::Input& h,
+    const ccd::DataSpec& h,
     const ccd::config::Config& config
 )
 {
@@ -230,14 +230,14 @@ TEST(Bands, BitIdenticalToFixture)
 // Generic equals default
 //
 // The Landsat layout written out field by field, and the configuration's
-// band lists as its rows, give what Input{} and the lists by role give,
-// under the DN defaults and the physical-unit input.
+// band lists as its rows, give what DataSpec{} and the lists by role give,
+// under the DN defaults and the physical-unit spec.
 //==============================================================================
 
 namespace
 {
 
-ccd::Input landsat_layout(ccd::Input h)
+ccd::DataSpec landsat_layout(ccd::DataSpec h)
 {
     h.roles = {"blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
     return h;
@@ -260,13 +260,13 @@ TEST(Bands, GenericLayoutEqualsDefault)
     for (const auto& s : landsat_corpus())
     {
         EXPECT_EQ(
-            dump_series(s, landsat_layout(ccd::Input{}), by_rows()),
-            dump_series(s, ccd::Input{}, golden::pyccd()));
+            dump_series(s, landsat_layout(ccd::DataSpec{}), by_rows()),
+            dump_series(s, ccd::DataSpec{}, golden::pyccd()));
 
         const FlatCube phys = golden::to_physical(s);
         EXPECT_EQ(
-            dump_series(phys, landsat_layout(golden::physical_input()), by_rows()),
-            dump_series(phys, golden::physical_input(), golden::pyccd()));
+            dump_series(phys, landsat_layout(golden::physical_spec()), by_rows()),
+            dump_series(phys, golden::physical_spec(), golden::pyccd()));
     }
 }
 
@@ -296,8 +296,8 @@ ccd::config::Config permute_rows(ccd::config::Config config, const std::vector<c
     return config;
 }
 
-ccd::Input permute_layout(
-    ccd::Input h,
+ccd::DataSpec permute_layout(
+    ccd::DataSpec h,
     const std::vector<ccd::index_t>& perm
 )
 {
@@ -310,7 +310,7 @@ ccd::Input permute_layout(
 
 void expect_permutation_invariant(
     const FlatCube& s,
-    const ccd::Input& h,
+    const ccd::DataSpec& h,
     const ccd::config::Config& config,
     const std::vector<ccd::index_t>& perm
 )
@@ -322,7 +322,7 @@ void expect_permutation_invariant(
         inv[perm[r]] = r;
 
     const FlatCube permuted = take_rows(s, perm);
-    const ccd::Input hp = permute_layout(h, perm);
+    const ccd::DataSpec hp = permute_layout(h, perm);
 
     // The same configuration: its bands, by role, are the permuted rows.
     EXPECT_EQ(
@@ -340,9 +340,9 @@ TEST(Bands, PermutationInvariantSevenBands)
 
     for (const auto& s : landsat_corpus())
     {
-        expect_permutation_invariant(s, ccd::Input{}, golden::pyccd(), perm);
+        expect_permutation_invariant(s, ccd::DataSpec{}, golden::pyccd(), perm);
         expect_permutation_invariant(
-            golden::to_physical(s), golden::physical_input(), golden::pyccd(), perm);
+            golden::to_physical(s), golden::physical_spec(), golden::pyccd(), perm);
     }
 }
 
@@ -375,10 +375,10 @@ TEST(Bands, InertBandsChangeNothingElse)
 {
     for (const std::size_t k : {1u, 3u})
     {
-        ccd::Input h;
+        ccd::DataSpec h;
         h.roles.resize(7 + k, "other");
 
-        ccd::Input hp = golden::physical_input();
+        ccd::DataSpec hp = golden::physical_spec();
         hp.roles.resize(7 + k, "other");
 
         for (const auto& s : landsat_corpus())
@@ -388,13 +388,13 @@ TEST(Bands, InertBandsChangeNothingElse)
             EXPECT_EQ(
                 dump_series(wide, h, golden::pyccd(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(s, ccd::Input{}, golden::pyccd()));
+                dump_series(s, ccd::DataSpec{}, golden::pyccd()));
 
             const FlatCube phys = golden::to_physical(s);
             EXPECT_EQ(
                 dump_series(with_inert_rows(phys, k, 900 + k), hp, golden::pyccd(),
                     [](const ccd::FitResult& r) { return select_bands(r, iota(7)); }),
-                dump_series(phys, golden::physical_input(), golden::pyccd()));
+                dump_series(phys, golden::physical_spec(), golden::pyccd()));
         }
     }
 
@@ -405,7 +405,7 @@ TEST(Bands, InertBandsChangeNothingElse)
         const FlatCube s = golden::flat(golden::make_band_cube(
             700 + spec.seed, spec.regime, spec.H, spec.W, l30.specs));
 
-        ccd::Input h = l30.h;
+        ccd::DataSpec h = l30.h;
         h.roles.resize(10, "other");
 
         EXPECT_EQ(
@@ -418,7 +418,7 @@ TEST(Bands, InertBandsChangeNothingElse)
 //==============================================================================
 // Thermal absent
 //
-// An input without a "thermal" row skips the thermal filter and the Standard thermal
+// A spec without a "thermal" row skips the thermal filter and the Standard thermal
 // transform. Its reference is the same series WITH the thermal row, under an
 // identity transform and infinite thermal bounds: a filter that rejects no
 // finite value. The thermal row is in no list, so the six optical bands, the
@@ -427,14 +427,14 @@ TEST(Bands, InertBandsChangeNothingElse)
 // What the equivalence needs, and what it does not claim:
 //
 //   * Every thermal value is finite. NaN fails both bound comparisons, so an
-//     infinite-bounds filter still drops a NaN observation that an input
+//     infinite-bounds filter still drops a NaN observation that a spec
 //     without thermal keeps. The generator writes no NaN.
 //   * The reference needs the infinite bounds, not the defaults: the
 //     generator plants out-of-range thermal values, which the default
-//     bounds reject and an input without thermal does not. That difference is checked below,
+//     bounds reject and a spec without thermal does not. That difference is checked below,
 //     so the test is not passing because the filter never fired.
 //   * The transform plays no part in the optical results (thermal is in no
-//     list); the input without thermal is run under the DN transform defaults to show the
+//     list); the spec without thermal is run under the DN transform defaults to show the
 //     transform is skipped rather than applied to a row that is not there.
 //   * PermanentSnow and InsufficientClear apply the thermal filter too; the
 //     corpus reaches both, and the equivalence covers them.
@@ -445,7 +445,7 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
     constexpr double INF = std::numeric_limits<double>::infinity();
     const std::vector<ccd::index_t> optical = iota(6);
 
-    const auto no_thermal = [](ccd::Input h)
+    const auto no_thermal = [](ccd::DataSpec h)
     {
         h.roles.resize(6);
         return h;
@@ -453,7 +453,7 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
     // The thermal row read as it is and never screened: the identity
     // transform and an unbounded thermal range.
-    const auto open_thermal = [&](ccd::Input h)
+    const auto open_thermal = [&](ccd::DataSpec h)
     {
         h.thermal_scale = 1.0;
         h.thermal_offset = 0.0;
@@ -475,24 +475,24 @@ TEST(Bands, ThermalAbsentMatchesAThermalFilterThatRejectsNothing)
 
         const FlatCube stripped = take_rows(s, optical);
         const std::string absent =
-            dump_series(stripped, no_thermal(ccd::Input{}), golden::pyccd());
+            dump_series(stripped, no_thermal(ccd::DataSpec{}), golden::pyccd());
 
         EXPECT_EQ(
             absent,
-            dump_series(s, open_thermal(ccd::Input{}), open, optical_only));
+            dump_series(s, open_thermal(ccd::DataSpec{}), open, optical_only));
 
         default_bounds_differ = default_bounds_differ ||
-            absent != dump_series(s, ccd::Input{}, golden::pyccd(), optical_only);
+            absent != dump_series(s, ccd::DataSpec{}, golden::pyccd(), optical_only);
 
         const FlatCube phys = golden::to_physical(s);
         EXPECT_EQ(
-            dump_series(take_rows(phys, optical), no_thermal(golden::physical_input()),
+            dump_series(take_rows(phys, optical), no_thermal(golden::physical_spec()),
                 golden::pyccd()),
-            dump_series(phys, open_thermal(golden::physical_input()), open, optical_only));
+            dump_series(phys, open_thermal(golden::physical_spec()), open, optical_only));
 
         for (std::size_t p = 0; p < s.N; ++p)
         {
-            for (const auto& m : golden::detect(golden::spec_of(no_thermal(ccd::Input{}), golden::pyccd()),
+            for (const auto& m : golden::detect(golden::spec_of(no_thermal(ccd::DataSpec{}), golden::pyccd()),
                                                 stripped.view(p)).models)
             {
                 if (m.curve_qa == ccd::CurveQA::PersistentSnow) ++coverage.snow;

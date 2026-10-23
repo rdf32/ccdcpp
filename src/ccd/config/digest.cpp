@@ -109,11 +109,11 @@ std::uint64_t digest(const Config& config)
     return h.value();
 }
 
-std::uint64_t resolution_digest(const Input& input, const Values& shared,
+std::uint64_t resolution_digest(const DataSpec& spec, const Values& shared,
                                 const ConfigTree& stages, const PreprocessConfig& preprocess)
 {
     detail::Fnv h;
-    h.integer(static_cast<std::int64_t>(digest(input)));
+    h.integer(static_cast<std::int64_t>(digest(spec)));
     hash(h, shared);
     hash(h, stages);
     hash(h, preprocess);

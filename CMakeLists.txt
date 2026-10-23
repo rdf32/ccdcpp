@@ -179,7 +179,7 @@ add_library(
 
     src/ccd/input/mask/filter.cpp
     src/ccd/input/procedure.cpp
-    src/ccd/input/input.cpp
+    src/ccd/input/data_spec.cpp
     src/ccd/input/qa_statistics.cpp
 
     src/ccd/input/mask/chain.cpp

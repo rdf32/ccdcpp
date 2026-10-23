@@ -8,7 +8,7 @@
 
 #include "ccd/core/array_view.hpp"
 #include "ccd/config/registry.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/processing_mask.hpp"
@@ -27,11 +27,11 @@ namespace ccd
 //
 // Every call goes through three objects:
 //
-//   Run      built once per call from a RunSpec, the dates and the input's
-//            layout: everything checked (the input against the band count,
-//            the dates, the input's QA table for raw QA, a resume header
+//   Run      built once per call from a RunSpec, the dates and the spec's
+//            layout: everything checked (the spec against the band count,
+//            the dates, the spec's QA table for raw QA, a resume header
 //            against this run), and everything every pixel shares (the
-//            algorithm resolved for the input with its plan, the resume header
+//            algorithm resolved for the spec with its plan, the resume header
 //            and its capped shared values). Immutable: one Run serves every
 //            thread.
 //   Worker   one per thread: the buffers and the change detector a pixel
@@ -188,7 +188,7 @@ private:
     index_t timesteps_;
     bool raw_qa_;
 
-    // The algorithm resolved for the input: its stages, shared values and
+    // The algorithm resolved for the spec: its stages, shared values and
     // strategies, shared by every thread.
     std::shared_ptr<const config::Resolved> resolved_;
 

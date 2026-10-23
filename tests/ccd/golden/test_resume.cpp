@@ -780,7 +780,7 @@ struct CutCube
 TEST(ResumeCube, EachPixelAsResumeAlone)
 {
     const golden::Cube c = golden::make_cube(12, golden::Regime::Cadence8, 6, 8);
-    const ccd::Input h;
+    const ccd::DataSpec h;
     const std::size_t N = c.H * c.W;
 
     for (const std::size_t count : {c.T / 3, c.T / 2, (3 * c.T) / 4})
@@ -851,7 +851,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     const CutCube cut(c, c.T / 2);
     const CutCube whole(c, c.T);
     const ccd::CubeOutput stored = ccd::detect_cube(
-        golden::spec_of(ccd::Input{}, golden::pyccd(), true),
+        golden::spec_of(ccd::DataSpec{}, golden::pyccd(), true),
         cut.dates(),
         cut.block(),
         cut.qa(),
@@ -875,7 +875,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     from.segments[victim].clear();
 
     const ccd::CubeOutput resumed = ccd::detect_cube(
-        golden::spec_of(ccd::Input{}),
+        golden::spec_of(ccd::DataSpec{}),
         whole.dates(),
         whole.block(),
         whole.qa(),
@@ -888,7 +888,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
     // The call itself refuses records that do not cover the cube.
     from.records.pop_back();
     EXPECT_THROW(ccd::detect_cube(
-        golden::spec_of(ccd::Input{}),
+        golden::spec_of(ccd::DataSpec{}),
         whole.dates(),
         whole.block(),
         whole.qa(),
@@ -905,7 +905,7 @@ TEST(ResumeCube, RefusesToCapNoCutoff)
     const CutCube cut(c, c.T / 2);
     const CutCube whole(c, c.T);
     const ccd::CubeOutput stored = ccd::detect_cube(
-        golden::spec_of(ccd::Input{}, golden::ccdc(), true), cut.dates(), cut.block(), cut.qa(), 1);
+        golden::spec_of(ccd::DataSpec{}, golden::ccdc(), true), cut.dates(), cut.block(), cut.qa(), 1);
 
     ccd::Resume from;
     from.header = stored.header;
@@ -918,7 +918,7 @@ TEST(ResumeCube, RefusesToCapNoCutoff)
     }
     const auto resumed = [&]
     {
-        return ccd::detect_cube(golden::spec_of(ccd::Input{}, golden::ccdc()), whole.dates(),
+        return ccd::detect_cube(golden::spec_of(ccd::DataSpec{}, golden::ccdc()), whole.dates(),
                                 whole.block(), whole.qa(), 2, &from);
     };
     try

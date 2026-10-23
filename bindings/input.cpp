@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "ccd/core/constants.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/qa_table.hpp"
 
@@ -19,50 +19,50 @@ namespace
 {
 
 // Every field of ccd::Input, by its Python keyword, and how a value sets it.
-using Setter = void (*)(ccd::Input&, const py::handle&);
+using Setter = void (*)(ccd::DataSpec&, const py::handle&);
 
-template<class T, T ccd::Input::*Member>
-void set_member(ccd::Input& input, const py::handle& value)
+template<class T, T ccd::DataSpec::*Member>
+void set_member(ccd::DataSpec& spec, const py::handle& value)
 {
-    input.*Member = value.cast<T>();
+    spec.*Member = value.cast<T>();
 }
 
-void set_qa_table(ccd::Input& input, const py::handle& value)
+void set_qa_table(ccd::DataSpec& spec, const py::handle& value)
 {
-    input.qa_table = value.is_none() ? nullptr : value.cast<std::shared_ptr<ccd::QaTable>>();
+    spec.qa_table = value.is_none() ? nullptr : value.cast<std::shared_ptr<ccd::QaTable>>();
 }
 
 const std::vector<std::pair<const char*, Setter>>& input_fields()
 {
-    using ccd::Input;
+    using ccd::DataSpec;
     using ccd::scalar_t;
     static const std::vector<std::pair<const char*, Setter>> fields = {
-        {"qa_fill", set_member<std::uint8_t, &Input::qa_fill>},
-        {"qa_clear", set_member<std::uint8_t, &Input::qa_clear>},
-        {"qa_water", set_member<std::uint8_t, &Input::qa_water>},
-        {"qa_shadow", set_member<std::uint8_t, &Input::qa_shadow>},
-        {"qa_snow", set_member<std::uint8_t, &Input::qa_snow>},
-        {"qa_cloud", set_member<std::uint8_t, &Input::qa_cloud>},
-        {"qa_cirrus1", set_member<std::uint8_t, &Input::qa_cirrus1>},
-        {"qa_cirrus2", set_member<std::uint8_t, &Input::qa_cirrus2>},
-        {"qa_occlusion", set_member<std::uint8_t, &Input::qa_occlusion>},
+        {"qa_fill", set_member<std::uint8_t, &DataSpec::qa_fill>},
+        {"qa_clear", set_member<std::uint8_t, &DataSpec::qa_clear>},
+        {"qa_water", set_member<std::uint8_t, &DataSpec::qa_water>},
+        {"qa_shadow", set_member<std::uint8_t, &DataSpec::qa_shadow>},
+        {"qa_snow", set_member<std::uint8_t, &DataSpec::qa_snow>},
+        {"qa_cloud", set_member<std::uint8_t, &DataSpec::qa_cloud>},
+        {"qa_cirrus1", set_member<std::uint8_t, &DataSpec::qa_cirrus1>},
+        {"qa_cirrus2", set_member<std::uint8_t, &DataSpec::qa_cirrus2>},
+        {"qa_occlusion", set_member<std::uint8_t, &DataSpec::qa_occlusion>},
         {"qa_table", set_qa_table},
-        {"roles", set_member<std::vector<std::string>, &Input::roles>},
-        {"reflectance_scale", set_member<scalar_t, &Input::reflectance_scale>},
-        {"reflectance_offset", set_member<scalar_t, &Input::reflectance_offset>},
-        {"thermal_scale", set_member<scalar_t, &Input::thermal_scale>},
-        {"thermal_offset", set_member<scalar_t, &Input::thermal_offset>},
-        {"thermal_at_100c", set_member<scalar_t, &Input::thermal_at_100c>},
-        {"saturation_code", set_member<std::optional<scalar_t>, &Input::saturation_code>},
+        {"roles", set_member<std::vector<std::string>, &DataSpec::roles>},
+        {"reflectance_scale", set_member<scalar_t, &DataSpec::reflectance_scale>},
+        {"reflectance_offset", set_member<scalar_t, &DataSpec::reflectance_offset>},
+        {"thermal_scale", set_member<scalar_t, &DataSpec::thermal_scale>},
+        {"thermal_offset", set_member<scalar_t, &DataSpec::thermal_offset>},
+        {"thermal_at_100c", set_member<scalar_t, &DataSpec::thermal_at_100c>},
+        {"saturation_code", set_member<std::optional<scalar_t>, &DataSpec::saturation_code>},
         {"thermal_saturation_code",
-         set_member<std::optional<scalar_t>, &Input::thermal_saturation_code>},
+         set_member<std::optional<scalar_t>, &DataSpec::thermal_saturation_code>},
     };
     return fields;
 }
 
 // `input` with the keyword `fields` set; TypeError, naming `where` and the
 // fields, for another keyword or a value of the wrong type.
-ccd::Input with_fields(ccd::Input input, const py::kwargs& fields, const char* where)
+ccd::DataSpec with_fields(ccd::DataSpec spec, const py::kwargs& fields, const char* where)
 {
     for (const auto& [key, value] : fields)
     {
@@ -80,7 +80,7 @@ ccd::Input with_fields(ccd::Input input, const py::kwargs& fields, const char* w
         }
         try
         {
-            it->second(input, value);
+            it->second(spec, value);
         }
         catch (const py::cast_error&)
         {
@@ -89,7 +89,7 @@ ccd::Input with_fields(ccd::Input input, const py::kwargs& fields, const char* w
                                  ", which it cannot hold");
         }
     }
-    return input;
+    return spec;
 }
 
 } // namespace
@@ -122,7 +122,7 @@ void bind_input(py::module_& m)
     .value("StatWindow", ccd::GreenFilterScope::StatWindow)
     .value("Off", ccd::GreenFilterScope::Off);
 
-    py::class_<ccd::Input>(
+    py::class_<ccd::DataSpec>(
         m,
         "Input",
         "What the caller's data is: its QA codes and the table that decodes "
@@ -143,9 +143,9 @@ void bind_input(py::module_& m)
         "Example: ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, "
         "thermal_offset=0.0, thermal_at_100c=1.0)  # reflectance, Celsius / 100"
     )
-    .def(py::init([](const py::kwargs& fields) { return with_fields(ccd::Input{}, fields, "Input()"); }))
+    .def(py::init([](const py::kwargs& fields) { return with_fields(ccd::DataSpec{}, fields, "Input()"); }))
     .def("replace",
-         [](const ccd::Input& self, const py::kwargs& fields)
+         [](const ccd::DataSpec& self, const py::kwargs& fields)
          { return with_fields(self, fields, "Input.replace()"); },
          "A copy of this input with the fields given by keyword changed.")
 
@@ -154,14 +154,14 @@ void bind_input(py::module_& m)
     //--------------------------------------------------------------------------
     .def_property_readonly(
         "roles",
-        [](const ccd::Input& self) { return self.roles; },
+        [](const ccd::DataSpec& self) { return self.roles; },
         "A role (ccdcpp.ROLES) per row of the spectral array, in row order "
         "(default blue, green, red, nir, swir1, swir2, thermal). Its length is "
         "the band count every call must pass. \"green\" is required; without "
         "\"thermal\" the thermal transform and filter are skipped."
     )
-    .def("bands", &ccd::Input::bands, "The band count: one row per role.")
-    .def("index", &ccd::Input::index, py::arg("role"),
+    .def("bands", &ccd::DataSpec::bands, "The band count: one row per role.")
+    .def("index", &ccd::DataSpec::index, py::arg("role"),
          "The row of `role`, or ccdcpp.NO_BAND when the input has none.")
 
     //--------------------------------------------------------------------------
@@ -180,7 +180,7 @@ void bind_input(py::module_& m)
     // is not the physical unit.
     //--------------------------------------------------------------------------
     .def_readonly(
-        "reflectance_scale", &ccd::Input::reflectance_scale,
+        "reflectance_scale", &ccd::DataSpec::reflectance_scale,
         "The value one unit of reflectance has in the data (default 10000, "
         "Collection-1 DN; 1 for reflectance): reflectance r is held as r * "
         "reflectance_scale + reflectance_offset. The configuration's "
@@ -189,25 +189,25 @@ void bind_input(py::module_& m)
         "reflectance_scale only."
     )
     .def_readonly(
-        "reflectance_offset", &ccd::Input::reflectance_offset,
+        "reflectance_offset", &ccd::DataSpec::reflectance_offset,
         "The data's value of reflectance 0 (default 0). Collection-2 DN, r = "
         "DN * 2.75e-5 - 0.2, is reflectance_scale 1 / 2.75e-5 and "
         "reflectance_offset 0.2 / 2.75e-5."
     )
-    .def_readonly("thermal_scale", &ccd::Input::thermal_scale,
+    .def_readonly("thermal_scale", &ccd::DataSpec::thermal_scale,
         "A procedure that transforms thermal reads thermal * thermal_scale + "
         "thermal_offset (default 10, Kelvin x 10 to Celsius x 100), in the "
         "unit thermal_at_100c names.")
-    .def_readonly("thermal_offset", &ccd::Input::thermal_offset,
+    .def_readonly("thermal_offset", &ccd::DataSpec::thermal_offset,
         "See thermal_scale (default -27315).")
-    .def_readonly("thermal_at_100c", &ccd::Input::thermal_at_100c,
+    .def_readonly("thermal_at_100c", &ccd::DataSpec::thermal_at_100c,
         "The value 100 degrees Celsius has in the thermal row after the "
         "transform (default 10000, Celsius x 100; 1 for Celsius / 100). The "
         "configuration's degrees Celsius c resolve to c * 100 * thermal_at_100c "
         "/ 10000. It goes with the transform: Kelvin x 10 through (10, "
         "-27315) is 10000, Celsius / 100 through the identity is 1.")
     .def_readonly(
-        "saturation_code", &ccd::Input::saturation_code,
+        "saturation_code", &ccd::DataSpec::saturation_code,
         "The value a saturated observation holds in the reflective rows, as "
         "the data stores it (before any transform; 20000 in Collection-1 DN), "
         "or None (the default) when the input does not declare one. Codes are "
@@ -215,7 +215,7 @@ void bind_input(py::module_& m)
         "refuses an input without one."
     )
     .def_readonly(
-        "thermal_saturation_code", &ccd::Input::thermal_saturation_code,
+        "thermal_saturation_code", &ccd::DataSpec::thermal_saturation_code,
         "The value a saturated observation holds in the thermal row, as the "
         "data stores it (before the thermal transform; 20000 in Collection-1 "
         "DN), or None (the default)."
@@ -228,40 +228,40 @@ void bind_input(py::module_& m)
     // codes, or a QaTable's output, which ccdcpp.qa_tables builds from these
     // fields. See input.hpp for what reads each one.
     //--------------------------------------------------------------------------
-    .def_readonly("qa_fill", &ccd::Input::qa_fill,
+    .def_readonly("qa_fill", &ccd::DataSpec::qa_fill,
         "Fill: not a valid observation (default 255).")
-    .def_readonly("qa_clear", &ccd::Input::qa_clear,
+    .def_readonly("qa_clear", &ccd::DataSpec::qa_clear,
         "Clear: kept for the fit (default 0).")
-    .def_readonly("qa_water", &ccd::Input::qa_water,
+    .def_readonly("qa_water", &ccd::DataSpec::qa_water,
         "Water: kept for the fit (default 1).")
-    .def_readonly("qa_shadow", &ccd::Input::qa_shadow,
+    .def_readonly("qa_shadow", &ccd::DataSpec::qa_shadow,
         "Cloud shadow (default 2). Not read by the procedures, so excluded "
         "from the fit; the QA tables write it.")
-    .def_readonly("qa_snow", &ccd::Input::qa_snow,
+    .def_readonly("qa_snow", &ccd::DataSpec::qa_snow,
         "Snow: the snow percentage and PermanentSnow (default 3).")
-    .def_readonly("qa_cloud", &ccd::Input::qa_cloud,
+    .def_readonly("qa_cloud", &ccd::DataSpec::qa_cloud,
         "Cloud: excluded from the fit (default 4).")
-    .def_readonly("qa_cirrus1", &ccd::Input::qa_cirrus1,
+    .def_readonly("qa_cirrus1", &ccd::DataSpec::qa_cirrus1,
         "Informational; not read by ccdcpp (default 8).")
-    .def_readonly("qa_cirrus2", &ccd::Input::qa_cirrus2,
+    .def_readonly("qa_cirrus2", &ccd::DataSpec::qa_cirrus2,
         "Informational; not read by ccdcpp (default 9).")
-    .def_readonly("qa_occlusion", &ccd::Input::qa_occlusion,
+    .def_readonly("qa_occlusion", &ccd::DataSpec::qa_occlusion,
         "Informational; not read by ccdcpp (default 10).")
     .def_property_readonly(
         "qa_table",
-        [](const ccd::Input& self)
+        [](const ccd::DataSpec& self)
         { return std::const_pointer_cast<ccd::QaTable>(self.qa_table); },
         "The ccdcpp.QaTable that decodes raw uint8 or uint16 qas into the "
         "qa_* codes (ccdcpp.qa_tables builds one with this input's codes), "
         "or None (the default): qas are the codes, uint8."
     )
 
-    .def("__copy__", [](const ccd::Input& self) { return self; })
-    .def("__deepcopy__", [](const ccd::Input& self, const py::dict&) { return self; })
-    .def("__eq__", [](const ccd::Input& a, const ccd::Input& b) { return a == b; },
+    .def("__copy__", [](const ccd::DataSpec& self) { return self; })
+    .def("__deepcopy__", [](const ccd::DataSpec& self, const py::dict&) { return self; })
+    .def("__eq__", [](const ccd::DataSpec& a, const ccd::DataSpec& b) { return a == b; },
          py::is_operator())
-    .def("__hash__", [](const ccd::Input& self) { return ccd::digest(self); })
-    .def("digest", [](const ccd::Input& self) { return ccd::digest(self); },
+    .def("__hash__", [](const ccd::DataSpec& self) { return ccd::digest(self); })
+    .def("digest", [](const ccd::DataSpec& self) { return ccd::digest(self); },
          "A digest of every field: equal for equal inputs, on any platform.")
 ;
 }

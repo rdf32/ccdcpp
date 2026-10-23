@@ -450,7 +450,7 @@ class Validation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be followed by a OnePerDate"):
             ccdcpp.detect(d, s, q, input=h, config=no_one_per_date)
         # A band the input lacks, against the input.
-        with self.assertRaisesRegex(ValueError, "'coastal', which the input does not have"):
+        with self.assertRaisesRegex(ValueError, "'coastal', which the data spec does not have"):
             ccdcpp.plan_of(CCDC.replace(preprocess__band_range__bands=["coastal"]), h)
 
     def test_step_classes(self):

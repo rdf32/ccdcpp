@@ -1,8 +1,8 @@
 //==============================================================================
 //
 // The configuration's preprocessing section (config/resolve.hpp): it
-// resolves in the input's units and codes, an Algorithm resolves an input
-// once and keeps the inputs used last, a bad section is refused when its
+// resolves in the spec's units and codes, an Algorithm resolves a spec
+// once and keeps the specs used last, a bad section is refused when its
 // Algorithm is built, and a registry adds a step type of its own.
 //
 //==============================================================================
@@ -55,14 +55,14 @@ using registry_test::expect_refused;
 
 // Degrees Celsius resolve to the thermal row's unit (hundredths of a degree
 // times reflectance_scale / 10000), reflectance to reflectance_scale, QA code
-// names to the input's codes; codes given as numbers stay as given.
-TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
+// names to the spec's codes; codes given as numbers stay as given.
+TEST(Preprocess, StepValuesResolveInTheSpecsUnitsAndCodes)
 {
     using ccd::config::names;
     using ccd::config::real;
     const ccd::config::Registry& r = ccd::strategies::library_registry();
 
-    ccd::Input renumbered;
+    ccd::DataSpec renumbered;
     renumbered.qa_clear = 20;
     renumbered.qa_water = 21;
     renumbered.qa_snow = 23;
@@ -82,7 +82,7 @@ TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
     EXPECT_FALSE(got.plan.standard.chain[0].codes.test(0));
     EXPECT_EQ(got.plan.snow.chain[4].codes, ccd::preprocess::qa_set({23}));
 
-    ccd::Input reflectance = golden::physical_input();
+    ccd::DataSpec reflectance = golden::physical_spec();
     const ccd::config::Resolved phys = ccd::config::resolve(r, config, reflectance);
     EXPECT_EQ(phys.plan.standard.chain[1].range.lo.value, -0.5);
     EXPECT_EQ(phys.plan.standard.chain[2].range.hi.value, 0.5);
@@ -112,40 +112,40 @@ TEST(Preprocess, StepValuesResolveInTheInputsUnitsAndCodes)
         "parameter 'codes' holds 256; a code must be in [0, 255]");
 }
 
-// An Algorithm resolves an input once and keeps the CACHE_CAPACITY inputs
+// An Algorithm resolves a spec once and keeps the CACHE_CAPACITY specs
 // used last; one more evicts the least recently used, which resolves again
 // to an equal Resolved.
-TEST(Algorithm, CachesTheInputsUsedLast)
+TEST(Algorithm, CachesTheSpecsUsedLast)
 {
     const ccd::Algorithm algorithm(golden::ccdc());
-    const auto input = [](int i)
+    const auto spec = [](int i)
     {
-        ccd::Input h;
+        ccd::DataSpec h;
         h.qa_occlusion = static_cast<std::uint8_t>(20 + i);
         return h;
     };
-    const auto first = algorithm.for_input(input(0));
-    EXPECT_EQ(algorithm.for_input(input(0)), first);
+    const auto first = algorithm.for_spec(spec(0));
+    EXPECT_EQ(algorithm.for_spec(spec(0)), first);
 
-    // Inputs 1..CAPACITY - 1 fill the cache; input 0, used again, stays.
+    // Specs 1..CAPACITY - 1 fill the cache; spec 0, used again, stays.
     const int capacity = static_cast<int>(ccd::Algorithm::CACHE_CAPACITY);
     std::vector<std::shared_ptr<const ccd::config::Resolved>> held;
     for (int i = 1; i < capacity; ++i)
-        held.push_back(algorithm.for_input(input(i)));
-    EXPECT_EQ(algorithm.for_input(input(0)), first);
-    EXPECT_EQ(algorithm.for_input(input(1)), held[0]);
+        held.push_back(algorithm.for_spec(spec(i)));
+    EXPECT_EQ(algorithm.for_spec(spec(0)), first);
+    EXPECT_EQ(algorithm.for_spec(spec(1)), held[0]);
 
-    // One more evicts the least recently used: input 2.
-    const auto extra = algorithm.for_input(input(capacity));
-    EXPECT_EQ(algorithm.for_input(input(0)), first);
-    const auto again = algorithm.for_input(input(2));
+    // One more evicts the least recently used: spec 2.
+    const auto extra = algorithm.for_spec(spec(capacity));
+    EXPECT_EQ(algorithm.for_spec(spec(0)), first);
+    const auto again = algorithm.for_spec(spec(2));
     EXPECT_NE(again, held[1]);
     EXPECT_EQ(again->digest, held[1]->digest);
     EXPECT_NE(extra->digest, first->digest);
 }
 
 // What an Algorithm refuses in the preprocessing when it is built, before
-// any input.
+// any data spec.
 TEST(Preprocess, AnAlgorithmRefusesABadSectionWhenBuilt)
 {
     const auto build = [](const ccd::config::Config& config)
@@ -243,7 +243,7 @@ private:
     ccd::index_t band_;
 };
 
-// The step type: its parameter, and its step on an input.
+// The step type: its parameter, and its step on a data spec.
 struct DropDayStep
 {
     struct Params
@@ -268,14 +268,14 @@ struct DropDayStep
         return seen;
     }
 
-    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::Input& input,
+    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::DataSpec& spec,
                                                      const ccd::config::StepContext& context)
     {
         contexts().push_back(context);
         if (params.day < 0)
             throw std::invalid_argument("parameter 'day' is negative");
         return ccd::preprocess::Step::of(std::make_shared<const DropDay>(params.day,
-                                                                       input.index("green")));
+                                                                       spec.index("green")));
     }
 };
 
@@ -302,7 +302,7 @@ TEST(Preprocess, ARegistryAddsAStepType)
     const auto run = [&](const ccd::config::Config& config)
     {
         return ccd::detect(
-                   golden::spec_of(ccd::Input{}, std::make_shared<const ccd::Algorithm>(config, r)),
+                   golden::spec_of(ccd::DataSpec{}, std::make_shared<const ccd::Algorithm>(config, r)),
                    ccd::ArrayView<const std::int64_t, 1>::contiguous(dates.data(), {T}),
                    ccd::ArrayView<const double, 2>::contiguous(spectral.data(), {7, T}),
                    ccd::ArrayView<const std::uint8_t, 1>::contiguous(qas.data(), {T}))
@@ -319,7 +319,7 @@ TEST(Preprocess, ARegistryAddsAStepType)
     steps.insert(steps.begin() + 1, {"drop_day", {{"day", ccd::config::integer(dates[kept])}}});
 
     DropDayStep::contexts().clear();
-    const ccd::config::Resolved resolved = ccd::config::resolve(r, config, ccd::Input{});
+    const ccd::config::Resolved resolved = ccd::config::resolve(r, config, ccd::DataSpec{});
     const ccd::preprocess::Step& step = resolved.plan.standard.chain[1];
     ASSERT_EQ(step.kind, ccd::preprocess::StepKind::Custom);
 
@@ -334,7 +334,7 @@ TEST(Preprocess, ARegistryAddsAStepType)
         auto& chain = snow.preprocess.at("snow").steps;
         chain.insert(chain.begin() + 3, {"drop_day", {{"day", ccd::config::integer(dates[kept])}}});
         DropDayStep::contexts().clear();
-        ccd::config::resolve(r, snow, ccd::Input{});
+        ccd::config::resolve(r, snow, ccd::DataSpec{});
         ASSERT_EQ(DropDayStep::contexts().size(), 1u);
         EXPECT_EQ(DropDayStep::contexts()[0].procedure, "snow");
         EXPECT_EQ(DropDayStep::contexts()[0].thermal, ccd::config::Thermal::Stored);
@@ -342,11 +342,11 @@ TEST(Preprocess, ARegistryAddsAStepType)
 
         // A refusal of make() names the step.
         chain[3].params["day"] = ccd::config::integer(-1);
-        expect_refused([&] { ccd::config::resolve(r, snow, ccd::Input{}); },
+        expect_refused([&] { ccd::config::resolve(r, snow, ccd::DataSpec{}); },
                        "preprocess snow step 3 'drop_day': parameter 'day' is negative");
     }
     EXPECT_EQ(step.custom->describe(), "DropDay " + std::to_string(dates[kept]));
-    EXPECT_NE(resolved.digest, ccd::config::resolve(r, golden::pyccd(), ccd::Input{}).digest);
+    EXPECT_NE(resolved.digest, ccd::config::resolve(r, golden::pyccd(), ccd::DataSpec{}).digest);
 
     // validate() asks the step.
     try

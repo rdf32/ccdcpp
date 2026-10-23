@@ -25,17 +25,17 @@ namespace
 // The checks a Run makes before any pixel
 //==============================================================================
 
-// The input against the band count, one timestep count shared by dates,
+// The data spec against the band count, one timestep count shared by dates,
 // spectral and the QA, and dates in non-decreasing order.
 void check_shapes(
-    const Input& input,
+    const DataSpec& spec,
     index_t bands,
     index_t timesteps,
     ArrayView<const std::int64_t, 1> dates,
     index_t qa_timesteps
 )
 {
-    validate(input, bands);
+    validate(spec, bands);
 
     if (dates.size() != timesteps)
     {
@@ -62,7 +62,7 @@ void check_qa(bool raw_qa, const QaTable* qa_table)
     if (raw_qa && qa_table == nullptr)
     {
         throw std::invalid_argument(
-            "qas is uint16, which holds raw QA values; give the input a QaTable "
+            "qas is uint16, which holds raw QA values; give the data spec a QaTable "
             "(qa_table) to decode them, or pass uint8 QA codes"
         );
     }
@@ -212,12 +212,12 @@ Run::Run(
     : spec_(spec), dates_(dates), bands_(bands), timesteps_(timesteps), raw_qa_(raw_qa),
       resume_(resume)
 {
-    check_shapes(spec_.input, bands, timesteps, dates, qa_timesteps);
-    check_qa(raw_qa, spec_.input.qa_table.get());
+    check_shapes(spec_.spec, bands, timesteps, dates, qa_timesteps);
+    check_qa(raw_qa, spec_.spec.qa_table.get());
 
     if (!spec_.algorithm)
         throw std::invalid_argument("the run has no algorithm");
-    resolved_ = spec_.algorithm->for_input(spec_.input);
+    resolved_ = spec_.algorithm->for_spec(spec_.spec);
 
 
     if (spec_.record || resume)
@@ -271,11 +271,11 @@ PreparedPixel Run::prepare(
     Worker& worker
 ) const
 {
-    const auto qas = decode_qa<Qa>(qa, spec_.input.qa_table.get(), worker.qas);
+    const auto qas = decode_qa<Qa>(qa, spec_.spec.qa_table.get(), worker.qas);
     // Step 2. The pixel's procedure and mode, from its QA statistics up to
     // statistics_end.
     PixelMode mode = resolved_->strategies.mode->choose(
-        qa_statistics(qas, dates_, spec_.input, shared_.statistics_end));
+        qa_statistics(qas, dates_, spec_.spec, shared_.statistics_end));
 
     const preprocess::ProcedurePlan& steps = run_plan_.of(mode.procedure);
     const auto values = pixel_values<Value>(spectral, steps.transform, worker.spectral);
@@ -341,7 +341,7 @@ PixelOutput Run::pixel(
     const auto fingerprint = [&](std::int64_t through)
     {
         return detail::fingerprint_of<Value>(dates_, spectral, prepared.series.qas(),
-                                             spec_.input.qa_fill, through);
+                                             spec_.spec.qa_fill, through);
     };
 
     PixelOutput out = resume_

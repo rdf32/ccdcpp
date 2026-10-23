@@ -96,7 +96,7 @@ void check_resume(
     check_version(from);
     if (from.digest != digest)
         throw std::invalid_argument(
-            "the resume record was made with another input or configuration");
+            "the resume record was made with another data spec or configuration");
     if (dates.size() == 0 || dates(dates.size() - 1) < from.series_end)
         throw std::invalid_argument(
             "the series ends before the resume record's, on " +

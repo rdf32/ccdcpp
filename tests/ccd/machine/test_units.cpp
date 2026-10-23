@@ -2,13 +2,13 @@
 //
 // The unit-convention guard.
 //
-// The Input carries the statements about what unit the caller's `spectral`
+// The DataSpec carries the statements about what unit the caller's `spectral`
 // array is in: reflectance_scale (what one unit of reflectance is in the
 // data), thermal_scale and thermal_offset. The configuration's values are
 // physical -- the shared alpha and coef_floor, band_range's bounds and
 // green_median's offset in reflectance, multiplied by reflectance_scale;
 // thermal_range's bounds in degrees Celsius, converted to the thermal row's
-// unit -- when a run resolves it. The Input defaults are Collection-1 DN, and
+// unit -- when a run resolves it. The DataSpec defaults are Collection-1 DN, and
 // the regression tests in test_pyccd_reference.cpp pin those.
 //
 // This file pins the OTHER end: that dividing every band of the input by
@@ -41,7 +41,7 @@
 //   GreenMedianFilterIsAUnitConstant   the green filter, which `detect` on
 //                               this pixel cannot reach at all
 //
-// and Collection2DnResolvesReflectanceZeroToOne, the input with an
+// and Collection2DnResolvesReflectanceZeroToOne, the spec with an
 // offset: reflectance levels take it, differences do not.
 //
 // Input is the same pyccd reference pixel test_pyccd_reference.cpp uses, so a
@@ -141,7 +141,7 @@ ccd::LassoOptions physical_solver()
 ccd::FitResult run(
     const golden::Series& obs,
     const std::vector<ccd::scalar_t>& spectral,
-    const ccd::Input& h,
+    const ccd::DataSpec& h,
     const ccd::config::Config& config = golden::pyccd()
 )
 {
@@ -178,7 +178,7 @@ std::vector<ccd::scalar_t> plain_divide(const std::vector<ccd::scalar_t>& dn)
 ccd::FitResult run_insufficient_clear(
     const golden::Series& obs,
     const std::vector<ccd::scalar_t>& spectral,   // const: nothing writes to it
-    const ccd::Input& h,
+    const ccd::DataSpec& h,
     const ccd::config::Config& config,
     const ccd::LassoOptions& lo
 )
@@ -271,12 +271,12 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::Input{}
+        ccd::DataSpec{}
     );
 
     const auto phys = run(
         obs, golden::to_physical(obs).spectral,
-        golden::physical_input()
+        golden::physical_spec()
     );
 
     // Structure first: if the segmentation moved, comparing coefficients is
@@ -329,7 +329,7 @@ TEST(Units, PhysicalUnitsAreEquivalent)
 TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
 {
     auto obs = golden::read_csv(OBSERVATIONS, false);
-    const auto original = run(obs, obs.spectral, ccd::Input{});
+    const auto original = run(obs, obs.spectral, ccd::DataSpec{});
 
     std::vector<ccd::index_t> moved;
     for (ccd::index_t t = 0; t < obs.size() && moved.size() < 5; t += 37)
@@ -343,8 +343,8 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     }
     ASSERT_EQ(moved.size(), 5u);
 
-    const ccd::Input dn_h;
-    const ccd::Input phys_h = golden::physical_input();
+    const ccd::DataSpec dn_h;
+    const ccd::DataSpec phys_h = golden::physical_spec();
     const ccd::config::Config inclusive = with_bounds("band_range", 0.0, 1.0, true);
 
     const auto dn_inclusive = run(obs, obs.spectral, dn_h, inclusive);
@@ -355,7 +355,7 @@ TEST(Units, PhysicalUnitsAreEquivalentWithExclusiveBounds)
     // The filter mask, before any fitting: the inclusive bound keeps the
     // moved observations, the exclusive one drops them, in both units.
     const auto filter_mask = [&obs](const std::vector<ccd::scalar_t>& spectral,
-                                    const ccd::Input& h, const ccd::config::Config& config) {
+                                    const ccd::DataSpec& h, const ccd::config::Config& config) {
         const ccd::config::Shared shared = golden::shared_of(config, h);
         const golden::PixelView px =
             golden::view_of(obs.dates.data(), spectral.data(), 7, obs.qas.data(), obs.size());
@@ -408,9 +408,9 @@ TEST(Units, ReflectanceUnitIsTheUnit)
 {
     const auto obs = golden::read_csv(OBSERVATIONS, false);
 
-    const auto dn = run(obs, obs.spectral, ccd::Input{});
+    const auto dn = run(obs, obs.spectral, ccd::DataSpec{});
 
-    ccd::Input h = golden::physical_input();
+    ccd::DataSpec h = golden::physical_spec();
     h.reflectance_scale = 10000.0;
     const auto bad = run(obs, golden::to_physical(obs).spectral, h);
 
@@ -429,7 +429,7 @@ TEST(Units, AlphaIsAUnitConstant)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::Input{}
+        ccd::DataSpec{}
     );
 
     // alpha written at the DN value, which every Lasso stage reads.
@@ -437,7 +437,7 @@ TEST(Units, AlphaIsAUnitConstant)
 
     const auto bad = run(
         obs, golden::to_physical(obs).spectral,
-        golden::physical_input(), config
+        golden::physical_spec(), config
     );
 
     const std::size_t reference = count_nonzero(dn);
@@ -470,7 +470,7 @@ TEST(Units, CoefFloorIsAUnitConstant)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::Input{}
+        ccd::DataSpec{}
     );
 
     // coef_floor written at the DN value, which every Lasso stage reads.
@@ -478,7 +478,7 @@ TEST(Units, CoefFloorIsAUnitConstant)
 
     const auto quiet = run(
         obs, golden::to_physical(obs).spectral,
-        golden::physical_input(), config
+        golden::physical_spec(), config
     );
 
     ASSERT_EQ(dn.models.size(), quiet.models.size());
@@ -522,7 +522,7 @@ TEST(Units, BoundsAreUnitConstants)
 
     const auto dn = run(
         obs, obs.spectral,
-        ccd::Input{}
+        ccd::DataSpec{}
     );
 
     ASSERT_GT(dn.models.size(), 0u);
@@ -530,7 +530,7 @@ TEST(Units, BoundsAreUnitConstants)
     {
         // DN input, the physical saturation bound.
         const auto out =
-            run(obs, obs.spectral, ccd::Input{}, with_bounds("band_range", 0.0, 1.0 / SCALE));
+            run(obs, obs.spectral, ccd::DataSpec{}, with_bounds("band_range", 0.0, 1.0 / SCALE));
 
         EXPECT_EQ(out.models.size(), 0u)
             << "reflectance bounds against DN input left "
@@ -541,7 +541,7 @@ TEST(Units, BoundsAreUnitConstants)
 
     {
         // DN input, the physical thermal bound.
-        const auto out = run(obs, obs.spectral, ccd::Input{},
+        const auto out = run(obs, obs.spectral, ccd::DataSpec{},
                              with_bounds("thermal_range", -93.2 / SCALE, 70.7 / SCALE));
 
         EXPECT_EQ(out.models.size(), 0u)
@@ -571,7 +571,7 @@ TEST(Units, BoundsAreUnitConstants)
 // offset.
 TEST(Units, Collection2DnResolvesReflectanceZeroToOne)
 {
-    ccd::Input h;
+    ccd::DataSpec h;
     h.reflectance_scale = 1.0 / 2.75e-5;
     h.reflectance_offset = 0.2 / 2.75e-5;
 
@@ -604,13 +604,13 @@ TEST(Units, GreenMedianFilterIsAUnitConstant)
 
     const auto dn = run_insufficient_clear(
         obs, obs.spectral,
-        ccd::Input{}, golden::pyccd(), ccd::LassoOptions{}
+        ccd::DataSpec{}, golden::pyccd(), ccd::LassoOptions{}
     );
 
     // Thermal is K x 10 / SCALE here, not Celsius -- see plain_divide's
     // comment -- inside the thermal bounds, -0.932..0.707, as K x 10 is
     // inside -9320..7070.
-    const ccd::Input h = golden::physical_input();
+    const ccd::DataSpec h = golden::physical_spec();
     ASSERT_EQ(golden::plan_of(golden::pyccd(), h).insufficient_clear.chain[4].green_offset, 0.04);
 
     const auto phys =

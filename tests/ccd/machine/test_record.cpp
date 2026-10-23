@@ -263,7 +263,7 @@ namespace
 {
 
 std::uint64_t digest_of(
-    const ccd::Input& h,
+    const ccd::DataSpec& h,
     const ccd::config::Config& config = golden::pyccd())
 {
     return golden::resolved(config, h).digest;
@@ -273,19 +273,19 @@ std::uint64_t digest_of(
 
 TEST(Digest, EqualOptionsEqualDigests)
 {
-    EXPECT_EQ(digest_of(ccd::Input{}), digest_of(ccd::Input{}));
-    EXPECT_EQ(digest_of(golden::physical_input()), digest_of(golden::physical_input()));
+    EXPECT_EQ(digest_of(ccd::DataSpec{}), digest_of(ccd::DataSpec{}));
+    EXPECT_EQ(digest_of(golden::physical_spec()), digest_of(golden::physical_spec()));
     // A configuration that leaves its defaults out is the same run.
     ccd::config::Config partial = golden::pyccd();
     partial.shared = {{"statistics_end", partial.shared.at("statistics_end")}};
     partial.stages["refit"].params.clear();
-    EXPECT_EQ(digest_of(ccd::Input{}, partial), digest_of(ccd::Input{}));
+    EXPECT_EQ(digest_of(ccd::DataSpec{}, partial), digest_of(ccd::DataSpec{}));
 }
 
 // The configuration is in the digest: the preset's, and another's.
 TEST(Digest, TheConfigurationMoves)
 {
-    const ccd::Input h;
+    const ccd::DataSpec h;
     ccd::config::Config tree = golden::pyccd();
     const std::uint64_t base = golden::resolved(tree, h).digest;
     EXPECT_EQ(base, digest_of(h));
@@ -297,11 +297,11 @@ TEST(Digest, TheConfigurationMoves)
 
 TEST(Digest, EveryGroupOfFieldsMoves)
 {
-    const std::uint64_t base = digest_of(ccd::Input{});
+    const std::uint64_t base = digest_of(ccd::DataSpec{});
 
-    // Every group of the input's fields.
-    using Set = std::function<void(ccd::Input&)>;
-    const std::pair<const char*, Set> input[] = {
+    // Every group of the spec's fields.
+    using Set = std::function<void(ccd::DataSpec&)>;
+    const std::pair<const char*, Set> fields[] = {
         {"qa_snow", [](auto& h) { h.qa_snow = 7; }},
         {"qa_occlusion", [](auto& h) { h.qa_occlusion = 11; }},
         {"roles", [](auto& h) { std::swap(h.roles[0], h.roles[1]); }},
@@ -314,9 +314,9 @@ TEST(Digest, EveryGroupOfFieldsMoves)
         {"thermal_offset", [](auto& h) { h.thermal_offset = -2731.0; }},
         {"thermal_at_100c", [](auto& h) { h.thermal_at_100c = 1.0; }},
     };
-    for (const auto& [name, set] : input)
+    for (const auto& [name, set] : fields)
     {
-        ccd::Input h;
+        ccd::DataSpec h;
         set(h);
         EXPECT_NE(digest_of(h), base) << name;
     }
@@ -344,7 +344,7 @@ TEST(Digest, EveryGroupOfFieldsMoves)
                     return v;
             },
             value);
-        EXPECT_NE(digest_of(ccd::Input{}, golden::with_shared(preset, name, moved)), base) << name;
+        EXPECT_NE(digest_of(ccd::DataSpec{}, golden::with_shared(preset, name, moved)), base) << name;
     }
 
     // Every parameter of every stage of the configuration, and every stage's
@@ -383,7 +383,7 @@ TEST(Digest, EveryGroupOfFieldsMoves)
                     }
                 },
                 value);
-            EXPECT_NE(digest_of(ccd::Input{}, golden::with(preset, stage, name, moved)), base)
+            EXPECT_NE(digest_of(ccd::DataSpec{}, golden::with(preset, stage, name, moved)), base)
                 << stage << " " << name;
             ++parameters;
         }
@@ -396,7 +396,7 @@ TEST(Digest, EveryGroupOfFieldsMoves)
 
 TEST(Digest, ThePreprocessingAndTheQaTableMove)
 {
-    const ccd::Input h;
+    const ccd::DataSpec h;
     const std::uint64_t base = digest_of(h);
     const ccd::config::Config preset = golden::pyccd();
 
@@ -465,7 +465,7 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
     }
     EXPECT_GT(parameters, 20u);
 
-    // The input's QA table, by its codes.
+    // The spec's QA table, by its codes.
     const auto table = ccd::qa_tables::landsat_c2_qa_pixel(h);
     const std::uint64_t with_table = digest_of(golden::with_table(h, table));
     EXPECT_NE(with_table, base);
@@ -478,15 +478,15 @@ TEST(Digest, ThePreprocessingAndTheQaTableMove)
               with_table);
 }
 
-// digest(Input) names every field of the input one by one, so a field added
+// digest(DataSpec) names every field of the spec one by one, so a field added
 // to it must be added to the digest too. Its size is the tripwire: on any
 // LP64 platform this is the size the digest was written for, and a test that
 // fails here is a reminder, not a platform difference. The configuration's
 // part of the digest is of its values by name, preprocessing included, so no
 // struct of the plan needs one.
-TEST(Digest, TheInputIsTheOneItWasWrittenFor)
+TEST(Digest, TheSpecIsTheOneItWasWrittenFor)
 {
-    EXPECT_EQ(sizeof(ccd::Input), 128u);
+    EXPECT_EQ(sizeof(ccd::DataSpec), 128u);
 }
 
 //------------------------------------------------------------------------------

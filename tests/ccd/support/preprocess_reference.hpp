@@ -4,7 +4,7 @@
 //
 // The "ccdc" preprocessing chains written out by hand from the filter
 // kernels (input/mask/filter.hpp), with the bounds converted here by the rule
-// input.hpp states, independently of the registry's resolution: the reference
+// data_spec.hpp states, independently of the registry's resolution: the reference
 // test_preprocess.cpp holds plan_of()'s chains to, mask for mask, and
 // tools/bench/bench_preprocess.cpp times them against.
 //
@@ -31,22 +31,22 @@ namespace pp = ccd::preprocess;
 using ccd::index_t;
 using ccd::scalar_t;
 
-// An input and the configuration whose preprocessing it runs.
+// A data spec and the configuration whose preprocessing it runs.
 struct Options
 {
-    ccd::Input input;
+    ccd::DataSpec spec;
     ccd::config::Config config = golden::pyccd();
 };
 
-// The physical-unit input's.
+// The physical-unit spec's.
 inline Options physical_options()
 {
-    return {golden::physical_input(), golden::pyccd()};
+    return {golden::physical_spec(), golden::pyccd()};
 }
 
 inline pp::PreprocessPlan plan_of(const Options& options)
 {
-    return golden::plan_of(options.config, options.input);
+    return golden::plan_of(options.config, options.spec);
 }
 
 inline double number(const ccd::config::Values& values, const char* name)
@@ -66,8 +66,8 @@ inline bool inclusive(const ccd::config::Values& values, std::size_t end)
 }
 
 // The values the reference chains read: the configuration's bounds, offset
-// and scope as written (physical), converted here to the input's units by
-// the rule input.hpp states -- reflectance times reflectance_scale, degrees
+// and scope as written (physical), converted here to the spec's units by
+// the rule data_spec.hpp states -- reflectance times reflectance_scale, degrees
 // Celsius as hundredths of a degree times thermal_at_100c / 10000 --
 // independently of the registry's resolution.
 struct Bounds
@@ -80,15 +80,15 @@ struct Bounds
     std::int64_t statistics_end;
 };
 
-// band_range's bands as rows of `input`: roles are their rows, rows as
+// band_range's bands as rows of `spec`: roles are their rows, rows as
 // given.
-inline ccd::BandList band_rows(const ccd::config::Value& bands, const ccd::Input& input)
+inline ccd::BandList band_rows(const ccd::config::Value& bands, const ccd::DataSpec& spec)
 {
     ccd::BandList rows;
     if (const auto* roles = std::get_if<std::vector<std::string>>(&bands))
     {
         for (const std::string& role : *roles)
-            rows.push_back(input.index(role));
+            rows.push_back(spec.index(role));
     }
     else
     {
@@ -105,11 +105,11 @@ inline Bounds bounds_of(const Options& options)
     const ccd::config::Values& band = standard.at(2).params;
     const ccd::config::Values& green =
         options.config.preprocess.at("insufficient_clear").steps.at(4).params;
-    const scalar_t u = options.input.reflectance_scale;
-    const scalar_t tu = options.input.thermal_at_100c;
+    const scalar_t u = options.spec.reflectance_scale;
+    const scalar_t tu = options.spec.thermal_at_100c;
     const auto celsius = [tu](double c) { return c * 100.0 * tu / 10000.0; };
     return {
-        band_rows(band.at("bands"), options.input),
+        band_rows(band.at("bands"), options.spec),
         {{end_of(band, "reflectance", 0) * u, inclusive(band, 0)},
          {end_of(band, "reflectance", 1) * u, inclusive(band, 1)}},
         {{celsius(end_of(thermal, "celsius", 0)), inclusive(thermal, 0)},
@@ -125,10 +125,10 @@ inline Bounds bounds_of(const Options& options)
 // reference plan_of() is held to.
 //------------------------------------------------------------------------------
 
-// The thermal range when the input has a thermal row. Standard's chain is
+// The thermal range when the spec has a thermal row. Standard's chain is
 // handed its thermal row transformed, so `transformed` tests the row as
 // given; the other chains read the stored row, which is tested as the
-// input's transform makes each value, against the same bounds in degrees
+// spec's transform makes each value, against the same bounds in degrees
 // Celsius.
 inline void reference_thermal(
     const golden::PixelView& px,
@@ -137,7 +137,7 @@ inline void reference_thermal(
     ccd::ProcessingMask& mask
 )
 {
-    const index_t thermal = options.input.index("thermal");
+    const index_t thermal = options.spec.index("thermal");
     if (thermal == ccd::NO_BAND)
         return;
     const ccd::filter::Range range = bounds_of(options).thermal;
@@ -145,8 +145,8 @@ inline void reference_thermal(
     {
         const double stored = px.spectral(thermal, i);
         const double value = transformed ? stored
-                                         : stored * options.input.thermal_scale +
-                                               options.input.thermal_offset;
+                                         : stored * options.spec.thermal_scale +
+                                               options.spec.thermal_offset;
         if (!ccd::filter::in_range(value, range))
             mask.set(i, false);
     }
@@ -165,7 +165,7 @@ inline ccd::ProcessingMask reference_common(
     for (index_t i = 0; i < px.dates.size(); ++i)
     {
         const auto qa = px.qas(i);
-        if (qa == options.input.qa_water || qa == options.input.qa_clear)
+        if (qa == options.spec.qa_water || qa == options.spec.qa_clear)
             mask.set(i, true);
     }
 
@@ -201,7 +201,7 @@ inline ccd::ProcessingMask reference_snow(
 
     for (index_t i = 0; i < px.qas.size(); ++i)
     {
-        if (px.qas(i) == options.input.qa_snow)
+        if (px.qas(i) == options.spec.qa_snow)
             mask.set(i, true);
     }
 
@@ -222,7 +222,7 @@ inline ccd::ProcessingMask reference_insufficient_clear(
     ccd::filter::apply_green_median(
         px.dates,
         px.spectral,
-        options.input.index("green"),
+        options.spec.index("green"),
         bounds.statistics_end,
         bounds.green_offset,
         bounds.scope,

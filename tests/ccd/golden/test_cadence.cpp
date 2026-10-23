@@ -142,7 +142,7 @@ ccd::config::Config spelled_out(ccd::config::Config c)
 // when `physical`.
 std::string dump_pixels(
     const golden::Cube& c,
-    const ccd::Input& h,
+    const ccd::DataSpec& h,
     const ccd::config::Config& config,
     bool physical
 )
@@ -191,12 +191,12 @@ TEST(Cadence, DefaultsSpelledOutEqualDefault)
         const auto cube = golden::make_cube(c.seed, c.regime, c.H, c.W);
 
         EXPECT_EQ(
-            dump_pixels(cube, ccd::Input{}, spelled_out(golden::pyccd()), false),
-            dump_pixels(cube, ccd::Input{}, golden::pyccd(), false));
+            dump_pixels(cube, ccd::DataSpec{}, spelled_out(golden::pyccd()), false),
+            dump_pixels(cube, ccd::DataSpec{}, golden::pyccd(), false));
 
         EXPECT_EQ(
-            dump_pixels(cube, golden::physical_input(), spelled_out(golden::pyccd()), true),
-            dump_pixels(cube, golden::physical_input(), golden::pyccd(), true));
+            dump_pixels(cube, golden::physical_spec(), spelled_out(golden::pyccd()), true),
+            dump_pixels(cube, golden::physical_spec(), golden::pyccd(), true));
     }
 }
 

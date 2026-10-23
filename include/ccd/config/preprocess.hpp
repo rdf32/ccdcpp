@@ -24,7 +24,7 @@ namespace config
 // parameters in physical terms -- QA codes by name, bands by role, bounds in
 // reflectance and degrees Celsius. A run resolves it with the rest of the
 // configuration (config::resolve()) into a preprocess::PreprocessPlan in the
-// input's codes, rows and units.
+// data spec's codes, rows and units.
 //
 // The library's step types are keep_qa, add_qa, thermal_range, band_range,
 // green_median and one_per_date (input/mask/steps.hpp).
@@ -49,8 +49,8 @@ inline bool operator!=(const StepConfig& a, const StepConfig& b)
 
 // How a procedure reads the thermal row, as a configuration names it:
 //
-//   Stored   "stored": as the input holds it;
-//   Celsius  "celsius": through the input's thermal transform, in degrees
+//   Stored   "stored": as the data holds it;
+//   Celsius  "celsius": through the spec's thermal transform, in degrees
 //            Celsius (in the unit thermal_at_100c says: pyccd's Celsius x 100
 //            on Collection-1 DN).
 //

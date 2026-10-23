@@ -92,7 +92,7 @@ static void write_text(const std::string& path, const std::string& s)
 }
 
 // Each runs the "ccdc" preset on its input.
-struct OptSet { const char* name; ccd::Input h; int transform; }; // 0 none, 1 phys, 2 frac
+struct OptSet { const char* name; ccd::DataSpec h; int transform; }; // 0 none, 1 phys, 2 frac
 
 static void apply_transform(golden::Cube& c, int transform)
 {
@@ -163,9 +163,9 @@ int main(int argc, char** argv)
     bool mismatch = false;
 
     std::vector<OptSet> opts = {
-        {"dn", ccd::Input{}, 0},
-        {"phys", golden::physical_input(), 1},
-        {"frac", ccd::Input{}, 2},
+        {"dn", ccd::DataSpec{}, 0},
+        {"phys", golden::physical_spec(), 1},
+        {"frac", ccd::DataSpec{}, 2},
     };
 
     double detect_ms = 0.0;
@@ -192,17 +192,17 @@ int main(int argc, char** argv)
                 return 1;
             }
             const std::size_t T = csv.size();
-            struct Set { std::string name; ccd::Input input; ccd::config::Config config; };
+            struct Set { std::string name; ccd::DataSpec spec; ccd::config::Config config; };
             const std::vector<Set> sets = {
-                {"dn", ccd::Input{}, golden::pyccd()},
-                {"c2", golden::c2_input(), golden::c2_config()},
-                {"phys", golden::physical_input(), golden::pyccd()},
+                {"dn", ccd::DataSpec{}, golden::pyccd()},
+                {"c2", golden::c2_spec(), golden::c2_config()},
+                {"phys", golden::physical_spec(), golden::pyccd()},
             };
             for (auto& set : sets)
             {
                 std::vector<double> spec = csv.spectral;
                 if (set.name == "phys") golden::to_physical(spec.data(), T);
-                auto r = ccd::detect(golden::spec_of(set.input, set.config),
+                auto r = ccd::detect(golden::spec_of(set.spec, set.config),
                     ccd::ArrayView<const std::int64_t, 1>::contiguous(csv.dates.data(), {T}),
                     ccd::ArrayView<const double, 2>::contiguous(spec.data(), {7, T}),
                     ccd::ArrayView<const std::uint8_t, 1>::contiguous(csv.qas.data(), {T})).result;

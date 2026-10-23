@@ -10,7 +10,7 @@
 #include "ccd/config/preprocess.hpp"
 #include "ccd/core/band_list.hpp"
 #include "ccd/core/constants.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/mask/chain.hpp"
 
 namespace ccd
@@ -28,18 +28,18 @@ namespace preprocess
 //     struct S {
 //         struct Params { ... };                     // its parameters
 //         static const std::vector<config::Field<Params>>& schema();
-//         static std::optional<Step> make(const Params&, const Input&,
+//         static std::optional<Step> make(const Params&, const DataSpec&,
 //                                         const config::StepContext&);
 //     };
 //
 // and optionally `static void validate(const Params&)`, which throws
 // std::invalid_argument for parameters the schema's bounds cannot say. A
-// Params member's default is its value on the default Input (Collection-1
+// Params member's default is its value on the default DataSpec (Collection-1
 // DN, the Landsat rows), a schema's default_value the physical one, as for
 // the strategies (config/params.hpp). make() builds the step from parameters
-// resolved against `input` (its units, rows and codes: config::resolve()
-// converts them first), or none where the step does not apply to the input;
-// of the input it reads only the layout, which row is thermal or green, and
+// resolved against `spec` (its units, rows and codes: config::resolve()
+// converts them first), or none where the step does not apply to the spec;
+// of the spec it reads only the layout, which row is thermal or green, and
 // the thermal transform. `context` is where the step is (its procedure,
 // how the procedure reads the thermal row, its position;
 // config/preprocess.hpp). A std::invalid_argument it throws is refused
@@ -57,7 +57,7 @@ struct KeepQa
         std::vector<std::int64_t> codes = {0, 1};
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input,
+    static std::optional<Step> make(const Params& params, const DataSpec& spec,
                                    const config::StepContext& context);
 };
 
@@ -70,16 +70,16 @@ struct AddQa
         std::vector<std::int64_t> codes = {3};
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input,
+    static std::optional<Step> make(const Params& params, const DataSpec& spec,
                                    const config::StepContext& context);
 };
 
 // thermal_range: keep only the observations whose thermal row lies within
 // `celsius`, (min, max) in degrees Celsius (an end `inclusive` keeps a value
-// equal to it), on every input: resolved to the row's unit
-// after the input's transform, and in a procedure that does not transform
+// equal to it), on every data spec: resolved to the row's unit
+// after the spec's transform, and in a procedure that does not transform
 // its thermal row taken back through the transform (stored_range()), so the
-// stored row is tested as its transform would be (docs/units.md). An input
+// stored row is tested as its transform would be (docs/units.md). A spec
 // without a "thermal" row skips it.
 struct ThermalRange
 {
@@ -89,7 +89,7 @@ struct ThermalRange
         config::Inclusive inclusive = {false, false};
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input,
+    static std::optional<Step> make(const Params& params, const DataSpec& spec,
                                    const config::StepContext& context);
 };
 
@@ -107,7 +107,7 @@ struct BandRange
     };
     static const std::vector<config::Field<Params>>& schema();
     static void validate(const Params& params);
-    static std::optional<Step> make(const Params& params, const Input& input,
+    static std::optional<Step> make(const Params& params, const DataSpec& spec,
                                    const config::StepContext& context);
 };
 
@@ -126,7 +126,7 @@ struct GreenMedian
     };
     static const std::vector<config::Field<Params>>& schema();
     static void validate(const Params& params);
-    static std::optional<Step> make(const Params& params, const Input& input,
+    static std::optional<Step> make(const Params& params, const DataSpec& spec,
                                    const config::StepContext& context);
 };
 
@@ -137,7 +137,7 @@ struct OnePerDate
     {
     };
     static const std::vector<config::Field<Params>>& schema();
-    static std::optional<Step> make(const Params& params, const Input& input,
+    static std::optional<Step> make(const Params& params, const DataSpec& spec,
                                    const config::StepContext& context);
 };
 

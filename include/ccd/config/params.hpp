@@ -45,7 +45,7 @@ namespace config
 //         return s;
 //     }
 //
-// A member's default is its value on the default Input (Collection-1 DN, the
+// A member's default is its value on the default DataSpec (Collection-1 DN, the
 // Landsat rows), which is what a strategy built directly from Params{} runs
 // with. The configuration's own default for a field is the member's, or the
 // field's default_value where the member cannot say it in physical terms (a
@@ -54,29 +54,29 @@ namespace config
 //==============================================================================
 
 // What a parameter's value is measured in, and how a configuration resolved
-// against an input converts it:
+// against a data spec converts it:
 //
 //   None, Observations, Days   unchanged;
 //   Reflectance                a reflectance level (a bound of the data's
-//                              values): r x Input::reflectance_scale +
-//                              Input::reflectance_offset, the data's value
+//                              values): r x DataSpec::reflectance_scale +
+//                              DataSpec::reflectance_offset, the data's value
 //                              of reflectance r;
 //   ReflectanceDelta           a difference or magnitude of reflectance (the
 //                              Lasso's alpha and coef_floor, the green
 //                              median's offset): times
-//                              Input::reflectance_scale only;
+//                              DataSpec::reflectance_scale only;
 //   Date                       a day: an ordinal (0001-01-01 is 1) as given, a
 //                              date "YYYY-MM-DD" as its ordinal;
 //   Celsius                    degrees Celsius, to the thermal row's unit
-//                              after the input's transform: c x 100 (hundredths
+//                              after the spec's transform: c x 100 (hundredths
 //                              of a degree, pyccd's unit) times
-//                              Input::thermal_at_100c / 10000, so -93.2 and 70.7
+//                              DataSpec::thermal_at_100c / 10000, so -93.2 and 70.7
 //                              are -9320 and 7070 on Collection-1 DN and -0.932
 //                              and 0.707 on Celsius / 100, exactly;
-//   Bands                      band roles to the input's rows (rows as given);
+//   Bands                      band roles to the spec's rows (rows as given);
 //   QaCodes                    QA code names ("fill", "clear", "water",
 //                              "shadow", "snow", "cloud", "cirrus1",
-//                              "cirrus2", "occlusion") to the input's codes
+//                              "cirrus2", "occlusion") to the spec's codes
 //                              (codes 0-255 as given).
 enum class Unit : std::uint8_t
 {
@@ -95,7 +95,7 @@ enum class Unit : std::uint8_t
 // number, a real, a name, a list of whole numbers (band rows, QA codes), a
 // list of names (band roles, QA code names), a list of reals (a range's
 // [min, max]) or a list of flags (its ends' [min, max]). A resolved
-// configuration holds no names in a list: they are its input's rows and
+// configuration holds no names in a list: they are its data spec's rows and
 // codes.
 using Value = std::variant<bool, std::int64_t, double, std::string, std::vector<std::int64_t>,
                            std::vector<std::string>, std::vector<double>, std::vector<bool>>;
@@ -176,7 +176,7 @@ std::string listed(const std::vector<std::string>& names);
 //
 //   Own      the stage's parameters (or the configuration's default);
 //   Shared   the configuration's shared value named `from` (config/shared.hpp),
-//            in the input's units and rows;
+//            in the spec's units and rows;
 //   Chi2     chi2_quantile(shared value `from`, the number of detection
 //            bands): a threshold for the detection bands' change statistic.
 //
@@ -357,7 +357,7 @@ std::vector<ParameterInfo> info_of(const std::vector<Field<P>>& schema)
 }
 
 // Throws std::invalid_argument, naming `where`, when `list` names a band an
-// input of `bands` bands does not have, or repeats one.
+// data spec of `bands` bands does not have, or repeats one.
 void check_band_list(const BandList& list, index_t bands, const std::string& where);
 
 // check_band_list() of every band list of `params` ("<where> parameter

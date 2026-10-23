@@ -137,7 +137,7 @@ TEST(Bounds, InclusiveAndExclusiveAreTheLiteralForms)
     }
 }
 
-// The "ccdc" bounds on the default input: pyccd's exclusive (0, 10000) and
+// The "ccdc" bounds on the default DataSpec: pyccd's exclusive (0, 10000) and
 // (-9320, 7070), from reflectance (0, 1) and (-93.2, 70.7) degrees Celsius.
 TEST(Bounds, ConfigurationDefaults)
 {
@@ -335,7 +335,7 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
 
     for (const auto& mode : MODES)
     {
-        const ccd::Input h;
+        const ccd::DataSpec h;
         const ccd::config::Config config =
             golden::with_steps(golden::pyccd(), "band_range", "inclusive",
                                ccd::config::flags({mode.lo_inclusive, mode.hi_inclusive}));
@@ -360,7 +360,7 @@ TEST(Bounds, TheStandardChainReadsTheFlags)
 
     for (const auto& mode : MODES)
     {
-        const ccd::Input h;
+        const ccd::DataSpec h;
         const ccd::config::Config config =
             golden::with_steps(golden::pyccd(), "thermal_range", "inclusive",
                                ccd::config::flags({mode.lo_inclusive, mode.hi_inclusive}));
@@ -417,7 +417,7 @@ struct Series
 
     std::vector<int> insufficient_clear(ccd::GreenFilterScope scope) const
     {
-        const ccd::Input h;
+        const ccd::DataSpec h;
         const ccd::config::Config config = config_with(scope);
         const ccd::config::Shared shared = golden::shared_of(config);
 
@@ -502,7 +502,7 @@ TEST(GreenScope, StandardFilterIgnoresIt)
                              ccd::GreenFilterScope::StatWindow,
                              ccd::GreenFilterScope::Off})
     {
-        const ccd::Input h;
+        const ccd::DataSpec h;
         const ccd::config::Config config = config_with(scope);
         const ccd::config::Shared shared = golden::shared_of(config);
         const ccd::PixelSeries workspace(

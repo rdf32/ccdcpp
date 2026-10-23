@@ -3,10 +3,10 @@
 // The preprocessing plan (input/mask/chain.hpp); its validation is
 // test_preprocess_validation.cpp's.
 //
-//   CcdcPlan.*        the "ccdc" preprocessing resolved against an input
+//   CcdcPlan.*        the "ccdc" preprocessing resolved against a data spec
 //                     (plan_of()) against the chains written out by hand from
 //                     the filter kernels (reference_* below), the bounds
-//                     converted here by the rule input.hpp states, mask for
+//                     converted here by the rule data_spec.hpp states, mask for
 //                     mask: on every fixture input (the reference pixels, the
 //                     Landsat cubes of the golden fixture, the band profiles
 //                     of the bands fixture) and on randomized series with NaN,
@@ -182,7 +182,7 @@ std::vector<FixtureInput> fixture_inputs()
         out.push_back(to_physical(out.back()));
 
         out.push_back({"c2", golden::flat(golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true)),
-                       Options{golden::c2_input(), golden::c2_config()}});
+                       Options{golden::c2_spec(), golden::c2_config()}});
     }
 
     for (const auto& spec : golden::GOLDEN_CUBES)
@@ -220,7 +220,7 @@ std::vector<FixtureInput> fixture_inputs()
 // NaN. Dates repeat, and statistics_end falls before, inside or after the series.
 //------------------------------------------------------------------------------
 
-// The bounds of "ccdc" in the data's units, and the input's reflectance_scale
+// The bounds of "ccdc" in the data's units, and the spec's reflectance_scale
 // that resolves them.
 struct Unit
 {
@@ -306,7 +306,7 @@ FixtureInput random_series(golden::Rng& rng, const Unit& unit)
         }
     }
 
-    ccd::Input& h = s.h.input;
+    ccd::DataSpec& h = s.h.spec;
     h.reflectance_scale = unit.reflectance_scale;
     h.thermal_at_100c = unit.thermal_at_100c;
 
@@ -352,7 +352,7 @@ TEST(CcdcPlan, StepsInOrderAndTheTransformOnStandardOnly)
         return out;
     };
 
-    const ccd::Input h;
+    const ccd::DataSpec h;
     const ccd::config::Config config = golden::pyccd();
     const ccd::config::Shared shared = golden::shared_of(config, h);
     const pp::PreprocessPlan plan = golden::plan_of(config, h);
@@ -384,14 +384,14 @@ TEST(CcdcPlan, StepsInOrderAndTheTransformOnStandardOnly)
     EXPECT_EQ(green.max_date, shared.statistics_end);
     EXPECT_EQ(green.scope, ccd::GreenFilterScope::StatWindow);
 
-    // The identity transform, and an input without thermal, have none; the
+    // The identity transform, and a spec without thermal, have none; the
     // latter also has no ThermalRange step.
-    ccd::Input identity = h;
+    ccd::DataSpec identity = h;
     identity.thermal_scale = 1.0;
     identity.thermal_offset = 0.0;
     EXPECT_FALSE(golden::plan_of(config, identity).standard.transform.has_value());
 
-    ccd::Input no_thermal = h;
+    ccd::DataSpec no_thermal = h;
     no_thermal.roles[6] = "other";
     const pp::PreprocessPlan nt = golden::plan_of(config, no_thermal);
     EXPECT_FALSE(nt.standard.transform.has_value());
@@ -433,29 +433,29 @@ std::string fields(const pp::PreprocessPlan& plan)
     return out;
 }
 
-// The "ccdc" plan of `input` written out with the Step constructors: the
+// The "ccdc" plan of `spec` written out with the Step constructors: the
 // thermal range on the thermal row when it has one, (therm_lo, therm_hi) in
 // Standard and (stored_lo, stored_hi) in the other two (the snow chain's
 // again at its end), the reflectance range (0, refl_hi) on its blue to swir2 rows, the green
 // median `green` above, up to statistics_end 736694, Standard transformed by
 // `transform`.
-pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double therm_hi,
+pp::PreprocessPlan ccdc_plan(const ccd::DataSpec& spec, double therm_lo, double therm_hi,
                              double stored_lo, double stored_hi, double refl_hi, double green,
                              std::optional<pp::Affine> transform)
 {
     const auto thermal = [&](pp::Chain& out, double lo, double hi)
     {
-        if (input.index("thermal") != ccd::NO_BAND)
-            out.push_back(pp::Step::thermal_range(input.index("thermal"), {{lo, false}, {hi, false}}));
+        if (spec.index("thermal") != ccd::NO_BAND)
+            out.push_back(pp::Step::thermal_range(spec.index("thermal"), {{lo, false}, {hi, false}}));
     };
     const auto chain = [&](double lo, double hi)
     {
         pp::Chain out;
-        out.push_back(pp::Step::keep_qa(pp::qa_set({input.qa_clear, input.qa_water})));
+        out.push_back(pp::Step::keep_qa(pp::qa_set({spec.qa_clear, spec.qa_water})));
         thermal(out, lo, hi);
         out.push_back(pp::Step::band_range(
             band_rows(ccd::config::roles({"blue", "green", "red", "nir", "swir1", "swir2"}),
-                      input),
+                      spec),
             {{0.0, false}, {refl_hi, false}}));
         out.push_back(pp::Step::one_per_date());
         return out;
@@ -466,38 +466,38 @@ pp::PreprocessPlan ccdc_plan(const ccd::Input& input, double therm_lo, double th
     plan.standard.transform = transform;
     plan.standard.chain = chain(therm_lo, therm_hi);
     plan.snow.chain = common;
-    plan.snow.chain.push_back(pp::Step::add_qa(pp::qa_set({input.qa_snow})));
+    plan.snow.chain.push_back(pp::Step::add_qa(pp::qa_set({spec.qa_snow})));
     plan.snow.chain.push_back(pp::Step::one_per_date());
     thermal(plan.snow.chain, stored_lo, stored_hi);
     plan.insufficient_clear.chain = common;
     plan.insufficient_clear.chain.push_back(pp::Step::green_median(
-        input.index("green"), green, golden::PYCCD_STATISTICS_END, ccd::GreenFilterScope::StatWindow));
+        spec.index("green"), green, golden::PYCCD_STATISTICS_END, ccd::GreenFilterScope::StatWindow));
     plan.insufficient_clear.chain.push_back(pp::Step::one_per_date());
     return plan;
 }
 
 } // namespace
 
-// The "ccdc" preprocessing resolved against an input, bit for bit: on
+// The "ccdc" preprocessing resolved against a data spec, bit for bit: on
 // Collection-1 DN -9320 < thermal < 7070 in Standard, after its thermal x 10
 // - 27315, and 1799.5 < thermal < 3438.5 on the stored row of the other two
 // (the same degrees Celsius), 0 < reflectance < 10000, the green median 400
-// above; on the physical-unit input the same divided by 10000 (-0.932,
+// above; on the physical-unit spec the same divided by 10000 (-0.932,
 // 0.707, 1, 0.04) in every chain, no transform; without a thermal row, no
 // thermal range and no transform. pyccd's plan but for the stored rows'
 // thermal range, which pyccd tests against -9320 and 7070 untransformed.
 TEST(CcdcPlan, IsWrittenOutStepByStep)
 {
-    const ccd::Input dn;
+    const ccd::DataSpec dn;
     EXPECT_EQ(fields(ccd::config::resolve(ccd::strategies::library_registry(), golden::pyccd(), dn).plan),
               fields(ccdc_plan(dn, -9320.0, 7070.0, 1799.5, 3438.5, 10000.0, 400.0,
                                pp::Affine{6, 10.0, -27315.0})));
 
-    const ccd::Input phys = golden::physical_input();
+    const ccd::DataSpec phys = golden::physical_spec();
     EXPECT_EQ(fields(golden::plan_of(golden::pyccd(), phys)),
               fields(ccdc_plan(phys, -0.932, 0.707, -0.932, 0.707, 1.0, 0.04, std::nullopt)));
 
-    ccd::Input no_thermal;
+    ccd::DataSpec no_thermal;
     no_thermal.roles[6] = "other";
     const pp::PreprocessPlan nt = golden::plan_of(golden::pyccd(), no_thermal);
     EXPECT_EQ(fields(nt),
@@ -618,7 +618,7 @@ TEST(CustomPlan, TheChainsWrittenOutAreThePresets)
     };
 
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
-    const ccd::Input h;
+    const ccd::DataSpec h;
     const std::size_t T = c.T;
     EXPECT_EQ(golden::resolved(written, h).digest, golden::resolved(golden::pyccd(), h).digest);
 
@@ -653,7 +653,7 @@ TEST(CustomPlan, StandardKeepsSnow)
 {
     const golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", true);
     const PixelView px = p.view();
-    const ccd::Input h;
+    const ccd::DataSpec h;
 
     const ccd::config::Config snowy_config = golden::with_step(
         golden::pyccd(), "standard", 0, "codes", ccd::config::names({"clear", "water", "snow"}));
@@ -682,7 +682,7 @@ TEST(CustomPlan, StandardKeepsSnow)
 
 // The thermal transform on every procedure. That is the "ccdc" chains run
 // on an input whose thermal band the caller transformed beforehand, with the
-// identity transform in the input -- for every procedure, Standard
+// identity transform in the spec -- for every procedure, Standard
 // included. Thermal values of 1000 (Kelvin x 10: -173 degrees Celsius) at
 // some clear observations fail the thermal range of every procedure, the
 // transformed row's and, in the default PermanentSnow and InsufficientClear
@@ -708,7 +708,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
         }
     }
 
-    const ccd::Input h;
+    const ccd::DataSpec h;
 
     ccd::config::Config everywhere = golden::pyccd();
     everywhere.preprocess.at("snow").thermal = ccd::config::Thermal::Celsius;
@@ -723,7 +723,7 @@ TEST(CustomPlan, TransformOnEveryProcedure)
             v = v * h.thermal_scale + h.thermal_offset;
         }
 
-    ccd::Input identity = h;
+    ccd::DataSpec identity = h;
     identity.thermal_scale = 1.0;
     identity.thermal_offset = 0.0;
 

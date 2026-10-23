@@ -91,7 +91,7 @@ struct ResidualCap final : OutlierRule
 {
     struct Params
     {
-        scalar_t limit = 2000.0;   // on the default input (Collection-1 DN): 0.2
+        scalar_t limit = 2000.0;   // on the default DataSpec (Collection-1 DN): 0.2
     };
 
     static const std::vector<config::Field<Params>>& schema();
@@ -336,7 +336,7 @@ The helpers in `tests/ccd/support` (namespace `golden`, a test's include directo
   `with_shared()`, `with_step()` to edit them; `spec_of()`, a `RunSpec` with masks;
   `parameter<T>()`, a resolved value;
 - `synthetic.hpp`: `make_cube()`, synthetic pixels and cubes of several regimes;
-- `units.hpp`: `physical_input()`, the reflectance input, and `to_physical()`;
+- `units.hpp`: `physical_spec()`, the reflectance input, and `to_physical()`;
 - `dump.hpp`: `dump()`, a result as hexfloat text, equal exactly when every value is
   bit-equal.
 
@@ -365,14 +365,14 @@ drops the observations of one date:
 
 <!-- from: tests/ccd/strategies/test_registry_preprocess.cpp -->
 ```cpp
-    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::Input& input,
+    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::DataSpec& spec,
                                                      const ccd::config::StepContext& context)
     {
         contexts().push_back(context);
         if (params.day < 0)
             throw std::invalid_argument("parameter 'day' is negative");
         return ccd::preprocess::Step::of(std::make_shared<const DropDay>(params.day,
-                                                                       input.index("green")));
+                                                                       spec.index("green")));
     }
 ```
 

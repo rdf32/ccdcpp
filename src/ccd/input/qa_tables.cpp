@@ -28,7 +28,7 @@ QaTablePtr build(Decode decode)
 
 } // namespace
 
-QaTablePtr landsat_c2_qa_pixel(const Input& o)
+QaTablePtr landsat_c2_qa_pixel(const DataSpec& o)
 {
     return build([&o](std::uint32_t v) -> std::uint8_t
     {
@@ -43,7 +43,7 @@ QaTablePtr landsat_c2_qa_pixel(const Input& o)
     });
 }
 
-QaTablePtr landsat_c1_pixel_qa(const Input& o)
+QaTablePtr landsat_c1_pixel_qa(const DataSpec& o)
 {
     return build([&o](std::uint32_t v) -> std::uint8_t
     {
@@ -59,7 +59,7 @@ QaTablePtr landsat_c1_pixel_qa(const Input& o)
     });
 }
 
-QaTablePtr hls_fmask(const Input& o, bool exclude_high_aerosol)
+QaTablePtr hls_fmask(const DataSpec& o, bool exclude_high_aerosol)
 {
     return build([&o, exclude_high_aerosol](std::uint32_t v) -> std::uint8_t
     {
@@ -75,7 +75,7 @@ QaTablePtr hls_fmask(const Input& o, bool exclude_high_aerosol)
     });
 }
 
-QaTablePtr sentinel2_scl(const Input& o)
+QaTablePtr sentinel2_scl(const DataSpec& o)
 {
     return build([&o](std::uint32_t v) -> std::uint8_t
     {

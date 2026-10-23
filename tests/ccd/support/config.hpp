@@ -2,7 +2,7 @@
 
 // The configurations the tests run: the library's "ccdc" preset, edits of it
 // by stage and parameter or by shared value (the C++ counterpart of Python's
-// Config.replace), their resolution against an input, and a run's RunSpec
+// Config.replace), their resolution against a data spec, and a run's RunSpec
 // with the processing masks the dumps hold. Not part of the library.
 
 #include <cstdint>
@@ -17,7 +17,7 @@
 #include "ccd/config/resolve.hpp"
 #include "ccd/input/pixel_series.hpp"
 #include "ccd/input/mask/chain.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/run/algorithm.hpp"
 #include "ccd/strategies/library.hpp"
 
@@ -104,25 +104,25 @@ inline ccd::config::Config pyccd()
     return with_shared(ccdc(), "statistics_end", ccd::config::integer(PYCCD_STATISTICS_END));
 }
 
-// `config` resolved against `input`, in the library's registry.
+// `config` resolved against `spec`, in the library's registry.
 inline ccd::config::Resolved resolved(const ccd::config::Config& config = pyccd(),
-                                      const ccd::Input& input = ccd::Input{})
+                                      const ccd::DataSpec& spec = ccd::DataSpec{})
 {
-    return ccd::config::resolve(ccd::strategies::library_registry(), config, input);
+    return ccd::config::resolve(ccd::strategies::library_registry(), config, spec);
 }
 
-// The strategies of `config` on `input`.
+// The strategies of `config` on `spec`.
 inline ccd::Strategies strategies_of(const ccd::config::Config& config = pyccd(),
-                                     const ccd::Input& input = ccd::Input{})
+                                     const ccd::DataSpec& spec = ccd::DataSpec{})
 {
-    return resolved(config, input).strategies;
+    return resolved(config, spec).strategies;
 }
 
-// The shared values of `config` on `input`.
+// The shared values of `config` on `spec`.
 inline ccd::config::Shared shared_of(const ccd::config::Config& config = pyccd(),
-                                     const ccd::Input& input = ccd::Input{})
+                                     const ccd::DataSpec& spec = ccd::DataSpec{})
 {
-    return resolved(config, input).shared;
+    return resolved(config, spec).shared;
 }
 
 // An Algorithm of `config`.
@@ -146,53 +146,53 @@ T parameter(const ccd::config::ConfigTree& tree, const std::string& stage, const
     return std::get<T>(tree.at(stage).params.at(name));
 }
 
-// The preprocessing plan of `config` on `input`.
+// The preprocessing plan of `config` on `spec`.
 inline ccd::preprocess::PreprocessPlan plan_of(const ccd::config::Config& config = pyccd(),
-                                               const ccd::Input& input = ccd::Input{})
+                                               const ccd::DataSpec& spec = ccd::DataSpec{})
 {
-    return ccd::plan_of(config, input);
+    return ccd::plan_of(config, spec);
 }
 
 // The processing mask of procedure `procedure`'s chain ("standard", "snow",
-// "insufficient_clear") in `config`, resolved against `input`, over the
+// "insufficient_clear") in `config`, resolved against `spec`, over the
 // workspace's spectral block as it is (no transform applied).
 inline ccd::ProcessingMask chain_mask(const ccd::PixelSeries& workspace,
-                                      const ccd::Input& input,
+                                      const ccd::DataSpec& spec,
                                       const std::string& procedure,
                                       const ccd::config::Config& config = pyccd())
 {
-    const ccd::preprocess::PreprocessPlan plan = golden::plan_of(config, input);
+    const ccd::preprocess::PreprocessPlan plan = golden::plan_of(config, spec);
     ccd::ProcessingMask mask;
     ccd::preprocess::apply(plan.of(*ccd::procedure_named(procedure)).chain, workspace.dates(),
                            workspace.spectral(), workspace.qas(), mask);
     return mask;
 }
 
-// A run's RunSpec: `input`, `algorithm`, `record`, and the processing masks.
-inline ccd::RunSpec spec_of(const ccd::Input& input,
+// A run's RunSpec: `spec`, `algorithm`, `record`, and the processing masks.
+inline ccd::RunSpec spec_of(const ccd::DataSpec& spec,
                             ccd::AlgorithmPtr algorithm = pyccd_algorithm(),
                             bool record = false)
 {
-    ccd::RunSpec spec;
-    spec.input = input;
-    spec.algorithm = std::move(algorithm);
-    spec.record = record;
-    spec.masks = true;
-    return spec;
+    ccd::RunSpec out;
+    out.spec = spec;
+    out.algorithm = std::move(algorithm);
+    out.record = record;
+    out.masks = true;
+    return out;
 }
 
 // The same, of a configuration (compiled here, once per call).
-inline ccd::RunSpec spec_of(const ccd::Input& input, ccd::config::Config config,
+inline ccd::RunSpec spec_of(const ccd::DataSpec& spec, ccd::config::Config config,
                             bool record = false)
 {
-    return spec_of(input, algorithm(std::move(config)), record);
+    return spec_of(spec, algorithm(std::move(config)), record);
 }
 
-// `input` decoding its raw QA through `table`.
-inline ccd::Input with_table(ccd::Input input, ccd::QaTablePtr table)
+// `spec` decoding its raw QA through `table`.
+inline ccd::DataSpec with_table(ccd::DataSpec spec, ccd::QaTablePtr table)
 {
-    input.qa_table = std::move(table);
-    return input;
+    spec.qa_table = std::move(table);
+    return spec;
 }
 
 } // namespace golden

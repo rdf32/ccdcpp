@@ -2,7 +2,7 @@
 
 //==============================================================================
 //
-// The units the corpus runs in: the physical-unit input and the conversion of
+// The units the corpus runs in: the physical-unit spec and the conversion of
 // DN to it, saturation values on the DN reflectance bounds, and the raw-number
 // configuration of the Collection-2 reference pixel.
 //
@@ -18,15 +18,15 @@
 namespace golden
 {
 
-// The physical-unit input of docs/units.md: data pre-divided by 10000, and
+// The physical-unit spec of docs/units.md: data pre-divided by 10000, and
 // reflectance its unit, so the configuration's reflectance values (the
 // Lasso's alpha and coefficient floor, the bounds, the green filter) are its
 // own, and its thermal bounds are degrees Celsius / 100.
 constexpr double SCALE = 10000.0;
 
-inline ccd::Input physical_input()
+inline ccd::DataSpec physical_spec()
 {
-    ccd::Input h;
+    ccd::DataSpec h;
     h.reflectance_scale = 1.0;
     h.thermal_scale = 1.0;
     h.thermal_offset = 0.0;
@@ -79,7 +79,7 @@ inline void put_bound_values(double* block, const std::uint8_t* qas, std::size_t
 
 // A RAW-NUMBER REFERENCE CONFIGURATION, not a physical one: the two C2
 // reference files' run, which applies pyccd's Collection-1 DN thresholds to
-// Collection-2 DN numbers as they are. c2_input(), the physical-unit input,
+// Collection-2 DN numbers as they are. c2_spec(), the physical-unit spec,
 // says the data's numbers are its units (reflectance_scale 1, offset 0,
 // thermal_at_100c 1, the identity transform), so c2_config()'s values are the
 // data's own numbers: the Lasso's alpha and coefficient floor 1 and the green
@@ -88,9 +88,9 @@ inline void put_bound_values(double* block, const std::uint8_t* qas, std::size_t
 // numbers. The physical description of Collection-2 DN (reflectance_scale
 // 1 / 2.75e-5, reflectance_offset 0.2 / 2.75e-5) resolves "ccdc" to other
 // values (test_units.cpp, Collection2DnResolvesReflectanceZeroToOne).
-inline ccd::Input c2_input()
+inline ccd::DataSpec c2_spec()
 {
-    return physical_input();
+    return physical_spec();
 }
 
 inline ccd::config::Config c2_config()

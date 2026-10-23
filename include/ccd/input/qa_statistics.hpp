@@ -4,7 +4,7 @@
 
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/types.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 
 namespace ccd
 {
@@ -43,12 +43,12 @@ struct QaStatistics
     bool enough_snow(scalar_t threshold) const { return snow_probability >= threshold; }
 };
 
-// The statistics of the observations dated <= statistics_end, by `input`'s
+// The statistics of the observations dated <= statistics_end, by `spec`'s
 // QA codes (`qas` and `dates` of one length).
 QaStatistics qa_statistics(
     ArrayView<const std::uint8_t, 1> qas,
     ArrayView<const std::int64_t, 1> dates,
-    const Input& input,
+    const DataSpec& spec,
     std::int64_t statistics_end
 );
 

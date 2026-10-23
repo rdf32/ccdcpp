@@ -26,12 +26,12 @@ struct SharedValues
     index_t detection_bands = 0;
 };
 
-// The shared values of `given` against `input` (null: as written).
-SharedValues resolve_shared(const Values& given, const Input* input)
+// The shared values of `given` against `spec` (null: as written).
+SharedValues resolve_shared(const Values& given, const DataSpec* spec)
 {
     const std::vector<ParameterInfo>& info = shared_parameters();
     SectionContext as_written;
-    as_written.input = input;
+    as_written.spec = spec;
     SharedValues out;
     apply_shared(section_values(info, given, "shared", as_written, "value"), out.typed);
     out.typed.coefficients.check("shared");
@@ -47,7 +47,7 @@ SharedValues resolve_shared(const Values& given, const Input* input)
             "; min_observations must exceed coefficients.min");
 
     // The detection-band count is read from the value as given (or its
-    // default), not from typed.detection_bands: without an input its roles
+    // default), not from typed.detection_bands: without a data spec its roles
     // stay unresolved, and the count is needed all the same.
     const auto given_bands = given.find("detection_bands");
     const Value& bands = given_bands != given.end()
@@ -63,8 +63,8 @@ SharedValues resolve_shared(const Values& given, const Input* input)
         out.detection_bands = rows->size();
     if (out.detection_bands == 0)
         throw std::invalid_argument("shared value 'detection_bands' is empty");
-    if (input)
-        check_band_list(out.typed.detection_bands, input->bands(),
+    if (spec)
+        check_band_list(out.typed.detection_bands, spec->bands(),
                         "shared value 'detection_bands'");
     out.named = shared_values(out.typed);
     return out;
@@ -93,7 +93,7 @@ ConfigTree resolve_stages(const Registry& registry, const ConfigTree& stages,
         const std::string where = stage + " '" + chosen.strategy + "'";
         out[stage] = {chosen.strategy,
                       type.check(section_values(type.info, chosen.params, where, with),
-                                 with.input, where)};
+                                 with.spec, where)};
     }
     return out;
 }
@@ -130,7 +130,7 @@ PreprocessConfig resolve_preprocess(const Registry& registry, const PreprocessCo
             const std::string where = at + " '" + step.step + "'";
             resolved.steps.push_back(
                 {step.step, type.check(section_values(type.info, step.params, where, with),
-                                       with.input, where)});
+                                       with.spec, where)});
         }
     }
     return out;
@@ -176,26 +176,26 @@ void check_capabilities(const Strategies& s, const ConfigTree& config)
                                                           : "; it provides " + listed(provided)));
 }
 
-// The plan of a resolved preprocessing on `input`, checked against its bands.
+// The plan of a resolved preprocessing on `spec`, checked against its bands.
 preprocess::PreprocessPlan build_plan(const Registry& registry, const PreprocessConfig& resolved,
-                                      const Input& input)
+                                      const DataSpec& spec)
 {
     preprocess::PreprocessPlan plan;
     for (const auto& [procedure, chain] : resolved)
     {
         preprocess::ProcedurePlan& of = plan.of(*procedure_named(procedure));
         if (chain.thermal == Thermal::Celsius)
-            of.transform = preprocess::thermal_transform(input);
+            of.transform = preprocess::thermal_transform(spec);
         for (std::size_t i = 0; i < chain.steps.size(); ++i)
         {
             const StepConfig& step = chain.steps[i];
             const StepContext context{procedure, chain.thermal, i};
             const std::string at = context.where() + " '" + step.step + "'";
-            if (auto built = registry.step(step.step, at).make(step.params, input, context, at))
+            if (auto built = registry.step(step.step, at).make(step.params, spec, context, at))
                 of.chain.push_back(*built);
         }
     }
-    preprocess::validate(plan, input.bands());
+    preprocess::validate(plan, spec.bands());
     return plan;
 }
 
@@ -268,17 +268,17 @@ Config canonical(const Registry& registry, const Config& config)
     return out;
 }
 
-Resolved resolve(const Registry& registry, const Config& config, const Input& input)
+Resolved resolve(const Registry& registry, const Config& config, const DataSpec& spec)
 {
     Resolved out;
-    const SharedValues shared = resolve_shared(config.shared, &input);
-    const SectionContext with{&input, shared.named, shared.detection_bands};
+    const SharedValues shared = resolve_shared(config.shared, &spec);
+    const SectionContext with{&spec, shared.named, shared.detection_bands};
     out.shared = shared.typed;
     out.stages = resolve_stages(registry, config.stages, with);
     out.strategies = build_strategies(registry, out.stages);
     out.preprocess = resolve_preprocess(registry, config.preprocess, with);
-    out.plan = build_plan(registry, out.preprocess, input);
-    out.digest = resolution_digest(input, shared.named, out.stages, out.preprocess);
+    out.plan = build_plan(registry, out.preprocess, spec);
+    out.digest = resolution_digest(spec, shared.named, out.stages, out.preprocess);
     return out;
 }
 

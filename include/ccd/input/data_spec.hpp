@@ -16,21 +16,21 @@ namespace ccd
 
 //==============================================================================
 //
-// Input
+// DataSpec
 //
 // What the caller's data is: its QA codes and the table that decodes its raw
-// QA, the role of each row of the spectral array, and its units. It holds no
-// algorithm parameter: those are the configuration's (config/registry.hpp),
-// written in physical terms and resolved against an Input when a run is
-// built (config::resolve()).
+// QA, the role of each row of the spectral array, and its units. It holds
+// none of the arrays, and no algorithm parameter: those are the
+// configuration's (config/registry.hpp), written in physical terms and
+// resolved against a DataSpec when a run is built (config::resolve()).
 //
 // This struct contains no computation; validate() (ccd.hpp) checks it
-// against the input's band count once per call.
+// against the data's band count once per call.
 //
 //==============================================================================
 
 // The roles a row can play. Every role but "other" names at most one row of
-// an input; "other" rows are fitted and reported, and no band list can name
+// a spec; "other" rows are fitted and reported, and no band list can name
 // them. "nir" is the Landsat near infrared (TM/ETM+ band 4, OLI band 5,
 // 865 nm; Sentinel-2's B8A); Sentinel-2's broad 842 nm B08 is "nir_broad".
 extern const std::vector<std::string> ROLES;
@@ -38,7 +38,7 @@ extern const std::vector<std::string> ROLES;
 // Whether `role` is one of ROLES.
 bool is_role(const std::string& role);
 
-struct Input
+struct DataSpec
 {
     //--------------------------------------------------------------------------
     // QA codes
@@ -68,7 +68,7 @@ struct Input
     std::uint8_t qa_occlusion = 10;
 
     // Decodes the raw QA values of `qas` (uint8 or uint16) into the codes
-    // above (qa_table.hpp), built with this input's codes (qa_tables.hpp);
+    // above (qa_table.hpp), built with this spec's codes (qa_tables.hpp);
     // null, the default: `qas` are the codes, uint8.
     QaTablePtr qa_table;
 
@@ -104,19 +104,19 @@ struct Input
     // magnitudes (the Lasso's alpha and coef_floor, green_median's offset)
     // are multiplied by reflectance_scale only. 1e-4 x 10000, 0.04 x 10000,
     // 0 x 10000 and 1 x 10000 are 1.0, 400.0, 0 and 10000 exactly, so a DN
-    // input runs pyccd's DN values bit for bit.
+    // spec runs pyccd's DN values bit for bit.
     //
     // The thermal transform (thermal_scale, thermal_offset) takes the thermal
     // row to a multiple of degrees Celsius, and thermal_at_100c says which: the
     // value 100 degrees Celsius has after the transform. Celsius x 100 on
     // Collection-1 DN (Kelvin x 10 times 10 less 27315, the default; 100
-    // degrees is 10000), Celsius / 100 on the physical-unit input (the
+    // degrees is 10000), Celsius / 100 on the physical-unit spec (the
     // identity transform; 100 degrees is 1). A configuration's thermal
     // bounds, in degrees Celsius, resolve to that unit: c x 100 x
     // thermal_at_100c / 10000, so pyccd's -93.2 and 70.7 are -9320 and 7070 on
-    // DN and -0.932 and 0.707 on the physical-unit input, exactly.
+    // DN and -0.932 and 0.707 on the physical-unit spec, exactly.
     //
-    // docs/units.md has the physical-unit input (reflectance and degrees
+    // docs/units.md has the physical-unit spec (reflectance and degrees
     // Celsius / 100) and its measured equivalence with DN, why degrees
     // Celsius itself is not the unit, Collection 2, the thermal range, and
     // the guards of every unit-bearing value (tests/ccd/machine/test_units.cpp).
@@ -136,7 +136,7 @@ struct Input
     // The default is pyccd's Kelvin x 10 -> Celsius x 100. The caller's
     // buffer is never written. The identity (1.0, 0.0) skips the pass, and
     // with it the copy when the pixel is already contiguous float64, and so
-    // does an input without a "thermal" row.
+    // does a spec without a "thermal" row.
     scalar_t thermal_scale  = KELVIN_SCALE;
     scalar_t thermal_offset = -KELVIN_OFFSET;
 
@@ -157,9 +157,9 @@ struct Input
     // the storage encoding, before any transform, and compared on the raw
     // stored values, as fill codes are (docs/units.md). `saturation_code` is the
     // reflective rows' code, `thermal_saturation_code` the thermal row's: 20000
-    // and 20000 in Collection-1 DN, or none (the defaults) when the input
+    // and 20000 in Collection-1 DN, or none (the defaults) when the spec
     // does not declare one. A step or strategy that reads one refuses an
-    // input without it.
+    // spec without it.
     //--------------------------------------------------------------------------
     std::optional<scalar_t> saturation_code;
     std::optional<scalar_t> thermal_saturation_code;
@@ -167,40 +167,40 @@ struct Input
     // The band count: one row per role.
     index_t bands() const { return roles.size(); }
 
-    // The row of `role`, or NO_BAND when the input has none.
+    // The row of `role`, or NO_BAND when the spec has none.
     index_t index(const std::string& role) const;
 };
 
-bool operator==(const Input& a, const Input& b);
-inline bool operator!=(const Input& a, const Input& b) { return !(a == b); }
+bool operator==(const DataSpec& a, const DataSpec& b);
+inline bool operator!=(const DataSpec& a, const DataSpec& b) { return !(a == b); }
 
-// A digest of every field of `input`, its QA table's codes included: equal
-// for equal inputs, on any platform.
-std::uint64_t digest(const Input& input);
+// A digest of every field of `spec`, its QA table's codes included: equal
+// for equal specs, on any platform.
+std::uint64_t digest(const DataSpec& spec);
 
 //------------------------------------------------------------------------------
 //
-// The input check every entry point runs once per call, before any work.
+// The data spec check every entry point runs once per call, before any work.
 //
 // The procedures hold one fit per band and read bands by their rows in
-// `input`, so every row must be one of an array with `bands` bands. Throws
+// `spec`, so every row must be one of an array with `bands` bands. Throws
 // std::invalid_argument when:
 //
-//   * `bands` is not input.bands() (one role per row), or exceeds
+//   * `bands` is not spec.bands() (one role per row), or exceeds
 //     CCD_MAX_BANDS;
 //   * a role is not one of ROLES, or a role other than "other" is held
 //     twice;
-//   * the input has no "green" row;
+//   * the spec has no "green" row;
 //   * reflectance_scale or thermal_at_100c is not a positive number, or
 //     reflectance_offset is not a finite one.
 //
 // The message names the field and the counts or the value. The algorithm's
 // parameters are the configuration's, checked by their schemas and against
-// the input when an Algorithm resolves them (RunSpec::algorithm).
+// the spec when an Algorithm resolves them (RunSpec::algorithm).
 //
 //------------------------------------------------------------------------------
 
-void validate(const Input& input, index_t bands);
+void validate(const DataSpec& spec, index_t bands);
 
 //------------------------------------------------------------------------------
 //

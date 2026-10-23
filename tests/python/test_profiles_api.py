@@ -222,7 +222,7 @@ class Unprofiled(unittest.TestCase):
         h = ccdcpp.Input()
         with self.assertRaises(ValueError) as caught:
             ccdcpp.detect(DATES, CUBE_DN[0, 0, :6], CODES[0, 0], input=h)
-        self.assertIn("the input has 7", str(caught.exception))
+        self.assertIn("the data spec has 7", str(caught.exception))
         # The configuration's schemas, checked when the configuration is built.
         with self.assertRaisesRegex(ValueError, "'peek_size' is 1; it must be at least 2"):
             ccdcpp.config("ccdc").replace(change_test__peek_size=1)

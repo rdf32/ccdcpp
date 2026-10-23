@@ -102,7 +102,7 @@ class BandCount(unittest.TestCase):
             call()
         message = str(caught.exception)
         self.assertIn(f"has {bands} bands", message)
-        self.assertIn("the input has 7", message)
+        self.assertIn("the data spec has 7", message)
 
     def test_detect(self):
         for bands in (6, 8):
@@ -351,7 +351,7 @@ class LayoutValidation(unittest.TestCase):
                 out[int(row[1:])] = role
             return out
         cases = [
-            (self.broken(), 7, "spectral has 7 bands; the input has 10 (a row per role)"),
+            (self.broken(), 7, "spectral has 7 bands; the data spec has 10 (a row per role)"),
             (self.broken(roles=TEN_ROLES + ["other"] * 23), 33, "ccdcpp accepts at most 32"),
             (self.broken(roles=roles(r1="other")), 10, "roles has no 'green'"),
             (self.broken(roles=roles(r7="nir8a")), 10, "roles holds 'nir8a', which is not a role"),
@@ -364,10 +364,10 @@ class LayoutValidation(unittest.TestCase):
         # The detection bands are the configuration's shared value, checked
         # against the input's bands.
         detection = "shared value 'detection_bands' "
-        for bands, expected in (([1, 10], "holds band 10; the input has 10 bands"),
+        for bands, expected in (([1, 10], "holds band 10; the data spec has 10 bands"),
                                 ([1, 2, 1], "holds band 1 twice"),
                                 ([], "is empty"),
-                                (["green", "coastal"], "holds 'coastal', which the input does "
+                                (["green", "coastal"], "holds 'coastal', which the data spec does "
                                                        "not have")):
             self.assert_rejected(self.broken(), 10, detection + expected,
                                  config=preset(shared__detection_bands=bands))
@@ -375,7 +375,7 @@ class LayoutValidation(unittest.TestCase):
         # The Tmask bands are window_screen's parameter, checked against the
         # input's bands.
         tmask = "window_screen 'tmask' parameter 'bands' "
-        for bands, expected in (([1, 12], "holds band 12; the input has 10 bands"),
+        for bands, expected in (([1, 12], "holds band 12; the data spec has 10 bands"),
                                 ([8, 8], "holds band 8 twice"),
                                 ([], "is empty")):
             self.assert_rejected(self.broken(), 10, tmask + expected,
@@ -384,7 +384,7 @@ class LayoutValidation(unittest.TestCase):
         # band_range's bands are its parameter, checked against the input's
         # bands.
         band = "preprocess standard step 2 'band_range' parameter 'bands' "
-        for bands, expected in (([0, 31], "holds band 31; the input has 10 bands"),
+        for bands, expected in (([0, 31], "holds band 31; the data spec has 10 bands"),
                                 ([3, 3], "holds band 3 twice"),
                                 ([], "is empty"),
                                 ("optical", "is 'optical'; a band list is roles or rows")):

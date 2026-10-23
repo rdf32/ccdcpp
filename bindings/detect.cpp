@@ -47,7 +47,7 @@ private:
 
 // What a call runs: the input and config= (the "ccdc" preset's for None).
 ccd::RunSpec run_spec(
-    const ccd::Input& input,
+    const ccd::DataSpec& spec,
     std::shared_ptr<ccd::Algorithm> config,
     bool record,
     bool masks,
@@ -55,14 +55,14 @@ ccd::RunSpec run_spec(
     bool diagnostics
 )
 {
-    ccd::RunSpec spec;
-    spec.input = input;
-    spec.algorithm = algorithm_or_ccdc(std::move(config));
-    spec.record = record;
-    spec.masks = masks;
-    spec.reasons = reasons;
-    spec.diagnostics = diagnostics;
-    return spec;
+    ccd::RunSpec out;
+    out.spec = spec;
+    out.algorithm = algorithm_or_ccdc(std::move(config));
+    out.record = record;
+    out.masks = masks;
+    out.reasons = reasons;
+    out.diagnostics = diagnostics;
+    return out;
 }
 
 // T bytes as a new (T,) uint8 array.
@@ -202,7 +202,7 @@ static py::dict detect_wrapper(
     py::object dates,
     py::object spectral,
     py::object qas,
-    const ccd::Input& input,
+    const ccd::DataSpec& spec,
     std::shared_ptr<ccd::Algorithm> config,
     bool record,
     py::object resume,
@@ -212,19 +212,19 @@ static py::dict detect_wrapper(
     bool diagnostics
 )
 {
-    const PixelArrays arrays = pixel_arrays(dates, spectral, qas, input.qa_table != nullptr);
+    const PixelArrays arrays = pixel_arrays(dates, spectral, qas, spec.qa_table != nullptr);
     std::optional<ccd::Resume> from = pixel_resume(resume);
     if (from)
         from->freeze_statistics = freeze_statistics;
-    ccd::RunSpec spec = run_spec(input, std::move(config), record, true, reasons,
+    ccd::RunSpec call = run_spec(spec, std::move(config), record, true, reasons,
                                  diagnostics);   // with its mask
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
-    spec.observer = recording;
+    call.observer = recording;
 
     ccd::PixelOutput run;
     {
         py::gil_scoped_release release;
-        run = ccd::detect(spec, arrays.dates, arrays.spectral, arrays.qas,
+        run = ccd::detect(call, arrays.dates, arrays.spectral, arrays.qas,
                           from ? &*from : nullptr);
     }
     return pixel_to_python(run, arrays.B, reasons, diagnostics, record, from.has_value(),
@@ -235,7 +235,7 @@ static py::dict detect_cube_wrapper(
     py::object dates,
     py::object spectral,
     py::object qas,
-    const ccd::Input& input,
+    const ccd::DataSpec& spec,
     std::shared_ptr<ccd::Algorithm> config,
     int threads,
     bool record,
@@ -247,17 +247,17 @@ static py::dict detect_cube_wrapper(
     bool diagnostics
 )
 {
-    const CubeArrays arrays = cube_arrays(dates, spectral, qas, input.qa_table != nullptr);
-    ccd::RunSpec spec = run_spec(input, std::move(config), record, masks, reasons, diagnostics);
+    const CubeArrays arrays = cube_arrays(dates, spectral, qas, spec.qa_table != nullptr);
+    ccd::RunSpec call = run_spec(spec, std::move(config), record, masks, reasons, diagnostics);
     std::optional<ccd::Resume> from = cube_resume(resume, arrays.H, arrays.W, arrays.B);
     if (from)
         from->freeze_statistics = freeze_statistics;
-    const Traced traced = observe(spec, trace_pixels, arrays.H, arrays.W);
+    const Traced traced = observe(call, trace_pixels, arrays.H, arrays.W);
 
     ccd::CubeOutput cube;
     {
         py::gil_scoped_release release;
-        cube = ccd::detect_cube(spec, arrays.dates, arrays.spectral, arrays.qas, threads,
+        cube = ccd::detect_cube(call, arrays.dates, arrays.spectral, arrays.qas, threads,
                                 from ? &*from : nullptr);
     }
     return cube_to_python(cube, arrays, record, from.has_value(), masks, reasons, diagnostics,

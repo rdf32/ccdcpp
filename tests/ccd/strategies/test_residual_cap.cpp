@@ -6,7 +6,7 @@
 // function registers it:
 //
 //   * the registry lists it with its parameter at its physical default, and
-//     a configuration naming it resolves `limit` in the input's units;
+//     a configuration naming it resolves `limit` in the spec's units;
 //   * judge() drops a first peek observation whose residual in a detection
 //     band is above the limit, and keeps it otherwise;
 //   * a run with it drops more observations at a smaller limit, and
@@ -73,13 +73,13 @@ TEST(ResidualCap, IsRegisteredWithItsPhysicalDefault)
               (cfg::Values{{"limit", cfg::real(0.2)}}));
 
     // 0.2 reflectance is 2000 on Collection-1 DN and 0.2 on reflectance.
-    const auto limit = [](const ccd::Input& input)
+    const auto limit = [](const ccd::DataSpec& spec)
     {
-        const cfg::Resolved r = cfg::resolve(registry(), capped(0.2), input);
+        const cfg::Resolved r = cfg::resolve(registry(), capped(0.2), spec);
         return golden::parameter<double>(r.stages, "outlier", "limit");
     };
-    EXPECT_EQ(limit(ccd::Input{}), 2000.0);
-    EXPECT_EQ(limit(golden::physical_input()), 0.2);
+    EXPECT_EQ(limit(ccd::DataSpec{}), 2000.0);
+    EXPECT_EQ(limit(golden::physical_spec()), 0.2);
 }
 
 TEST(ResidualCap, DropsAResidualAboveTheLimit)
@@ -115,7 +115,7 @@ TEST(ResidualCap, ASmallerLimitDropsMore)
     const auto kept = [&](double limit)
     {
         const ccd::PixelOutput out = ccd::detect(
-            golden::spec_of(ccd::Input{},
+            golden::spec_of(ccd::DataSpec{},
                             std::make_shared<const ccd::Algorithm>(capped(limit), registry())),
             ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
             ccd::ArrayView<const double, 2>::contiguous(c.spectral.data(), {7, T}),
@@ -132,7 +132,7 @@ TEST(ResidualCap, ACubeIsItsPixels)
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, H, W);
     const ccd::index_t T = c.T;
     const ccd::RunSpec spec = golden::spec_of(
-        ccd::Input{}, std::make_shared<const ccd::Algorithm>(capped(0.05), registry()));
+        ccd::DataSpec{}, std::make_shared<const ccd::Algorithm>(capped(0.05), registry()));
     const auto dates = ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});
 
     for (const int threads : {1, 4})

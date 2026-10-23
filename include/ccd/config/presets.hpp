@@ -19,7 +19,7 @@ namespace config
 //
 // Every procedure's chain begins with the same four steps, keep_qa,
 // thermal_range, band_range and one_per_date; Standard then ends, reading thermal
-// through the input's transform; PermanentSnow adds snow back, keeps one observation per date and
+// through the spec's transform; PermanentSnow adds snow back, keeps one observation per date and
 // tests the thermal range again, over the snow observations too (the first
 // test keeps a clear observation with an implausible thermal value from
 // taking its date in one_per_date); InsufficientClear runs the green median

@@ -13,7 +13,7 @@
 #include "ccd/config/config.hpp"
 #include "ccd/config/params.hpp"
 #include "ccd/config/preprocess.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/strategies/stages.hpp"
 
@@ -71,11 +71,11 @@ struct has_step_validate<
 
 // The parameters `values` give a registered type, back by name as its Params
 // holds them: std::invalid_argument, naming `where`, for what apply() or the
-// type's validate() refuses, and against `input` (null: none) for a band list
+// type's validate() refuses, and against `spec` (null: none) for a band list
 // naming a row it does not have, or repeating one. `values` are converted
-// (in the input's units and rows, or as written).
+// (in the spec's units and rows, or as written).
 using ParameterCheck =
-    std::function<Values(const Values& values, const Input* input, const std::string& where)>;
+    std::function<Values(const Values& values, const DataSpec* spec, const std::string& where)>;
 
 // A stage's strategy type: its parameters, their check, and its strategy
 // (as the stage's interface) from resolved values.
@@ -87,13 +87,13 @@ struct StrategyType
 };
 
 // A preprocessing step type: its parameters, their check, and its step from
-// resolved values on an input, at a place in a chain (none where the step
-// does not apply to the input), refusals naming `where`.
+// resolved values on a data spec, at a place in a chain (none where the step
+// does not apply to the spec), refusals naming `where`.
 struct StepType
 {
     std::vector<ParameterInfo> info;
     ParameterCheck check;
-    std::function<std::optional<preprocess::Step>(const Values&, const Input&,
+    std::function<std::optional<preprocess::Step>(const Values&, const DataSpec&,
                                                   const StepContext&, const std::string& where)>
         make;
 };
@@ -114,12 +114,12 @@ public:
         const std::string where = std::string(Interface::stage) + " '" + name + "'";
         types[name] = StrategyType{
             info_of(Strategy::schema()),
-            [](const Values& values, const Input* input, const std::string& at)
+            [](const Values& values, const DataSpec* spec, const std::string& at)
             {
                 typename Strategy::Params params;
                 apply(Strategy::schema(), values, params, at);
-                if (input)
-                    check_band_lists(Strategy::schema(), params, input->bands(), at);
+                if (spec)
+                    check_band_lists(Strategy::schema(), params, spec->bands(), at);
                 return to_values(Strategy::schema(), params);
             },
             [where](const Values& values) -> std::shared_ptr<const void>
@@ -141,7 +141,7 @@ public:
             throw std::logic_error("preprocessing step '" + name + "' registered twice");
         steps_[name] = StepType{
             info_of(S::schema()),
-            [](const Values& values, const Input* input, const std::string& where)
+            [](const Values& values, const DataSpec* spec, const std::string& where)
             {
                 typename S::Params params;
                 apply(S::schema(), values, params, where);
@@ -156,18 +156,18 @@ public:
                         throw std::invalid_argument(where + " " + e.what());
                     }
                 }
-                if (input)
-                    check_band_lists(S::schema(), params, input->bands(), where);
+                if (spec)
+                    check_band_lists(S::schema(), params, spec->bands(), where);
                 return to_values(S::schema(), params);
             },
-            [](const Values& values, const Input& input, const StepContext& context,
+            [](const Values& values, const DataSpec& spec, const StepContext& context,
                const std::string& where)
             {
                 typename S::Params params;
                 apply(S::schema(), values, params, where);
                 try
                 {
-                    return S::make(params, input, context);
+                    return S::make(params, spec, context);
                 }
                 catch (const std::invalid_argument& e)
                 {
@@ -179,7 +179,7 @@ public:
     // The strategy `config` names for Interface's stage. Throws
     // std::invalid_argument on a strategy the stage does not have, naming the
     // ones it does, and on parameters the strategy refuses. `config` is
-    // resolved: every parameter, the shared ones included, in the input's
+    // resolved: every parameter, the shared ones included, in the spec's
     // units and rows.
     template<class Interface>
     std::shared_ptr<const Interface> make(const StageConfig& config) const

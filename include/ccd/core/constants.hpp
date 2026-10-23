@@ -13,7 +13,7 @@ namespace ccd
 // Capacity of a BandList, and the largest band count the entry points accept.
 constexpr index_t CCD_MAX_BANDS = 32;
 
-// A band index that names no band: Input::index() of a role the input does
+// A band index that names no band: DataSpec::index() of a role the spec does
 // not have.
 constexpr index_t NO_BAND = static_cast<index_t>(-1);
 

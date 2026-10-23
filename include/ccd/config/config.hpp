@@ -22,8 +22,8 @@ namespace config
 // procedure, its steps by name and their parameters (config/preprocess.hpp).
 // It is written in physical terms -- reflectance, degrees Celsius, days,
 // observations, probabilities, bands by role, QA codes by name -- so it means
-// the same on every input. config::resolve() (config/resolve.hpp) translates
-// it to an input once; a registry (config/registry.hpp) holds the strategies
+// the same on every data spec. config::resolve() (config/resolve.hpp) translates
+// it to a data spec once; a registry (config/registry.hpp) holds the strategies
 // and steps it names, and its presets:
 //
 //     config::Config c = strategies::library_registry().preset("ccdc");

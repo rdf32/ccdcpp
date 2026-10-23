@@ -40,7 +40,7 @@ struct Profile
 {
     const char* name;
     std::vector<golden::BandSpec> specs;
-    ccd::Input h;
+    ccd::DataSpec h;
     ccd::config::Config config = golden::pyccd();   // the detection bands
 
 };
@@ -63,9 +63,9 @@ inline const golden::BandSpec THERMAL = {2950, 120, 15, true};
 inline const std::vector<golden::BandSpec> S2_SPECS =
     {BLUE, GREEN, RED, RE1, RE2, RE3, NIR, NIR8A, SWIR1, SWIR2};
 
-inline ccd::Input s2_layout()
+inline ccd::DataSpec s2_layout()
 {
-    ccd::Input h;
+    ccd::DataSpec h;
     h.roles = {"blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
                "nir", "other", "swir1", "swir2"};
     return h;
@@ -91,7 +91,7 @@ inline std::vector<Profile> profiles()
 
     // HLS L30-like: coastal, blue, green, red, nir, swir1, swir2, thermal.
     {
-        ccd::Input h;
+        ccd::DataSpec h;
         h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2", "thermal"};
         out.push_back({"hls_l30_b8",
             {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2, THERMAL}, h, golden::pyccd()});
@@ -99,7 +99,7 @@ inline std::vector<Profile> profiles()
 
     // HLS-like, 7 bands without thermal.
     {
-        ccd::Input h;
+        ccd::DataSpec h;
         h.roles = {"coastal", "blue", "green", "red", "nir", "swir1", "swir2"};
         out.push_back({"hls_b7",
             {COASTAL, BLUE, GREEN, RED, NIR, SWIR1, SWIR2}, h, golden::pyccd()});

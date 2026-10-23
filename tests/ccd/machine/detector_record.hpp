@@ -40,7 +40,7 @@ struct Record
     std::vector<std::int64_t> dates;
     std::vector<double> spectral;   // (7, n)
     std::vector<std::uint8_t> qas;
-    ccd::Input options;
+    ccd::DataSpec options;
     ccd::config::Config config = golden::pyccd();   // the strategies' configuration
     ccd::config::Resolved resolved = golden::resolved(config, options);
     const ccd::config::Shared& shared = resolved.shared;

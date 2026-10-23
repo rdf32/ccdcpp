@@ -66,11 +66,11 @@ using ccd::scalar_t;
 struct MaskedPixel
 {
     golden::Series pixel;
-    ccd::Input options;
+    ccd::DataSpec options;
     ccd::config::Shared shared;
     ccd::MaskedSeries series;
 
-    MaskedPixel(const std::string& path, ccd::Input options_,
+    MaskedPixel(const std::string& path, ccd::DataSpec options_,
                 const ccd::config::Config& config)
         : pixel(golden::read_csv(path, true)), options(options_)
     {
@@ -80,20 +80,20 @@ struct MaskedPixel
     }
 };
 
-// The pyccd reference pixel at the default input, and the Collection 2
-// pixel at the golden corpus's C2 input.
+// The pyccd reference pixel under the default DataSpec, and the Collection 2
+// pixel under the golden corpus's C2 spec.
 struct CsvPixel
 {
     std::string path;
-    ccd::Input options;
+    ccd::DataSpec options;
     ccd::config::Config config;
 };
 
 const std::vector<CsvPixel>& csv_pixels()
 {
     static const std::vector<CsvPixel> pixels{
-        {CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", ccd::Input{}, golden::pyccd()},
-        {CCD_TEST_DATA_DIR "/test002_c2.csv", golden::c2_input(), golden::c2_config()},
+        {CCD_TEST_DATA_DIR "/test_3657_3610_observations.csv", ccd::DataSpec{}, golden::pyccd()},
+        {CCD_TEST_DATA_DIR "/test002_c2.csv", golden::c2_spec(), golden::c2_config()},
     };
     return pixels;
 }

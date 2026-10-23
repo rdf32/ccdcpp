@@ -42,7 +42,7 @@ const std::vector<Field<KeepQa::Params>>& KeepQa::schema()
     return s;
 }
 
-std::optional<Step> KeepQa::make(const Params& params, const Input&, const config::StepContext&)
+std::optional<Step> KeepQa::make(const Params& params, const DataSpec&, const config::StepContext&)
 {
     return Step::keep_qa(set_of(params.codes));
 }
@@ -57,7 +57,7 @@ const std::vector<Field<AddQa::Params>>& AddQa::schema()
     return s;
 }
 
-std::optional<Step> AddQa::make(const Params& params, const Input&, const config::StepContext&)
+std::optional<Step> AddQa::make(const Params& params, const DataSpec&, const config::StepContext&)
 {
     return Step::add_qa(set_of(params.codes));
 }
@@ -74,16 +74,16 @@ const std::vector<Field<ThermalRange::Params>>& ThermalRange::schema()
     return s;
 }
 
-std::optional<Step> ThermalRange::make(const Params& params, const Input& input,
+std::optional<Step> ThermalRange::make(const Params& params, const DataSpec& spec,
                                        const config::StepContext& context)
 {
-    const index_t thermal = input.index("thermal");
+    const index_t thermal = spec.index("thermal");
     if (thermal == NO_BAND)
         return std::nullopt;
     const Range range = range_of(params.celsius, params.inclusive);
     // A procedure that does not transform its thermal row tests the stored row
     // against the bounds taken back through the transform.
-    const std::optional<Affine> transform = thermal_transform(input);
+    const std::optional<Affine> transform = thermal_transform(spec);
     if (context.thermal == config::Thermal::Celsius || !transform)
         return Step::thermal_range(thermal, range);
     return Step::thermal_range(thermal, stored_range(range, *transform));
@@ -109,7 +109,8 @@ void BandRange::validate(const Params& params)
         throw std::invalid_argument("parameter 'bands' is empty; it names the bands tested");
 }
 
-std::optional<Step> BandRange::make(const Params& params, const Input&, const config::StepContext&)
+std::optional<Step> BandRange::make(const Params& params, const DataSpec&,
+                                    const config::StepContext&)
 {
     return Step::band_range(
         params.bands, range_of(params.reflectance, params.inclusive));
@@ -137,9 +138,10 @@ void GreenMedian::validate(const Params& params)
                                     "'; it is all, stat_window or off");
 }
 
-std::optional<Step> GreenMedian::make(const Params& params, const Input& input, const config::StepContext&)
+std::optional<Step> GreenMedian::make(const Params& params, const DataSpec& spec,
+                                      const config::StepContext&)
 {
-    return Step::green_median(input.index("green"), params.offset, params.statistics_end,
+    return Step::green_median(spec.index("green"), params.offset, params.statistics_end,
                               *green_filter_scope(params.scope));
 }
 
@@ -149,7 +151,7 @@ const std::vector<Field<OnePerDate::Params>>& OnePerDate::schema()
     return s;
 }
 
-std::optional<Step> OnePerDate::make(const Params&, const Input&, const config::StepContext&)
+std::optional<Step> OnePerDate::make(const Params&, const DataSpec&, const config::StepContext&)
 {
     return Step::one_per_date();
 }

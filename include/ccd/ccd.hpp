@@ -20,7 +20,7 @@
 #include "ccd/config/resolve.hpp"
 #include "ccd/config/shared.hpp"
 
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/mask/filter.hpp"
 #include "ccd/input/mask/chain.hpp"
 #include "ccd/input/mask/reason.hpp"

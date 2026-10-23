@@ -1,6 +1,6 @@
 #pragma once
 
-// Internal to the library: the hash behind the digests (inputs,
+// Internal to the library: the hash behind the digests (data specs,
 // configurations, resolutions) and the input fingerprints of the resume
 // records.
 

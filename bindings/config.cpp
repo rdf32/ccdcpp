@@ -429,8 +429,8 @@ void bind_config(py::module_& m)
          "The configuration in full, as a dict: every value spelled out, a whole number "
          "given for a real as the real.")
     .def("resolve",
-         [](const ccd::Algorithm& a, const ccd::Input& input)
-         { return resolved_to_python(*a.for_input(input)); },
+         [](const ccd::Algorithm& a, const ccd::DataSpec& spec)
+         { return resolved_to_python(*a.for_spec(spec)); },
          py::arg("input"),
          "The configuration resolved against `input` (cached): {\"stages\", "
          "\"shared\", \"digest\"}, every value in the input's units and rows.");
@@ -451,22 +451,22 @@ void bind_config(py::module_& m)
         "The configuration's digest: equal for equal configurations, on any platform.");
     m.def(
         "_config_check",
-        [](const py::dict& config, const std::optional<ccd::Input>& input)
+        [](const py::dict& config, const std::optional<ccd::DataSpec>& spec)
         {
             const ccd::config::Config c = config_from_python(config);
             ccd::config::check(registry(), c);
-            if (input)
-                ccd::config::resolve(registry(), c, *input);
+            if (spec)
+                ccd::config::resolve(registry(), c, *spec);
         },
         py::arg("config"), py::arg("input") = py::none(),
         "Raises ValueError for what a run would refuse in the configuration; with `input`, "
         "what it refuses against that input too.");
     m.def(
         "_config_resolve",
-        [](const py::dict& config, const ccd::Input& input)
+        [](const py::dict& config, const ccd::DataSpec& spec)
         {
             return resolved_to_python(
-                ccd::config::resolve(registry(), config_from_python(config), input));
+                ccd::config::resolve(registry(), config_from_python(config), spec));
         },
         py::arg("config"), py::arg("input"),
         "The configuration resolved against `input`: {\"stages\", \"shared\", \"digest\"}.");

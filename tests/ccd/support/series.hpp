@@ -5,7 +5,7 @@
 // The tests' pixels as arrays:
 //
 //   * Series: one pixel's dates, (B, T) spectral block and QA codes, with the
-//     input and configuration it runs under; read_csv() reads one from a
+//     data spec and configuration it runs under; read_csv() reads one from a
 //     test CSV (tests/ccd/data);
 //   * FlatCube: pixels on shared dates, (N, B, T) spectral and (N, T) QA,
 //     from a synthetic cube or a Series;
@@ -62,7 +62,7 @@ struct Series
     std::vector<std::int64_t> dates;
     std::vector<double> spectral;   // (B, T), band-major
     std::vector<std::uint8_t> qas;
-    ccd::Input h;
+    ccd::DataSpec h;
     ccd::config::Config config = golden::pyccd();
 
     std::size_t size() const
@@ -116,7 +116,7 @@ struct Series
     }
 };
 
-// detect() on `s`, under its input and configuration, with the processing mask.
+// detect() on `s`, under its data spec and configuration, with the processing mask.
 inline ccd::FitResult detect(const Series& s)
 {
     return detect(spec_of(s.h, s.config), s.view());
@@ -172,7 +172,7 @@ inline Series read_csv(const std::string& path, bool skip_first_line)
 }
 
 // `s` with its DN (7, T) block in the physical-unit input's units
-// (to_physical()); its input and configuration are as they were.
+// (to_physical()); its data spec and configuration are as they were.
 inline Series to_physical(Series s)
 {
     to_physical(s.spectral.data(), s.size());

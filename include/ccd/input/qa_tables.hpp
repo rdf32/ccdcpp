@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/qa_table.hpp"
 
 namespace ccd
@@ -22,9 +22,9 @@ namespace ccd
 // total, and read no other code: qa_shadow and qa_cloud differ only in
 // qa_cloud's count, which no decision reads.
 //
-// Each builder takes the Input whose qa_* codes it writes, so a caller that
+// Each builder takes the DataSpec whose qa_* codes it writes, so a caller that
 // renumbers them gets a table that agrees with its run; the table then goes
-// into that Input's qa_table.
+// into that DataSpec's qa_table.
 //
 // The Landsat tables are the ones validated for production use. The HLS and
 // Sentinel-2 tables follow the products' published definitions, are tested
@@ -54,7 +54,7 @@ namespace qa_tables
 // bits 1 and 3. Bits 8-15 are confidence pairs and are not read. Bit 2 is
 // set on Landsat 8 and 9 only.
 //------------------------------------------------------------------------------
-QaTablePtr landsat_c2_qa_pixel(const Input& input = Input{});
+QaTablePtr landsat_c2_qa_pixel(const DataSpec& spec = DataSpec{});
 
 //------------------------------------------------------------------------------
 // Landsat Collection 1 pixel_qa (uint16), decoded as pyccd's qabitval does.
@@ -73,7 +73,7 @@ QaTablePtr landsat_c2_qa_pixel(const Input& input = Input{});
 // decodes to qa_fill, so one undefined value removes one observation rather
 // than the pixel.
 //------------------------------------------------------------------------------
-QaTablePtr landsat_c1_pixel_qa(const Input& input = Input{});
+QaTablePtr landsat_c1_pixel_qa(const DataSpec& spec = DataSpec{});
 
 //------------------------------------------------------------------------------
 // HLS v2.0 Fmask (uint8).
@@ -96,7 +96,7 @@ QaTablePtr landsat_c1_pixel_qa(const Input& input = Input{});
 // should it ever be set.
 //------------------------------------------------------------------------------
 QaTablePtr hls_fmask(
-    const Input& input = Input{},
+    const DataSpec& spec = DataSpec{},
     bool exclude_high_aerosol = false
 );
 
@@ -112,7 +112,7 @@ QaTablePtr hls_fmask(
 //     11 snow or ice                               -> qa_snow
 //     otherwise                                    -> qa_fill
 //------------------------------------------------------------------------------
-QaTablePtr sentinel2_scl(const Input& input = Input{});
+QaTablePtr sentinel2_scl(const DataSpec& spec = DataSpec{});
 
 } // namespace qa_tables
 

@@ -34,13 +34,13 @@ namespace ccd
 //==============================================================================
 
 // The layout of the record. Bumped when a field is added or its meaning
-// changes. 2: the header's digest covers the input (its QA table included)
+// changes. 2: the header's digest covers the data spec (its QA table included)
 // and the resolved configuration (its preprocessing included); 0.10.0's
 // header held options_digest in its place.
 inline constexpr std::uint16_t RESUME_FORMAT = 2;
 
 // The outputs. Bumped whenever a release can change an output for the same
-// input and configuration, or changes the default configuration's outputs,
+// data spec and configuration, or changes the default configuration's outputs,
 // so a record of another version describes a run this one would not make.
 // 3: the "ccdc" preset has no statistics cutoff, and its snow and
 // insufficient-clear procedures test the thermal range in degrees Celsius
@@ -53,7 +53,7 @@ struct ResumeHeader
     std::uint16_t format = RESUME_FORMAT;
     std::uint32_t results_version = RESULTS_VERSION;
 
-    // The run's input and resolved configuration (config::Resolved::digest:
+    // The run's data spec and resolved configuration (config::Resolved::digest:
     // the QA table and the preprocessing included).
     std::uint64_t digest = 0;
 

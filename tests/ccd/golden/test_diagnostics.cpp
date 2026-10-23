@@ -265,7 +265,7 @@ TEST(Reasons, ACubesCodesAreEachPixels)
 {
     const golden::Cube c = golden::make_cube(13, golden::Regime::Duplicates, 2, 3);
     const index_t T = c.T;
-    ccd::RunSpec spec = with_reasons(golden::spec_of(ccd::Input{}, golden::pyccd()));
+    ccd::RunSpec spec = with_reasons(golden::spec_of(ccd::DataSpec{}, golden::pyccd()));
     spec.masks = false;
     const ccd::CubeOutput cube = ccd::detect_cube(
         spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
@@ -325,7 +325,7 @@ struct DropDayStep
         };
         return s;
     }
-    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::Input&,
+    static std::optional<ccd::preprocess::Step> make(const Params& params, const ccd::DataSpec&,
                                                      const ccd::config::StepContext&)
     {
         return ccd::preprocess::Step::of(std::make_shared<const DropDay>(params.day));
@@ -700,7 +700,7 @@ TEST(Diagnostics, ACubesAreEachPixelsAndAResumesCarriedSegmentsHoldNone)
 {
     const golden::Cube c = golden::make_cube(11, golden::Regime::Cadence16, 2, 3);
     const index_t T = c.T;
-    const ccd::RunSpec spec = with_diagnostics(golden::spec_of(ccd::Input{}, golden::pyccd()));
+    const ccd::RunSpec spec = with_diagnostics(golden::spec_of(ccd::DataSpec{}, golden::pyccd()));
     const ccd::CubeOutput cube = ccd::detect_cube(
         spec, ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T}),
         ccd::ArrayView<const double, 4>::contiguous(c.spectral.data(), {2, 3, 7, T}),

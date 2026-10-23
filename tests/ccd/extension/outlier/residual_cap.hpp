@@ -24,7 +24,7 @@ struct ResidualCap final : OutlierRule
 {
     struct Params
     {
-        scalar_t limit = 2000.0;   // on the default input (Collection-1 DN): 0.2
+        scalar_t limit = 2000.0;   // on the default DataSpec (Collection-1 DN): 0.2
     };
 
     static const std::vector<config::Field<Params>>& schema();

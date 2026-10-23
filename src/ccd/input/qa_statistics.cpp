@@ -7,25 +7,25 @@ namespace
 {
 
 // One observation's QA code counted.
-void count(QaStatistics& stats, std::uint8_t value, const Input& input)
+void count(QaStatistics& stats, std::uint8_t value, const DataSpec& spec)
 {
-    if(value == input.qa_fill)
+    if(value == spec.qa_fill)
     {
         ++stats.fill_count;
     }
-    else if(value == input.qa_clear)
+    else if(value == spec.qa_clear)
     {
         ++stats.clear_count;
     }
-    else if(value == input.qa_water)
+    else if(value == spec.qa_water)
     {
         ++stats.water_count;
     }
-    else if(value == input.qa_snow)
+    else if(value == spec.qa_snow)
     {
         ++stats.snow_count;
     }
-    else if(value == input.qa_cloud)
+    else if(value == spec.qa_cloud)
     {
         ++stats.cloud_count;
     }
@@ -70,7 +70,7 @@ void set_probabilities(QaStatistics& stats)
 QaStatistics qa_statistics(
     ArrayView<const std::uint8_t, 1> qas,
     ArrayView<const std::int64_t, 1> dates,
-    const Input& input,
+    const DataSpec& spec,
     std::int64_t statistics_end
 )
 {
@@ -80,7 +80,7 @@ QaStatistics qa_statistics(
     {
         if(dates(i) <= statistics_end)
         {
-            count(stats, qas(i), input);
+            count(stats, qas(i), spec);
         }
     }
 

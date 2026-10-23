@@ -23,21 +23,21 @@ std::shared_ptr<const Algorithm> Algorithm::preset(const std::string& name)
     return algorithm;
 }
 
-std::shared_ptr<const config::Resolved> Algorithm::for_input(const Input& input) const
+std::shared_ptr<const config::Resolved> Algorithm::for_spec(const DataSpec& spec) const
 {
-    const std::uint64_t key = digest(input);
+    const std::uint64_t key = digest(spec);
 
     const std::lock_guard<std::mutex> lock(mutex_);
     for (auto it = resolved_.begin(); it != resolved_.end(); ++it)
-        if (it->key == key && it->input == input)
+        if (it->key == key && it->spec == spec)
         {
             resolved_.splice(resolved_.begin(), resolved_, it);
             return it->resolved;
         }
 
     auto resolved =
-        std::make_shared<const config::Resolved>(config::resolve(*registry_, config_, input));
-    resolved_.push_front(Cached{key, input, resolved});
+        std::make_shared<const config::Resolved>(config::resolve(*registry_, config_, spec));
+    resolved_.push_front(Cached{key, spec, resolved});
     if (resolved_.size() > CACHE_CAPACITY)
         resolved_.pop_back();
     return resolved;
@@ -45,10 +45,10 @@ std::shared_ptr<const config::Resolved> Algorithm::for_input(const Input& input)
 
 preprocess::PreprocessPlan plan_of(
     const config::Config& config,
-    const Input& input,
+    const DataSpec& spec,
     const config::Registry& registry)
 {
-    return config::resolve(registry, config, input).plan;
+    return config::resolve(registry, config, spec).plan;
 }
 
 } // namespace ccd

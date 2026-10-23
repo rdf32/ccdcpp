@@ -4,7 +4,7 @@
 //
 //   * RunConfiguration.*: a configuration (RunSpec::config) runs its
 //     strategies with their defaults filling the parameters it leaves out,
-//     and its band list is checked against the input's bands.
+//     and its band list is checked against the spec's bands.
 //   * Diagnostics.*: an observer (RunSpec::observer) is told every
 //     transition, test, drop, segment and the exit, and changes nothing; a
 //     resumed pixel's transitions chain as a fresh one's do.
@@ -43,7 +43,7 @@ using golden::resume_on;
 // their defaults filling the parameters it leaves out: a configuration
 // without the parameters at their defaults gives every pixel the output and
 // the resume digest of the one that sets them all. A configuration's band
-// list is checked against the input's bands.
+// list is checked against the spec's bands.
 TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
 {
     const auto& registry = ccd::strategies::library_registry();
@@ -84,12 +84,12 @@ TEST(RunConfiguration, ParametersLeftOutRunAtTheirDefaults)
     try
     {
         ccd::detect(spec, s.date_view(), s.spectral_view(), s.qa_view());
-        ADD_FAILURE() << "a band the input lacks was accepted";
+        ADD_FAILURE() << "a band the spec lacks was accepted";
     }
     catch (const std::invalid_argument& e)
     {
         EXPECT_NE(std::string(e.what()).find(
-                      "window_screen 'tmask' parameter 'bands' holds band 9; the input has 7 bands"),
+                      "window_screen 'tmask' parameter 'bands' holds band 9; the data spec has 7 bands"),
                   std::string::npos)
             << e.what();
     }

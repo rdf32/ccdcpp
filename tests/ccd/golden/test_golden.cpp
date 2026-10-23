@@ -67,7 +67,7 @@ namespace
 struct Options
 {
     const char* name;
-    ccd::Input h;
+    ccd::DataSpec h;
     ccd::config::Config config;
     bool physical;
 };
@@ -75,8 +75,8 @@ struct Options
 std::vector<Options> option_sets()
 {
     return {
-        {"dn", ccd::Input{}, golden::pyccd(), false},
-        {"phys", golden::physical_input(), golden::pyccd(), true},
+        {"dn", ccd::DataSpec{}, golden::pyccd(), false},
+        {"phys", golden::physical_spec(), golden::pyccd(), true},
     };
 }
 
@@ -102,7 +102,7 @@ std::string run_corpus()
         golden::dump_pixel(dump, "pyccd:dn", golden::detect(p));
 
         golden::Series phys = golden::to_physical(p);
-        phys.h = golden::physical_input();
+        phys.h = golden::physical_spec();
         golden::dump_pixel(dump, "pyccd:phys", golden::detect(phys));
     }
     {
@@ -113,12 +113,12 @@ std::string run_corpus()
         golden::dump_pixel(dump, "bounds:dn", golden::detect(p));
 
         golden::Series phys = golden::to_physical(p);
-        phys.h = golden::physical_input();
+        phys.h = golden::physical_spec();
         golden::dump_pixel(dump, "bounds:phys", golden::detect(phys));
     }
     {
         golden::Series p = golden::read_csv(CCD_TEST_DATA_DIR "/test002_c2.csv", true);
-        p.h = golden::c2_input();
+        p.h = golden::c2_spec();
         p.config = golden::c2_config();
         golden::dump_pixel(dump, "c2:c2", golden::detect(p));
     }
@@ -182,7 +182,7 @@ TEST(Golden, CubeDtypesAndLayouts)
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});
     const auto qas =
         ccd::ArrayView<const std::uint8_t, 3>::contiguous(c.qas.data(), {H, W, T});
-    const ccd::Input h;
+    const ccd::DataSpec h;
     const ccd::config::Config config = golden::pyccd();
 
 

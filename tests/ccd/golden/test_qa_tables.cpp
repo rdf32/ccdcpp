@@ -36,7 +36,7 @@
 namespace
 {
 
-using ccd::Input;
+using ccd::DataSpec;
 using ccd::QaTablePtr;
 
 //------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ using ccd::QaTablePtr;
 struct Scheme
 {
     const char* name;
-    std::function<QaTablePtr(const Input&)> build;
+    std::function<QaTablePtr(const DataSpec&)> build;
 
     std::vector<std::uint16_t> fill;
     std::vector<std::uint16_t> clear;
@@ -64,7 +64,7 @@ std::vector<Scheme> schemes()
     return {
         {
             "landsat_c2_qa_pixel",
-            [](const Input& o) { return ccd::qa_tables::landsat_c2_qa_pixel(o); },
+            [](const DataSpec& o) { return ccd::qa_tables::landsat_c2_qa_pixel(o); },
             {1, 1 | 8, 0xFFFF},
             {21824, 64, 0},
             {21952, 128},
@@ -75,7 +75,7 @@ std::vector<Scheme> schemes()
         },
         {
             "landsat_c1_pixel_qa",
-            [](const Input& o) { return ccd::qa_tables::landsat_c1_pixel_qa(o); },
+            [](const DataSpec& o) { return ccd::qa_tables::landsat_c1_pixel_qa(o); },
             {1, 1 | 32, 0xFFFF},
             {2, 2 | 64, 322, 0x300, 0x400, 0x300 | 64},
             {4, 4 | 2, 324},
@@ -86,7 +86,7 @@ std::vector<Scheme> schemes()
         },
         {
             "hls_fmask",
-            [](const Input& o) { return ccd::qa_tables::hls_fmask(o); },
+            [](const DataSpec& o) { return ccd::qa_tables::hls_fmask(o); },
             {255},
             {0, 0x40, 0x80, 0xC0},
             {32, 32 | 0x40},
@@ -97,7 +97,7 @@ std::vector<Scheme> schemes()
         },
         {
             "sentinel2_scl",
-            [](const Input& o) { return ccd::qa_tables::sentinel2_scl(o); },
+            [](const DataSpec& o) { return ccd::qa_tables::sentinel2_scl(o); },
             {0, 1},
             {4, 5},
             {6},
@@ -110,7 +110,7 @@ std::vector<Scheme> schemes()
 }
 
 // The class a corpus code is read as; see the header.
-std::uint8_t read_as(std::uint8_t code, const Input& o)
+std::uint8_t read_as(std::uint8_t code, const DataSpec& o)
 {
     switch (code)
     {
@@ -157,7 +157,7 @@ template<typename Qa>
 std::string detect_cube(
     const golden::Cube& c,
     const std::vector<Qa>& qas,
-    const Input& h,
+    const DataSpec& h,
     int threads,
     const QaTablePtr& table
 )
@@ -179,9 +179,9 @@ const golden::CubeSpec CUBES[] = {
     {"medium", 15, golden::Regime::Medium,     3, 4},
 };
 
-Input renumbered()
+DataSpec renumbered()
 {
-    Input h;
+    DataSpec h;
     h.qa_fill   = 200;
     h.qa_clear  = 10;
     h.qa_water  = 11;
@@ -200,7 +200,7 @@ Input renumbered()
 
 TEST(QaTables, DecodedEqualsPreDecoded)
 {
-    const Input h;
+    const DataSpec h;
 
     for (const auto& spec : CUBES)
     {
@@ -250,7 +250,7 @@ TEST(QaTables, DetectDecodes)
     const golden::Cube c =
         golden::make_cube(11, golden::Regime::Cadence16, 2, 4);
     const std::size_t T = c.T;
-    const Input h;
+    const DataSpec h;
     const auto dates =
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});
 
@@ -308,8 +308,8 @@ TEST(QaTables, HonourTheOptionsCodes)
 {
     const golden::Cube c =
         golden::make_cube(11, golden::Regime::Cadence16, 4, 6);
-    const Input defaults;
-    const Input h = renumbered();
+    const DataSpec defaults;
+    const DataSpec h = renumbered();
 
     const std::string reference = detect_cube(c, c.qas, defaults, 2, nullptr);
 
@@ -349,7 +349,7 @@ TEST(QaTables, StridedRawQa)
     const golden::Cube c =
         golden::make_cube(21, golden::Regime::Cadence16, 3, 5);
     const std::size_t H = c.H, W = c.W, T = c.T;
-    const Input h;
+    const DataSpec h;
     const Scheme s = schemes()[0];
     const QaTablePtr table = s.build(h);
 
@@ -375,7 +375,7 @@ TEST(QaTables, StridedRawQa)
 
 TEST(QaTables, EachTableDecodesAsItsProductDefines)
 {
-    const Input o;
+    const DataSpec o;
     const auto FILL = o.qa_fill, CLEAR = o.qa_clear, WATER = o.qa_water,
                SHADOW = o.qa_shadow, SNOW = o.qa_snow, CLOUD = o.qa_cloud;
 
@@ -460,7 +460,7 @@ TEST(QaTables, Uint16NeedsATable)
         golden::make_cube(11, golden::Regime::Cadence16, 1, 2);
     const std::size_t T = c.T;
     const std::vector<std::uint16_t> raw(c.qas.begin(), c.qas.end());
-    const Input h;
+    const DataSpec h;
 
     const auto dates =
         ccd::ArrayView<const std::int64_t, 1>::contiguous(c.dates.data(), {T});

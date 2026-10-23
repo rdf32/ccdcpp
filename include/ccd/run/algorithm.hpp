@@ -12,7 +12,7 @@
 
 #include "ccd/config/registry.hpp"
 #include "ccd/config/resolve.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/strategies/library.hpp"
 
 namespace ccd
@@ -25,15 +25,15 @@ namespace ccd
 // A compiled configuration: a config::Config checked once, at construction,
 // by its schemas (config::check(): the strategies, every parameter and
 // shared value as written, what each strategy needs), held in full
-// (config::canonical()), and resolved against each input it runs on once.
+// (config::canonical()), and resolved against each data spec it runs on once.
 // Immutable, so one Algorithm serves every call and thread.
 //
-// for_input() resolves the configuration against an input and builds its
-// strategies the first time it sees that input, and returns the same
-// Resolved for every later call on an equal input (by its digest, then
+// for_spec() resolves the configuration against a data spec and builds its
+// strategies the first time it sees that spec, and returns the same
+// Resolved for every later call on an equal spec (by its digest, then
 // field by field), behind a mutex. A run takes its Resolved from it, so a
 // call resolves and builds nothing it has done before. The cache holds the
-// CACHE_CAPACITY inputs used last: one more evicts the least recently used,
+// CACHE_CAPACITY specs used last: one more evicts the least recently used,
 // which a later call on it resolves again (a run that holds its Resolved
 // keeps it alive).
 //
@@ -46,7 +46,7 @@ class Algorithm
 {
 public:
 
-    // The inputs whose resolutions an Algorithm keeps.
+    // The data specs whose resolutions an Algorithm keeps.
     static constexpr std::size_t CACHE_CAPACITY = 16;
 
     // Throws std::invalid_argument for what config::check() refuses.
@@ -64,22 +64,22 @@ public:
 
     const config::Registry& registry() const { return *registry_; }
 
-    // The configuration resolved against `input` (config::resolve()),
-    // cached per input, the CACHE_CAPACITY used last. Throws what
-    // config::resolve() throws; `input` must pass validate() (ccd.hpp).
-    std::shared_ptr<const config::Resolved> for_input(const Input& input) const;
+    // The configuration resolved against `spec` (config::resolve()),
+    // cached per spec, the CACHE_CAPACITY used last. Throws what
+    // config::resolve() throws; `spec` must pass validate() (ccd.hpp).
+    std::shared_ptr<const config::Resolved> for_spec(const DataSpec& spec) const;
 
 private:
 
     config::Config config_;
     const config::Registry* registry_;
 
-    // One cached resolution: the input's digest, the input, and what it
+    // One cached resolution: the spec's digest, the spec, and what it
     // resolved to.
     struct Cached
     {
         std::uint64_t key;
-        Input input;
+        DataSpec spec;
         std::shared_ptr<const config::Resolved> resolved;
     };
 
@@ -90,12 +90,12 @@ private:
 
 using AlgorithmPtr = std::shared_ptr<const Algorithm>;
 
-// The preprocessing plan `config` runs on `input`: its preprocess section
-// resolved against the input (config::resolve()), for inspection. Throws
-// what config::resolve() throws; `input` must pass validate() (ccd.hpp).
+// The preprocessing plan `config` runs on `spec`: its preprocess section
+// resolved against the spec (config::resolve()), for inspection. Throws
+// what config::resolve() throws; `spec` must pass validate() (ccd.hpp).
 preprocess::PreprocessPlan plan_of(
     const config::Config& config,
-    const Input& input,
+    const DataSpec& spec,
     const config::Registry& registry = strategies::library_registry());
 
 } // namespace ccd

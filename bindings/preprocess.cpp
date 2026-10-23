@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "ccd/core/constants.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/mask/chain.hpp"
 
 #include "config.hpp"
@@ -370,8 +370,8 @@ void bind_preprocess(py::module_& m)
 
     m.def(
         "plan_of",
-        [](std::shared_ptr<ccd::Algorithm> config, const ccd::Input& input)
-        { return algorithm_or_ccdc(std::move(config))->for_input(input)->plan; },
+        [](std::shared_ptr<ccd::Algorithm> config, const ccd::DataSpec& spec)
+        { return algorithm_or_ccdc(std::move(config))->for_spec(spec)->plan; },
         py::arg("config"),
         py::arg("input"),
         "The PreprocessPlan `config` (an Algorithm, None for the \"ccdc\" "

@@ -186,10 +186,10 @@ class OnePixel(unittest.TestCase):
                               freeze_statistics=True)
 
         other = ext.Input(qa_occlusion=ext.Input().qa_occlusion + 1)
-        with self.assertRaisesRegex(ValueError, "another input or configuration"):
+        with self.assertRaisesRegex(ValueError, "another data spec or configuration"):
             call(h=other)
         decoding = ext.Input(qa_table=ext.qa_tables.landsat_c1_pixel_qa())
-        with self.assertRaisesRegex(ValueError, "another input or configuration"):
+        with self.assertRaisesRegex(ValueError, "another data spec or configuration"):
             call(h=decoding)
         stricter = ext._config_preset("ccdc")
         stricter["shared"]["change_probability"] = 0.995

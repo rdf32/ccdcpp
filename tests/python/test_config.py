@@ -275,12 +275,12 @@ class Replace(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "parameter 'factor' is 0; it must be greater than 0"):
             ccdcpp.config().replace(refit__factor=0.0).check()
         three = ccdcpp.Input(roles=["blue", "green", "red"])
-        with self.assertRaisesRegex(ValueError, "holds 'nir', which the input does not have; "
+        with self.assertRaisesRegex(ValueError, "holds 'nir', which the data spec does not have; "
                                                 "its rows are blue, green, red"):
             ccdcpp.config().check(three)
         rows = ccdcpp.config().replace(window_screen__bands=[1, 4],
                                        shared__detection_bands=[1, 2])
-        with self.assertRaisesRegex(ValueError, "holds band 4; the input has 3 bands"):
+        with self.assertRaisesRegex(ValueError, "holds band 4; the data spec has 3 bands"):
             rows.check(three)
         ccdcpp.config().check(ccdcpp.Input())
 

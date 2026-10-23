@@ -18,7 +18,7 @@ namespace ccd
 {
 
 // A resume's refusals: another record format or results version, another
-// input (its QA table included) or configuration, a series that ends
+// data spec (its QA table included) or configuration, a series that ends
 // before the record's.
 void check_resume(
     const ResumeHeader& from,

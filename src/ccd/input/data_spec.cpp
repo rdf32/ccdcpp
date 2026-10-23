@@ -1,4 +1,4 @@
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -23,7 +23,7 @@ bool is_role(const std::string& role)
     return std::find(ROLES.begin(), ROLES.end(), role) != ROLES.end();
 }
 
-index_t Input::index(const std::string& role) const
+index_t DataSpec::index(const std::string& role) const
 {
     const auto it = std::find(roles.begin(), roles.end(), role);
     return it == roles.end() ? NO_BAND : static_cast<index_t>(it - roles.begin());
@@ -41,7 +41,7 @@ bool same_table(const QaTablePtr& a, const QaTablePtr& b)
 
 } // namespace
 
-bool operator==(const Input& a, const Input& b)
+bool operator==(const DataSpec& a, const DataSpec& b)
 {
     return same_table(a.qa_table, b.qa_table) && a.qa_fill == b.qa_fill && a.qa_clear == b.qa_clear && a.qa_water == b.qa_water &&
            a.qa_shadow == b.qa_shadow && a.qa_snow == b.qa_snow && a.qa_cloud == b.qa_cloud &&
@@ -55,11 +55,11 @@ bool operator==(const Input& a, const Input& b)
            a.thermal_saturation_code == b.thermal_saturation_code;
 }
 
-std::uint64_t digest(const Input& o)
+std::uint64_t digest(const DataSpec& o)
 {
     // -0 and +0 are one value: they compare equal (operator==), and every use
     // of a field (a product, a sum, the identity transform's test) treats
-    // them alike, so the digest, as the hash of equal Inputs, is the same.
+    // them alike, so the digest, as the hash of equal DataSpecs, is the same.
     const auto real = [](scalar_t v) { return v == 0 ? scalar_t(0) : v; };
     detail::Fnv h;
     for (const std::uint8_t v : {o.qa_fill, o.qa_clear, o.qa_water, o.qa_shadow, o.qa_snow,
@@ -93,12 +93,12 @@ std::string count_text(index_t bands)
 
 } // namespace
 
-void validate(const Input& input, index_t bands)
+void validate(const DataSpec& spec, index_t bands)
 {
-    if (bands != input.bands())
+    if (bands != spec.bands())
     {
         throw std::invalid_argument(
-            count_text(bands) + "; the input has " + std::to_string(input.bands()) +
+            count_text(bands) + "; the data spec has " + std::to_string(spec.bands()) +
             " (a row per role)"
         );
     }
@@ -111,9 +111,9 @@ void validate(const Input& input, index_t bands)
         );
     }
 
-    for (index_t i = 0; i < input.roles.size(); ++i)
+    for (index_t i = 0; i < spec.roles.size(); ++i)
     {
-        const std::string& role = input.roles[i];
+        const std::string& role = spec.roles[i];
         if (!is_role(role))
         {
             std::string known;
@@ -123,7 +123,7 @@ void validate(const Input& input, index_t bands)
                 "roles holds '" + role + "', which is not a role; the roles are " + known
             );
         }
-        if (role != "other" && input.index(role) != i)
+        if (role != "other" && spec.index(role) != i)
         {
             throw std::invalid_argument(
                 "roles holds '" + role + "' more than once"
@@ -131,56 +131,56 @@ void validate(const Input& input, index_t bands)
         }
     }
 
-    if (input.index("green") == NO_BAND)
+    if (spec.index("green") == NO_BAND)
     {
         throw std::invalid_argument(
             "roles has no 'green'; the green median filter needs a green band"
         );
     }
 
-    if (!(input.reflectance_scale > 0) || !std::isfinite(input.reflectance_scale))
+    if (!(spec.reflectance_scale > 0) || !std::isfinite(spec.reflectance_scale))
     {
         throw std::invalid_argument(
-            "reflectance_scale is " + config::number(input.reflectance_scale) +
+            "reflectance_scale is " + config::number(spec.reflectance_scale) +
             "; it must be a positive number"
         );
     }
 
-    if (!std::isfinite(input.reflectance_offset))
+    if (!std::isfinite(spec.reflectance_offset))
     {
         throw std::invalid_argument(
-            "reflectance_offset is " + config::number(input.reflectance_offset) +
+            "reflectance_offset is " + config::number(spec.reflectance_offset) +
             "; it must be a finite number"
         );
     }
 
-    if (!(input.thermal_scale > 0) || !std::isfinite(input.thermal_scale))
+    if (!(spec.thermal_scale > 0) || !std::isfinite(spec.thermal_scale))
     {
         throw std::invalid_argument(
-            "thermal_scale is " + config::number(input.thermal_scale) +
+            "thermal_scale is " + config::number(spec.thermal_scale) +
             "; it must be a positive number"
         );
     }
 
-    if (!std::isfinite(input.thermal_offset))
+    if (!std::isfinite(spec.thermal_offset))
     {
         throw std::invalid_argument(
-            "thermal_offset is " + config::number(input.thermal_offset) +
+            "thermal_offset is " + config::number(spec.thermal_offset) +
             "; it must be a finite number"
         );
     }
 
-    if (!(input.thermal_at_100c > 0) || !std::isfinite(input.thermal_at_100c))
+    if (!(spec.thermal_at_100c > 0) || !std::isfinite(spec.thermal_at_100c))
     {
         throw std::invalid_argument(
-            "thermal_at_100c is " + config::number(input.thermal_at_100c) +
+            "thermal_at_100c is " + config::number(spec.thermal_at_100c) +
             "; it must be a positive number"
         );
     }
 
     for (const auto& [name, code] : {std::pair<const char*, const std::optional<scalar_t>&>{
-                                         "saturation_code", input.saturation_code},
-                                     {"thermal_saturation_code", input.thermal_saturation_code}})
+                                         "saturation_code", spec.saturation_code},
+                                     {"thermal_saturation_code", spec.thermal_saturation_code}})
     {
         if (code && std::isnan(*code))
         {

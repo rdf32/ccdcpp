@@ -63,8 +63,8 @@ constexpr std::int64_t NO_STATISTICS_END = std::numeric_limits<std::int64_t>::ma
 //                        reflectance    and edge_segments (LassoOptions)
 //   lasso.max_iter, .tolerance  none
 //
-// A Shared holds them resolved against an input: in its units, the bands as
-// its rows. Its member defaults are the "ccdc" values on the default Input
+// A Shared holds them resolved against a data spec: in its units, the bands as
+// its rows. Its member defaults are the "ccdc" values on the default DataSpec
 // (Collection-1 DN, the Landsat rows); the configuration's defaults are the
 // physical ones, shared_parameters()'.
 //

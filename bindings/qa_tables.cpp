@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/input/qa_tables.hpp"
 
 namespace py = pybind11;
@@ -105,11 +105,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "landsat_c2_qa_pixel",
-        [](const ccd::Input& o)
+        [](const ccd::DataSpec& o)
         {
             return held(ccd::qa_tables::landsat_c2_qa_pixel(o));
         },
-        py::arg("input") = ccd::Input{},
+        py::arg("input") = ccd::DataSpec{},
         "Landsat Collection 2 QA_PIXEL (uint16). Bit 0 fill; bits 3, 1, 2 "
         "(cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; "
         "bit 7 water; otherwise clear. Bits 6 and 8-15 are not read."
@@ -117,11 +117,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "landsat_c1_pixel_qa",
-        [](const ccd::Input& o)
+        [](const ccd::DataSpec& o)
         {
             return held(ccd::qa_tables::landsat_c1_pixel_qa(o));
         },
-        py::arg("input") = ccd::Input{},
+        py::arg("input") = ccd::DataSpec{},
         "Landsat Collection 1 pixel_qa (uint16), in pyccd's order. Bit 0 "
         "fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 "
         "clear; bits 8 and 9 both set, or bit 10, clear; otherwise fill "
@@ -130,11 +130,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "hls_fmask",
-        [](const ccd::Input& o, bool exclude_high_aerosol)
+        [](const ccd::DataSpec& o, bool exclude_high_aerosol)
         {
             return held(ccd::qa_tables::hls_fmask(o, exclude_high_aerosol));
         },
-        py::arg("input") = ccd::Input{},
+        py::arg("input") = ccd::DataSpec{},
         py::arg("exclude_high_aerosol") = false,
         "HLS v2.0 Fmask (uint8). 255 fill; bits 1, 2 (cloud, adjacent to "
         "cloud or shadow) cloud; bit 0, reserved and unused in v2.0 (Fmask "
@@ -149,11 +149,11 @@ void bind_qa_tables(py::module_& m)
 
     sub.def(
         "sentinel2_scl",
-        [](const ccd::Input& o)
+        [](const ccd::DataSpec& o)
         {
             return held(ccd::qa_tables::sentinel2_scl(o));
         },
-        py::arg("input") = ccd::Input{},
+        py::arg("input") = ccd::DataSpec{},
         "Sentinel-2 L2A SCL (uint8). 0, 1 fill; 2, 3 (cast shadows, cloud "
         "shadows) shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud "
         "medium and high probability, thin cirrus) cloud; 11 snow; anything "

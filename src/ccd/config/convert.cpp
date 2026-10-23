@@ -14,11 +14,11 @@ namespace config
 
 //==============================================================================
 //
-// A configuration's values in an input's terms
+// A configuration's values in a data spec's terms
 //
 // One conversion per Unit (config/params.hpp), each of a value as written:
 // a number of another unit, or a list by name, passes unchanged. Without an
-// input (check()) each returns the value as written, and none for a list by
+// data spec (check()) each returns the value as written, and none for a list by
 // name once its names are known ones.
 //
 //==============================================================================
@@ -26,15 +26,15 @@ namespace config
 namespace
 {
 
-// The QA code names and the Input fields that hold their codes.
-const std::vector<std::pair<std::string, std::uint8_t Input::*>>& qa_code_names()
+// The QA code names and the DataSpec fields that hold their codes.
+const std::vector<std::pair<std::string, std::uint8_t DataSpec::*>>& qa_code_names()
 {
-    static const std::vector<std::pair<std::string, std::uint8_t Input::*>> names = {
-        {"fill", &Input::qa_fill},       {"clear", &Input::qa_clear},
-        {"water", &Input::qa_water},     {"shadow", &Input::qa_shadow},
-        {"snow", &Input::qa_snow},       {"cloud", &Input::qa_cloud},
-        {"cirrus1", &Input::qa_cirrus1}, {"cirrus2", &Input::qa_cirrus2},
-        {"occlusion", &Input::qa_occlusion},
+    static const std::vector<std::pair<std::string, std::uint8_t DataSpec::*>> names = {
+        {"fill", &DataSpec::qa_fill},       {"clear", &DataSpec::qa_clear},
+        {"water", &DataSpec::qa_water},     {"shadow", &DataSpec::qa_shadow},
+        {"snow", &DataSpec::qa_snow},       {"cloud", &DataSpec::qa_cloud},
+        {"cirrus1", &DataSpec::qa_cirrus1}, {"cirrus2", &DataSpec::qa_cirrus2},
+        {"occlusion", &DataSpec::qa_occlusion},
     };
     return names;
 }
@@ -68,9 +68,9 @@ Value each_number(const Value& value, F f)
     return reals(std::move(out));
 }
 
-// A reflectance level as the input holds it: r x reflectance_scale +
+// A reflectance level as the data holds it: r x reflectance_scale +
 // reflectance_offset.
-Value to_reflectance(const Value& value, const Input& input)
+Value to_reflectance(const Value& value, const DataSpec& spec)
 {
     // Two statements, so the product is rounded before the offset is added
     // (no fused multiply-add): at offset 0 a level is the product itself
@@ -78,23 +78,23 @@ Value to_reflectance(const Value& value, const Input& input)
     return each_number(value,
                        [&](double v)
                        {
-                           const double scaled = v * input.reflectance_scale;
-                           return scaled + input.reflectance_offset;
+                           const double scaled = v * spec.reflectance_scale;
+                           return scaled + spec.reflectance_offset;
                        });
 }
 
-// A reflectance difference as the input holds it: times reflectance_scale.
-Value to_reflectance_delta(const Value& value, const Input& input)
+// A reflectance difference as the data holds it: times reflectance_scale.
+Value to_reflectance_delta(const Value& value, const DataSpec& spec)
 {
-    return each_number(value, [&](double v) { return v * input.reflectance_scale; });
+    return each_number(value, [&](double v) { return v * spec.reflectance_scale; });
 }
 
-// Degrees Celsius in the thermal row's unit after the input's transform
+// Degrees Celsius in the thermal row's unit after the spec's transform
 // (thermal_at_100c).
-Value to_thermal_unit(const Value& value, const Input& input)
+Value to_thermal_unit(const Value& value, const DataSpec& spec)
 {
     return each_number(value,
-                       [&](double v) { return v * 100.0 * input.thermal_at_100c / 10000.0; });
+                       [&](double v) { return v * 100.0 * spec.thermal_at_100c / 10000.0; });
 }
 
 // A date "YYYY-MM-DD" as its ordinal day (0001-01-01 is 1, as Python's
@@ -129,8 +129,8 @@ Value to_ordinal(const Value& value, const std::string& at)
     return integer(era * 146097 + doe - 719468 + 719163);
 }
 
-// QA code names as the input's codes; codes as given.
-std::optional<Value> to_codes(const Value& value, const std::string& at, const Input* input)
+// QA code names as the spec's codes; codes as given.
+std::optional<Value> to_codes(const Value& value, const std::string& at, const DataSpec* spec)
 {
     const auto* names = std::get_if<std::vector<std::string>>(&value);
     if (!names)
@@ -150,16 +150,16 @@ std::optional<Value> to_codes(const Value& value, const std::string& at, const I
                                         "', which is not a QA code name; the names are " +
                                         listed(all));
         }
-        if (input)
-            codes.push_back(static_cast<std::int64_t>(input->*(it->second)));
+        if (spec)
+            codes.push_back(static_cast<std::int64_t>(spec->*(it->second)));
     }
-    if (!input)
+    if (!spec)
         return std::nullopt;
     return Value(std::move(codes));
 }
 
-// A band list by role as the input's rows; rows as given.
-std::optional<Value> to_rows(const Value& value, const std::string& at, const Input* input)
+// A band list by role as the spec's rows; rows as given.
+std::optional<Value> to_rows(const Value& value, const std::string& at, const DataSpec* spec)
 {
     if (const auto* text = std::get_if<std::string>(&value))
         throw std::invalid_argument(at + " is '" + *text + "'; a band list is roles or rows");
@@ -177,39 +177,39 @@ std::optional<Value> to_rows(const Value& value, const std::string& at, const In
                                         listed(ROLES));
         if (role == "other")
             throw std::invalid_argument(at + " holds 'other', which no band list names");
-        if (!input)
+        if (!spec)
             continue;
-        const index_t row = input->index(role);
+        const index_t row = spec->index(role);
         if (row == NO_BAND)
             throw std::invalid_argument(at + " holds '" + role +
-                                        "', which the input does not have; its rows are " +
-                                        listed(input->roles));
+                                        "', which the data spec does not have; its rows are " +
+                                        listed(spec->roles));
         rows.push_back(static_cast<std::int64_t>(row));
     }
-    if (!input)
+    if (!spec)
         return std::nullopt;
     return Value(std::move(rows));
 }
 
-// `value` of a field in `unit`, as `input` holds it (null: as written); `at`
+// `value` of a field in `unit`, in `spec`'s terms (null: as written); `at`
 // names the field in messages.
 std::optional<Value> convert(Unit unit, const Value& value, const std::string& at,
-                             const Input* input)
+                             const DataSpec* spec)
 {
     switch (unit)
     {
         case Unit::Reflectance:
-            return input ? to_reflectance(value, *input) : value;
+            return spec ? to_reflectance(value, *spec) : value;
         case Unit::ReflectanceDelta:
-            return input ? to_reflectance_delta(value, *input) : value;
+            return spec ? to_reflectance_delta(value, *spec) : value;
         case Unit::Celsius:
-            return input ? to_thermal_unit(value, *input) : value;
+            return spec ? to_thermal_unit(value, *spec) : value;
         case Unit::Date:
             return to_ordinal(value, at);
         case Unit::QaCodes:
-            return to_codes(value, at, input);
+            return to_codes(value, at, spec);
         case Unit::Bands:
-            return to_rows(value, at, input);
+            return to_rows(value, at, spec);
         case Unit::None:
         case Unit::Observations:
         case Unit::Days:
@@ -263,7 +263,7 @@ Values section_values(const std::vector<ParameterInfo>& info, const Values& give
                 const auto it = given.find(p.name);
                 const Value& value = it != given.end() ? it->second : *p.default_value;
                 const std::string at = where + " " + noun + " '" + p.name + "'";
-                if (auto v = convert(p.unit, value, at, with.input))
+                if (auto v = convert(p.unit, value, at, with.spec))
                     out[p.name] = std::move(*v);
                 break;
             }

@@ -4,11 +4,11 @@
 //
 // Whole pixel series for the tests that cut them at a date: prefix stability
 // (test_prefix.cpp) and resume (test_resume.cpp, test_run_spec.cpp), each a
-// Series (series.hpp) with the input and configuration it runs under:
+// Series (series.hpp) with the data spec and configuration it runs under:
 //
 //   * characterization_pixels() (characterization.hpp);
 //   * csv_series(dir): the pyccd reference pixel, the Atlanta pixel with a
-//     half-day median gap, and the Collection-2 pixel under c2_input();
+//     half-day median gap, and the Collection-2 pixel under c2_spec();
 //   * synthetic_series(): every pixel of the golden cubes (synthetic.hpp)
 //     under the DN defaults and the physical-unit preset.
 //
@@ -94,7 +94,7 @@ inline std::vector<Series> csv_series(const std::string& dir)
     out.back().name = "atlanta_481_393";
     Series c2 = read_csv(dir + "/test002_c2.csv", true);
     c2.name = "c2";
-    c2.h = c2_input();
+    c2.h = c2_spec();
     c2.config = c2_config();
     out.push_back(std::move(c2));
     return out;
@@ -119,7 +119,7 @@ inline std::vector<Series> synthetic_series()
                 if (physical)
                 {
                     to_physical(s.spectral.data(), T);
-                    s.h = physical_input();
+                    s.h = physical_spec();
 
                 }
                 out.push_back(std::move(s));

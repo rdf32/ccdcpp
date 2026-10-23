@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "ccd/core/array_view.hpp"
-#include "ccd/input/input.hpp"
+#include "ccd/input/data_spec.hpp"
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/results/record.hpp"
 #include "ccd/results/segment.hpp"
@@ -49,11 +49,11 @@ using CubeQa = std::variant<
 //
 // What a call runs.
 //
-//   input               how to read the data, its QA table included
+//   spec                how to read the data, its QA table included
 //                       (validate() checks it)
 //   algorithm           the algorithm (run/algorithm.hpp): a configuration
 //                       checked when the Algorithm was built, resolved
-//                       against `input` once per Algorithm and input; the
+//                       against `spec` once per Algorithm and spec; the
 //                       "ccdc" preset's by default. Part of the resume digest
 //   record              also return each pixel's resume record and the
 //                       call's header
@@ -84,7 +84,7 @@ using CubeQa = std::variant<
 //------------------------------------------------------------------------------
 struct RunSpec
 {
-    Input input;
+    DataSpec spec;
     AlgorithmPtr algorithm = Algorithm::preset("ccdc");
     bool record = false;
     bool masks = false;
@@ -206,18 +206,18 @@ struct CubeOutput
 // CCD on one pixel: `spectral` (B, T), `qas` (T), `dates` (T).
 //
 // `spectral` is read, never written: the plan's transform (in "ccdc" the
-// Standard procedure's thermal transform, Input::thermal_scale/
+// Standard procedure's thermal transform, DataSpec::thermal_scale/
 // thermal_offset) is applied to a private copy. Any strides. The QA is the
-// codes (uint8) or raw values decoded through the input's qa_table (uint8 or
+// codes (uint8) or raw values decoded through the spec's qa_table (uint8 or
 // uint16).
 //
 // Before the pixel runs, it throws std::invalid_argument, in this order, on:
-// an input that fails validate() for the spectral's band count; `dates` or
+// a data spec that fails validate() for the spectral's band count; `dates` or
 // the QA without the spectral's timestep count; dates that fail
-// validate_dates(); raw (uint16) QA without the input's QA table; a
-// configuration the input does not fit (Algorithm::for_input(), the plan's
+// validate_dates(); raw (uint16) QA without the spec's QA table; a
+// configuration the spec does not fit (Algorithm::for_spec(), the plan's
 // validate() included); and for a resume, a header of another record format
-// or results version, made with another input (its QA table included) or
+// or results version, made with another data spec (its QA table included) or
 // configuration (by Resolved::digest), for a series that ends before the
 // stored one, or, without Resume::freeze_statistics, for a configuration
 // whose statistics_end is after the stored statistics end (or none). Then on
