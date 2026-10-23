@@ -18,7 +18,7 @@ namespace ccd
 // A resumed call refuses a stored call it cannot continue (check_resume(),
 // check_stored()) and a configuration whose statistics cutoff it would change
 // unless told to (check_statistics()), and reruns what it does not continue
-// under the stored run's statistics cutoff (capped()). Run::resumed() continues each pixel its record
+// under the stored run's statistics cutoff (capped(), cap()). Run::resumed() continues each pixel its record
 // lets it continue, and every run with a record stores where its machine
 // stopped (fill_record()). The machine's side is Detector::resume()
 // (machine/detector.cpp).
@@ -112,15 +112,15 @@ void check_stored(const PixelRecord& from, const std::vector<ChangeModel>& store
             " final segments; " + std::to_string(stored.size()) + " were given");
 }
 
-void check_statistics(const config::Shared& shared, std::int64_t end)
+void check_statistics(std::int64_t statistics_end, std::int64_t end, const std::string& prefix)
 {
-    if (shared.statistics_end <= end)
+    if (statistics_end <= end)
         return;
-    const std::string statistics = shared.statistics_end == config::NO_STATISTICS_END
+    const std::string statistics = statistics_end == config::NO_STATISTICS_END
         ? "cover the whole series"
-        : "run to " + iso_date(shared.statistics_end);
+        : "run to " + iso_date(statistics_end);
     throw std::invalid_argument(
-        "this configuration's statistics " + statistics +
+        prefix + "this configuration's statistics " + statistics +
         "; a resume keeps them at the stored run's end (" + iso_date(end) +
         "). Pass freeze_statistics=True to resume that way, or rerun in full to use "
         "the new dates in the statistics");
@@ -137,16 +137,18 @@ preprocess::PreprocessPlan capped(const preprocess::PreprocessPlan& plan, std::i
 {
     preprocess::PreprocessPlan out = plan;
     for (PixelProcedure procedure : PROCEDURES)
-    {
-        preprocess::Chain& chain = out.of(procedure).chain;
-        for (index_t i = 0; i < chain.size(); ++i)
-        {
-            preprocess::Step& step = chain.steps[i];
-            if (step.kind == preprocess::StepKind::GreenMedian)
-                step.max_date = std::min(step.max_date, end);
-        }
-    }
+        cap(out.of(procedure).chain, end);
     return out;
+}
+
+void cap(preprocess::Chain& chain, std::int64_t end)
+{
+    for (index_t i = 0; i < chain.size(); ++i)
+    {
+        preprocess::Step& step = chain.steps[i];
+        if (step.kind == preprocess::StepKind::GreenMedian)
+            step.max_date = std::min(step.max_date, end);
+    }
 }
 
 void fill_record(

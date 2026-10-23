@@ -26,8 +26,9 @@
 //   * ResumeFreezesTheStatistics.*: a configuration whose statistics cutoff
 //     the capping would change (none, or a later date) is refused
 //     with a message naming both dates, and resumed with freeze_statistics;
-//     one at or before the stored end needs no flag. ResumeCube.RefusesTo*:
-//     the same for a cube.
+//     one at or before the stored end needs no flag; the same for a test
+//     mode rule's extra-mask green median (ModeRule::statistics_end()).
+//     ResumeCube.RefusesTo*: the same for a cube.
 //
 // The sweeps above cut before the pyccd cutoff they run under, so they
 // resume with freeze_statistics: the capped run is what they compare with.
@@ -36,6 +37,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <set>
 #include <sstream>
@@ -49,6 +51,7 @@
 
 
 #include "ccd/ccd.hpp"
+#include "ccd/strategies/mode/pyccd.hpp"
 #include "config.hpp"
 
 #include "dump.hpp"
@@ -503,16 +506,19 @@ TEST(ResumeAccepts, ExactlyTheFinalSegments)
 namespace
 {
 
-// start_catch moved to 2006-2026 under `config`, and its run recorded on the
-// series cut two thirds of the way, on 2022-12-31.
+// start_catch moved to 2006-2026 under `config` (its strategies from
+// `registry`), and its run recorded on the series cut two thirds of the way,
+// on 2022-12-31.
 struct LateCut
 {
     Series s;
     Series cut;
+    ccd::AlgorithmPtr algorithm;
     ccd::PixelOutput stored;
 };
 
-LateCut late_cut(const ccd::config::Config& config)
+LateCut late_cut(const ccd::config::Config& config,
+                 const ccd::config::Registry& registry = ccd::strategies::library_registry())
 {
     const auto all = golden::characterization_pixels();
     Series s = golden::named(all, "start_catch");
@@ -520,8 +526,10 @@ LateCut late_cut(const ccd::config::Config& config)
         day += 5984;
     s.config = config;
     const Series cut = s.prefix(2 * s.size() / 3);
-    return LateCut{s, cut, ccd::detect(golden::spec_of(cut.h, cut.config, true),
-                                       cut.date_view(), cut.spectral_view(), cut.qa_view())};
+    auto algorithm = std::make_shared<const ccd::Algorithm>(config, registry);
+    return LateCut{s, cut, algorithm,
+                   ccd::detect(golden::spec_of(cut.h, algorithm, true), cut.date_view(),
+                               cut.spectral_view(), cut.qa_view())};
 }
 
 // detect() resuming `late` on its whole series; std::invalid_argument's
@@ -530,7 +538,7 @@ std::string refusal_of(const LateCut& late, bool freeze)
 {
     try
     {
-        ccd::detect(golden::spec_of(late.s.h, late.s.config), late.s.date_view(),
+        ccd::detect(golden::spec_of(late.s.h, late.algorithm), late.s.date_view(),
                     late.s.spectral_view(), late.s.qa_view(),
                     ccd::Resume{late.stored.header, {late.stored.record},
                                 {late.stored.result.models}, freeze});
@@ -600,6 +608,126 @@ TEST(ResumeFreezesTheStatistics, ACutoffAtOrBeforeTheStoredEndNeedsNoFlag)
         const ccd::PixelOutput full = golden::recorded_at(late.s, end);
         EXPECT_EQ(golden::dump(plain.result), golden::dump(full.result)) << at;
         EXPECT_EQ(golden::dump(resumed.result), golden::dump(full.result)) << at;
+        expect_same_record(plain.record, full.record, at);
+    }
+}
+
+namespace
+{
+
+// mode "late-green-median": pyccd's choice, and a Standard pixel's extra mask
+// a green median step (row 1, 50 DN over the median of the observations
+// dated through median_through, at every date), which ModeRule::statistics_end()
+// names.
+struct LateGreenMedianMode final : ccd::ModeRule
+{
+    struct Params
+    {
+        std::int64_t median_through = 0;
+    };
+
+    static const std::vector<ccd::config::Field<Params>>& schema()
+    {
+        static const std::vector<ccd::config::Field<Params>> s = {
+            {"median_through", &Params::median_through, ccd::config::Unit::Date,
+             ccd::config::any(), "the last date the green median reads"},
+        };
+        return s;
+    }
+
+    explicit LateGreenMedianMode(const Params& p) : p_(p) {}
+
+    ccd::PixelMode choose(const ccd::QaStatistics& statistics) const override
+    {
+        ccd::PixelMode mode = pyccd_.choose(statistics);
+        if (mode.procedure == ccd::PixelProcedure::Standard)
+            mode.extra_mask.push_back(ccd::preprocess::Step::green_median(
+                1, 50.0, p_.median_through, ccd::GreenFilterScope::All));
+        return mode;
+    }
+
+    std::optional<std::int64_t> statistics_end() const override { return p_.median_through; }
+
+private:
+    Params p_;
+    ccd::strategies::PyccdMode pyccd_{ccd::strategies::PyccdMode::Params{}};
+};
+
+const ccd::config::Registry& mode_registry()
+{
+    static const ccd::config::Registry r = []
+    {
+        ccd::config::Registry r;
+        ccd::strategies::register_core_strategies(r);
+        r.add<ccd::ModeRule, LateGreenMedianMode>("late-green-median");
+        return r;
+    }();
+    return r;
+}
+
+// ccdc_until(2022-12-31) with mode "late-green-median" through `through`.
+ccd::config::Config late_green_median(ccd::config::Value through)
+{
+    ccd::config::Config config = ccdc_until(ccd::config::integer(738520));
+    config.stages["mode"] = {"late-green-median", {{"median_through", std::move(through)}}};
+    return config;
+}
+
+// detect() on `late`'s whole series under `config`, recorded.
+ccd::PixelOutput full_run(const LateCut& late, const ccd::config::Config& config)
+{
+    return ccd::detect(
+        golden::spec_of(late.s.h, std::make_shared<const ccd::Algorithm>(config, mode_registry()),
+                        true),
+        late.s.date_view(), late.s.spectral_view(), late.s.qa_view());
+}
+
+// detect() resuming `late` on its whole series.
+ccd::PixelOutput resumed(const LateCut& late, bool freeze)
+{
+    return ccd::detect(
+        golden::spec_of(late.s.h, late.algorithm), late.s.date_view(), late.s.spectral_view(),
+        late.s.qa_view(),
+        ccd::Resume{late.stored.header, {late.stored.record}, {late.stored.result.models}, freeze});
+}
+
+} // namespace
+
+// The mode rule's extra-mask green median past the stored end: refused,
+// naming that cutoff; with freeze_statistics, the full run with its date
+// capped at the stored end.
+TEST(ResumeFreezesTheStatistics, RefusesToCapTheModeRulesExtraMask)
+{
+    const LateCut late = late_cut(late_green_median(std::string("2024-06-30")), mode_registry());
+    ASSERT_EQ(late.stored.header.statistics_end, 738520);   // 2022-12-31
+    EXPECT_EQ(refusal_of(late, false),
+              "the mode rule's extra mask: this configuration's statistics run to 2024-06-30; a "
+              "resume keeps them at the stored run's end (2022-12-31). Pass "
+              "freeze_statistics=True to resume that way, or rerun in full to use the new dates "
+              "in the statistics");
+    EXPECT_EQ(refusal_of(late, true), "");
+
+    const ccd::PixelOutput frozen = resumed(late, true);
+    const ccd::PixelOutput full = full_run(late, late_green_median(ccd::config::integer(738520)));
+    EXPECT_EQ(golden::dump(frozen.result), golden::dump(full.result));
+    expect_same_record(frozen.record, full.record, "frozen");
+    // The cap changes the run: the uncapped one differs.
+    EXPECT_NE(golden::dump(full.result), golden::dump(full_run(late, late.s.config).result));
+}
+
+// Its date at or before the stored end: the resume needs no flag and equals
+// the full run.
+TEST(ResumeFreezesTheStatistics, AModeRuleCutoffAtOrBeforeTheStoredEndNeedsNoFlag)
+{
+    for (const std::int64_t through : {golden::PYCCD_STATISTICS_END, std::int64_t{738520}})
+    {
+        const std::string at = "median_through " + std::to_string(through);
+        const LateCut late =
+            late_cut(late_green_median(ccd::config::integer(through)), mode_registry());
+        EXPECT_EQ(refusal_of(late, false), "") << at;
+        const ccd::PixelOutput plain = resumed(late, false);
+        const ccd::PixelOutput full = full_run(late, late.s.config);
+        EXPECT_EQ(golden::dump(plain.result), golden::dump(full.result)) << at;
         expect_same_record(plain.record, full.record, at);
     }
 }

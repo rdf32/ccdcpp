@@ -180,7 +180,9 @@ The rules every strategy follows:
 - **It declares what it reads.** `needs()` names the capabilities it reads from the stages
   before it (`include/ccd/strategies/capabilities.hpp`), and `statistics()` the change test's
   statistics by name; a configuration whose earlier stages do not provide them is refused
-  ("outlier 'residual-cap' needs ..., which model '...' does not provide").
+  ("outlier 'residual-cap' needs ..., which model '...' does not provide"). A mode rule whose
+  extra mask reads statistics (a GreenMedian step) returns the last date they read from
+  `statistics_end()`, which a resume checks and caps as it does the shared `statistics_end`.
 - **It returns, the machine routes.** An outcome outside the stage's enum is a change to the
   machine (`src/ccd/machine/detector.cpp`), not to a strategy.
 

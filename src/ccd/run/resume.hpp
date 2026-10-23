@@ -3,6 +3,7 @@
 // Internal: the run's side of a resume (run/resume.cpp), which Run reads.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "ccd/config/shared.hpp"
@@ -30,17 +31,20 @@ void check_resume(
 void check_stored(const PixelRecord& from, const std::vector<ChangeModel>& stored);
 
 // A resume's refusal of a statistics cutoff it would change: the
-// configuration's statistics_end (which its GreenMedian steps take) after
+// configuration's statistics_end (which its GreenMedian steps take), or the
+// mode rule's (ModeRule::statistics_end(), its message after `prefix`), after
 // `end`, the stored run's statistics end. Run calls it unless the caller
 // froze the statistics there (Resume::freeze_statistics).
-void check_statistics(const config::Shared& shared, std::int64_t end);
+void check_statistics(std::int64_t statistics_end, std::int64_t end,
+                      const std::string& prefix = "");
 
 // The cutoffs of a run resumed from one whose series ended at `end`:
 // statistics_end capped at `end`,
 config::Shared capped(const config::Shared& shared, std::int64_t end);
 
-// and every GreenMedian step's date.
+// and every GreenMedian step's date, of the plan and of a mode's extra mask.
 preprocess::PreprocessPlan capped(const preprocess::PreprocessPlan& plan, std::int64_t end);
+void cap(preprocess::Chain& chain, std::int64_t end);
 
 // Step 6 of a pixel (run_pixel.hpp), the record for the next resume: where
 // the machine stopped and the days it dropped from `filtered` (the

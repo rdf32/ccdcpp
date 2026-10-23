@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "ccd/core/array_view.hpp"
@@ -107,6 +108,10 @@ struct ModeRule
 
     virtual ~ModeRule() = default;
     virtual PixelMode choose(const QaStatistics& statistics) const = 0;
+    // The latest date a statistic of choose()'s extra masks reads (a
+    // GreenMedian step's max_date), which a resume checks and caps as it does
+    // statistics_end; none (the default) when they read no statistics.
+    virtual std::optional<std::int64_t> statistics_end() const { return std::nullopt; }
 };
 
 //------------------------------------------------------------------------------

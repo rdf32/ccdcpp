@@ -234,7 +234,12 @@ Run::Run(
         check_resume(resume->header, header_.digest, dates);
         header_.statistics_end = resume->header.statistics_end;
         if (!resume->freeze_statistics)
-            check_statistics(resolved_->shared, header_.statistics_end);
+        {
+            check_statistics(resolved_->shared.statistics_end, header_.statistics_end);
+            if (const auto mode_end = resolved_->strategies.mode->statistics_end())
+                check_statistics(*mode_end, header_.statistics_end,
+                                 "the mode rule's extra mask: ");
+        }
         // A resumed run reruns what it does not continue under the stored
         // run's statistics cutoff.
         shared_ = capped(resolved_->shared, header_.statistics_end);
@@ -281,8 +286,13 @@ PreparedPixel Run::prepare(
     preprocess::apply(steps.chain, series.dates(), series.spectral(), series.qas(), pixel.mask,
                       reasons);
     if (!pixel.mode.extra_mask.empty())
+    {
+        // A resume caps the extra mask's statistics as capped() caps the plan's.
+        if (resume_)
+            cap(pixel.mode.extra_mask, header_.statistics_end);
         preprocess::apply_steps(pixel.mode.extra_mask, series.dates(), series.spectral(),
                                 series.qas(), pixel.mask, reasons);
+    }
     return pixel;
 }
 
