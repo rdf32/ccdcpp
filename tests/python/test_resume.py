@@ -9,12 +9,16 @@ continuation of a recorded run equals detect() with statistics_end capped at the
 cut, array for array, the record a resumed run returns equals a full run's,
 and segments stored the way nlcd stores them (no observation count, a
 placeholder break day and a NaN magnitude where there is no break) give the
-same table once blanked the same way.
+same table once blanked the same way. Under the preset's cutoff, none, a resume
+is refused unless freeze_statistics=True; the tests that compare with the
+capped run pass it.
 """
 from __future__ import annotations
 
+import re
 import unittest
 from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any
 
 from _harness import use_package
@@ -140,7 +144,8 @@ class OnePixel(unittest.TestCase):
                 stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
                                     input=ext.Input(), record=True)
                 self.assertEqual(header_of(stored)["series_end"], dates[n - 1])
-                again = ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored)
+                again = ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored,
+                                   freeze_statistics=True)
                 full = ext.detect(dates, spectral, qas, input=ext.Input(),
                                   config=capped(dates[n - 1]), record=True)
 
@@ -157,7 +162,8 @@ class OnePixel(unittest.TestCase):
                             input=ext.Input(), record=True)
         changed = spectral.copy()
         changed[3, int(np.flatnonzero(qas[:n] == 0)[50])] += 1.0
-        again = ext.detect(dates, changed, qas, input=ext.Input(), resume=stored)
+        again = ext.detect(dates, changed, qas, input=ext.Input(), resume=stored,
+                           freeze_statistics=True)
         full = ext.detect(dates, changed, qas, input=ext.Input(),
                           config=capped(dates[n - 1]))
         self.assertEqual(status_of(again), "rerun_input_changed")
@@ -176,7 +182,8 @@ class OnePixel(unittest.TestCase):
             return ext.detect(dates[:m], spectral[:, :m], qas[:m],
                               input=h or ext.Input(), config=config,
                               resume=dict(stored,
-                                          resume_header=header or header_of(stored)))
+                                          resume_header=header or header_of(stored)),
+                              freeze_statistics=True)
 
         other = ext.Input(qa_occlusion=ext.Input().qa_occlusion + 1)
         with self.assertRaisesRegex(ValueError, "another input or configuration"):
@@ -206,12 +213,85 @@ class OnePixel(unittest.TestCase):
                     bad["exit"] = 6   # SeriesEnd
                 with self.assertRaises(ValueError):
                     ext.detect(dates, spectral, qas, input=ext.Input(),
-                               resume=dict(stored, resume=bad))
+                               resume=dict(stored, resume=bad), freeze_statistics=True)
 
         # An output without a record.
         plain = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input())
         with self.assertRaisesRegex(ValueError, "record=True"):
             ext.detect(dates, spectral, qas, input=ext.Input(), resume=plain)
+
+
+def refusal(stored_end: int, config_end: int | None = None) -> str:
+    """The message of a resume that would cap a statistics cutoff: the configuration's
+    (None: "none"), after the stored run's end."""
+    statistics = ("cover the whole series" if config_end is None
+                  else f"run to {date.fromordinal(config_end).isoformat()}")
+    return (f"this configuration's statistics {statistics}; a resume keeps them at the "
+            f"stored run's end ({date.fromordinal(stored_end).isoformat()}). Pass "
+            "freeze_statistics=True to resume that way, or rerun in full to use the new "
+            "dates in the statistics")
+
+
+class FreezeStatistics(unittest.TestCase):
+
+    def test_a_pixel_resume_under_no_cutoff_is_refused(self):
+        dates, spectral, qas = pixel(2)
+        n = upto(dates, CUT_2019)
+        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input(), record=True)
+        with self.assertRaisesRegex(ValueError, f"^{re.escape(refusal(int(dates[n - 1])))}$"):
+            ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored)
+        with self.assertRaisesRegex(ValueError, "cover the whole series"):
+            ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored,
+                       freeze_statistics=False)
+
+    def test_a_later_cutoff_is_refused_by_its_date(self):
+        dates, spectral, qas = pixel(2)
+        n = upto(dates, CUT_2010)
+        later = ext._config_preset("ccdc")
+        later["shared"]["statistics_end"] = CUT_2019
+        config = ext.Algorithm(later)
+        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input(),
+                            config=config, record=True)
+        message = refusal(int(dates[n - 1]), CUT_2019)
+        self.assertIn("run to 2019-01-01", message)
+        with self.assertRaisesRegex(ValueError, f"^{re.escape(message)}$"):
+            ext.detect(dates, spectral, qas, input=ext.Input(), config=config, resume=stored)
+        again = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+                           resume=stored, freeze_statistics=True)
+        full = ext.detect(dates, spectral, qas, input=ext.Input(), config=capped(dates[n - 1]))
+        assert_same_models(self, again["models"], full["models"], "frozen")
+
+    def test_a_cutoff_at_or_before_the_stored_end_needs_no_flag(self):
+        pyccd = ext._config_preset("ccdc")
+        pyccd["shared"]["statistics_end"] = 736694      # 2017-12-31
+        config = ext.Algorithm(pyccd)
+        for seed in range(3):
+            dates, spectral, qas = pixel(seed)
+            n = upto(dates, CUT_2019)
+            where = f"seed {seed}"
+            stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input(),
+                                config=config, record=True)
+            again = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+                               resume=stored)
+            frozen = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+                                resume=stored, freeze_statistics=True)
+            full = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+                              record=True)
+            assert_same_models(self, again["models"], full["models"], where)
+            assert_same_models(self, frozen["models"], full["models"], where)
+            np.testing.assert_array_equal(again["processing_mask"], full["processing_mask"])
+            assert_same_record(self, record_of(again), record_of(full), where)
+
+    def test_a_cube_resume_under_no_cutoff_is_refused(self):
+        dates, spectral, qas = cube(range(60, 66), 2, 3)
+        n = upto(dates, CUT_2019)
+        stored = ext.detect_cube(dates[:n], spectral[..., :n], qas[..., :n],
+                                 input=ext.Input(), threads=2, record=True)
+        with self.assertRaisesRegex(ValueError, f"^{re.escape(refusal(int(dates[n - 1])))}$"):
+            ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=2, resume=stored)
+        again = ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=2,
+                                resume=stored, freeze_statistics=True)
+        self.assertEqual(counts_of(again), {"resumed": 6, "rerun_input_changed": 0, "failed": 0})
 
 
 def cube(seeds: Sequence[int], rows: int, cols: int) -> Series:
@@ -257,7 +337,8 @@ class Cube(unittest.TestCase):
                     threads=threads, record=True)
                 self.assertEqual(records_of(stored)["row"].size, 12)
                 again = ext.detect_cube(dates, spectral, qas, input=ext.Input(),
-                                        threads=threads, resume=stored)
+                                        threads=threads, resume=stored,
+                                        freeze_statistics=True)
                 full = ext.detect_cube(
                     dates, spectral, qas, input=ext.Input(), threads=threads, record=True,
                     config=capped(dates[n - 1]))
@@ -281,7 +362,8 @@ class Cube(unittest.TestCase):
         again = ext.detect_cube(
             dates, spectral, qas, input=ext.Input(), threads=2,
             resume={**nlcd_blanked(stored), "resume": records_of(stored),
-                    "resume_header": header_of(stored)})
+                    "resume_header": header_of(stored)},
+            freeze_statistics=True)
         full = ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=2,
                                config=capped(dates[n - 1]))
         a, b = nlcd_blanked(again), nlcd_blanked(full)
@@ -297,7 +379,7 @@ class Cube(unittest.TestCase):
         changed = spectral.copy()
         changed[1, 2, 2, int(np.flatnonzero(qas[1, 2, :n] == 0)[30])] += 5.0
         again = ext.detect_cube(dates, changed, qas, input=ext.Input(), threads=1,
-                                resume=stored)
+                                resume=stored, freeze_statistics=True)
         self.assertEqual(counts_of(again), {"resumed": 5, "rerun_input_changed": 1, "failed": 0})
         self.assertEqual(int(statuses_of(again)[1 * 3 + 2]), 1)
 
@@ -315,7 +397,8 @@ class Cube(unittest.TestCase):
             return ext.detect_cube(
                 dates, spectral, qas, input=ext.Input(), threads=1,
                 resume={**(segs or segments), "resume": resume or records,
-                        "resume_header": header_of(stored)})
+                        "resume_header": header_of(stored)},
+                freeze_statistics=True)
 
         short = dict(segments, start_day=segments["start_day"][:1])
         with self.assertRaises(ValueError):

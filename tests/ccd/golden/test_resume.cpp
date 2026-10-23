@@ -23,6 +23,14 @@
 //     another format, results version or configuration, a shorter series,
 //     too few stored segments, two records for one pixel; ResumeAccepts.*:
 //     exactly the final segments.
+//   * ResumeFreezesTheStatistics.*: a configuration whose statistics cutoff
+//     the capping would change (none, or a later date) is refused
+//     with a message naming both dates, and resumed with freeze_statistics;
+//     one at or before the stored end needs no flag. ResumeCube.RefusesTo*:
+//     the same for a cube.
+//
+// The sweeps above cut before the pyccd cutoff they run under, so they
+// resume with freeze_statistics: the capped run is what they compare with.
 //
 //==============================================================================
 
@@ -230,7 +238,7 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
                 s.date_view(),
                 s.spectral_view(),
                 s.qa_view(),
-                ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+                ccd::Resume{stored.header, {stored.record}, {stored.result.models}, true});
 
             // Every statistics cutoff capped at T: the shared statistics_end, which
             // the green median step reads too.
@@ -397,7 +405,7 @@ void expect_refused(const ccd::ResumeHeader& header, const Series& input, std::s
             input.date_view(),
             input.spectral_view(),
             input.qa_view(),
-            ccd::Resume{header, {st.stored.record}, {given}}),
+            ccd::Resume{header, {st.stored.record}, {given}, true}),
         std::invalid_argument);
 }
 
@@ -453,7 +461,7 @@ const Refusal REFUSALS[] = {
              st.s.spectral_view(),
              st.s.qa_view(),
              ccd::Resume{st.stored.header, {st.stored.record, st.stored.record},
-                         {final_only(st), final_only(st)}}),
+                         {final_only(st), final_only(st)}, true}),
                       std::invalid_argument);
      }},
 };
@@ -485,7 +493,115 @@ TEST(ResumeAccepts, ExactlyTheFinalSegments)
         st.s.date_view(),
         st.s.spectral_view(),
         st.s.qa_view(),
-        ccd::Resume{st.stored.header, {st.stored.record}, {final_only(st)}}));
+        ccd::Resume{st.stored.header, {st.stored.record}, {final_only(st)}, true}));
+}
+
+//------------------------------------------------------------------------------
+// ResumeFreezesTheStatistics
+//------------------------------------------------------------------------------
+
+namespace
+{
+
+// start_catch moved to 2006-2026 under `config`, and its run recorded on the
+// series cut two thirds of the way, on 2022-12-31.
+struct LateCut
+{
+    Series s;
+    Series cut;
+    ccd::PixelOutput stored;
+};
+
+LateCut late_cut(const ccd::config::Config& config)
+{
+    const auto all = golden::characterization_pixels();
+    Series s = golden::named(all, "start_catch");
+    for (std::int64_t& day : s.dates)
+        day += 5984;
+    s.config = config;
+    const Series cut = s.prefix(2 * s.size() / 3);
+    return LateCut{s, cut, ccd::detect(golden::spec_of(cut.h, cut.config, true),
+                                       cut.date_view(), cut.spectral_view(), cut.qa_view())};
+}
+
+// detect() resuming `late` on its whole series; std::invalid_argument's
+// message, empty when it runs.
+std::string refusal_of(const LateCut& late, bool freeze)
+{
+    try
+    {
+        ccd::detect(golden::spec_of(late.s.h, late.s.config), late.s.date_view(),
+                    late.s.spectral_view(), late.s.qa_view(),
+                    ccd::Resume{late.stored.header, {late.stored.record},
+                                {late.stored.result.models}, freeze});
+    }
+    catch (const std::invalid_argument& e)
+    {
+        return e.what();
+    }
+    return "";
+}
+
+// The ccdc preset with the shared statistics_end at `end`.
+ccd::config::Config ccdc_until(ccd::config::Value end)
+{
+    return golden::with_shared(golden::ccdc(), "statistics_end", std::move(end));
+}
+
+} // namespace
+
+// The default, no cutoff: refused, naming the stored end and the two ways
+// on; with freeze_statistics, the full run with its statistics capped there.
+TEST(ResumeFreezesTheStatistics, RefusesToCapNoCutoff)
+{
+    const LateCut late = late_cut(golden::ccdc());
+    ASSERT_EQ(late.stored.header.statistics_end, 738520);   // 2022-12-31
+    EXPECT_EQ(refusal_of(late, false),
+              "this configuration's statistics cover the whole series; a resume keeps them at "
+              "the stored run's end (2022-12-31). Pass freeze_statistics=True to resume that "
+              "way, or rerun in full to use the new dates in the statistics");
+    EXPECT_EQ(refusal_of(late, true), "");
+
+    const ccd::PixelOutput frozen = ccd::detect(
+        golden::spec_of(late.s.h, late.s.config), late.s.date_view(), late.s.spectral_view(),
+        late.s.qa_view(),
+        ccd::Resume{late.stored.header, {late.stored.record}, {late.stored.result.models}, true});
+    const ccd::PixelOutput full = golden::recorded_at(late.s, 738520);
+    EXPECT_EQ(golden::dump(frozen.result), golden::dump(full.result));
+    expect_same_record(frozen.record, full.record, "frozen");
+    EXPECT_EQ(frozen.header.statistics_end, 738520);
+}
+
+// A cutoff after the stored end: refused, naming both dates.
+TEST(ResumeFreezesTheStatistics, RefusesToCapALaterCutoff)
+{
+    const LateCut late = late_cut(ccdc_until(std::string("2024-06-30")));
+    EXPECT_EQ(refusal_of(late, false),
+              "this configuration's statistics run to 2024-06-30; a resume keeps them at the "
+              "stored run's end (2022-12-31). Pass freeze_statistics=True to resume that way, "
+              "or rerun in full to use the new dates in the statistics");
+    EXPECT_EQ(refusal_of(late, true), "");
+}
+
+// A cutoff at or before the stored end is not capped: the resume needs no
+// flag, and equals the plain full run (the flag changes nothing).
+TEST(ResumeFreezesTheStatistics, ACutoffAtOrBeforeTheStoredEndNeedsNoFlag)
+{
+    for (const std::int64_t end : {golden::PYCCD_STATISTICS_END, std::int64_t{738520}})
+    {
+        const std::string at = "statistics_end " + std::to_string(end);
+        const LateCut late = late_cut(ccdc_until(ccd::config::integer(end)));
+        EXPECT_EQ(refusal_of(late, false), "") << at;
+        const ccd::PixelOutput resumed = resume_on(late.s, late.stored);
+        const ccd::PixelOutput plain = ccd::detect(
+            golden::spec_of(late.s.h, late.s.config), late.s.date_view(),
+            late.s.spectral_view(), late.s.qa_view(),
+            ccd::Resume{late.stored.header, {late.stored.record}, {late.stored.result.models}});
+        const ccd::PixelOutput full = golden::recorded_at(late.s, end);
+        EXPECT_EQ(golden::dump(plain.result), golden::dump(full.result)) << at;
+        EXPECT_EQ(golden::dump(resumed.result), golden::dump(full.result)) << at;
+        expect_same_record(plain.record, full.record, at);
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -557,6 +673,7 @@ TEST(ResumeCube, EachPixelAsResumeAlone)
 
             ccd::Resume from;
             from.header = stored.header;
+            from.freeze_statistics = true;
             from.records.resize(N);
             from.segments.resize(N);
             for (const auto& px : stored.pixels)
@@ -614,6 +731,7 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
 
     ccd::Resume from;
     from.header = stored.header;
+    from.freeze_statistics = true;
     from.records.resize(N);
     from.segments.resize(N);
     std::size_t victim = N;
@@ -650,3 +768,47 @@ TEST(ResumeCube, APixelWithTooFewSegmentsFailsAlone)
         &from),
                  std::invalid_argument);
 }
+
+// A cube's resume is refused as a pixel's, before any pixel runs.
+TEST(ResumeCube, RefusesToCapNoCutoff)
+{
+    const golden::Cube c = golden::make_cube(12, golden::Regime::Cadence8, 2, 3);
+    const std::size_t N = c.H * c.W;
+    const CutCube cut(c, c.T / 2);
+    const CutCube whole(c, c.T);
+    const ccd::CubeOutput stored = ccd::detect_cube(
+        golden::spec_of(ccd::Input{}, golden::ccdc(), true), cut.dates(), cut.block(), cut.qa(), 1);
+
+    ccd::Resume from;
+    from.header = stored.header;
+    from.records.resize(N);
+    from.segments.resize(N);
+    for (const auto& px : stored.pixels)
+    {
+        from.records[px.row * c.W + px.col] = px.record;
+        from.segments[px.row * c.W + px.col] = px.result.models;
+    }
+    const auto resumed = [&]
+    {
+        return ccd::detect_cube(golden::spec_of(ccd::Input{}, golden::ccdc()), whole.dates(),
+                                whole.block(), whole.qa(), 2, &from);
+    };
+    try
+    {
+        resumed();
+        ADD_FAILURE() << "a resume capping no cutoff ran";
+    }
+    catch (const std::invalid_argument& e)
+    {
+        EXPECT_EQ(std::string(e.what()).rfind(
+                      "this configuration's statistics cover the whole series; a resume keeps "
+                      "them at the stored run's end (", 0), 0u) << e.what();
+    }
+
+    from.freeze_statistics = true;
+    const ccd::CubeOutput frozen = resumed();
+    EXPECT_TRUE(frozen.failures.empty());
+    EXPECT_EQ(frozen.pixels.size(), N);
+    EXPECT_EQ(frozen.header.statistics_end, stored.header.series_end);
+}
+

@@ -227,7 +227,7 @@ TEST(Diagnostics, AResumedRunTellsTheObserverWhereItContinues)
         spec.observer = recording;
         const ccd::PixelOutput resumed = ccd::detect(
             spec, s.date_view(), s.spectral_view(), s.qa_view(),
-            ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+            ccd::Resume{stored.header, {stored.record}, {stored.result.models}, true});
         EXPECT_EQ(golden::dump(resumed.result), golden::dump(resume_on(s, stored).result)) << s.name;
 
 #if CCD_OBSERVE

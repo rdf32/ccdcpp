@@ -119,9 +119,9 @@ def _configuration(entry: str, config: object) -> Config:
 
 def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
            input: Input | SensorProfile, config: Config | str = "ccdc", record: bool = False,
-           resume: _Mapping[str, _Any] | None = None, band_names: _Sequence[str] | None = None,
-           trace: bool = False, reasons: bool = False,
-           diagnostics: bool = False) -> results.PixelResult:
+           resume: _Mapping[str, _Any] | None = None, freeze_statistics: bool = False,
+           band_names: _Sequence[str] | None = None, trace: bool = False,
+           reasons: bool = False, diagnostics: bool = False) -> results.PixelResult:
     """CCD on one pixel.
 
     dates
@@ -158,6 +158,14 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         and "resume_header" for the next resume and "status": "resumed", or
         "rerun_input_changed" when the pixel's observations up to the stored
         series end differ from the stored run's and it was rerun in full.
+        Refused (ValueError) when that capping changes the configuration's
+        statistics cutoff (one after the stored end, or "none", the default),
+        unless freeze_statistics=True.
+    freeze_statistics
+        With resume=: True to resume a configuration whose statistics cutoff
+        is after the stored run's end (or "none"), the statistics kept at
+        that end. A full rerun is how the new dates enter the statistics.
+        Not needed, and harmless, for a cutoff at or before the stored end.
     band_names
         The names of spectral's rows, in the caller's order (a store's band
         list, say), or None. Given, they must be the profile's band_names in
@@ -190,8 +198,8 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     h, profile = _input("detect", input, spectral, band_names)
     cfg = _configuration("detect", config)
     out = _extension.detect(dates, spectral, qas, input=h, config=cfg._algorithm,
-                            record=record, resume=resume, trace=trace, reasons=reasons,
-                            diagnostics=diagnostics)
+                            record=record, resume=resume, freeze_statistics=freeze_statistics,
+                            trace=trace, reasons=reasons, diagnostics=diagnostics)
     if profile is not None:
         out["band_names"] = profile.band_names
     return out
@@ -200,7 +208,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
 def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
                 input: Input | SensorProfile, config: Config | str = "ccdc", threads: int = 0,
                 record: bool = False, resume: _Mapping[str, _Any] | None = None,
-                band_names: _Sequence[str] | None = None,
+                freeze_statistics: bool = False, band_names: _Sequence[str] | None = None,
                 trace_pixels: _Sequence[tuple[int, int]] | None = None,
                 masks: bool = False, reasons: bool = False,
                 diagnostics: bool = False) -> results.CubeColumns:
@@ -214,7 +222,7 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     qas
         (H, W, T) uint8 QA codes, or raw uint8/uint16 QA when the input has a
         qa_table.
-    input, config, band_names
+    input, config, band_names, freeze_statistics
         As detect().
     threads
         OpenMP threads; 0 for the library's default.
@@ -227,8 +235,9 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         An earlier detect_cube() output made with record=True (or by a
         resume), of the same cube (H, W): continue it on this longer series,
         as detect()'s resume=, each pixel equal bit for bit to detect() on
-        it. The output then also holds "resume" (with a "status" column: 0
-        resumed, 1 rerun because its input changed, 2 failed),
+        it, and refused as detect()'s is without freeze_statistics=True. The
+        output then also holds "resume" (with a "status" column: 0 resumed,
+        1 rerun because its input changed, 2 failed),
         "resume_header" and "counts" (resumed, rerun_input_changed, failed).
         A pixel that fails is in "failures"; its record is a default one, so
         the next resume reruns it. The record columns must cover the cube in
@@ -267,7 +276,7 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     cfg = _configuration("detect_cube", config)
     out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
-                                 trace_pixels=trace_pixels, masks=masks, reasons=reasons,
+                                 freeze_statistics=freeze_statistics, trace_pixels=trace_pixels, masks=masks, reasons=reasons,
                                  diagnostics=diagnostics)
     if profile is not None:
         out["band_names"] = profile.band_names

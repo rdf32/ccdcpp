@@ -29,6 +29,12 @@ void check_resume(
 // ones.
 void check_stored(const PixelRecord& from, const std::vector<ChangeModel>& stored);
 
+// A resume's refusal of a statistics cutoff it would change: the
+// configuration's statistics_end (which its GreenMedian steps take) after
+// `end`, the stored run's statistics end. Run calls it unless the caller
+// froze the statistics there (Resume::freeze_statistics).
+void check_statistics(const config::Shared& shared, std::int64_t end);
+
 // The cutoffs of a run resumed from one whose series ended at `end`:
 // statistics_end capped at `end`,
 config::Shared capped(const config::Shared& shared, std::int64_t end);

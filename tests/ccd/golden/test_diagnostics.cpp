@@ -536,7 +536,7 @@ TEST(Reasons, AResumeGivesTheStoredDropsTheirOwnCode)
         const ccd::RunSpec spec = with_reasons(golden::spec_of(s.h, s.config));
         const ccd::PixelOutput resumed = ccd::detect(
             spec, s.date_view(), s.spectral_view(), s.qa_view(),
-            ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+            ccd::Resume{stored.header, {stored.record}, {stored.result.models}, true});
         if (resumed.status != ccd::ResumeStatus::Resumed)
             continue;
         ccd::RunSpec capped = spec;
@@ -734,7 +734,7 @@ TEST(Diagnostics, ACubesAreEachPixelsAndAResumesCarriedSegmentsHoldNone)
             continue;
         const ccd::PixelOutput resumed = ccd::detect(
             with_diagnostics(golden::spec_of(s.h, s.config)), s.date_view(), s.spectral_view(),
-            s.qa_view(), ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+            s.qa_view(), ccd::Resume{stored.header, {stored.record}, {stored.result.models}, true});
         if (resumed.status != ccd::ResumeStatus::Resumed)
             continue;
         const ccd::PixelDiagnostics& d = resumed.diagnostics;

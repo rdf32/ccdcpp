@@ -4,8 +4,12 @@ The cell is bench_cell.py's (h024v013 chunk 00030008, 500 x 500, 1984-2023; `--s
 smaller corner of it). Per strip of `strip` rows:
 
   1. the stored run: detect_cube(record=True) on the dates before `cut`;
-  2. the update: detect_cube(resume=) on every date, from 1's output;
+  2. the update: detect_cube(resume=, freeze_statistics=True) on every date, from 1's output:
+     the preset has no statistics cutoff, and the update keeps its statistics at 1's last date;
   3. the full run: detect_cube() on every date, statistics_end capped at 1's last date.
+
+So the update equals the full run with statistics capped at the stored end, not a plain full
+run on every date (whose statistics would read the new dates too).
 
 Each runs in its own process over the whole cell (`--only stored|update|full` runs one; the
 update's process runs 1 untimed for its input) and prints its detect time (conversion outside)
@@ -87,7 +91,7 @@ def run_phase(args: argparse.Namespace) -> int:
             if args.only == "update":
                 tic = time.perf_counter()
                 out = ccdcpp.detect_cube(dates, sp, qa, input=profile, threads=args.threads,
-                                         resume=out)
+                                         resume=out, freeze_statistics=True)
                 resumed = out.get("counts")
                 assert resumed is not None   # a resume's output holds its counts
                 for k in counts:
@@ -130,9 +134,10 @@ def check(args: argparse.Namespace, results: dict[str, dict[str, Any]], saved: s
 
     t_first, t_resume, t_full = (results[p]["seconds"] for p in PHASES)
     counts = results["update"]["counts"]
-    print(f"stored run {t_first:.1f} s; update {t_resume:.1f} s; full run {t_full:.1f} s; "
-          f"update / full = {t_resume / t_full:.3f}")
-    print(f"status {counts}; pixels where the update differs from the full run: {differing}")
+    print(f"stored run {t_first:.1f} s; update {t_resume:.1f} s; full run (statistics capped "
+          f"at the stored end) {t_full:.1f} s; update / full = {t_resume / t_full:.3f}")
+    print(f"status {counts}; pixels where the update differs from the full run with statistics "
+          f"capped at the stored end: {differing}")
     print("fingerprint", digest.hexdigest())
     if sum(counts.values()) != N * N or counts["failed"]:
         sys.exit(f"{sys.argv[0]}: expected {N * N} pixels and none failed, got {counts}")

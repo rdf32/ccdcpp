@@ -233,6 +233,8 @@ Run::Run(
     {
         check_resume(resume->header, header_.digest, dates);
         header_.statistics_end = resume->header.statistics_end;
+        if (!resume->freeze_statistics)
+            check_statistics(resolved_->shared, header_.statistics_end);
         // A resumed run reruns what it does not continue under the stored
         // run's statistics cutoff.
         shared_ = capped(resolved_->shared, header_.statistics_end);

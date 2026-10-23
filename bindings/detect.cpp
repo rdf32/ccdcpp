@@ -206,13 +206,16 @@ static py::dict detect_wrapper(
     std::shared_ptr<ccd::Algorithm> config,
     bool record,
     py::object resume,
+    bool freeze_statistics,
     bool trace,
     bool reasons,
     bool diagnostics
 )
 {
     const PixelArrays arrays = pixel_arrays(dates, spectral, qas, input.qa_table != nullptr);
-    const std::optional<ccd::Resume> from = pixel_resume(resume);
+    std::optional<ccd::Resume> from = pixel_resume(resume);
+    if (from)
+        from->freeze_statistics = freeze_statistics;
     ccd::RunSpec spec = run_spec(input, std::move(config), record, true, reasons,
                                  diagnostics);   // with its mask
     const auto recording = trace ? std::make_shared<RecordingObserver>() : nullptr;
@@ -237,6 +240,7 @@ static py::dict detect_cube_wrapper(
     int threads,
     bool record,
     py::object resume,
+    bool freeze_statistics,
     py::object trace_pixels,
     bool masks,
     bool reasons,
@@ -245,7 +249,9 @@ static py::dict detect_cube_wrapper(
 {
     const CubeArrays arrays = cube_arrays(dates, spectral, qas, input.qa_table != nullptr);
     ccd::RunSpec spec = run_spec(input, std::move(config), record, masks, reasons, diagnostics);
-    const std::optional<ccd::Resume> from = cube_resume(resume, arrays.H, arrays.W, arrays.B);
+    std::optional<ccd::Resume> from = cube_resume(resume, arrays.H, arrays.W, arrays.B);
+    if (from)
+        from->freeze_statistics = freeze_statistics;
     const Traced traced = observe(spec, trace_pixels, arrays.H, arrays.W);
 
     ccd::CubeOutput cube;
@@ -277,6 +283,7 @@ void bind_detect(py::module_& m)
         py::arg("config") = py::none(),
         py::arg("record") = false,
         py::arg("resume") = py::none(),
+        py::arg("freeze_statistics") = false,
         py::arg("trace") = false,
         py::arg("reasons") = false,
         py::arg("diagnostics") = false,
@@ -294,6 +301,7 @@ void bind_detect(py::module_& m)
         py::arg("threads") = 0,
         py::arg("record") = false,
         py::arg("resume") = py::none(),
+        py::arg("freeze_statistics") = false,
         py::arg("trace_pixels") = py::none(),
         py::arg("masks") = false,
         py::arg("reasons") = false,

@@ -54,7 +54,8 @@ inline ccd::PixelOutput recorded_at(const Series& s, std::int64_t statistics_end
 }
 
 // The stored run continued on the whole series: detect() on `whole` with the
-// stored record and segments as its resume.
+// stored record and segments as its resume, its statistics frozen at the
+// stored end (Resume::freeze_statistics): the run capped there.
 inline ccd::PixelOutput resume_on(const Series& whole, const ccd::PixelOutput& stored)
 {
     return ccd::detect(
@@ -62,7 +63,7 @@ inline ccd::PixelOutput resume_on(const Series& whole, const ccd::PixelOutput& s
         whole.date_view(),
         whole.spectral_view(),
         whole.qa_view(),
-        ccd::Resume{stored.header, {stored.record}, {stored.result.models}});
+        ccd::Resume{stored.header, {stored.record}, {stored.result.models}, true});
 }
 
 // Two records say the same, field by field.

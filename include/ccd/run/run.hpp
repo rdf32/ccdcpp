@@ -218,13 +218,15 @@ struct CubeOutput
 // configuration the input does not fit (Algorithm::for_input(), the plan's
 // validate() included); and for a resume, a header of another record format
 // or results version, made with another input (its QA table included) or
-// configuration (by Resolved::digest), or for a series that ends before the
-// stored one. Then on a resume of other than one record and one segment
-// list, and on one with fewer stored segments than its record's final ones.
+// configuration (by Resolved::digest), for a series that ends before the
+// stored one, or, without Resume::freeze_statistics, for a configuration
+// whose statistics_end is after the stored statistics end (or none). Then on
+// a resume of other than one record and one segment list, and on one with
+// fewer stored segments than its record's final ones.
 //
 // With `resume`, continues that stored pixel run on the whole of a longer
 // series: the stored run's input with the observations after its series
-// end. The
+// end, every statistics cutoff capped at the stored statistics end. The
 // pixel continues from its record when its input up to the stored series end
 // is the stored run's and the machine stopped where it can continue;
 // otherwise it is rerun under the stored statistics cutoff, and the status

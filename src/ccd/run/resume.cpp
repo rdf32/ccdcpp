@@ -1,6 +1,7 @@
 #include "resume.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -15,8 +16,9 @@ namespace ccd
 // Resume, on the run's side
 //
 // A resumed call refuses a stored call it cannot continue (check_resume(),
-// check_stored()) and reruns what it does not continue under the stored run's
-// statistics cutoff (capped()). Run::resumed() continues each pixel its record
+// check_stored()) and a configuration whose statistics cutoff it would change
+// unless told to (check_statistics()), and reruns what it does not continue
+// under the stored run's statistics cutoff (capped()). Run::resumed() continues each pixel its record
 // lets it continue, and every run with a record stores where its machine
 // stopped (fill_record()). The machine's side is Detector::resume()
 // (machine/detector.cpp).
@@ -61,6 +63,28 @@ bool drops_unambiguous(
     return unambiguous && kept_on_day <= 1;
 }
 
+// An ordinal day (0001-01-01 is 1) as "YYYY-MM-DD" (H. Hinnant's
+// civil_from_days, from 1970-01-01's ordinal, 719163); a day outside years 1
+// to 9999 as its ordinal.
+std::string iso_date(std::int64_t ordinal)
+{
+    if (ordinal < 1 || ordinal > 3652059)
+        return std::to_string(ordinal);
+    const std::int64_t z = ordinal - 719163 + 719468;
+    const std::int64_t era = z / 146097;
+    const std::int64_t doe = z - era * 146097;
+    const std::int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const std::int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const std::int64_t mp = (5 * doy + 2) / 153;
+    const std::int64_t d = doy - (153 * mp + 2) / 5 + 1;
+    const std::int64_t m = mp < 10 ? mp + 3 : mp - 9;
+    const std::int64_t y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+    char text[16];
+    std::snprintf(text, sizeof text, "%04lld-%02lld-%02lld", static_cast<long long>(y),
+                  static_cast<long long>(m), static_cast<long long>(d));
+    return text;
+}
+
 } // namespace
 
 void check_resume(
@@ -86,6 +110,20 @@ void check_stored(const PixelRecord& from, const std::vector<ChangeModel>& store
         throw std::invalid_argument(
             "the resume record has " + std::to_string(from.standard.final_segments) +
             " final segments; " + std::to_string(stored.size()) + " were given");
+}
+
+void check_statistics(const config::Shared& shared, std::int64_t end)
+{
+    if (shared.statistics_end <= end)
+        return;
+    const std::string statistics = shared.statistics_end == config::NO_STATISTICS_END
+        ? "cover the whole series"
+        : "run to " + iso_date(shared.statistics_end);
+    throw std::invalid_argument(
+        "this configuration's statistics " + statistics +
+        "; a resume keeps them at the stored run's end (" + iso_date(end) +
+        "). Pass freeze_statistics=True to resume that way, or rerun in full to use "
+        "the new dates in the statistics");
 }
 
 config::Shared capped(const config::Shared& shared, std::int64_t end)

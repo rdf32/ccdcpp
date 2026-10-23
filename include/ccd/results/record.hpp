@@ -132,11 +132,18 @@ enum class ResumeStatus : std::uint8_t
 // the cube: H x W entries each, one each for detect. A pixel without a
 // stored record (one that failed) has a default PixelRecord, whose
 // fingerprint does not match: it is rerun.
+//
+// A resume keeps every statistics cutoff at the header's statistics_end, so
+// that its kept decisions and its new ones rest on the same statistics. Where
+// that changes the configuration's (a cutoff after it, or none), the call
+// refuses unless `freeze_statistics` says to resume that way; a full rerun is
+// how the new dates enter the statistics.
 struct Resume
 {
     ResumeHeader header;
     std::vector<PixelRecord> records;
     std::vector<std::vector<ChangeModel>> segments;
+    bool freeze_statistics = false;
 };
 
 } // namespace ccd

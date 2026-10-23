@@ -156,10 +156,11 @@ class Unprofiled(unittest.TestCase):
     def test_signatures(self):
         positional = ["dates", "spectral", "qas"]
         for name, keywords in (
-            ("detect", ["input", "config", "record", "resume", "band_names", "trace",
-                        "reasons", "diagnostics"]),
-            ("detect_cube", ["input", "config", "threads", "record", "resume", "band_names",
-                             "trace_pixels", "masks", "reasons", "diagnostics"]),
+            ("detect", ["input", "config", "record", "resume", "freeze_statistics",
+                        "band_names", "trace", "reasons", "diagnostics"]),
+            ("detect_cube", ["input", "config", "threads", "record", "resume",
+                             "freeze_statistics", "band_names", "trace_pixels", "masks",
+                             "reasons", "diagnostics"]),
         ):
             with self.subTest(entry=name):
                 params = inspect.signature(getattr(ccdcpp, name)).parameters
@@ -171,6 +172,7 @@ class Unprofiled(unittest.TestCase):
                 self.assertEqual(params["config"].default, "ccdc")
                 self.assertIs(params["record"].default, False)
                 self.assertIsNone(params["resume"].default)
+                self.assertIs(params["freeze_statistics"].default, False)
                 self.assertIsNone(params["band_names"].default)
                 if "threads" in params:
                     self.assertEqual(params["threads"].default, 0)
