@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 - Unreleased
+## 1.0.0 - 2026-10-23
 
 The input says only how to read the data; the configuration says what to do with it, in
 physical units; the run translates once (0–1 reflectance × 10000 = the 0–10000 DN check, as in
