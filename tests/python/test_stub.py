@@ -5,7 +5,7 @@ usage: python test_stub.py <module_dir> <source_dir> [unittest args]
 <module_dir> holds the built extension; <source_dir> is the repository root. ctest runs this
 as `python_stub`. Every name the extension module defines is in its stub and every name the
 stub defines is in the extension; so are each class's members, each function's parameter names
-(as the extension's signature line gives them) and Input's fields.
+(as the extension's signature line gives them) and DataSpec's fields.
 """
 from __future__ import annotations
 
@@ -124,17 +124,17 @@ class TestStub(unittest.TestCase):
                                        for d in m.decorator_list):
                             continue
                         if method == "replace":
-                            continue   # **fields, as Input(); test_input_fields checks them
+                            continue   # **fields, as DataSpec(); test_spec_fields checks them
                         with self.subTest(method=f"{name}.{method}"):
                             self.assertEqual(stub_parameters(m),
                                              doc_parameters(getattr(cls, method)))
 
-    def test_input_fields(self):
-        # Input(**fields) and replace(**fields) take every field the Input has.
-        fields = {n for n, v in vars(ext.Input).items()
+    def test_spec_fields(self):
+        # DataSpec(**fields) and replace(**fields) take every field the DataSpec has.
+        fields = {n for n, v in vars(ext.DataSpec).items()
                   if not n.startswith("_") and not inspect.isroutine(v)}
         (node,) = [n for n in parse("ccdcpp.pyi").body
-                   if isinstance(n, ast.ClassDef) and n.name == "Input"]
+                   if isinstance(n, ast.ClassDef) and n.name == "DataSpec"]
         for method in ("__init__", "replace"):
             with self.subTest(method=method):
                 (m,) = [n for n in node.body if isinstance(n, ast.FunctionDef) and n.name == method]

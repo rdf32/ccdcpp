@@ -23,8 +23,8 @@ from .ccdcpp import (
     Affine,
     Algorithm,
     Chain,
+    DataSpec,
     GreenFilterScope,
-    Input,
     PreprocessPlan,
     ProcedurePlan,
     QaTable,
@@ -75,28 +75,28 @@ from . import results
 # The two calls: detect() on one pixel, detect_cube() on a cube, and
 # to_pixels() to read a cube's columns per pixel.
 #
-# Each takes the description of the data as input= (a ccdcpp.Input, or a
+# Each takes the description of the data as spec= (a ccdcpp.DataSpec, or a
 # SensorProfile that builds one) and the algorithm as config= (a
 # ccdcpp.Config, or a preset's name, built once), and calls the extension
-# function of the same name with the Input and the Config's compiled
+# function of the same name with the DataSpec and the Config's compiled
 # Algorithm.
 #------------------------------------------------------------------------------
 
-def _input(entry: str, input: object, spectral: _ArrayLike,
-           band_names: _Sequence[str] | None) -> tuple[Input, SensorProfile | None]:
-    """input= as the extension takes it: (the ccdcpp.Input, the profile or None)."""
-    if isinstance(input, SensorProfile):
-        input.check(spectral, band_names)
-        return input.input(), input
-    if isinstance(input, Input):
+def _spec(entry: str, spec: object, spectral: _ArrayLike,
+          band_names: _Sequence[str] | None) -> tuple[DataSpec, SensorProfile | None]:
+    """spec= as the extension takes it: (the ccdcpp.DataSpec, the profile or None)."""
+    if isinstance(spec, SensorProfile):
+        spec.check(spectral, band_names)
+        return spec.spec(), spec
+    if isinstance(spec, DataSpec):
         if band_names is not None:
             raise TypeError(
                 f"{entry}(): band_names= is checked against a profile's band names; "
-                f"pass input= a ccdcpp.SensorProfile")
-        return input, None
+                f"pass spec= a ccdcpp.SensorProfile")
+        return spec, None
     raise TypeError(
-        f"{entry}(): input is a ccdcpp.Input or a ccdcpp.SensorProfile, not "
-        f"{type(input).__name__}")
+        f"{entry}(): spec is a ccdcpp.DataSpec or a ccdcpp.SensorProfile, not "
+        f"{type(spec).__name__}")
 
 
 def _configuration(entry: str, config: object) -> Config:
@@ -118,7 +118,7 @@ def _configuration(entry: str, config: object) -> Config:
 
 
 def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
-           input: Input | SensorProfile, config: Config | str = "ccdc", record: bool = False,
+           spec: DataSpec | SensorProfile, config: Config | str = "ccdc", record: bool = False,
            resume: _Mapping[str, _Any] | None = None, freeze_statistics: bool = False,
            band_names: _Sequence[str] | None = None, trace: bool = False,
            reasons: bool = False, diagnostics: bool = False) -> results.PixelResult:
@@ -132,16 +132,16 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         (B, T) float64, float32 or uint16, one row per band, any non-negative
         strides.
     qas
-        (T,) uint8 QA codes, or raw uint8/uint16 QA when the input has a
+        (T,) uint8 QA codes, or raw uint8/uint16 QA when the spec has a
         qa_table.
-    input
-        What the data is: a ccdcpp.Input, or a ccdcpp.SensorProfile (see
-        ccdcpp.presets), whose input() is used. spectral is checked against a
+    spec
+        What the data is: a ccdcpp.DataSpec, or a ccdcpp.SensorProfile (see
+        ccdcpp.presets), whose spec() is used. spectral is checked against a
         profile's band count first (ValueError).
     config
         The algorithm: a ccdcpp.Config (ccdcpp.config()), or a preset's name
         ("ccdc", the default, built once and shared). The same configuration
-        means the same on every input. Checked when it is built (ValueError).
+        means the same on every data spec. Checked when it is built (ValueError).
     record
         True to also return the run's resume record: "resume", the pixel's
         record (a dict; see resume_schema()), and "resume_header", the
@@ -151,7 +151,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         An earlier detect() output made with record=True (or by a resume):
         continue that run on this longer series, the stored run's
         observations followed by new ones (ValueError if it ends sooner).
-        Refused (ValueError) unless the input and the configuration are the
+        Refused (ValueError) unless the data spec and the configuration are the
         earlier call's, as are another record format or results version. The
         result is detect()'s on the whole series, bit for bit, with every
         statistics cutoff capped at the first run's series end, plus "resume"
@@ -171,7 +171,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
         list, say), or None. Given, they must be the profile's band_names in
         the profile's order: a stack in another order raises ValueError
         before anything runs, where without it only the count is checked and
-        a misordered stack runs. Needs input= a profile (TypeError otherwise).
+        a misordered stack runs. Needs spec= a profile (TypeError otherwise).
     trace
         True to also return "trace": the pixel's run step by step, one dict
         per event (kind: transition, test, drop, segment or exit; phase and
@@ -195,9 +195,9 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     B entries in row order), processing_mask and num_bands, plus band_names
     (a tuple) with a profile.
     """
-    h, profile = _input("detect", input, spectral, band_names)
+    h, profile = _spec("detect", spec, spectral, band_names)
     cfg = _configuration("detect", config)
-    out = _extension.detect(dates, spectral, qas, input=h, config=cfg._algorithm,
+    out = _extension.detect(dates, spectral, qas, spec=h, config=cfg._algorithm,
                             record=record, resume=resume, freeze_statistics=freeze_statistics,
                             trace=trace, reasons=reasons, diagnostics=diagnostics)
     if profile is not None:
@@ -206,7 +206,7 @@ def detect(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
 
 
 def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
-                input: Input | SensorProfile, config: Config | str = "ccdc", threads: int = 0,
+                spec: DataSpec | SensorProfile, config: Config | str = "ccdc", threads: int = 0,
                 record: bool = False, resume: _Mapping[str, _Any] | None = None,
                 freeze_statistics: bool = False, band_names: _Sequence[str] | None = None,
                 trace_pixels: _Sequence[tuple[int, int]] | None = None,
@@ -220,9 +220,9 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     spectral
         (H, W, B, T) float64, float32 or uint16, any non-negative strides.
     qas
-        (H, W, T) uint8 QA codes, or raw uint8/uint16 QA when the input has a
+        (H, W, T) uint8 QA codes, or raw uint8/uint16 QA when the spec has a
         qa_table.
-    input, config, band_names, freeze_statistics
+    spec, config, band_names, freeze_statistics
         As detect().
     threads
         OpenMP threads; 0 for the library's default.
@@ -272,9 +272,9 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     pixel with no segment has no row (pixels_total - pixels_with_segments
     counts them). ccdcpp.to_pixels() reads it per pixel.
     """
-    h, profile = _input("detect_cube", input, spectral, band_names)
+    h, profile = _spec("detect_cube", spec, spectral, band_names)
     cfg = _configuration("detect_cube", config)
-    out = _extension.detect_cube(dates, spectral, qas, input=h, config=cfg._algorithm,
+    out = _extension.detect_cube(dates, spectral, qas, spec=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
                                  freeze_statistics=freeze_statistics, trace_pixels=trace_pixels, masks=masks, reasons=reasons,
                                  diagnostics=diagnostics)
@@ -283,12 +283,12 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     return out
 
 
-def plan_of(config: Config | str, input: Input | SensorProfile) -> PreprocessPlan:
+def plan_of(config: Config | str, spec: DataSpec | SensorProfile) -> PreprocessPlan:
     """The ccdcpp.PreprocessPlan ``config`` (a ccdcpp.Config or a preset's name) runs on
-    ``input`` (a ccdcpp.Input or a SensorProfile): its preprocess section resolved against
-    the input, the QA code names as its codes, the bands by role as its rows, the bounds in its
-    units. For inspection: ``print(ccdcpp.plan_of("ccdc", ccdcpp.Input()))``."""
-    h = input.input() if isinstance(input, SensorProfile) else input
+    ``spec`` (a ccdcpp.DataSpec or a SensorProfile): its preprocess section resolved against
+    the spec, the QA code names as its codes, the bands by role as its rows, the bounds in its
+    units. For inspection: ``print(ccdcpp.plan_of("ccdc", ccdcpp.DataSpec()))``."""
+    h = spec.spec() if isinstance(spec, SensorProfile) else spec
     return _extension.plan_of(_configuration("plan_of", config)._algorithm, h)
 
 

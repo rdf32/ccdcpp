@@ -2,7 +2,7 @@
 
 Import it after _harness.use_package(): it builds its inputs with the package.
 
-  * The default Input's QA codes, and START.
+  * The default DataSpec's QA codes, and START.
   * pyccd's reference pixel (tests/ccd/data) and a corpus cube on its dates, one pixel per
     procedure, in DN (CUBE_DN) and in the physical presets' units (CUBE_PHYS), with its
     QA codes (CODES).

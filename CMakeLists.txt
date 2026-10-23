@@ -587,7 +587,7 @@ if(CCD_BUILD_PYTHON)
 
         bindings/module.cpp
         bindings/config.cpp
-        bindings/input.cpp
+        bindings/data_spec.cpp
         bindings/qa_tables.cpp
         bindings/preprocess.cpp
         bindings/arrays.cpp

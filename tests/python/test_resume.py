@@ -142,11 +142,11 @@ class OnePixel(unittest.TestCase):
                 n = upto(dates, cut)
                 where = f"seed {seed} cut {cut}"
                 stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
-                                    input=ext.Input(), record=True)
+                                    spec=ext.DataSpec(), record=True)
                 self.assertEqual(header_of(stored)["series_end"], dates[n - 1])
-                again = ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored,
+                again = ext.detect(dates, spectral, qas, spec=ext.DataSpec(), resume=stored,
                                    freeze_statistics=True)
-                full = ext.detect(dates, spectral, qas, input=ext.Input(),
+                full = ext.detect(dates, spectral, qas, spec=ext.DataSpec(),
                                   config=capped(dates[n - 1]), record=True)
 
                 self.assertEqual(status_of(again), "resumed", where)
@@ -159,12 +159,12 @@ class OnePixel(unittest.TestCase):
         dates, spectral, qas = pixel(3)
         n = upto(dates, CUT_2019)
         stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
-                            input=ext.Input(), record=True)
+                            spec=ext.DataSpec(), record=True)
         changed = spectral.copy()
         changed[3, int(np.flatnonzero(qas[:n] == 0)[50])] += 1.0
-        again = ext.detect(dates, changed, qas, input=ext.Input(), resume=stored,
+        again = ext.detect(dates, changed, qas, spec=ext.DataSpec(), resume=stored,
                            freeze_statistics=True)
-        full = ext.detect(dates, changed, qas, input=ext.Input(),
+        full = ext.detect(dates, changed, qas, spec=ext.DataSpec(),
                           config=capped(dates[n - 1]))
         self.assertEqual(status_of(again), "rerun_input_changed")
         assert_same_models(self, again["models"], full["models"], "changed")
@@ -173,22 +173,22 @@ class OnePixel(unittest.TestCase):
         dates, spectral, qas = pixel(1)
         n = upto(dates, CUT_2019)
         stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
-                            input=ext.Input(), record=True)
+                            spec=ext.DataSpec(), record=True)
 
-        def call(h: ext.Input | None = None, header: Mapping[str, Any] | None = None,
+        def call(h: ext.DataSpec | None = None, header: Mapping[str, Any] | None = None,
                  until: int | None = None,
                  config: ext.Algorithm | None = None) -> PixelResult:
             m = dates.size if until is None else until
             return ext.detect(dates[:m], spectral[:, :m], qas[:m],
-                              input=h or ext.Input(), config=config,
+                              spec=h or ext.DataSpec(), config=config,
                               resume=dict(stored,
                                           resume_header=header or header_of(stored)),
                               freeze_statistics=True)
 
-        other = ext.Input(qa_occlusion=ext.Input().qa_occlusion + 1)
+        other = ext.DataSpec(qa_occlusion=ext.DataSpec().qa_occlusion + 1)
         with self.assertRaisesRegex(ValueError, "another data spec or configuration"):
             call(h=other)
-        decoding = ext.Input(qa_table=ext.qa_tables.landsat_c1_pixel_qa())
+        decoding = ext.DataSpec(qa_table=ext.qa_tables.landsat_c1_pixel_qa())
         with self.assertRaisesRegex(ValueError, "another data spec or configuration"):
             call(h=decoding)
         stricter = ext._config_preset("ccdc")
@@ -212,13 +212,13 @@ class OnePixel(unittest.TestCase):
                 if key == "magnitude":
                     bad["exit"] = 6   # SeriesEnd
                 with self.assertRaises(ValueError):
-                    ext.detect(dates, spectral, qas, input=ext.Input(),
+                    ext.detect(dates, spectral, qas, spec=ext.DataSpec(),
                                resume=dict(stored, resume=bad), freeze_statistics=True)
 
         # An output without a record.
-        plain = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input())
+        plain = ext.detect(dates[:n], spectral[:, :n], qas[:n], spec=ext.DataSpec())
         with self.assertRaisesRegex(ValueError, "record=True"):
-            ext.detect(dates, spectral, qas, input=ext.Input(), resume=plain)
+            ext.detect(dates, spectral, qas, spec=ext.DataSpec(), resume=plain)
 
 
 def refusal(stored_end: int, config_end: int | None = None) -> str:
@@ -237,11 +237,11 @@ class FreezeStatistics(unittest.TestCase):
     def test_a_pixel_resume_under_no_cutoff_is_refused(self):
         dates, spectral, qas = pixel(2)
         n = upto(dates, CUT_2019)
-        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input(), record=True)
+        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], spec=ext.DataSpec(), record=True)
         with self.assertRaisesRegex(ValueError, f"^{re.escape(refusal(int(dates[n - 1])))}$"):
-            ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored)
+            ext.detect(dates, spectral, qas, spec=ext.DataSpec(), resume=stored)
         with self.assertRaisesRegex(ValueError, "cover the whole series"):
-            ext.detect(dates, spectral, qas, input=ext.Input(), resume=stored,
+            ext.detect(dates, spectral, qas, spec=ext.DataSpec(), resume=stored,
                        freeze_statistics=False)
 
     def test_a_later_cutoff_is_refused_by_its_date(self):
@@ -250,15 +250,15 @@ class FreezeStatistics(unittest.TestCase):
         later = ext._config_preset("ccdc")
         later["shared"]["statistics_end"] = CUT_2019
         config = ext.Algorithm(later)
-        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input(),
+        stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], spec=ext.DataSpec(),
                             config=config, record=True)
         message = refusal(int(dates[n - 1]), CUT_2019)
         self.assertIn("run to 2019-01-01", message)
         with self.assertRaisesRegex(ValueError, f"^{re.escape(message)}$"):
-            ext.detect(dates, spectral, qas, input=ext.Input(), config=config, resume=stored)
-        again = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+            ext.detect(dates, spectral, qas, spec=ext.DataSpec(), config=config, resume=stored)
+        again = ext.detect(dates, spectral, qas, spec=ext.DataSpec(), config=config,
                            resume=stored, freeze_statistics=True)
-        full = ext.detect(dates, spectral, qas, input=ext.Input(), config=capped(dates[n - 1]))
+        full = ext.detect(dates, spectral, qas, spec=ext.DataSpec(), config=capped(dates[n - 1]))
         assert_same_models(self, again["models"], full["models"], "frozen")
 
     def test_a_cutoff_at_or_before_the_stored_end_needs_no_flag(self):
@@ -269,13 +269,13 @@ class FreezeStatistics(unittest.TestCase):
             dates, spectral, qas = pixel(seed)
             n = upto(dates, CUT_2019)
             where = f"seed {seed}"
-            stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], input=ext.Input(),
+            stored = ext.detect(dates[:n], spectral[:, :n], qas[:n], spec=ext.DataSpec(),
                                 config=config, record=True)
-            again = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+            again = ext.detect(dates, spectral, qas, spec=ext.DataSpec(), config=config,
                                resume=stored)
-            frozen = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+            frozen = ext.detect(dates, spectral, qas, spec=ext.DataSpec(), config=config,
                                 resume=stored, freeze_statistics=True)
-            full = ext.detect(dates, spectral, qas, input=ext.Input(), config=config,
+            full = ext.detect(dates, spectral, qas, spec=ext.DataSpec(), config=config,
                               record=True)
             assert_same_models(self, again["models"], full["models"], where)
             assert_same_models(self, frozen["models"], full["models"], where)
@@ -286,10 +286,10 @@ class FreezeStatistics(unittest.TestCase):
         dates, spectral, qas = cube(range(60, 66), 2, 3)
         n = upto(dates, CUT_2019)
         stored = ext.detect_cube(dates[:n], spectral[..., :n], qas[..., :n],
-                                 input=ext.Input(), threads=2, record=True)
+                                 spec=ext.DataSpec(), threads=2, record=True)
         with self.assertRaisesRegex(ValueError, f"^{re.escape(refusal(int(dates[n - 1])))}$"):
-            ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=2, resume=stored)
-        again = ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=2,
+            ext.detect_cube(dates, spectral, qas, spec=ext.DataSpec(), threads=2, resume=stored)
+        again = ext.detect_cube(dates, spectral, qas, spec=ext.DataSpec(), threads=2,
                                 resume=stored, freeze_statistics=True)
         self.assertEqual(counts_of(again), {"resumed": 6, "rerun_input_changed": 0, "failed": 0})
 
@@ -333,14 +333,14 @@ class Cube(unittest.TestCase):
             for threads in (1, 3):
                 where = f"cut {cut} threads {threads}"
                 stored = ext.detect_cube(
-                    dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
+                    dates[:n], spectral[..., :n], qas[..., :n], spec=ext.DataSpec(),
                     threads=threads, record=True)
                 self.assertEqual(records_of(stored)["row"].size, 12)
-                again = ext.detect_cube(dates, spectral, qas, input=ext.Input(),
+                again = ext.detect_cube(dates, spectral, qas, spec=ext.DataSpec(),
                                         threads=threads, resume=stored,
                                         freeze_statistics=True)
                 full = ext.detect_cube(
-                    dates, spectral, qas, input=ext.Input(), threads=threads, record=True,
+                    dates, spectral, qas, spec=ext.DataSpec(), threads=threads, record=True,
                     config=capped(dates[n - 1]))
 
                 a, b = segment_columns(again), segment_columns(full)
@@ -357,14 +357,14 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(20, 32), 3, 4)
         n = upto(dates, CUT_2019)
         stored = ext.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
+            dates[:n], spectral[..., :n], qas[..., :n], spec=ext.DataSpec(),
             threads=2, record=True)
         again = ext.detect_cube(
-            dates, spectral, qas, input=ext.Input(), threads=2,
+            dates, spectral, qas, spec=ext.DataSpec(), threads=2,
             resume={**nlcd_blanked(stored), "resume": records_of(stored),
                     "resume_header": header_of(stored)},
             freeze_statistics=True)
-        full = ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=2,
+        full = ext.detect_cube(dates, spectral, qas, spec=ext.DataSpec(), threads=2,
                                config=capped(dates[n - 1]))
         a, b = nlcd_blanked(again), nlcd_blanked(full)
         for key in SEGMENT_COLUMNS:
@@ -374,11 +374,11 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(40, 46), 2, 3)
         n = upto(dates, CUT_2019)
         stored = ext.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
+            dates[:n], spectral[..., :n], qas[..., :n], spec=ext.DataSpec(),
             threads=1, record=True)
         changed = spectral.copy()
         changed[1, 2, 2, int(np.flatnonzero(qas[1, 2, :n] == 0)[30])] += 5.0
-        again = ext.detect_cube(dates, changed, qas, input=ext.Input(), threads=1,
+        again = ext.detect_cube(dates, changed, qas, spec=ext.DataSpec(), threads=1,
                                 resume=stored, freeze_statistics=True)
         self.assertEqual(counts_of(again), {"resumed": 5, "rerun_input_changed": 1, "failed": 0})
         self.assertEqual(int(statuses_of(again)[1 * 3 + 2]), 1)
@@ -387,7 +387,7 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = cube(range(50, 56), 2, 3)
         n = upto(dates, CUT_2019)
         stored = ext.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
+            dates[:n], spectral[..., :n], qas[..., :n], spec=ext.DataSpec(),
             threads=1, record=True)
         segments = segment_columns(stored)
         records = columns(records_of(stored))
@@ -395,7 +395,7 @@ class Cube(unittest.TestCase):
         def call(resume: Mapping[str, Any] | None = None,
                  segs: Mapping[str, Any] | None = None) -> CubeColumns:
             return ext.detect_cube(
-                dates, spectral, qas, input=ext.Input(), threads=1,
+                dates, spectral, qas, spec=ext.DataSpec(), threads=1,
                 resume={**(segs or segments), "resume": resume or records,
                         "resume_header": header_of(stored)},
                 freeze_statistics=True)
@@ -442,23 +442,23 @@ class Cube(unittest.TestCase):
         dates, spectral, qas = pixel(1)
         n = upto(dates, CUT_2019)
         stored = ext.detect(dates[:n], spectral[:, :n], qas[:n],
-                            input=ext.Input(), record=True)
+                            spec=ext.DataSpec(), record=True)
         with self.assertRaisesRegex(ValueError, message):
-            ext.detect(dates, spectral, qas, input=ext.Input(),
+            ext.detect(dates, spectral, qas, spec=ext.DataSpec(),
                        resume=dict(stored, resume_header=old(header_of(stored))))
 
         dates, spectral, qas = cube(range(50, 56), 2, 3)
         stored_cube = ext.detect_cube(
-            dates[:n], spectral[..., :n], qas[..., :n], input=ext.Input(),
+            dates[:n], spectral[..., :n], qas[..., :n], spec=ext.DataSpec(),
             threads=1, record=True)
         with self.assertRaisesRegex(ValueError, message):
-            ext.detect_cube(dates, spectral, qas, input=ext.Input(), threads=1,
+            ext.detect_cube(dates, spectral, qas, spec=ext.DataSpec(), threads=1,
                             resume=dict(stored_cube,
                                         resume_header=old(header_of(stored_cube))))
 
     def test_the_schema_names_the_columns(self):
         dates, spectral, qas = cube(range(2), 1, 2)
-        out = ext.detect_cube(dates, spectral, qas, input=ext.Input(),
+        out = ext.detect_cube(dates, spectral, qas, spec=ext.DataSpec(),
                               threads=1, record=True)
         schema = ext.resume_schema()
         records = columns(records_of(out))

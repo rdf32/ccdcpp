@@ -110,7 +110,7 @@ Arrays<Spectral, Qa> take(
 {
     if (!with_table && py::isinstance<py::array_t<std::uint16_t>>(qas_obj))
         throw py::type_error(
-            "qas is uint16, which holds raw QA values; give the input a qa_table "
+            "qas is uint16, which holds raw QA values; give the data spec a qa_table "
             "(see ccdcpp.qa_tables) to decode them, or pass uint8 QA codes"
         );
 

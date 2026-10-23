@@ -52,12 +52,12 @@ def cube(bands: int, timesteps: int, dtype: DTypeLike = np.float64, dates: int |
 
 
 class Options(TypedDict):
-    input: ext.Input
+    spec: ext.DataSpec
 
 
 def options() -> Options:
-    """The default input, as the entry points' keyword."""
-    return {"input": ext.Input()}
+    """The default data spec, as the entry points' keyword."""
+    return {"spec": ext.DataSpec()}
 
 
 def preset(**changes: object) -> dict[str, Any]:
@@ -90,10 +90,10 @@ def algorithm(**changes: object) -> ext.Algorithm:
 
 
 def resolved(config: Mapping[str, Any] | None = None,
-             input: ext.Input | None = None) -> dict[str, Any]:
-    """The configuration resolved against the input (default Input())."""
+             spec: ext.DataSpec | None = None) -> dict[str, Any]:
+    """The configuration resolved against the spec (default DataSpec())."""
     return ext._config_resolve(preset() if config is None else config,
-                               ext.Input() if input is None else input)
+                               ext.DataSpec() if spec is None else spec)
 
 
 class BandCount(unittest.TestCase):
@@ -192,11 +192,11 @@ TEN_ROLES = ["blue","green", "red", "red_edge_1", "red_edge_2", "red_edge_3", "n
              "other", "swir1", "swir2"]
 
 
-def ten_band_layout() -> ext.Input:
+def ten_band_layout() -> ext.DataSpec:
     """A 10-band layout without thermal, which passes validation: the
     configuration's detection bands are rows 1, 2, 6, 8, 9 of it, its Tmask
     bands 1 and 8."""
-    return ext.Input(roles=TEN_ROLES)
+    return ext.DataSpec(roles=TEN_ROLES)
 
 
 def noisy(bands: int, timesteps: int, seed: int = 1) -> Series:
@@ -207,8 +207,8 @@ def noisy(bands: int, timesteps: int, seed: int = 1) -> Series:
 
 
 class BandLayout(unittest.TestCase):
-    def test_the_default_input_is_landsats_layout(self):
-        h = ext.Input()
+    def test_the_default_spec_is_landsats_layout(self):
+        h = ext.DataSpec()
         self.assertEqual(h.bands(), 7)
         self.assertEqual(h.roles, ["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
         self.assertEqual(preset()["shared"]["detection_bands"],
@@ -233,7 +233,7 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(ext.CCD_MAX_BANDS, 32)
 
     def test_immutable_by_keyword(self):
-        h = ext.Input(reflectance_scale=1.0, roles=["blue", "green", "red"], saturation_code=None)
+        h = ext.DataSpec(reflectance_scale=1.0, roles=["blue", "green", "red"], saturation_code=None)
         self.assertEqual((h.reflectance_scale, h.roles, h.saturation_code), (1.0, ["blue", "green", "red"],
                                                                       None))
         for name in ("roles", "reflectance_scale", "qa_clear", "qa_table", "saturation_code"):
@@ -242,7 +242,7 @@ class BandLayout(unittest.TestCase):
                     setattr(h, name, getattr(h, name))
         h.roles.append("nir")   # a copy
         self.assertEqual(h.roles, ["blue", "green", "red"])
-        # replace() is a new input; the old one is unchanged.
+        # replace() is a new spec; the old one is unchanged.
         r = h.replace(reflectance_scale=10000.0, qa_snow=7)
         self.assertEqual((r.reflectance_scale, r.qa_snow, r.roles), (10000.0, 7, h.roles))
         self.assertEqual((h.reflectance_scale, h.qa_snow), (1.0, 3))
@@ -250,26 +250,26 @@ class BandLayout(unittest.TestCase):
         self.assertEqual(r.replace(reflectance_scale=1.0, qa_snow=3), h)
         self.assertEqual(hash(r.replace(reflectance_scale=1.0, qa_snow=3)), hash(h))
         self.assertNotEqual(r, h)
-        self.assertEqual(ext.Input(), ext.Input().replace())
+        self.assertEqual(ext.DataSpec(), ext.DataSpec().replace())
         # Keywords only, each a field, each of its type.
         with self.assertRaises(TypeError):
-            ext.Input(1.0)  # pyright: ignore[reportCallIssue]  # positional, refused
-        with self.assertRaisesRegex(TypeError, "Input\\(\\) has no field 'alpha'; the fields are qa_fill"):
-            ext.Input(alpha=1.0)  # pyright: ignore[reportCallIssue]  # no such field
-        with self.assertRaisesRegex(TypeError, "Input.replace\\(\\) has no field 'saturation_bands'"):
+            ext.DataSpec(1.0)  # pyright: ignore[reportCallIssue]  # positional, refused
+        with self.assertRaisesRegex(TypeError, "DataSpec\\(\\) has no field 'alpha'; the fields are qa_fill"):
+            ext.DataSpec(alpha=1.0)  # pyright: ignore[reportCallIssue]  # no such field
+        with self.assertRaisesRegex(TypeError, "DataSpec.replace\\(\\) has no field 'saturation_bands'"):
             h.replace(saturation_bands=[0])  # pyright: ignore[reportCallIssue]  # no such field
         with self.assertRaisesRegex(TypeError, "qa_clear is 300, which it cannot hold"):
-            ext.Input(qa_clear=300)
+            ext.DataSpec(qa_clear=300)
         with self.assertRaisesRegex(TypeError, "roles is 'green'"):
-            ext.Input(roles="green")
+            ext.DataSpec(roles="green")
 
     def test_informational_codes_say_so(self):
         for name in ("qa_cirrus1", "qa_cirrus2", "qa_occlusion"):
             with self.subTest(name=name):
-                self.assertIn("Informational", getattr(ext.Input, name).__doc__)
+                self.assertIn("Informational", getattr(ext.DataSpec, name).__doc__)
         for name in ("qa_fill", "qa_clear", "qa_water", "qa_shadow", "qa_snow", "qa_cloud"):
             with self.subTest(name=name):
-                self.assertNotIn("Informational", getattr(ext.Input, name).__doc__)
+                self.assertNotIn("Informational", getattr(ext.DataSpec, name).__doc__)
 
     def test_lists_keep_their_order(self):
         cfg = preset(shared__detection_bands=[5, 1, 3])
@@ -284,18 +284,18 @@ class BandLayout(unittest.TestCase):
                     resolved(preset(preprocess__band_range__bands=bands))
 
     def test_explicit_landsat_layout_equals_default(self):
-        h = ext.Input(roles=["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
+        h = ext.DataSpec(roles=["blue", "green", "red", "nir", "swir1", "swir2", "thermal"])
         args = noisy(7, 120)
         by_rows = algorithm(window_screen__bands=[1, 4], shared__detection_bands=[1, 2, 3, 4, 5],
                             preprocess__band_range__bands=[0, 1, 2, 3, 4, 5])
         self.assertEqual(
-            repr(ext.detect(*args, input=h, config=by_rows)),
+            repr(ext.detect(*args, spec=h, config=by_rows)),
             repr(ext.detect(*args, **options())))
 
     def test_outputs_follow_the_band_count(self):
         h, cfg = ten_band_layout(), ext.Algorithm(preset())
         d, s, q = noisy(10, 120)
-        out = ext.detect(d, s, q, input=h, config=cfg)
+        out = ext.detect(d, s, q, spec=h, config=cfg)
         self.assertEqual(out["num_bands"], 10)
         self.assertGreater(len(out["models"]), 0)
         for m in out["models"]:
@@ -305,7 +305,7 @@ class BandLayout(unittest.TestCase):
 
         cube_s = np.broadcast_to(s, (2, 3, 10, 120)).copy()
         cube_q = np.zeros((2, 3, 120), dtype=np.uint8)
-        cols = ext.detect_cube(d, cube_s, cube_q, input=h, threads=1, config=cfg)
+        cols = ext.detect_cube(d, cube_s, cube_q, spec=h, threads=1, config=cfg)
         n = len(cols["row"])
         self.assertGreater(n, 0)
         self.assertEqual(cols["num_bands"], 10)
@@ -321,10 +321,10 @@ class LayoutValidation(unittest.TestCase):
     """Each rule of ccd::validate() and of the configuration's schemas, as
     ValueError, before any pixel runs."""
 
-    def broken(self, **fields: Any) -> ext.Input:
+    def broken(self, **fields: Any) -> ext.DataSpec:
         return ten_band_layout().replace(**fields)
 
-    def assert_rejected(self, h: ext.Input, bands: int, expected: str,
+    def assert_rejected(self, h: ext.DataSpec, bands: int, expected: str,
                         config: Mapping[str, Any] | None = None) -> None:
         d, s, q = inputs(bands, 40)
         cube_s = np.broadcast_to(s, (2, 3, bands, 40)).copy()
@@ -333,9 +333,9 @@ class LayoutValidation(unittest.TestCase):
         def compiled() -> ext.Algorithm | None:
             return None if config is None else ext.Algorithm(config)
         calls = {
-            "detect": lambda: ext.detect(d, s, q, input=h, config=compiled()),
+            "detect": lambda: ext.detect(d, s, q, spec=h, config=compiled()),
             "detect_cube":
-                lambda: ext.detect_cube(d, cube_s, cube_q, input=h, threads=1,
+                lambda: ext.detect_cube(d, cube_s, cube_q, spec=h, threads=1,
                                         config=compiled()),
         }
         for name, call in calls.items():
@@ -362,7 +362,7 @@ class LayoutValidation(unittest.TestCase):
             self.assert_rejected(h, bands, expected)
 
         # The detection bands are the configuration's shared value, checked
-        # against the input's bands.
+        # against the spec's bands.
         detection = "shared value 'detection_bands' "
         for bands, expected in (([1, 10], "holds band 10; the data spec has 10 bands"),
                                 ([1, 2, 1], "holds band 1 twice"),
@@ -373,7 +373,7 @@ class LayoutValidation(unittest.TestCase):
                                  config=preset(shared__detection_bands=bands))
 
         # The Tmask bands are window_screen's parameter, checked against the
-        # input's bands.
+        # spec's bands.
         tmask = "window_screen 'tmask' parameter 'bands' "
         for bands, expected in (([1, 12], "holds band 12; the data spec has 10 bands"),
                                 ([8, 8], "holds band 8 twice"),
@@ -381,7 +381,7 @@ class LayoutValidation(unittest.TestCase):
             self.assert_rejected(self.broken(), 10, tmask + expected,
                                  config=preset(window_screen__bands=bands))
 
-        # band_range's bands are its parameter, checked against the input's
+        # band_range's bands are its parameter, checked against the spec's
         # bands.
         band = "preprocess standard step 2 'band_range' parameter 'bands' "
         for bands, expected in (([0, 31], "holds band 31; the data spec has 10 bands"),
@@ -417,7 +417,7 @@ class LayoutValidation(unittest.TestCase):
             (dict(change_test__peek_size=1), chi2 + "'peek_size' is 1; it must be at least 2"),
         ]
         for changes, expected in cases:
-            self.assert_rejected(ext.Input(), 7, expected, config=preset(**changes))
+            self.assert_rejected(ext.DataSpec(), 7, expected, config=preset(**changes))
 
 
 class CadenceParameters(unittest.TestCase):
@@ -445,7 +445,7 @@ class CadenceParameters(unittest.TestCase):
         ("shared", "change_probability"): "none",
     }
 
-    # The Input's fields: the data's band layout, QA codes and units.
+    # The DataSpec's fields: the data's band layout, QA codes and units.
     INPUT_FIELDS = {
         "roles", "bands", "index", "digest", "replace", "reflectance_scale",
         "reflectance_offset", "saturation_code", "thermal_saturation_code",
@@ -479,10 +479,10 @@ class CadenceParameters(unittest.TestCase):
                 self.assertTrue(param["doc"])
                 self.assertEqual(param["default"], self.DEFAULTS[(stage, name)])
 
-    def test_the_input_describes_the_data_only(self):
-        # The algorithm's parameters are the configuration's; the Input holds
+    def test_the_spec_describes_the_data_only(self):
+        # The algorithm's parameters are the configuration's; the DataSpec holds
         # the data's fields and takes no others.
-        h = ext.Input()
+        h = ext.DataSpec()
         self.assertEqual({n for n in dir(h) if not n.startswith("_")}, self.INPUT_FIELDS)
         tree = preset()
         names = set(tree["shared"])
@@ -494,22 +494,22 @@ class CadenceParameters(unittest.TestCase):
                 with self.assertRaises(AttributeError):
                     setattr(h, name, 1)
 
-    def test_input_equality_and_hash_agree(self):
+    def test_spec_equality_and_hash_agree(self):
         # -0 and +0 are one value: equal Inputs hash alike.
-        zero = ext.Input(reflectance_offset=0.0, saturation_code=0.0)
-        negative = ext.Input(reflectance_offset=-0.0, saturation_code=-0.0)
+        zero = ext.DataSpec(reflectance_offset=0.0, saturation_code=0.0)
+        negative = ext.DataSpec(reflectance_offset=-0.0, saturation_code=-0.0)
         self.assertEqual(zero, negative)
         self.assertEqual(hash(zero), hash(negative))
         self.assertEqual(len({zero, negative}), 1)
-        self.assertNotEqual(hash(zero), hash(ext.Input(reflectance_offset=1.0)))
+        self.assertNotEqual(hash(zero), hash(ext.DataSpec(reflectance_offset=1.0)))
 
     def test_a_nan_saturation_code_is_refused(self):
         nan = float("nan")
-        for field, h in (("saturation_code", ext.Input(saturation_code=nan)),
-                         ("thermal_saturation_code", ext.Input(thermal_saturation_code=nan))):
+        for field, h in (("saturation_code", ext.DataSpec(saturation_code=nan)),
+                         ("thermal_saturation_code", ext.DataSpec(thermal_saturation_code=nan))):
             with self.subTest(field=field):
                 with self.assertRaisesRegex(ValueError, f"^{field} is nan; it is a number"):
-                    ext.detect(*noisy(7, 120), input=h)
+                    ext.detect(*noisy(7, 120), spec=h)
 
     def test_chi2_quantile_is_the_change_threshold(self):
         tree = resolved()
@@ -532,7 +532,7 @@ class CadenceParameters(unittest.TestCase):
                            for (stage, name), value in self.DEFAULTS.items()})
         for args in (noisy(7, 120), noisy(7, 400, seed=3)):
             self.assertEqual(
-                repr(ext.detect(*args, input=ext.Input(), config=cfg)),
+                repr(ext.detect(*args, spec=ext.DataSpec(), config=cfg)),
                 repr(ext.detect(*args, **options())))
 
     def test_peek_reference_days_reaches_the_procedure(self):
@@ -548,7 +548,7 @@ class CadenceParameters(unittest.TestCase):
         q = np.zeros(500, dtype=np.uint8)
 
         def breaks(config: ext.Algorithm | None) -> float:
-            out = ext.detect(d, s, q, input=ext.Input(), config=config)
+            out = ext.detect(d, s, q, spec=ext.DataSpec(), config=config)
             return sum(m["change_probability"] for m in out["models"])
 
         self.assertEqual(breaks(None), 1)
@@ -581,7 +581,7 @@ class BoundFlags(unittest.TestCase):
         d, s, q = inputs(7, 40)
         s[band, :len(values)] = values
         config = algorithm(**{"preprocess__" + k: v for k, v in flags.items()})
-        return ext.detect(d, s, q, input=ext.Input(),
+        return ext.detect(d, s, q, spec=ext.DataSpec(),
                           config=config)["processing_mask"][:len(values)].tolist()
 
     def test_reflectance_bounds(self):
@@ -647,7 +647,7 @@ class GreenFilterScope(unittest.TestCase):
     def detect_mask(self, pixel: Series, scope: ext.GreenFilterScope) -> NDArray[np.uint8]:
         config = algorithm(shared__statistics_end=self.STATISTICS_END,
                            preprocess__green_median__scope=self.NAMES[scope.name])
-        out = ext.detect(*pixel, input=ext.Input(), config=config)
+        out = ext.detect(*pixel, spec=ext.DataSpec(), config=config)
         self.assertEqual({m["curve_qa"] for m in out["models"]}, {44})
         return out["processing_mask"]
 
@@ -704,9 +704,9 @@ class DateOrder(unittest.TestCase):
     def test_raw_qa(self):
         d, s, _ = inputs(7, 40)
         raw = np.zeros(40, dtype=np.uint16)
-        h = ext.Input(qa_table=ext.qa_tables.landsat_c2_qa_pixel())
+        h = ext.DataSpec(qa_table=ext.qa_tables.landsat_c2_qa_pixel())
         with self.assertRaises(ValueError):
-            ext.detect(self.swapped(d, 5), s, raw, input=h)
+            ext.detect(self.swapped(d, 5), s, raw, spec=h)
 
     def test_cubes(self):
         for dtype in (np.float64, np.float32, np.uint16):

@@ -366,7 +366,7 @@ ccd::PixelRecord record_from_python(const py::dict& d)
 //   coefficients        float64 [n, B, 7]  (band, coefficient)
 //   rmse                float64 [n, B]
 //   magnitude           float64 [n, B]
-//   num_bands             int              B, the input's band count
+//   num_bands             int              B, the spec's band count
 //   failures              list of (row, col, message)
 //   threads               int              what actually ran
 //   pixels_total          int              H * W
@@ -387,7 +387,7 @@ ccd::PixelRecord record_from_python(const py::dict& d)
 // array, and `failures` stays empty. A caller that needs every pixel
 // present compares pixels_total with pixels_with_segments.
 //
-// Band order is the input's row order, B = Input.bands() rows; under the
+// Band order is the spec's row order, B = DataSpec.bands() rows; under the
 // default layout that is blue, green, red, nir, swir1, swir2, thermal.
 // Coefficient order is HarmonicBasis's column order (slope, cos1, sin1,
 // cos2, sin2, cos3, sin3); the intercept is not among them, hence its own

@@ -1,6 +1,6 @@
-"""The helpers the profile tests share (test_profiles_*.py): what a profile's input and
+"""The helpers the profile tests share (test_profiles_*.py): what a profile's spec and
 configuration resolve to, a profile's rows permuted and the outputs put back, and synthetic
-HLS and Sentinel-2 series with each preset's input written out by hand.
+HLS and Sentinel-2 series with each preset's spec written out by hand.
 
 Import it after _harness.use_package().
 """
@@ -32,10 +32,10 @@ def fields(obj: object) -> dict[str, Any]:
     }
 
 
-def qa_table_of(input: ccdcpp.Input) -> ccdcpp.QaTable:
-    """The QA table of an input that has one."""
-    assert input.qa_table is not None
-    return input.qa_table
+def qa_table_of(spec: ccdcpp.DataSpec) -> ccdcpp.QaTable:
+    """The QA table of a data spec that has one."""
+    assert spec.qa_table is not None
+    return spec.qa_table
 
 
 def doc_of(obj: object) -> str:
@@ -44,17 +44,17 @@ def doc_of(obj: object) -> str:
     return obj.__doc__
 
 
-def resolved(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> dict[str, Any]:
-    """``cfg`` resolved against ``input`` (default ccdcpp.Input())."""
-    return cfg.resolve(ccdcpp.Input() if input is None else input)
+def resolved(cfg: ccdcpp.Config, spec: ccdcpp.DataSpec | None = None) -> dict[str, Any]:
+    """``cfg`` resolved against ``spec`` (default ccdcpp.DataSpec())."""
+    return cfg.resolve(ccdcpp.DataSpec() if spec is None else spec)
 
 
-def change_threshold(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> float:
-    return resolved(cfg, input)["change_test"]["change_threshold"]
+def change_threshold(cfg: ccdcpp.Config, spec: ccdcpp.DataSpec | None = None) -> float:
+    return resolved(cfg, spec)["change_test"]["change_threshold"]
 
 
-def outlier_threshold(cfg: ccdcpp.Config, input: ccdcpp.Input | None = None) -> float:
-    return resolved(cfg, input)["outlier"]["threshold"]
+def outlier_threshold(cfg: ccdcpp.Config, spec: ccdcpp.DataSpec | None = None) -> float:
+    return resolved(cfg, spec)["outlier"]["threshold"]
 
 
 # The parameters one shared value fills in, as a run resolves them.
@@ -72,28 +72,28 @@ GROUPS: dict[str, tuple[tuple[str, str], ...]] = {
 
 
 def option_params(cfg: ccdcpp.Config, name: str,
-                  input: ccdcpp.Input | None = None) -> dict[tuple[str, str], Any]:
+                  spec: ccdcpp.DataSpec | None = None) -> dict[tuple[str, str], Any]:
     """{(stage, parameter): value} of group ``name`` (GROUPS) in ``cfg`` resolved
-    against ``input``, or of one ``stage__parameter``."""
+    against ``spec``, or of one ``stage__parameter``."""
     stage, _, param = name.partition("__")
     pairs = GROUPS.get(name) or ((stage, param),)
-    stages = resolved(cfg, input)
+    stages = resolved(cfg, spec)
     return {(stage, param): stages[stage][param]
             for stage, param in pairs
             if stage in stages and param in stages[stage]}
 
 
-def band_range_rows(input: ccdcpp.Input | ccdcpp.SensorProfile,
+def band_range_rows(spec: ccdcpp.DataSpec | ccdcpp.SensorProfile,
                     config: ccdcpp.Config | str = "ccdc") -> list[int]:
-    """The rows the Standard chain's band_range step tests on ``input``."""
-    (step,) = [s for s in ccdcpp.plan_of(config, input).standard.chain
+    """The rows the Standard chain's band_range step tests on ``spec``."""
+    (step,) = [s for s in ccdcpp.plan_of(config, spec).standard.chain
                if s.kind == ccdcpp.StepKind.BandRange]
     return step.bands
 
 
-def with_table(input: ccdcpp.Input, qa_table: ccdcpp.QaTable | None) -> ccdcpp.Input:
-    """``input`` (a ccdcpp.Input) decoding its QA through ``qa_table``."""
-    return input.replace(qa_table=qa_table)
+def with_table(spec: ccdcpp.DataSpec, qa_table: ccdcpp.QaTable | None) -> ccdcpp.DataSpec:
+    """``spec`` (a ccdcpp.DataSpec) decoding its QA through ``qa_table``."""
+    return spec.replace(qa_table=qa_table)
 
 
 def permuted(profile: ccdcpp.SensorProfile, order: Sequence[int]) -> ccdcpp.SensorProfile:
@@ -214,7 +214,7 @@ def s2_inputs(H: int = 2, W: int = 2, seed: int = 9, breaks: bool = True, years:
     return dates, (dn + offset) / 10000.0, scl, dn
 
 
-#: Each preset's input, written out: the ccdcpp.Input() fields that differ.
+#: Each preset's spec, written out: the ccdcpp.DataSpec() fields that differ.
 #: Every unnamed field is the default.
 PHYSICAL = dict(reflectance_scale=1.0)
 
@@ -236,7 +236,7 @@ EXPECTED: dict[str, dict[str, Any]] = {
 }
 
 
-#: Each preset's detection rows, as "ccdc" resolves them on its input.
+#: Each preset's detection rows, as "ccdc" resolves them on its spec.
 DETECTION = {"hls_l30": [2, 3, 4, 5, 6], "hls_s30": [2, 3, 8, 9, 10], "hls": [2, 3, 4, 5, 6],
              "sentinel2_l2a": [1, 2, 7, 8, 9]}
 
@@ -259,9 +259,9 @@ BUILDERS = {"hls_l30": "hls_fmask", "hls_s30": "hls_fmask", "hls": "hls_fmask",
 HLS_AND_SENTINEL2 = (presets.hls_l30, presets.hls_s30, presets.hls, presets.sentinel2_l2a)
 
 
-def hand_built(name: str) -> tuple[ccdcpp.Input, ccdcpp.QaTable]:
-    """(Input, QaTable) of preset ``name``, by hand."""
-    h = ccdcpp.Input(**EXPECTED[name])
+def hand_built(name: str) -> tuple[ccdcpp.DataSpec, ccdcpp.QaTable]:
+    """(DataSpec, QaTable) of preset ``name``, by hand."""
+    h = ccdcpp.DataSpec(**EXPECTED[name])
     return h, getattr(ccdcpp.qa_tables, BUILDERS[name])(h)
 
 

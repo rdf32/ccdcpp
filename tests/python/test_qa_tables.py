@@ -65,7 +65,7 @@ SCHEMES = {
 NARROW = {"hls_fmask", "sentinel2_scl"}
 
 
-def build(name: str, options: ext.Input | None = None) -> ext.QaTable:
+def build(name: str, options: ext.DataSpec | None = None) -> ext.QaTable:
     builder = getattr(ext.qa_tables, name)
     return builder() if options is None else builder(options)
 
@@ -121,13 +121,13 @@ def synthetic(H: int = 3, W: int = 4,
     return dates, spectral, codes
 
 
-def options() -> ext.Input:
-    return ext.Input()
+def options() -> ext.DataSpec:
+    return ext.DataSpec()
 
 
-def with_table(table: ext.QaTable | None) -> ext.Input:
-    """The default input decoding its raw QA through `table` (None: codes)."""
-    return ext.Input(qa_table=table)
+def with_table(table: ext.QaTable | None) -> ext.DataSpec:
+    """The default spec decoding its raw QA through `table` (None: codes)."""
+    return ext.DataSpec(qa_table=table)
 
 
 class Tables(unittest.TestCase):
@@ -151,8 +151,8 @@ class Tables(unittest.TestCase):
         self.assertEqual(table.codes[4], CLEAR)
 
     def test_renumbered_options(self):
-        h = ext.Input(qa_fill=200, qa_clear=10, qa_water=11, qa_shadow=12, qa_snow=13,
-                      qa_cloud=14)
+        h = ext.DataSpec(qa_fill=200, qa_clear=10, qa_water=11, qa_shadow=12, qa_snow=13,
+                         qa_cloud=14)
         renumber = {FILL: 200, CLEAR: 10, WATER: 11, SHADOW: 12, SNOW: 13, CLOUD: 14}
         for name in SCHEMES:
             with self.subTest(name=name):
@@ -241,7 +241,7 @@ class DecodedEqualsCodes(unittest.TestCase):
         cls.dates, cls.spectral, cls.codes = synthetic()
         h = options()
         cls.columns = ext.detect_cube(
-            cls.dates, cls.spectral, cls.codes, input=h, threads=1)
+            cls.dates, cls.spectral, cls.codes, spec=h, threads=1)
         assert cls.columns["failures"] == []
         assert len(cls.columns["row"]) > cls.codes.shape[0] * cls.codes.shape[1]
         # PermanentSnow, InsufficientClear and Standard all ran.
@@ -266,7 +266,7 @@ class DecodedEqualsCodes(unittest.TestCase):
                     with self.subTest(name=name, qas=kind, threads=threads):
                         before = raw.copy()
                         out = ext.detect_cube(
-                            self.dates, self.spectral, raw, input=h, threads=threads)
+                            self.dates, self.spectral, raw, spec=h, threads=threads)
                         out.pop("threads")
                         expected = dict(self.columns)
                         expected.pop("threads")
@@ -283,23 +283,23 @@ class DecodedEqualsCodes(unittest.TestCase):
                 for c in range(W):
                     with self.subTest(name=name, pixel=(r, c)):
                         expected = ext.detect(
-                            self.dates, self.spectral[r, c], self.codes[r, c], input=h)
+                            self.dates, self.spectral[r, c], self.codes[r, c], spec=h)
                         assert_same(self, ext.detect(
-                            self.dates, self.spectral[r, c], raw[r, c], input=decoding),
+                            self.dates, self.spectral[r, c], raw[r, c], spec=decoding),
                             expected)
                         if name in NARROW:
                             assert_same(self, ext.detect(
                                 self.dates, self.spectral[r, c], raw[r, c].astype(np.uint8),
-                                input=decoding), expected)
+                                spec=decoding), expected)
 
     def test_uint16_spectral(self):
         h = options()
         spectral = np.clip(self.spectral, 0, 65535).astype(np.uint16)
         reference = ext.detect_cube(
-            self.dates, spectral, self.codes, input=h, threads=2)
+            self.dates, spectral, self.codes, spec=h, threads=2)
         out = ext.detect_cube(
             self.dates, spectral, encode("landsat_c2_qa_pixel", self.codes),
-            input=with_table(ext.qa_tables.landsat_c2_qa_pixel()), threads=2)
+            spec=with_table(ext.qa_tables.landsat_c2_qa_pixel()), threads=2)
         assert_same(self, out, reference)
 
     def test_uint8_codes_through_an_identity_table(self):
@@ -307,7 +307,7 @@ class DecodedEqualsCodes(unittest.TestCase):
         identity[:256] = np.arange(256, dtype=np.uint8)
         out = ext.detect_cube(
             self.dates, self.spectral, self.codes,
-            input=with_table(ext.QaTable(identity)), threads=2)
+            spec=with_table(ext.QaTable(identity)), threads=2)
         out.pop("threads")
         expected = dict(self.columns)
         expected.pop("threads")
@@ -324,8 +324,8 @@ class Validation(unittest.TestCase):
                 table: ext.QaTable | None = None) -> dict[str, Callable[[], object]]:
         d, s, h = self.dates, self.spectral, with_table(table)
         return {
-            "detect": lambda: ext.detect(d, s[0, 0], qas[0, 0], input=h),
-            "detect_cube": lambda: ext.detect_cube(d, s, qas, input=h, threads=1),
+            "detect": lambda: ext.detect(d, s[0, 0], qas[0, 0], spec=h),
+            "detect_cube": lambda: ext.detect_cube(d, s, qas, spec=h, threads=1),
         }
 
     def test_uint16_without_a_table(self):
@@ -341,21 +341,21 @@ class Validation(unittest.TestCase):
             "landsat_c2_qa_pixel",
             ext.qa_tables.landsat_c2_qa_pixel().codes,
             ext.qa_tables.landsat_c2_qa_pixel,
-            ext.Input(),
+            ext.DataSpec(),
             1,
         )
         for value in wrong:
             with self.subTest(qa_table=type(value).__name__):
                 with self.assertRaises(TypeError):
-                    ext.Input(qa_table=value)  # pyright: ignore[reportArgumentType]  # not a QaTable, refused
+                    ext.DataSpec(qa_table=value)  # pyright: ignore[reportArgumentType]  # not a QaTable, refused
 
-    def test_the_input_is_keyword_only(self):
+    def test_the_spec_is_keyword_only(self):
         with self.assertRaises(TypeError):
             ext.detect_cube(self.dates, self.spectral, self.raw, options())  # pyright: ignore[reportCallIssue]  # positional, refused
         with self.assertRaises(TypeError):
             ext.detect(self.dates, self.spectral[0, 0], self.raw[0, 0], options())  # pyright: ignore[reportCallIssue]  # positional, refused
 
-    def test_the_table_is_part_of_the_input(self):
+    def test_the_table_is_part_of_the_spec(self):
         table = ext.qa_tables.landsat_c2_qa_pixel()
         h = with_table(table)
         self.assertEqual(h, with_table(ext.qa_tables.landsat_c2_qa_pixel()))

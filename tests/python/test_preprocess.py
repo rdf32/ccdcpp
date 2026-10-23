@@ -82,7 +82,7 @@ def snow_kept(out: PixelResult, codes: NDArray[np.uint8]) -> int:
 
 class Plans(unittest.TestCase):
     def test_ccdc_plan_shape(self):
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         plan = ccdcpp.plan_of("ccdc", h)
         K = ccdcpp.StepKind
         common = [K.KeepQa, K.ThermalRange, K.BandRange, K.OnePerDate]
@@ -105,7 +105,7 @@ class Plans(unittest.TestCase):
         green = plan.insufficient_clear.chain[4]
         self.assertEqual((green.band, green.green_offset, green.max_date, green.scope),
                          (1, 400.0, ccdcpp.NO_STATISTICS_END, ccdcpp.GreenFilterScope.StatWindow))
-        # The step's values and the shared statistics_end, in the input's units.
+        # The step's values and the shared statistics_end, in the spec's units.
         cfg = CCDC.replace(preprocess__green_median__offset=0.05,
                            preprocess__green_median__scope="all", shared__statistics_end=730000)
         green = ccdcpp.plan_of(cfg, h).insufficient_clear.chain[4]
@@ -121,18 +121,18 @@ class Plans(unittest.TestCase):
         self.assertEqual((therm.min, therm.max), (-0.932, 0.707))
         self.assertEqual((band.min, band.max), (0.0, 1.0))
         self.assertEqual(plan.insufficient_clear.chain[4].green_offset, 0.04)
-        self.assertEqual(plan, ccdcpp.plan_of(CCDC, phys.input()))
+        self.assertEqual(plan, ccdcpp.plan_of(CCDC, phys.spec()))
 
     def test_without_thermal_and_identity_transform(self):
-        h = ccdcpp.Input(roles=ccdcpp.Input().roles[:6])
+        h = ccdcpp.DataSpec(roles=ccdcpp.DataSpec().roles[:6])
         plan = ccdcpp.plan_of("ccdc", h)
         self.assertNotIn(ccdcpp.StepKind.ThermalRange, [s.kind for s in plan.standard.chain])
         self.assertIsNone(plan.standard.transform)
-        h = ccdcpp.Input(thermal_scale=1.0, thermal_offset=0.0)
+        h = ccdcpp.DataSpec(thermal_scale=1.0, thermal_offset=0.0)
         self.assertIsNone(ccdcpp.plan_of("ccdc", h).standard.transform)
 
-    def test_codes_follow_the_input(self):
-        h = ccdcpp.Input(qa_clear=10, qa_water=11, qa_snow=13)
+    def test_codes_follow_the_spec(self):
+        h = ccdcpp.DataSpec(qa_clear=10, qa_water=11, qa_snow=13)
         plan = ccdcpp.plan_of(keeps_snow(), h)
         self.assertEqual(plan.standard.chain[0].codes, [10, 11, 13])
         self.assertEqual(plan.snow.chain[4].codes, [13])
@@ -142,11 +142,11 @@ class Plans(unittest.TestCase):
 
     def test_band_range_by_role(self):
         cfg = CCDC.replace(preprocess__band_range__bands=["swir2", "green"])
-        band = ccdcpp.plan_of(cfg, ccdcpp.Input()).snow.chain[2]
+        band = ccdcpp.plan_of(cfg, ccdcpp.DataSpec()).snow.chain[2]
         self.assertEqual(band.bands, [5, 1])
 
     def test_equality(self):
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         plan = ccdcpp.plan_of(PYCCD, h)
         self.assertEqual(plan, ccdcpp.plan_of(PYCCD, h))
         self.assertNotEqual(plan, ccdcpp.plan_of(keeps_snow(PYCCD), h))
@@ -158,7 +158,7 @@ class Plans(unittest.TestCase):
             chain[4]
 
     def test_describe(self):
-        plan = ccdcpp.plan_of(PYCCD, ccdcpp.Input())
+        plan = ccdcpp.plan_of(PYCCD, ccdcpp.DataSpec())
         text = plan.describe()
         self.assertEqual(text, repr(plan))
         for line in ("standard", "  transform  band 6 <- x * 10 - 27315",
@@ -178,13 +178,13 @@ class Plans(unittest.TestCase):
     def test_readme_lists_the_ccdc_plan(self):
         with open(os.path.join(SOURCE_DIR, "README.md"), encoding="utf-8") as f:
             readme = f.read()
-        self.assertIn(ccdcpp.plan_of("ccdc", ccdcpp.Input()).describe(), readme)
+        self.assertIn(ccdcpp.plan_of("ccdc", ccdcpp.DataSpec()).describe(), readme)
 
-    def test_profile_and_input_agree(self):
+    def test_profile_and_spec_agree(self):
         for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.hls_s30):
             with self.subTest(preset=preset.__name__):
                 self.assertEqual(ccdcpp.plan_of("ccdc", preset()),
-                                 ccdcpp.plan_of("ccdc", preset().input()))
+                                 ccdcpp.plan_of("ccdc", preset().spec()))
 
 
 class WrittenChains(unittest.TestCase):
@@ -204,9 +204,9 @@ class WrittenChains(unittest.TestCase):
         for written in (written_default(), written_default_explicit()):
             with self.subTest(written=written):
                 cfg = PYCCD.replace(preprocess=written)
-                assert_same(self, every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+                assert_same(self, every_entry(DATES, CUBE_DN, CODES, spec=ccdcpp.DataSpec(),
                                               config=cfg),
-                            every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+                            every_entry(DATES, CUBE_DN, CODES, spec=ccdcpp.DataSpec(),
                                         config=PYCCD))
 
     def test_ten_band_default(self):
@@ -222,42 +222,42 @@ class WrittenChains(unittest.TestCase):
         self.assertEqual(ccdcpp.plan_of(cfg, profile),
                          ccdcpp.plan_of(TEN_BAND_CONFIG, profile))
         assert_same(self,
-                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
+                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, spec=profile,
                                                config=cfg), "threads"),
-                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
+                    without(ccdcpp.detect_cube(dates, cube, scl, threads=2, spec=profile,
                                                config=TEN_BAND_CONFIG), "threads"))
 
 
 class CustomChains(unittest.TestCase):
     def test_standard_keeps_snow(self):
         dates, ref, qa = reference_pixel()
-        h = ccdcpp.Input()
-        base = ccdcpp.detect(dates, ref, qa, input=h, config=PYCCD)
-        snowy = ccdcpp.detect(dates, ref, qa, input=h, config=keeps_snow(PYCCD))
+        h = ccdcpp.DataSpec()
+        base = ccdcpp.detect(dates, ref, qa, spec=h, config=PYCCD)
+        snowy = ccdcpp.detect(dates, ref, qa, spec=h, config=keeps_snow(PYCCD))
         self.assertNotIn(54, [m["curve_qa"] for m in snowy["models"]])
         self.assertEqual(snow_kept(base, qa), 0)
         self.assertGreater(snow_kept(snowy, qa), 0)
         self.assertNotEqual(repr(base), repr(snowy))
-        # The same chain on a profile's input.
-        assert_same(self, without(ccdcpp.detect(dates, ref, qa, input=presets.landsat_c1_dn(),
+        # The same chain on a profile's spec.
+        assert_same(self, without(ccdcpp.detect(dates, ref, qa, spec=presets.landsat_c1_dn(),
                                                 config=keeps_snow(PYCCD)), "band_names"),
                     snowy)
 
     def test_cube_entry_point(self):
-        h = ccdcpp.Input()
-        plain = every_entry(DATES, CUBE_DN, CODES, input=h, config=keeps_snow())
+        h = ccdcpp.DataSpec()
+        plain = every_entry(DATES, CUBE_DN, CODES, spec=h, config=keeps_snow())
         assert_same(self, strip_band_names(every_entry(DATES, CUBE_DN, CODES,
-                                                       input=presets.landsat_c1_dn(),
+                                                       spec=presets.landsat_c1_dn(),
                                                        config=keeps_snow())), plain)
-        self.assertNotEqual(repr(plain), repr(every_entry(DATES, CUBE_DN, CODES, input=h)))
+        self.assertNotEqual(repr(plain), repr(every_entry(DATES, CUBE_DN, CODES, spec=h)))
 
-    def test_codes_follow_the_run_input(self):
-        h = ccdcpp.Input(qa_clear=10, qa_water=11, qa_snow=13)
+    def test_codes_follow_the_run_spec(self):
+        h = ccdcpp.DataSpec(qa_clear=10, qa_water=11, qa_snow=13)
         renumbered = np.vectorize({255: 255, 0: 10, 1: 11, 2: 2, 3: 13, 4: 4}.get,
                                   otypes=[np.uint8])(CODES)
         assert_same(self,
-                    every_entry(DATES, CUBE_DN, renumbered, input=h, config=keeps_snow()),
-                    every_entry(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+                    every_entry(DATES, CUBE_DN, renumbered, spec=h, config=keeps_snow()),
+                    every_entry(DATES, CUBE_DN, CODES, spec=ccdcpp.DataSpec(),
                                 config=keeps_snow()))
 
     def test_transform_on_every_procedure(self):
@@ -270,19 +270,19 @@ class CustomChains(unittest.TestCase):
         cube[..., 6, ::7] = 1000.0
         converted = cube.copy()
         converted[..., 6, :] = converted[..., 6, :] * 10.0 - 27315.0
-        h = ccdcpp.Input(thermal_scale=1.0, thermal_offset=0.0)
-        got = without(ccdcpp.detect_cube(DATES, cube, CODES, threads=2, input=ccdcpp.Input(),
+        h = ccdcpp.DataSpec(thermal_scale=1.0, thermal_offset=0.0)
+        got = without(ccdcpp.detect_cube(DATES, cube, CODES, threads=2, spec=ccdcpp.DataSpec(),
                                          config=everywhere), "threads")
-        assert_same(self, got, without(ccdcpp.detect_cube(DATES, converted, CODES, input=h,
+        assert_same(self, got, without(ccdcpp.detect_cube(DATES, converted, CODES, spec=h,
                                                           threads=2), "threads"))
         self.assertNotEqual(
             repr(got), repr(without(ccdcpp.detect_cube(DATES, cube, CODES, threads=2,
-                                                       input=ccdcpp.Input()), "threads")))
+                                                       spec=ccdcpp.DataSpec()), "threads")))
 
 
 class ThermalRangeInCelsius(unittest.TestCase):
     """The snow and insufficient-clear chains test the stored thermal row in degrees Celsius,
-    through the inverse of the input's transform: a saturated (20000) or NaN thermal value,
+    through the inverse of the spec's transform: a saturated (20000) or NaN thermal value,
     or one at or beyond -93.2 or 70.7 degrees, leaves their fits."""
 
     # Kelvin x 10: 20000 (saturated), NaN, 1799.5 and 3438.5 (-93.2 and 70.7 degrees, the
@@ -307,7 +307,7 @@ class ThermalRangeInCelsius(unittest.TestCase):
 
     def check(self, other: int, curve_qa: int) -> None:
         dates, spectral, qas, clear = self.series(other)
-        out = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c1_dn())
+        out = ccdcpp.detect(dates, spectral, qas, spec=presets.landsat_c1_dn())
         self.assertEqual([m["curve_qa"] for m in out["models"]], [curve_qa])
         mask = out["processing_mask"]
         n = len(self.DROPPED)
@@ -328,7 +328,7 @@ class ThermalRangeInCelsius(unittest.TestCase):
     def test_the_bounds_on_the_stored_row(self):
         # The Standard chain's bounds after the transform; the others' the same degrees on
         # the stored row (Kelvin x 10), exactly.
-        plan = ccdcpp.plan_of("ccdc", ccdcpp.Input())
+        plan = ccdcpp.plan_of("ccdc", ccdcpp.DataSpec())
         self.assertEqual((plan.standard.chain[1].min, plan.standard.chain[1].max),
                          (-9320.0, 7070.0))
         # The snow chain tests it again as its last step, after the snow is added back.
@@ -336,7 +336,7 @@ class ThermalRangeInCelsius(unittest.TestCase):
             self.assertEqual((step.kind, step.min, step.max, step.inclusive),
                              (ccdcpp.StepKind.ThermalRange, 1799.5, 3438.5, (False, False)))
         # With the identity transform the bounds are the same in every chain.
-        phys = ccdcpp.plan_of("ccdc", presets.landsat_c1_physical().input())
+        phys = ccdcpp.plan_of("ccdc", presets.landsat_c1_physical().spec())
         self.assertEqual({(s.min, s.max) for s in (phys.standard.chain[1], phys.snow.chain[6],
                                                    phys.insufficient_clear.chain[1])},
                          {(-0.932, 0.707)})
@@ -442,14 +442,14 @@ class Validation(unittest.TestCase):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(ValueError, message):
                     build()
-        # What needs the input's band count is refused when the run resolves the
+        # What needs the spec's band count is refused when the run resolves the
         # configuration against it.
         d, s, q = DATES, CUBE_DN[0, 0], CODES[0, 0]
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         no_one_per_date = CCDC.replace(preprocess__snow=[KeepQa(), AddQa()])
         with self.assertRaisesRegex(ValueError, "must be followed by a OnePerDate"):
-            ccdcpp.detect(d, s, q, input=h, config=no_one_per_date)
-        # A band the input lacks, against the input.
+            ccdcpp.detect(d, s, q, spec=h, config=no_one_per_date)
+        # A band the spec lacks, against the spec.
         with self.assertRaisesRegex(ValueError, "'coastal', which the data spec does not have"):
             ccdcpp.plan_of(CCDC.replace(preprocess__band_range__bands=["coastal"]), h)
 
@@ -467,7 +467,7 @@ class Validation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "thermal is 'kelvin'; it is 'celsius' or 'stored'"):
             ProcedureChain(thermal="kelvin")  # pyright: ignore[reportArgumentType]  # not a name, refused
         with self.assertRaisesRegex(ValueError, r"^preprocess snow thermal is 'kelvin'; it is "
-                                                r"\"celsius\" \(through the input's thermal "
+                                                r"\"celsius\" \(through the spec's thermal "
                                                 r"transform\) or \"stored\"$"):
             CCDC.replace(preprocess__snow__thermal="kelvin")
         with self.assertRaises(TypeError):

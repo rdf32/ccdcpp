@@ -47,22 +47,22 @@ class QaTableOptionsField(unittest.TestCase):
         for preset in (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2):
             with self.subTest(preset=preset.__name__):
                 self.assertEqual(preset().qa_table_options, ())
-        np.testing.assert_array_equal(qa_table_of(self.hls().input()).codes,
+        np.testing.assert_array_equal(qa_table_of(self.hls().spec()).codes,
                                       ccdcpp.qa_tables.hls_fmask().codes)
 
     def test_builder_arguments_reach_the_builder(self):
         for aerosol in (False, True):
             with self.subTest(exclude_high_aerosol=aerosol):
                 p = self.hls(qa_table_options={"exclude_high_aerosol": aerosol})
-                h = p.input()
+                h = p.spec()
                 expected = ccdcpp.qa_tables.hls_fmask(h, exclude_high_aerosol=aerosol).codes
-                got = qa_table_of(p.input()).codes
+                got = qa_table_of(p.spec()).codes
                 self.assertEqual(got.shape, ALL_VALUES.shape)
                 np.testing.assert_array_equal(got, expected)
         # The two tables differ exactly where the aerosol bits are 11 and no
         # higher-precedence bit (fill, cloud, adjacent, cirrus) is set.
-        on = qa_table_of(self.hls(qa_table_options={"exclude_high_aerosol": True}).input()).codes
-        off = qa_table_of(self.hls().input()).codes
+        on = qa_table_of(self.hls(qa_table_options={"exclude_high_aerosol": True}).spec()).codes
+        off = qa_table_of(self.hls().spec()).codes
         differs = np.flatnonzero(on != off)
         self.assertTrue(len(differs) > 0)
         self.assertTrue(((differs >> 6) == 3).all())
@@ -74,15 +74,15 @@ class QaTableOptionsField(unittest.TestCase):
         b = self.hls(qa_table_options=(("exclude_high_aerosol", True),))
         self.assertEqual(a, b)
         self.assertEqual(hash(a), hash(b))
-        self.assertIs(a.input().qa_table, b.input().qa_table)
-        self.assertIsNot(a.input().qa_table, self.hls().input().qa_table)
+        self.assertIs(a.spec().qa_table, b.spec().qa_table)
+        self.assertIsNot(a.spec().qa_table, self.hls().spec().qa_table)
 
     def test_stored_sorted_hashable_picklable(self):
         p = self.hls(qa_table_options={"exclude_high_aerosol": True})
         self.assertEqual(p.qa_table_options, (("exclude_high_aerosol", True),))
         q = pickle.loads(pickle.dumps(p))
         self.assertEqual(q, p)
-        np.testing.assert_array_equal(qa_table_of(q.input()).codes, qa_table_of(p.input()).codes)
+        np.testing.assert_array_equal(qa_table_of(q.spec()).codes, qa_table_of(p.spec()).codes)
 
     def test_entry_points_use_the_profile_table(self):
         # Raw Fmask, with high aerosol on every third clear observation:
@@ -94,17 +94,17 @@ class QaTableOptionsField(unittest.TestCase):
         fmask[aerosol] = 192
         base = self.hls()
         screened = self.hls(qa_table_options={"exclude_high_aerosol": True})
-        table = ccdcpp.qa_tables.hls_fmask(screened.input(), True)
-        got = strip_band_names(every_entry(DATES, CUBE_PHYS, fmask, input=screened))
+        table = ccdcpp.qa_tables.hls_fmask(screened.spec(), True)
+        got = strip_band_names(every_entry(DATES, CUBE_PHYS, fmask, spec=screened))
         assert_same(self, got, every_entry(DATES, CUBE_PHYS, fmask,
-                                           input=with_table(base.input(), table)))
+                                           spec=with_table(base.spec(), table)))
         codes = np.where(aerosol, np.uint8(CLOUD), CODES)
         assert_same(self, got, every_entry(DATES, CUBE_PHYS, codes,
-                                           input=with_table(base.input(), None)))
+                                           spec=with_table(base.spec(), None)))
         self.assertNotEqual(
-            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], input=base)["processing_mask"]
+            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], spec=base)["processing_mask"]
             .tobytes(),
-            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], input=screened)["processing_mask"]
+            ccdcpp.detect(DATES, CUBE_PHYS[0, 1], fmask[0, 1], spec=screened)["processing_mask"]
             .tobytes())
 
     def test_options_the_builder_does_not_take_are_refused(self):
@@ -149,7 +149,7 @@ class QaTableOptionsField(unittest.TestCase):
             with self.subTest(builder=builder):
                 signature = doc_of(getattr(ccdcpp.qa_tables, builder)).splitlines()[0]
                 self.assertEqual(signature.count(": "), 1 + len(declared), signature)
-                self.assertIn(f"{builder}(input: ", signature)
+                self.assertIn(f"{builder}(spec: ", signature)
                 for name, (kind, default) in declared.items():
                     self.assertIn(f"{name}: {kind.__name__} = {default!r}", signature)
 
@@ -184,7 +184,7 @@ class QaTableOptionsField(unittest.TestCase):
                 self.assertEqual(p.qa_table_options, written)
                 self.assertEqual(p, profiles[0])
                 self.assertEqual(hash(p), hash(profiles[0]))
-                self.assertIs(p.input().qa_table, profiles[0].input().qa_table)
+                self.assertIs(p.spec().qa_table, profiles[0].spec().qa_table)
                 self.assertIn("qa_table_options=(('exclude_high_aerosol', False),)", repr(p))
         for preset in (presets.hls_l30, presets.hls_s30, presets.hls):
             with self.subTest(preset=preset.__name__):

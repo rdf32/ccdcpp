@@ -45,7 +45,7 @@ private:
     std::map<ccd::index_t, std::vector<ccd::ObserverEvent>> events_;
 };
 
-// What a call runs: the input and config= (the "ccdc" preset's for None).
+// What a call runs: spec= and config= (the "ccdc" preset's for None).
 ccd::RunSpec run_spec(
     const ccd::DataSpec& spec,
     std::shared_ptr<ccd::Algorithm> config,
@@ -266,7 +266,7 @@ static py::dict detect_cube_wrapper(
 
 //------------------------------------------------------------------------------
 // Python registration: the extension's two calls. The package's ccdcpp.detect
-// and ccdcpp.detect_cube take a SensorProfile or an Input and a preset name
+// and ccdcpp.detect_cube take a SensorProfile or a DataSpec and a preset name
 // too, and call these.
 //------------------------------------------------------------------------------
 
@@ -279,7 +279,7 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::kw_only(),
-        py::arg("input"),
+        py::arg("spec"),
         py::arg("config") = py::none(),
         py::arg("record") = false,
         py::arg("resume") = py::none(),
@@ -296,7 +296,7 @@ void bind_detect(py::module_& m)
         py::arg("spectral"),
         py::arg("qas"),
         py::kw_only(),
-        py::arg("input"),
+        py::arg("spec"),
         py::arg("config") = py::none(),
         py::arg("threads") = 0,
         py::arg("record") = false,

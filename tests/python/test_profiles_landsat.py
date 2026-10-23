@@ -1,4 +1,4 @@
-"""The Landsat presets: their inputs and outputs against the inputs written out,
+"""The Landsat presets: their specs and outputs against the specs written out,
 their bounds, and a profile with a configuration.
 
 usage: python test_profiles_landsat.py <module_dir> <source_dir> [unittest args]
@@ -33,18 +33,18 @@ from _profiles import (change_threshold, doc_of, fields, outlier_threshold,  # n
 LANDSAT_PRESETS = (presets.landsat_c1_dn, presets.landsat_c1_physical, presets.landsat_c2)
 
 
-def explicit_physical() -> tuple[ccdcpp.Input, ccdcpp.Config]:
-    """The physical-unit input written out, as the golden tests write it, and the
-    configuration it runs: (Input, Config)."""
-    h = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0,
-                     thermal_at_100c=1.0)
+def explicit_physical() -> tuple[ccdcpp.DataSpec, ccdcpp.Config]:
+    """The physical-unit spec written out, as the golden tests write it, and the
+    configuration it runs: (DataSpec, Config)."""
+    h = ccdcpp.DataSpec(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0,
+                        thermal_at_100c=1.0)
     return h, PYCCD
 
 
 class Corpus(unittest.TestCase):
     def test_corpus_runs_every_procedure(self):
-        h = ccdcpp.Input()
-        out = ext.detect_cube(DATES, CUBE_DN, CODES, input=h, threads=1)
+        h = ccdcpp.DataSpec()
+        out = ext.detect_cube(DATES, CUBE_DN, CODES, spec=h, threads=1)
         self.assertEqual(out["failures"], [])
         # Standard, PermanentSnow and InsufficientClear.
         self.assertTrue({8, 54, 44} <= set(out["curve_qa"].tolist()), out["curve_qa"])
@@ -53,18 +53,18 @@ class Corpus(unittest.TestCase):
 
 class LandsatC1DN(unittest.TestCase):
     def test_options_are_the_defaults_field_by_field(self):
-        h = presets.landsat_c1_dn().input()
-        self.assertEqual(fields(h), fields(ccdcpp.Input(saturation_code=20000.0,
-                                                        thermal_saturation_code=20000.0)))
+        h = presets.landsat_c1_dn().spec()
+        self.assertEqual(fields(h), fields(ccdcpp.DataSpec(saturation_code=20000.0,
+                                                           thermal_saturation_code=20000.0)))
         for threshold in (change_threshold, outlier_threshold):
             self.assertEqual(threshold(PYCCD, h).hex(), threshold(ccdcpp.config("ccdc")).hex())
         self.assertGreater(len(fields(h)), 14)
-        self.assertIsNone(presets.landsat_c1_dn().input().qa_table)
+        self.assertIsNone(presets.landsat_c1_dn().spec().qa_table)
 
     def test_output_is_the_unprofiled_output(self):
-        h = ccdcpp.Input()
-        profiled = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn())
-        plain = every_entry(DATES, CUBE_DN, CODES, input=h)
+        h = ccdcpp.DataSpec()
+        profiled = every_entry(DATES, CUBE_DN, CODES, spec=presets.landsat_c1_dn())
+        plain = every_entry(DATES, CUBE_DN, CODES, spec=h)
         assert_same(self, strip_band_names(profiled), plain)
 
 
@@ -73,16 +73,16 @@ class LandsatPhysical(unittest.TestCase):
         explicit, cfg = explicit_physical()
         for preset in (presets.landsat_c1_physical, presets.landsat_c2):
             with self.subTest(preset=preset.__name__):
-                # landsat_c2's input decodes raw QA_PIXEL.
-                h = with_table(explicit, preset().input().qa_table)
-                self.assertEqual(fields(preset().input()), fields(h))
-                self.assertEqual(cfg.resolve(preset().input()), cfg.resolve(h))
+                # landsat_c2's spec decodes raw QA_PIXEL.
+                h = with_table(explicit, preset().spec().qa_table)
+                self.assertEqual(fields(preset().spec()), fields(h))
+                self.assertEqual(cfg.resolve(preset().spec()), cfg.resolve(h))
 
     def test_output_is_the_explicit_physical_output(self):
         h, cfg = explicit_physical()
-        profiled = every_entry(DATES, CUBE_PHYS, CODES, input=presets.landsat_c1_physical(),
+        profiled = every_entry(DATES, CUBE_PHYS, CODES, spec=presets.landsat_c1_physical(),
                                config=cfg)
-        plain = every_entry(DATES, CUBE_PHYS, CODES, input=h, config=cfg)
+        plain = every_entry(DATES, CUBE_PHYS, CODES, spec=h, config=cfg)
         assert_same(self, strip_band_names(profiled), plain)
 
     def test_presets_state_units_and_band_order(self):
@@ -134,9 +134,9 @@ class Bounds(unittest.TestCase):
         self.assertNotEqual(ccdcpp.DN, ccdcpp.REFLECTANCE)
         self.assertEqual(ccdcpp.Units(1.0), ccdcpp.REFLECTANCE)
         self.assertEqual(ccdcpp.Thermal(1.0, 0.0, 1.0), ccdcpp.CELSIUS_OVER_100)
-        # Units(scale, offset), as Thermal(scale, offset, at_100c): the Input's
+        # Units(scale, offset), as Thermal(scale, offset, at_100c): the DataSpec's
         # reflectance_scale and reflectance_offset.
-        h = presets.landsat_c1_dn().input()
+        h = presets.landsat_c1_dn().spec()
         self.assertEqual(ccdcpp.Units(scale=10000.0, offset=0.0), ccdcpp.DN)
         self.assertEqual((h.reflectance_scale, h.reflectance_offset),
                          (ccdcpp.DN.scale, ccdcpp.DN.offset))
@@ -148,34 +148,34 @@ class DateOrder(unittest.TestCase):
         dates[3], dates[4] = dates[4], dates[3]
         profile = presets.landsat_c1_dn()
         with self.assertRaises(ValueError) as caught:
-            ccdcpp.detect(dates, CUBE_DN[0, 0], CODES[0, 0], input=profile)
+            ccdcpp.detect(dates, CUBE_DN[0, 0], CODES[0, 0], spec=profile)
         self.assertIn("dates must be non-decreasing", str(caught.exception))
         with self.assertRaises(ValueError):
-            ccdcpp.detect_cube(dates, CUBE_DN, CODES, threads=1, input=profile)
+            ccdcpp.detect_cube(dates, CUBE_DN, CODES, threads=1, spec=profile)
 
 
 class ProfileAndConfig(unittest.TestCase):
-    def test_a_profile_is_its_input(self):
-        # input=profile runs profile.input(); config= is the configuration
+    def test_a_profile_is_its_spec(self):
+        # spec=profile runs profile.spec(); config= is the configuration
         # as given, the same with or without a profile.
         h_phys, cfg_phys = explicit_physical()
         s, q = CUBE_PHYS[0, 0], CODES[0, 0]
         profile = presets.landsat_c1_physical()
         for cfg in (ccdcpp.config("ccdc"), cfg_phys):
-            assert_same(self, without(ccdcpp.detect(DATES, s, q, input=profile, config=cfg),
+            assert_same(self, without(ccdcpp.detect(DATES, s, q, spec=profile, config=cfg),
                                       "band_names"),
-                        ext.detect(DATES, s, q, input=h_phys, config=cfg._algorithm))
+                        ext.detect(DATES, s, q, spec=h_phys, config=cfg._algorithm))
         # The default is "ccdc", whatever the profile.
-        assert_same(self, ccdcpp.detect(DATES, s, q, input=profile),
-                    ccdcpp.detect(DATES, s, q, input=profile, config=ccdcpp.config("ccdc")))
+        assert_same(self, ccdcpp.detect(DATES, s, q, spec=profile),
+                    ccdcpp.detect(DATES, s, q, spec=profile, config=ccdcpp.config("ccdc")))
 
 
 class BandNames(unittest.TestCase):
     def test_only_with_a_profile(self):
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         names = presets.landsat_c1_dn().band_names
-        plain = every_entry(DATES, CUBE_DN, CODES, input=h)
-        profiled = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn())
+        plain = every_entry(DATES, CUBE_DN, CODES, spec=h)
+        profiled = every_entry(DATES, CUBE_DN, CODES, spec=presets.landsat_c1_dn())
         for out in plain["detect"] + [plain["detect_cube"]]:
             self.assertNotIn("band_names", out)
         for out in profiled["detect"] + [profiled["detect_cube"]]:

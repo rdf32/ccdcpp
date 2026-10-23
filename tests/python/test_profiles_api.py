@@ -1,4 +1,4 @@
-"""SensorProfile: its checks, the roles, its immutability, the inputs it builds, and
+"""SensorProfile: its checks, the roles, its immutability, the specs it builds, and
 the entry points without one.
 
 usage: python test_profiles_api.py <module_dir> <source_dir> [unittest args]
@@ -57,8 +57,8 @@ class Check(unittest.TestCase):
         d, s, q = DATES, CUBE_DN[:, :, :6], CODES
         profile = presets.landsat_c1_dn()
         calls = {
-            "detect": lambda: ccdcpp.detect(d, s[0, 0], q[0, 0], input=profile),
-            "detect_cube": lambda: ccdcpp.detect_cube(d, s, q, input=profile),
+            "detect": lambda: ccdcpp.detect(d, s[0, 0], q[0, 0], spec=profile),
+            "detect_cube": lambda: ccdcpp.detect_cube(d, s, q, spec=profile),
         }
         for name, call in calls.items():
             with self.subTest(entry=name):
@@ -69,7 +69,7 @@ class Check(unittest.TestCase):
     def test_not_a_profile(self):
         with self.assertRaises(TypeError):
             ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0],
-                          input="landsat_c1_dn")  # pyright: ignore[reportArgumentType]  # a name, refused
+                          spec="landsat_c1_dn")  # pyright: ignore[reportArgumentType]  # a name, refused
 
     def test_an_inconsistent_profile_is_refused(self):
         base = presets.landsat_c1_dn()
@@ -92,7 +92,7 @@ class Check(unittest.TestCase):
                 self.assertIn(expected, str(caught.exception))
         # An 'other' band is fitted, and no list can name it.
         other = dataclasses.replace(base, roles=base.roles[:6] + ("other",), thermal=None)
-        self.assertEqual(other.input().bands(), 7)
+        self.assertEqual(other.spec().bands(), 7)
         self.assertEqual(band_range_rows(other), [0, 1, 2, 3, 4, 5])
         with self.assertRaises(ValueError) as caught:
             ccdcpp.plan_of(ccdcpp.config("ccdc").replace(
@@ -111,7 +111,7 @@ class Roles(unittest.TestCase):
         # be listed ("ccdc"'s band_range does not), and it is not the "nir"
         # row.
         p = ten_band_profile()
-        h = p.input()
+        h = p.spec()
         self.assertEqual(p.index("nir_broad"), 6)
         self.assertEqual(h.index("nir"), 7)
         self.assertNotIn(6, band_range_rows(h))
@@ -126,39 +126,39 @@ class Roles(unittest.TestCase):
 
 
 class Unprofiled(unittest.TestCase):
-    """With an Input the package entry points are the extension's."""
+    """With a DataSpec the package entry points are the extension's."""
 
     def test_same_output_every_call_form(self):
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         d, s, q = DATES, CUBE_DN, CODES
-        expected = without(ext.detect_cube(d, s, q, input=h, threads=1), "threads")
+        expected = without(ext.detect_cube(d, s, q, spec=h, threads=1), "threads")
         forms = {
             # The millworks nlcd plugin's call.
             "keywords": lambda: ccdcpp.detect_cube(
-                dates=d, spectral=s, qas=q, input=h, threads=1),
-            "positional": lambda: ccdcpp.detect_cube(d, s, q, input=h, threads=1),
+                dates=d, spectral=s, qas=q, spec=h, threads=1),
+            "positional": lambda: ccdcpp.detect_cube(d, s, q, spec=h, threads=1),
             # "ccdc" is the run without config=.
-            "config='ccdc'": lambda: ccdcpp.detect_cube(d, s, q, input=h, threads=1,
+            "config='ccdc'": lambda: ccdcpp.detect_cube(d, s, q, spec=h, threads=1,
                                                         config="ccdc"),
-            "config=Config": lambda: ccdcpp.detect_cube(d, s, q, input=h, threads=1,
+            "config=Config": lambda: ccdcpp.detect_cube(d, s, q, spec=h, threads=1,
                                                         config=ccdcpp.config("ccdc")),
         }
         for name, call in forms.items():
             with self.subTest(form=name):
                 assert_same(self, without(call(), "threads"), expected)
-        assert_same(self, ccdcpp.detect(d, s[0, 0], q[0, 0], input=h),
-                    ext.detect(d, s[0, 0], q[0, 0], input=h))
+        assert_same(self, ccdcpp.detect(d, s[0, 0], q[0, 0], spec=h),
+                    ext.detect(d, s[0, 0], q[0, 0], spec=h))
         raw = np.vectorize(C2_RAW.get, otypes=[np.uint16])(q)
         decoding = with_table(h, ccdcpp.qa_tables.landsat_c2_qa_pixel())
-        assert_same(self, ccdcpp.detect(d, s[0, 0], raw[0, 0], input=decoding),
-                    ext.detect(d, s[0, 0], raw[0, 0], input=decoding))
+        assert_same(self, ccdcpp.detect(d, s[0, 0], raw[0, 0], spec=decoding),
+                    ext.detect(d, s[0, 0], raw[0, 0], spec=decoding))
 
     def test_signatures(self):
         positional = ["dates", "spectral", "qas"]
         for name, keywords in (
-            ("detect", ["input", "config", "record", "resume", "freeze_statistics",
+            ("detect", ["spec", "config", "record", "resume", "freeze_statistics",
                         "band_names", "trace", "reasons", "diagnostics"]),
-            ("detect_cube", ["input", "config", "threads", "record", "resume",
+            ("detect_cube", ["spec", "config", "threads", "record", "resume",
                              "freeze_statistics", "band_names", "trace_pixels", "masks",
                              "reasons", "diagnostics"]),
         ):
@@ -168,7 +168,7 @@ class Unprofiled(unittest.TestCase):
                 kinds = [p.kind for p in params.values()]
                 self.assertEqual(kinds, [inspect.Parameter.POSITIONAL_OR_KEYWORD] * len(positional)
                                  + [inspect.Parameter.KEYWORD_ONLY] * len(keywords))
-                self.assertIs(params["input"].default, inspect.Parameter.empty)
+                self.assertIs(params["spec"].default, inspect.Parameter.empty)
                 self.assertEqual(params["config"].default, "ccdc")
                 self.assertIs(params["record"].default, False)
                 self.assertIsNone(params["resume"].default)
@@ -180,30 +180,30 @@ class Unprofiled(unittest.TestCase):
             self.assertFalse(hasattr(ccdcpp, gone), gone)
 
     def test_config_is_keyword_only_and_defaults_to_ccdc(self):
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         d, s, q = DATES, CUBE_DN, CODES
         with self.assertRaises(TypeError):
-            ccdcpp.detect(d, s[0, 0], q[0, 0], h)  # pyright: ignore[reportCallIssue]  # input positional, refused
+            ccdcpp.detect(d, s[0, 0], q[0, 0], h)  # pyright: ignore[reportCallIssue]  # spec positional, refused
         with self.assertRaisesRegex(ValueError, "no configuration 'cdcc'"):
-            ccdcpp.detect(d, s[0, 0], q[0, 0], input=h, config="cdcc")
+            ccdcpp.detect(d, s[0, 0], q[0, 0], spec=h, config="cdcc")
         with self.assertRaises(TypeError):
-            ccdcpp.detect(d, s[0, 0], q[0, 0], input=h,
+            ccdcpp.detect(d, s[0, 0], q[0, 0], spec=h,
                           config=ccdcpp.config("ccdc").to_dict())  # pyright: ignore[reportArgumentType]  # a dict, refused
 
-    def test_input_required(self):
+    def test_spec_required(self):
         with self.assertRaises(TypeError):
-            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0])  # pyright: ignore[reportCallIssue]  # no input, refused
+            ccdcpp.detect(DATES, CUBE_DN[0, 0], CODES[0, 0])  # pyright: ignore[reportCallIssue]  # no spec, refused
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, config="ccdc")  # pyright: ignore[reportCallIssue]  # no input, refused
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, config="ccdc")  # pyright: ignore[reportCallIssue]  # no spec, refused
         with self.assertRaises(TypeError):
-            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=None)  # pyright: ignore[reportArgumentType]  # None, refused
-        # input= alone is a whole call: the configuration defaults to "ccdc".
-        self.assertEqual(ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=ccdcpp.Input(),
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, spec=None)  # pyright: ignore[reportArgumentType]  # None, refused
+        # spec= alone is a whole call: the configuration defaults to "ccdc".
+        self.assertEqual(ccdcpp.detect_cube(DATES, CUBE_DN, CODES, spec=ccdcpp.DataSpec(),
                                             threads=1)["failures"], [])
 
     def test_cube_masks_per_pixel(self):
         H, W = CUBE_DN.shape[:2]
-        out = ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(),
+        out = ccdcpp.detect_cube(DATES, CUBE_DN, CODES, spec=presets.landsat_c1_dn(),
                                  threads=2, masks=True)
         assert "processing_mask" in out
         self.assertEqual(out["processing_mask"].shape, (H, W, len(DATES)))
@@ -211,17 +211,17 @@ class Unprofiled(unittest.TestCase):
         self.assertGreater(len(pixels), 0)
         for p in pixels:
             one = ccdcpp.detect(DATES, CUBE_DN[p["row"], p["col"]], CODES[p["row"], p["col"]],
-                                input=presets.landsat_c1_dn())
+                                spec=presets.landsat_c1_dn())
             assert "processing_mask" in p
             np.testing.assert_array_equal(p["processing_mask"], one["processing_mask"])
             self.assertEqual(p["models"], one["models"])
         self.assertNotIn("processing_mask", ccdcpp.to_pixels(
-            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, input=ccdcpp.Input(), threads=2))[0])
+            ccdcpp.detect_cube(DATES, CUBE_DN, CODES, spec=ccdcpp.DataSpec(), threads=2))[0])
 
     def test_extension_errors_pass_through(self):
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         with self.assertRaises(ValueError) as caught:
-            ccdcpp.detect(DATES, CUBE_DN[0, 0, :6], CODES[0, 0], input=h)
+            ccdcpp.detect(DATES, CUBE_DN[0, 0, :6], CODES[0, 0], spec=h)
         self.assertIn("the data spec has 7", str(caught.exception))
         # The configuration's schemas, checked when the configuration is built.
         with self.assertRaisesRegex(ValueError, "'peek_size' is 1; it must be at least 2"):
@@ -233,7 +233,7 @@ class Unprofiled(unittest.TestCase):
                 entry = getattr(ccdcpp, name)
                 self.assertEqual((entry.__module__, entry.__name__), ("ccdcpp", name))
                 text = pydoc.render_doc(entry)
-                words = ("input", "config", "record", "resume", "band_names") \
+                words = ("spec", "config", "record", "resume", "band_names") \
                     if name != "to_pixels" else ("detect_cube", "models")
                 for word in words:
                     self.assertIn(word, text)
@@ -250,7 +250,7 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(hash(p), hash(preset()))
                 q = pickle.loads(pickle.dumps(p))
                 self.assertEqual(q, p)
-                self.assertEqual(fields(q.input()), fields(p.input()))
+                self.assertEqual(fields(q.spec()), fields(p.spec()))
                 with self.assertRaises(dataclasses.FrozenInstanceError):
                     p.saturation_code = 2.0  # pyright: ignore[reportAttributeAccessIssue]  # frozen, refused
 
@@ -269,37 +269,37 @@ class Profiles(unittest.TestCase):
             with self.subTest(preset=name):
                 preset = getattr(presets, name)
                 values = np.array(list(lookup))
-                np.testing.assert_array_equal(qa_table_of(preset().input()).codes[values],
+                np.testing.assert_array_equal(qa_table_of(preset().spec()).codes[values],
                                               [lookup[v] for v in values.tolist()])
                 decoded = np.vectorize(lookup.get, otypes=[np.uint8])(qa)
                 assert_same(self,
                             strip_band_names(every_entry(dates, cube, qa, threads=2,
-                                                         input=preset())),
+                                                         spec=preset())),
                             every_entry(dates, cube, decoded, threads=2,
-                                        input=with_table(preset().input(), None)))
+                                        spec=with_table(preset().spec(), None)))
 
-    def test_input_is_built_once_and_immutable(self):
+    def test_spec_is_built_once_and_immutable(self):
         p = presets.landsat_c1_dn()
-        self.assertIs(p.input(), p.input())
-        self.assertEqual(p.input(), presets.landsat_c1_dn().input())
+        self.assertIs(p.spec(), p.spec())
+        self.assertEqual(p.spec(), presets.landsat_c1_dn().spec())
         with self.assertRaises(AttributeError):
-            p.input().reflectance_scale = 99.0  # pyright: ignore[reportAttributeAccessIssue]  # immutable, refused
-        h = p.input().replace(reflectance_scale=99.0)
+            p.spec().reflectance_scale = 99.0  # pyright: ignore[reportAttributeAccessIssue]  # immutable, refused
+        h = p.spec().replace(reflectance_scale=99.0)
         self.assertEqual(h.reflectance_scale, 99.0)
-        self.assertEqual(p.input().reflectance_scale, 10000.0)
-        self.assertEqual(copy.copy(p.input()), p.input())
+        self.assertEqual(p.spec().reflectance_scale, 10000.0)
+        self.assertEqual(copy.copy(p.spec()), p.spec())
 
     def test_thermal_at_100c_is_the_transform_of_100_celsius(self):
         # Each preset's raw thermal value of 100 degrees Celsius, as its
         # docstring states the input: Kelvin x 10 (373.15 K) on DN, degrees
         # Celsius / 100 on the physical inputs. Through the thermal transform
-        # it is the input's thermal_at_100c, exactly; the presets without a
+        # it is the spec's thermal_at_100c, exactly; the presets without a
         # thermal band have none to transform.
         raw_100c = {"landsat_c1_dn": 3731.5, "landsat_c1_physical": 1.0,
                     "landsat_c2": 1.0, "hls_l30": 1.0}
         for preset in presets.__all__:
             with self.subTest(preset=preset):
-                h = getattr(presets, preset)().input()
+                h = getattr(presets, preset)().spec()
                 if preset not in raw_100c:
                     self.assertEqual(h.index("thermal"), ccdcpp.NO_BAND)
                     continue
@@ -312,38 +312,38 @@ class Profiles(unittest.TestCase):
                 step = ccdcpp.plan_of("ccdc", getattr(presets, preset)()).standard.chain[1]
                 self.assertEqual((step.min.hex(), step.max.hex()), (lo.hex(), hi.hex()))
 
-    def test_saturated_reaches_the_input(self):
+    def test_saturated_reaches_the_spec(self):
         for preset in presets.__all__:
             with self.subTest(preset=preset):
                 p = getattr(presets, preset)()
                 expected = 20000.0 if preset == "landsat_c1_dn" else None
                 for name in ("saturation_code", "thermal_saturation_code"):
                     self.assertEqual(getattr(p, name), expected)
-                    self.assertEqual(getattr(p.input(), name), expected)
-        self.assertIsNone(ccdcpp.Input().saturation_code)
-        self.assertIsNone(ccdcpp.Input().thermal_saturation_code)
+                    self.assertEqual(getattr(p.spec(), name), expected)
+        self.assertIsNone(ccdcpp.DataSpec().saturation_code)
+        self.assertIsNone(ccdcpp.DataSpec().thermal_saturation_code)
         p = dataclasses.replace(presets.landsat_c1_physical(), saturation_code=2, thermal_saturation_code=3)
         self.assertEqual((p.saturation_code, p.thermal_saturation_code), (2.0, 3.0))
-        self.assertEqual((p.input().saturation_code, p.input().thermal_saturation_code), (2.0, 3.0))
-        # In the input's equality and digest, each on its own.
-        h = ccdcpp.Input()
+        self.assertEqual((p.spec().saturation_code, p.spec().thermal_saturation_code), (2.0, 3.0))
+        # In the spec's equality and digest, each on its own.
+        h = ccdcpp.DataSpec()
         for name in ("saturation_code", "thermal_saturation_code"):
             for value in (20000.0, 65535.0):
                 with self.subTest(name=name, value=value):
                     changed: dict[str, Any] = {name: value}
-                    other = ccdcpp.Input(**changed)
+                    other = ccdcpp.DataSpec(**changed)
                     self.assertEqual(getattr(other, name), value)
                     self.assertNotEqual(other, h)
                     self.assertNotEqual(other.digest(), h.digest())
-        self.assertNotEqual(ccdcpp.Input(saturation_code=1.0), ccdcpp.Input(thermal_saturation_code=1.0))
-        self.assertNotEqual(ccdcpp.Input(saturation_code=1.0).digest(),
-                            ccdcpp.Input(thermal_saturation_code=1.0).digest())
+        self.assertNotEqual(ccdcpp.DataSpec(saturation_code=1.0), ccdcpp.DataSpec(thermal_saturation_code=1.0))
+        self.assertNotEqual(ccdcpp.DataSpec(saturation_code=1.0).digest(),
+                            ccdcpp.DataSpec(thermal_saturation_code=1.0).digest())
         self.assertEqual(copy.copy(h), h)
 
     def test_a_denser_cadence_and_no_cutoff_are_a_configuration(self):
         cfg = ccdcpp.config("ccdc").replace(change_test__peek_reference_days=5.0,
                                             shared__min_observations=18)
-        h = presets.landsat_c1_dn().input()
+        h = presets.landsat_c1_dn().spec()
         self.assertEqual(cfg.params("change_test")["peek_reference_days"], 5.0)
         self.assertEqual(cfg.shared()["min_observations"], 18)
         stages = cfg.resolve(h)
@@ -351,7 +351,7 @@ class Profiles(unittest.TestCase):
         self.assertEqual(stages["edge_segments"]["min_observations"], 18)
         self.assertEqual(cfg.shared()["statistics_end"], "none")
         self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], "none")
-        out = every_entry(DATES, CUBE_DN, CODES, input=presets.landsat_c1_dn(), config=cfg)
+        out = every_entry(DATES, CUBE_DN, CODES, spec=presets.landsat_c1_dn(), config=cfg)
         self.assertEqual(out["detect_cube"]["failures"], [])
 
     def test_change_probability_moves_the_threshold(self):
@@ -365,7 +365,7 @@ class Profiles(unittest.TestCase):
 
 class DetectionCount(unittest.TestCase):
     def test_thresholds_follow_the_count(self):
-        h, cfg = ten_band_profile().input(), TEN_BAND_CONFIG
+        h, cfg = ten_band_profile().spec(), TEN_BAND_CONFIG
         self.assertEqual(len(cfg.resolve(h)["shared"]["detection_bands"]), 6)
         self.assertEqual(set(option_params(cfg, "change_threshold", h).values()),
                          {ccdcpp.chi2_quantile(0.99, 6)})

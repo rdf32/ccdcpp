@@ -16,7 +16,7 @@ namespace py = pybind11;
 // Python holds a table as std::shared_ptr<ccd::QaTable>, the holder pybind11
 // needs; the class exposes no way to write to it, so it is as read-only as
 // the std::shared_ptr<const QaTable> the core takes, and the conversion
-// between the two is a pointer copy. An Input holds one as its qa_table.
+// between the two is a pointer copy. A DataSpec holds one as its qa_table.
 //------------------------------------------------------------------------------
 
 namespace
@@ -60,7 +60,7 @@ void bind_qa_tables(py::module_& m)
         m,
         "QaTable",
         "A lookup from raw QA values to the QA codes detect reads: entry v "
-        "is the code of raw value v, for every uint16 v. An Input holds one "
+        "is the code of raw value v, for every uint16 v. A DataSpec holds one "
         "as its qa_table to decode a raw uint8 or uint16 qas array per pixel. "
         "Build one with ccdcpp.qa_tables, or from 65,536 uint8 codes. "
         "Immutable."
@@ -93,8 +93,8 @@ void bind_qa_tables(py::module_& m)
     py::module_ sub = m.def_submodule(
         "qa_tables",
         "QaTable builders, one per QA product. Each writes the qa_* codes of "
-        "the input it is given (an Input, default Input()), so build with "
-        "the input the run uses. Precedence is most-excluding "
+        "the spec it is given (a DataSpec, default DataSpec()), so build with "
+        "the spec the run uses. Precedence is most-excluding "
         "first: fill, cloud, shadow, snow, water, clear. The Landsat tables "
         "are validated for production use. The HLS and Sentinel-2 tables "
         "follow the products' definitions, are tested, and decode as that "
@@ -109,7 +109,7 @@ void bind_qa_tables(py::module_& m)
         {
             return held(ccd::qa_tables::landsat_c2_qa_pixel(o));
         },
-        py::arg("input") = ccd::DataSpec{},
+        py::arg("spec") = ccd::DataSpec{},
         "Landsat Collection 2 QA_PIXEL (uint16). Bit 0 fill; bits 3, 1, 2 "
         "(cloud, dilated cloud, cirrus) cloud; bit 4 shadow; bit 5 snow; "
         "bit 7 water; otherwise clear. Bits 6 and 8-15 are not read."
@@ -121,7 +121,7 @@ void bind_qa_tables(py::module_& m)
         {
             return held(ccd::qa_tables::landsat_c1_pixel_qa(o));
         },
-        py::arg("input") = ccd::DataSpec{},
+        py::arg("spec") = ccd::DataSpec{},
         "Landsat Collection 1 pixel_qa (uint16), in pyccd's order. Bit 0 "
         "fill; bit 5 cloud; bit 3 shadow; bit 4 snow; bit 2 water; bit 1 "
         "clear; bits 8 and 9 both set, or bit 10, clear; otherwise fill "
@@ -134,7 +134,7 @@ void bind_qa_tables(py::module_& m)
         {
             return held(ccd::qa_tables::hls_fmask(o, exclude_high_aerosol));
         },
-        py::arg("input") = ccd::DataSpec{},
+        py::arg("spec") = ccd::DataSpec{},
         py::arg("exclude_high_aerosol") = false,
         "HLS v2.0 Fmask (uint8). 255 fill; bits 1, 2 (cloud, adjacent to "
         "cloud or shadow) cloud; bit 0, reserved and unused in v2.0 (Fmask "
@@ -153,7 +153,7 @@ void bind_qa_tables(py::module_& m)
         {
             return held(ccd::qa_tables::sentinel2_scl(o));
         },
-        py::arg("input") = ccd::DataSpec{},
+        py::arg("spec") = ccd::DataSpec{},
         "Sentinel-2 L2A SCL (uint8). 0, 1 fill; 2, 3 (cast shadows, cloud "
         "shadows) shadow; 4, 5 clear; 6 water; 7-10 (unclassified, cloud "
         "medium and high probability, thin cirrus) cloud; 11 snow; anything "

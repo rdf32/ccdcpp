@@ -2,10 +2,10 @@
 
 A configuration's ``preprocess`` section says, per procedure (``standard``, ``snow``,
 ``insufficient_clear``), how it reads the thermal row (``thermal``: ``"celsius"`` through the
-input's thermal transform, or ``"stored"``) and which steps build its processing mask, in
+data spec's thermal transform, or ``"stored"``) and which steps build its processing mask, in
 order. A step's parameters are physical: QA codes
 by name, bands by role, bounds in reflectance and degrees Celsius. The run resolves them against
-its input with the rest of the configuration; ``ccdcpp.plan_of(config, input)`` shows the
+its data spec with the rest of the configuration; ``ccdcpp.plan_of(config, spec)`` shows the
 result. The classes here write a chain; a field left None is the step's default
 (``ccdcpp.steps()`` lists them)::
 
@@ -29,11 +29,11 @@ __all__ = ["AddQa", "BandRange", "OnePerDate", "GreenMedian", "KeepQa", "PROCEDU
 #: diagnostics' ``procedure`` code ``c`` is ``PROCEDURES[c]``.
 PROCEDURES = ("standard", "insufficient_clear", "snow")
 
-#: How a procedure reads the thermal row: through the input's thermal transform, in degrees
-#: Celsius, or as the input stores it.
+#: How a procedure reads the thermal row: through the spec's thermal transform, in degrees
+#: Celsius, or as the data stores it.
 _THERMAL = ("celsius", "stored")
 
-#: The QA code names a step takes; each is the ``ccdcpp.Input`` field ``qa_<name>``.
+#: The QA code names a step takes; each is the ``ccdcpp.DataSpec`` field ``qa_<name>``.
 QA_CODE_NAMES = ("fill", "clear", "water", "shadow", "snow", "cloud", "cirrus1", "cirrus2",
                  "occlusion")
 
@@ -88,7 +88,7 @@ def _given(step: str, **params: Any) -> dict[str, Any]:
 @dataclass(frozen=True)
 class KeepQa:
     """keep_qa: keep only the observations whose QA code is in ``codes``, names from
-    :data:`QA_CODE_NAMES` (the input's ``qa_*`` codes) or ints. None: clear and water."""
+    :data:`QA_CODE_NAMES` (the spec's ``qa_*`` codes) or ints. None: clear and water."""
 
     codes: tuple[str | int, ...] | None = None
 
@@ -121,8 +121,8 @@ class ThermalRange:
     ``(min, max)`` in degrees Celsius; an end ``inclusive`` also keeps a value equal to it
     (``inclusive=(False, True)``). None: pyccd's -93.2 and 70.7, exclusive. A procedure reading
     ``thermal="celsius"`` tests the transformed row; one reading it ``"stored"`` tests the row as
-    the input holds it against the bounds taken back through the input's transform, so the
-    range is in degrees Celsius on every input. An input without a ``"thermal"`` row skips the
+    the data holds it against the bounds taken back through the spec's transform, so the
+    range is in degrees Celsius on every data spec. A spec without a ``"thermal"`` row skips the
     step."""
 
     celsius: tuple[float, float] | None = None
@@ -202,8 +202,8 @@ def step_dict(step: object) -> dict[str, Any]:
 class ProcedureChain:
     """One procedure's preprocessing: its ``steps`` in order (at most
     ``ccdcpp.CHAIN_CAPACITY``), and how it reads the thermal row: ``thermal="celsius"``
-    through the input's thermal transform ("ccdc"'s standard, as pyccd), or ``"stored"`` as
-    the input holds it."""
+    through the spec's thermal transform ("ccdc"'s standard, as pyccd), or ``"stored"`` as
+    the data holds it."""
 
     steps: tuple[object, ...] = ()
     thermal: Literal["celsius", "stored"] = "stored"

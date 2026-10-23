@@ -82,14 +82,14 @@ def landsat_c1_dn() -> SensorProfile:
 
     Input: optical surface reflectance x 10000 (0..10000), thermal brightness
     temperature in Kelvin x 10. QA: pre-classified uint8 codes (the
-    ``ccdcpp.Input`` ``qa_*`` fields); for raw ``pixel_qa``, a copy with
+    ``ccdcpp.DataSpec`` ``qa_*`` fields); for raw ``pixel_qa``, a copy with
     ``qa_table_builder="landsat_c1_pixel_qa"`` (``dataclasses.replace``).
 
     A saturated observation holds 20000 in every band (``saturation_code``,
     ``thermal_saturation_code``).
 
-    ``input()`` is, field for field,
-    ``ccdcpp.Input(saturation_code=20000.0, thermal_saturation_code=20000.0)``.
+    ``spec()`` is, field for field, ``ccdcpp.DataSpec(saturation_code=20000.0,
+    thermal_saturation_code=20000.0)``.
     """
     return SensorProfile(
         name="landsat_c1_dn",
@@ -111,7 +111,7 @@ def landsat_c1_physical() -> SensorProfile:
     Its values are the DN values divided by 10000 (``reflectance_scale`` 1,
     ``thermal_at_100c`` 1) and its thermal transform is the identity: a
     configuration resolves to its DN values divided by 10000, so the fit is
-    the DN fit, with the coefficients in the input's units.
+    the DN fit, with the coefficients in the data's units.
     """
     return SensorProfile(
         name="landsat_c1_physical",
@@ -335,7 +335,7 @@ def sentinel2_l2a() -> SensorProfile:
     water bodies it sends 1,355 of 3,983 water pixels, and 3,426 pixels in
     all, to the InsufficientClear procedure; decoding 7 as fill would send
     2,545, as clear 587. It stays cloud. A caller who wants the water pixels
-    runs ``input().replace(qa_table=ccdcpp.QaTable(codes))``, with ``codes``
+    runs ``spec().replace(qa_table=ccdcpp.QaTable(codes))``, with ``codes``
     the table's codes and entry 7 changed.
 
     Under "ccdc" change is detected on B03, B04, B8A, B11 and B12 with the

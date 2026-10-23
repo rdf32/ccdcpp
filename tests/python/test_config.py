@@ -87,7 +87,7 @@ class Presets(unittest.TestCase):
                          ccdcpp.Config(ccdcpp.ccdcpp._config_preset("ccdc")))
 
     def test_resolved_on_dn_it_is_pyccds_tree(self):
-        r = ccdcpp.config("ccdc").resolve(ccdcpp.Input())
+        r = ccdcpp.config("ccdc").resolve(ccdcpp.DataSpec())
         self.assertEqual(r["model"]["lasso.alpha"], 1.0)
         self.assertEqual(r["change_test"]["change_threshold"],
                          15.086272469388987)
@@ -121,7 +121,7 @@ class Presets(unittest.TestCase):
         self.assertEqual(cfg.shared()["lasso"], {"alpha": 2e-4, "coef_floor": 1e-4,
                                                  "max_iter": 1000, "tolerance": 1e-4})
         self.assertEqual(cfg.shared()["coefficients"]["max"], 6)
-        self.assertEqual(cfg.resolve(ccdcpp.Input())["shared"]["lasso"]["alpha"], 2.0)
+        self.assertEqual(cfg.resolve(ccdcpp.DataSpec())["shared"]["lasso"]["alpha"], 2.0)
         with self.assertRaisesRegex(ValueError, r"^shared has no table 'lassoo'; its tables are "
                                                 r"coefficients, lasso$"):
             ccdcpp.config().replace(shared__lassoo__alpha=1.0)
@@ -192,7 +192,7 @@ class Presets(unittest.TestCase):
         cfg = ccdcpp.config()
         self.assertEqual(cfg.shared()["statistics_end"], "none")
         self.assertIn('statistics_end = "none"', cfg.to_toml())
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         self.assertEqual(cfg.resolve(h)["shared"]["statistics_end"], "none")
         # A date is its ordinal: the same run, and the same digest.
         dated = cfg.replace(shared__statistics_end="2017-12-31")
@@ -211,7 +211,7 @@ class Presets(unittest.TestCase):
     def test_a_peek_is_the_change_tests_or_a_number(self):
         cfg = ccdcpp.config()
         self.assertEqual(cfg.params("lookback")["peek"], "change_test")
-        self.assertEqual(cfg.resolve(ccdcpp.Input())["lookback"]["peek"],
+        self.assertEqual(cfg.resolve(ccdcpp.DataSpec())["lookback"]["peek"],
                          "change_test")
         self.assertEqual(cfg.replace(lookback__peek=8).params("lookback")["peek"], 8)
         with self.assertRaisesRegex(ValueError, r"^lookback 'pyccd' parameter 'peek' is 0; it "
@@ -242,7 +242,7 @@ class Replace(unittest.TestCase):
     def test_a_shared_value_reaches_every_stage_that_reads_it(self):
         cfg = ccdcpp.config().replace(shared__change_probability=0.95)
         self.assertEqual(cfg.shared()["change_probability"], 0.95)
-        stages = cfg.resolve(ccdcpp.Input())
+        stages = cfg.resolve(ccdcpp.DataSpec())
         for stage in ("change_test", "stability_rule", "lookback"):
             self.assertEqual(stages[stage]["change_probability"], 0.95, stage)
             self.assertEqual(stages[stage]["change_threshold"],
@@ -274,7 +274,7 @@ class Replace(unittest.TestCase):
     def test_check_refuses_what_a_run_would(self):
         with self.assertRaisesRegex(ValueError, "parameter 'factor' is 0; it must be greater than 0"):
             ccdcpp.config().replace(refit__factor=0.0).check()
-        three = ccdcpp.Input(roles=["blue", "green", "red"])
+        three = ccdcpp.DataSpec(roles=["blue", "green", "red"])
         with self.assertRaisesRegex(ValueError, "holds 'nir', which the data spec does not have; "
                                                 "its rows are blue, green, red"):
             ccdcpp.config().check(three)
@@ -282,7 +282,7 @@ class Replace(unittest.TestCase):
                                        shared__detection_bands=[1, 2])
         with self.assertRaisesRegex(ValueError, "holds band 4; the data spec has 3 bands"):
             rows.check(three)
-        ccdcpp.config().check(ccdcpp.Input())
+        ccdcpp.config().check(ccdcpp.DataSpec())
 
     def test_equal_values_hash_equal(self):
         import numpy as np
@@ -322,10 +322,10 @@ class Replace(unittest.TestCase):
                                                         f"min_observations must exceed "
                                                         f"coefficients.min$"):
                     ccdcpp.config().replace(**change)
-        ccdcpp.config().replace(shared__min_observations=5).check(ccdcpp.Input())
+        ccdcpp.config().replace(shared__min_observations=5).check(ccdcpp.DataSpec())
         # The thermal and reflectance bounds take any number: an infinity is an open end.
         ccdcpp.config().replace(preprocess__thermal_range__celsius=[-inf, 70.7]).check(
-            ccdcpp.Input())
+            ccdcpp.DataSpec())
         # A list mixes no names and numbers; a strategy without parameters names none.
         with self.assertRaisesRegex(ValueError, r"'codes' is a list of strs \(band roles, QA "
                                                 r"code names\), of ints \(band rows, QA "
@@ -375,25 +375,25 @@ class Strategies(unittest.TestCase):
 class Runs(unittest.TestCase):
     def test_the_preset_runs_as_the_default(self):
         d, s, q = pixel()
-        h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
+        h = ccdcpp.DataSpec()
+        plain = ccdcpp.detect(d, s, q, spec=h)
         self.assertGreater(len(plain["models"]), 1)
         for cfg in ("ccdc", ccdcpp.config("ccdc"),
                     ccdcpp.Config(ccdcpp.ccdcpp._config_preset("ccdc"))):
-            configured = ccdcpp.detect(d, s, q, input=h, config=cfg)
+            configured = ccdcpp.detect(d, s, q, spec=h, config=cfg)
             self.assertEqual(plain["models"], configured["models"])
         # The extension's own default (config=None) is the same built-in preset.
-        bare = ccdcpp.ccdcpp.detect(d, s, q, input=h)
+        bare = ccdcpp.ccdcpp.detect(d, s, q, spec=h)
         self.assertEqual(plain["models"], bare["models"])
 
     def test_config_is_a_config_or_a_preset_name(self):
         d, s, q = pixel()
         with self.assertRaisesRegex(TypeError, "a ccdcpp.Config or a preset's name"):
-            ccdcpp.detect(d, s, q, input=ccdcpp.Input(),
+            ccdcpp.detect(d, s, q, spec=ccdcpp.DataSpec(),
                           config=ccdcpp.config().to_dict())  # pyright: ignore[reportArgumentType]  # a dict, refused
         path = os.path.join(_PACKAGE, "configs", "ccdc.toml")
         with self.assertRaisesRegex(TypeError, "not a path; pass ccdcpp.config"):
-            ccdcpp.detect(d, s, q, input=ccdcpp.Input(), config=path)
+            ccdcpp.detect(d, s, q, spec=ccdcpp.DataSpec(), config=path)
 
     def test_a_config_is_checked_and_compiled_when_built(self):
         with self.assertRaisesRegex(ValueError, "refit 'span-factor' parameter 'factor' is 0"):
@@ -404,24 +404,24 @@ class Runs(unittest.TestCase):
 
     def test_a_configuration_changes_the_run(self):
         d, s, q = pixel()
-        h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
-        sparse = ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(shared__lasso__alpha=0.01))
+        h = ccdcpp.DataSpec()
+        plain = ccdcpp.detect(d, s, q, spec=h)
+        sparse = ccdcpp.detect(d, s, q, spec=h, config=ccdcpp.config().replace(shared__lasso__alpha=0.01))
         # A hundred times the Lasso penalty in every Lasso stage: other coefficients.
         self.assertNotEqual(sparse["models"], plain["models"])
         strict = ccdcpp.detect(
-            d, s, q, input=h, config=ccdcpp.config().replace(change_test__peek_size=200))
+            d, s, q, spec=h, config=ccdcpp.config().replace(change_test__peek_size=200))
         # No peek of 200 observations fits after the change: it is not found.
         self.assertLess(len(strict["models"]), len(plain["models"]))
 
     def test_the_cube_entry_points_take_it(self):
         d, s, q = pixel()
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
         cfg = ccdcpp.config("ccdc")
-        a = ccdcpp.detect_cube(d, cube, qc, input=h, threads=1)
-        b = ccdcpp.detect_cube(d, cube, qc, input=h, threads=1, config=cfg)
+        a = ccdcpp.detect_cube(d, cube, qc, spec=h, threads=1)
+        b = ccdcpp.detect_cube(d, cube, qc, spec=h, threads=1, config=cfg)
         for key in a:
             if key != "failures":
                 np.testing.assert_array_equal(a[key], b[key], err_msg=key)
@@ -429,9 +429,9 @@ class Runs(unittest.TestCase):
 
     def test_a_trace_records_the_run(self):
         d, s, q = pixel()
-        h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
-        traced = ccdcpp.detect(d, s, q, input=h, trace=True)
+        h = ccdcpp.DataSpec()
+        plain = ccdcpp.detect(d, s, q, spec=h)
+        traced = ccdcpp.detect(d, s, q, spec=h, trace=True)
         self.assertEqual(plain["models"], traced["models"])
         assert "trace" in traced
         rows = traced["trace"]
@@ -445,7 +445,7 @@ class Runs(unittest.TestCase):
         self.assertTrue(any(r["outcome"] == "change" for r in tests))
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
-        out = ccdcpp.detect_cube(d, cube, qc, input=h, threads=2, trace_pixels=[(1, 0)])
+        out = ccdcpp.detect_cube(d, cube, qc, spec=h, threads=2, trace_pixels=[(1, 0)])
         assert "traces" in out
         self.assertEqual(list(out["traces"]), [(1, 0)])
         self.assertEqual(out["traces"][(1, 0)], rows)
@@ -456,10 +456,10 @@ class Runs(unittest.TestCase):
         s[6, 20] = 9000.0          # thermal out of range
         s[3, 30] = 20000.0         # nir saturated
         d[41] = d[40]              # a second observation of a date
-        h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
+        h = ccdcpp.DataSpec()
+        plain = ccdcpp.detect(d, s, q, spec=h)
         self.assertNotIn("mask_reasons", plain)
-        out = ccdcpp.detect(d, s, q, input=h, reasons=True)
+        out = ccdcpp.detect(d, s, q, spec=h, reasons=True)
         self.assertEqual(out["models"], plain["models"])
         assert "mask_reasons" in out
         reasons = out["mask_reasons"]
@@ -475,7 +475,7 @@ class Runs(unittest.TestCase):
         days = [(m["start_day"], m["end_day"]) for m in out["models"]]
         for t in np.flatnonzero(reasons == ccdcpp.REASONS.index("in_segment")):
             self.assertTrue(any(a <= d[t] <= b for a, b in days))
-        traced = ccdcpp.detect(d, s, q, input=h, reasons=True, trace=True)
+        traced = ccdcpp.detect(d, s, q, spec=h, reasons=True, trace=True)
         assert "trace" in traced
         drops = {r["day"]: r["outcome"] for r in traced["trace"] if r["kind"] == "drop"}
         machine = {int(d[t]): names[t] for t in range(d.size)
@@ -496,8 +496,8 @@ class Runs(unittest.TestCase):
         # A cube's: each pixel's, in one (H, W, T) array; to_pixels() gives each its row.
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
-        self.assertNotIn("mask_reasons", ccdcpp.detect_cube(d, cube, qc, input=h, threads=1))
-        cols = ccdcpp.detect_cube(d, cube, qc, input=h, threads=2, reasons=True)
+        self.assertNotIn("mask_reasons", ccdcpp.detect_cube(d, cube, qc, spec=h, threads=1))
+        cols = ccdcpp.detect_cube(d, cube, qc, spec=h, threads=2, reasons=True)
         assert "mask_reasons" in cols
         self.assertEqual(cols["mask_reasons"].shape, (2, 2, d.size))
         for r in range(2):
@@ -510,10 +510,10 @@ class Runs(unittest.TestCase):
     def test_diagnostics_say_what_the_run_did(self):
         d, s, q = pixel()
         q[10] = 4
-        h = ccdcpp.Input()
-        plain = ccdcpp.detect(d, s, q, input=h)
+        h = ccdcpp.DataSpec()
+        plain = ccdcpp.detect(d, s, q, spec=h)
         self.assertNotIn("pixel_diagnostics", plain)
-        out = ccdcpp.detect(d, s, q, input=h, diagnostics=True, reasons=True)
+        out = ccdcpp.detect(d, s, q, spec=h, diagnostics=True, reasons=True)
         self.assertEqual(out["models"], plain["models"])
         assert "pixel_diagnostics" in out and "segment_diagnostics" in out
         assert "mask_reasons" in out
@@ -536,7 +536,7 @@ class Runs(unittest.TestCase):
         # pixel detect()'s.
         cube = np.ascontiguousarray(np.broadcast_to(s, (2, 2) + s.shape))
         qc = np.ascontiguousarray(np.broadcast_to(q, (2, 2) + q.shape))
-        cols = ccdcpp.detect_cube(d, cube, qc, input=h, threads=2, diagnostics=True)
+        cols = ccdcpp.detect_cube(d, cube, qc, spec=h, threads=2, diagnostics=True)
         assert "pixel_diagnostics" in cols and "segment_diagnostics" in cols
         per_pixel = cast(dict[str, NDArray[np.int32]], cols["pixel_diagnostics"])
         per_segment = cast(dict[str, NDArray[np.int32]], cols["segment_diagnostics"])
@@ -559,7 +559,7 @@ class Runs(unittest.TestCase):
         snowy = np.full_like(q, 3)
         for qa, name in ((q, "standard"), (cloudy, "insufficient_clear"), (snowy, "snow")):
             with self.subTest(procedure=name):
-                out = ccdcpp.detect(d, s, qa, input=ccdcpp.Input(), diagnostics=True,
+                out = ccdcpp.detect(d, s, qa, spec=ccdcpp.DataSpec(), diagnostics=True,
                                     record=True)
                 assert "pixel_diagnostics" in out and "resume" in out
                 self.assertEqual(ccdcpp.PROCEDURES[out["pixel_diagnostics"]["procedure"]], name)
@@ -581,7 +581,7 @@ class Runs(unittest.TestCase):
                                     rng.normal(0, 15, (7, dates.size)))
                 spectral[3, :k] += 3000.0
                 spectral[2, :k] -= 300.0
-                models = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.Input(),
+                models = ccdcpp.detect(dates, spectral, qas, spec=ccdcpp.DataSpec(),
                                        config=cfg)["models"]
                 starts = [m["observation_count"] for m in models if m["curve_qa"] == 14]
                 self.assertEqual(starts, [] if start is None else [start])
@@ -592,16 +592,16 @@ class Runs(unittest.TestCase):
 
     def test_a_bad_configuration_is_refused_before_any_pixel(self):
         d, s, q = pixel()
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         tree = ccdcpp.config().to_dict()
         tree["refit"] = {"strategy": "nope"}
         with self.assertRaisesRegex(ValueError, "refit has no strategy 'nope'"):
-            ccdcpp.detect(d, s, q, input=h, config=ccdcpp.Config(tree))
+            ccdcpp.detect(d, s, q, spec=h, config=ccdcpp.Config(tree))
         with self.assertRaisesRegex(ValueError, "the configuration has no 'mode' stage"):
-            ccdcpp.detect(d, s, q, input=h,
+            ccdcpp.detect(d, s, q, spec=h,
                           config=ccdcpp.Config({"refit": {"strategy": "span-factor"}}))
         with self.assertRaisesRegex(ValueError, "refit 'span-factor' parameter 'factor' is 0"):
-            ccdcpp.detect(d, s, q, input=h, config=ccdcpp.config().replace(refit__factor=0.0))
+            ccdcpp.detect(d, s, q, spec=h, config=ccdcpp.config().replace(refit__factor=0.0))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # ccdc: pyccd's CCDC algorithm (Zhu & Woodcock 2014, as pyccd implements it), with the
 # corrections listed in the README. Values are in physical units: reflectance 0-1, degrees
-# Celsius, days, observations. A run converts them to its input's units once.
+# Celsius, days, observations. A run converts them to its data spec's units once.
 #
 # A file of your own starts from this one and lists only what it changes:
 #     extends = "ccdc"
@@ -31,7 +31,7 @@ tolerance = 0.0001               # a sweep's relative update at which it checks 
 # --- Preprocessing: which observations each procedure keeps -------------------------------
 
 [preprocess.standard]
-thermal = "celsius"              # through the input's thermal transform (degrees Celsius)
+thermal = "celsius"              # through the spec's thermal transform (degrees Celsius)
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", celsius = [-93.2, 70.7] },                                                           # degrees Celsius

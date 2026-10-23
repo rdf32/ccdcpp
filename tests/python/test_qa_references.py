@@ -82,8 +82,8 @@ class NlcdC2(unittest.TestCase):
         if table is None or science is None:
             self.skipTest(reason)
 
-        # The plugin's codes are the Input's defaults.
-        h = ext.Input()
+        # The plugin's codes are the DataSpec's defaults.
+        h = ext.DataSpec()
         self.assertEqual(
             [science.QA_FILL, science.QA_CLEAR, science.QA_WATER,
              science.QA_SHADOW, science.QA_SNOW, science.QA_CLOUD],
@@ -111,7 +111,7 @@ class PyccdC1(unittest.TestCase):
         params = types.SimpleNamespace(
             QA_FILL=0, QA_CLEAR=1, QA_WATER=2, QA_SHADOW=3, QA_SNOW=4,
             QA_CLOUD=5, QA_CIRRUS1=8, QA_CIRRUS2=9, QA_OCCLUSION=10)
-        h = ext.Input()
+        h = ext.DataSpec()
         code_of_offset = {
             0: h.qa_fill, 1: h.qa_clear, 2: h.qa_water,
             3: h.qa_shadow, 4: h.qa_snow, 5: h.qa_cloud}

@@ -9,7 +9,7 @@
 // and read through a strided view; the run converts each pixel to float64 in
 // its own buffer, so a uint16 cube is never widened as a whole. Anything else
 // is converted to a C-contiguous float64 array first, under numpy safe
-// casting. Without the input's QA table `qas` is QA codes, uint8 under the
+// casting. Without the spec's QA table `qas` is QA codes, uint8 under the
 // same two rules; a uint16 `qas` holds raw QA values, which have no meaning
 // without a table, and is a TypeError. With a table `qas` is raw values, uint8
 // or uint16, anything else converted to uint16 under numpy safe casting.
@@ -17,7 +17,7 @@
 //
 // Nothing is written to the arrays: a plan's transform happens in the
 // run's per-pixel copy. Only the ranks are checked here, as the views need
-// them; the run checks the lengths, the input and the dates.
+// them; the run checks the lengths, the data spec and the dates.
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>

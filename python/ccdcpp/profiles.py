@@ -2,10 +2,10 @@
 
 A :class:`SensorProfile` describes the data, and only the data: it names the
 rows of the ``spectral`` array, says which role each one plays, and gives the
-units and the QA decoding. Its ``input()`` is the ``ccdcpp.Input`` of the
+units and the QA decoding. Its ``spec()`` is the ``ccdcpp.DataSpec`` of the
 data, roles included, so a configuration that names bands by role holds for
 any band order. ``ccdcpp.detect`` and ``ccdcpp.detect_cube`` take one as
-``input=``; the configuration (``config=``, "ccdc" by default) is the same
+``spec=``; the configuration (``config=``, "ccdc" by default) is the same
 for every profile.
 
 A new sensor is one constructor call; ``ccdcpp.presets`` writes its profiles
@@ -43,7 +43,7 @@ from typing import NoReturn
 import numpy as np
 from numpy.typing import ArrayLike
 
-from .ccdcpp import CCD_MAX_BANDS, ROLES, Input, QaTable, qa_tables
+from .ccdcpp import CCD_MAX_BANDS, ROLES, DataSpec, QaTable, qa_tables
 
 
 @dataclass(frozen=True)
@@ -52,10 +52,10 @@ class Units:
     ``r * scale + offset``.
 
     scale
-        ``Input.reflectance_scale``: the value one unit of reflectance has in
+        ``DataSpec.reflectance_scale``: the value one unit of reflectance has in
         the data (Collection-1 DN 10000, reflectance 1).
     offset
-        ``Input.reflectance_offset``: the data's value of reflectance 0
+        ``DataSpec.reflectance_offset``: the data's value of reflectance 0
         (0, the default, for both).
     """
 
@@ -68,11 +68,11 @@ class Thermal:
     """The thermal band's transform and the unit it lands on.
 
     scale, offset
-        ``Input.thermal_scale``, ``Input.thermal_offset``: a procedure that
+        ``DataSpec.thermal_scale``, ``DataSpec.thermal_offset``: a procedure that
         transforms thermal reads ``thermal * scale + offset``. ``(1.0, 0.0)``
         for input already in the unit.
     at_100c
-        ``Input.thermal_at_100c``: the value 100 degrees Celsius has after the
+        ``DataSpec.thermal_at_100c``: the value 100 degrees Celsius has after the
         transform (10000 for Celsius x 100, 1 for Celsius / 100). The
         configuration's thermal bounds in degrees Celsius resolve to
         ``c * 100 * at_100c / 10000``.
@@ -83,14 +83,14 @@ class Thermal:
     at_100c: float
 
 
-#: Collection 1 DN: reflectance x 10000 (``Input()`` defaults).
+#: Collection 1 DN: reflectance x 10000 (``DataSpec()`` defaults).
 DN = Units(scale=10000.0)
 
 #: Surface reflectance, 0..1: :data:`DN` divided by 10000.
 REFLECTANCE = Units(scale=1.0)
 
 #: Thermal as Kelvin x 10, transformed to degrees Celsius x 100, where 100
-#: degrees is 10000 (``Input()`` defaults).
+#: degrees is 10000 (``DataSpec()`` defaults).
 KELVIN_TENTHS = Thermal(scale=10.0, offset=-27315.0, at_100c=10000.0)
 
 #: Thermal already in degrees Celsius / 100, where 100 degrees is 1: the unit
@@ -102,7 +102,7 @@ CELSIUS_OVER_100 = Thermal(scale=1.0, offset=0.0, at_100c=1.0)
 QaTableOptions = Mapping[str, object] | tuple[tuple[str, object], ...]
 
 #: The keyword arguments each ``ccdcpp.qa_tables`` builder takes beyond
-#: ``input``, as its binding declares them: builder -> {name: (type,
+#: ``spec``, as its binding declares them: builder -> {name: (type,
 #: default)}. ``SensorProfile.qa_table_options`` is checked against it.
 QA_TABLE_OPTIONS: Mapping[str, Mapping[str, tuple[type, object]]] = MappingProxyType({
     "landsat_c2_qa_pixel": MappingProxyType({}),
@@ -111,21 +111,21 @@ QA_TABLE_OPTIONS: Mapping[str, Mapping[str, tuple[type, object]]] = MappingProxy
     "sentinel2_scl": MappingProxyType({}),
 })
 
-#: The thermal fields of ``Input()``, which a profile without a thermal band
+#: The thermal fields of ``DataSpec()``, which a profile without a thermal band
 #: keeps.
-_INPUT_THERMAL = Thermal(scale=Input().thermal_scale, offset=Input().thermal_offset,
-                         at_100c=Input().thermal_at_100c)
+_DEFAULT_THERMAL = Thermal(scale=DataSpec().thermal_scale, offset=DataSpec().thermal_offset,
+                           at_100c=DataSpec().thermal_at_100c)
 
 
 @dataclass(frozen=True)
 class SensorProfile:
     """One sensor's data: band names and roles, units and QA.
 
-    A profile says only how to read the data, as its ``ccdcpp.Input`` does
+    A profile says only how to read the data, as its ``ccdcpp.DataSpec`` does
     (see its documentation); the configuration says what to do with it.
 
     Example: ``ccdcpp.detect(dates, spectral, qas,
-    input=ccdcpp.presets.landsat_c2())``
+    spec=ccdcpp.presets.landsat_c2())``
 
     name
         A label for the profile, for messages and provenance.
@@ -137,20 +137,20 @@ class SensorProfile:
     units
         The reflective bands' units, a :class:`Units`.
     thermal
-        A :class:`Thermal`, or None for an input without a thermal band
+        A :class:`Thermal`, or None for data without a thermal band
         (no ``"thermal"`` role, which skips the transform and the thermal
         range).
     saturation_code, thermal_saturation_code
-        ``Input.saturation_code``, ``Input.thermal_saturation_code``: the value a
+        ``DataSpec.saturation_code``, ``DataSpec.thermal_saturation_code``: the value a
         saturated observation holds in the reflective rows and in the thermal
         row, as the data stores it (before any transform), or None (the
         default) when the profile does not declare one. A step or strategy
-        that reads one refuses an input without it.
+        that reads one refuses a spec without it.
     qa_table_builder
         The name of a ``ccdcpp.qa_tables`` builder for the sensor's raw QA
         band, or None for pre-classified uint8 codes.
     qa_table_options
-        Keyword arguments of ``qa_table_builder`` beyond the input, as a
+        Keyword arguments of ``qa_table_builder`` beyond the spec, as a
         mapping or ``(name, value)`` pairs; empty (the default) for none.
         ``{"exclude_high_aerosol": True}`` makes ``hls_fmask`` decode high
         aerosol as cloud. Each name and the type of its value are those
@@ -166,7 +166,7 @@ class SensorProfile:
         raises ValueError when the profile is constructed.
 
     Profiles are immutable, hashable and picklable, so one can be handed to
-    worker processes where input objects cannot.
+    worker processes where DataSpec objects cannot.
     """
 
     name: str
@@ -178,7 +178,7 @@ class SensorProfile:
     thermal_saturation_code: float | None = None
     qa_table_builder: str | None = None
     qa_table_options: QaTableOptions = field(default=())
-    _input: Input = field(init=False, repr=False, compare=False)
+    _spec: DataSpec = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         for name in ("band_names", "roles"):
@@ -189,10 +189,10 @@ class SensorProfile:
         options = self._canonical_qa_table_options()
         object.__setattr__(self, "qa_table_options", options)
         self._validate()
-        object.__setattr__(self, "_input", self._build_input(options))
+        object.__setattr__(self, "_spec", self._build_spec(options))
 
     def __reduce__(self) -> tuple[type[SensorProfile], tuple[object, ...]]:
-        # The constructor's arguments: the Input is rebuilt, as it does not pickle.
+        # The constructor's arguments: the DataSpec is rebuilt, as it does not pickle.
         return (SensorProfile, tuple(getattr(self, f.name) for f in fields(self) if f.init))
 
     def _fail(self, message: str) -> NoReturn:
@@ -276,8 +276,8 @@ class SensorProfile:
         return tuple(sorted((name, given.get(name, default))
                             for name, (_, default) in declared.items()))
 
-    def _build_input(self, options: tuple[tuple[str, object], ...]) -> Input:
-        """The profile's ``ccdcpp.Input``, its table built with ``options``
+    def _build_spec(self, options: tuple[tuple[str, object], ...]) -> DataSpec:
+        """The profile's ``ccdcpp.DataSpec``, its table built with ``options``
         (ValueError if the builder rejects them)."""
         table = None
         if self.qa_table_builder is not None:
@@ -287,8 +287,8 @@ class SensorProfile:
                 self._fail(
                     f"ccdcpp.qa_tables.{self.qa_table_builder} rejects qa_table_options "
                     f"{dict(options)}, which QA_TABLE_OPTIONS allows: {error}")
-        thermal = self.thermal or _INPUT_THERMAL
-        return Input(
+        thermal = self.thermal or _DEFAULT_THERMAL
+        return DataSpec(
             roles=list(self.roles),
             reflectance_scale=self.units.scale,
             reflectance_offset=self.units.offset,
@@ -304,16 +304,16 @@ class SensorProfile:
         """The row of the band with ``role``."""
         return self.roles.index(role)
 
-    def input(self) -> Input:
-        """The ``ccdcpp.Input`` of this profile's data, built with the profile
+    def spec(self) -> DataSpec:
+        """The ``ccdcpp.DataSpec`` of this profile's data, built with the profile
         (it is immutable; ``replace()`` gives a changed copy).
 
         Roles are the profile's; ``qa_table`` is the ``ccdcpp.QaTable`` of
         ``qa_table_builder`` with ``qa_table_options``, built with the
-        input's codes, or None for pre-classified uint8 codes. Every field
-        the profile does not describe keeps its ``Input()`` default.
+        spec's codes, or None for pre-classified uint8 codes. Every field
+        the profile does not describe keeps its ``DataSpec()`` default.
         """
-        return self._input
+        return self._spec
 
     def check(self, spectral: ArrayLike, band_names: Sequence[str] | None = None) -> None:
         """Raise ValueError unless the band axis of ``spectral`` has one row
@@ -381,6 +381,6 @@ class SensorProfile:
 @lru_cache(maxsize=None)
 def _qa_table(builder: str, options: tuple[tuple[str, object], ...]) -> QaTable:
     """The table of ``qa_tables.<builder>`` with ``options``, built once and
-    shared by every profile that names it. The builders read only the input's
-    QA codes, which a profile leaves at ``Input()``'s."""
-    return getattr(qa_tables, builder)(Input(), **dict(options))
+    shared by every profile that names it. The builders read only the spec's
+    QA codes, which a profile leaves at ``DataSpec()``'s."""
+    return getattr(qa_tables, builder)(DataSpec(), **dict(options))

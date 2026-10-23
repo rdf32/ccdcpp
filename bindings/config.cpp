@@ -261,7 +261,7 @@ ccd::config::PreprocessConfig preprocess_from_python(const py::handle& preproces
                 if (!thermal)
                     throw py::value_error("preprocess " + name + " thermal is " +
                                           std::string(py::repr(value)) +
-                                          "; it is \"celsius\" (through the input's thermal "
+                                          "; it is \"celsius\" (through the spec's thermal "
                                           "transform) or \"stored\"");
                 procedure.thermal = *thermal;
             }
@@ -362,7 +362,7 @@ const ccd::config::Registry& registry()
 
 // A resolution as Python data, laid out as its configuration: the shared
 // values, each stage's table and the preprocessing, every value in the
-// input's units and rows, and the digest.
+// spec's units and rows, and the digest.
 py::dict resolved_to_python(const ccd::config::Resolved& r)
 {
     py::dict out;
@@ -418,7 +418,7 @@ void bind_config(py::module_& m)
         m,
         "Algorithm",
         "A compiled configuration: checked once, as it is built, and resolved "
-        "against each input it runs on once. Immutable; ccdcpp.Config holds "
+        "against each data spec it runs on once. Immutable; ccdcpp.Config holds "
         "one.")
     .def(py::init([](const py::object& config)
                   { return std::make_shared<ccd::Algorithm>(config_from_python(config)); }),
@@ -431,9 +431,9 @@ void bind_config(py::module_& m)
     .def("resolve",
          [](const ccd::Algorithm& a, const ccd::DataSpec& spec)
          { return resolved_to_python(*a.for_spec(spec)); },
-         py::arg("input"),
-         "The configuration resolved against `input` (cached): {\"stages\", "
-         "\"shared\", \"digest\"}, every value in the input's units and rows.");
+         py::arg("spec"),
+         "The configuration resolved against `spec` (cached): {\"stages\", "
+         "\"shared\", \"digest\"}, every value in the spec's units and rows.");
 
     m.def(
         "_config_preset",
@@ -458,9 +458,9 @@ void bind_config(py::module_& m)
             if (spec)
                 ccd::config::resolve(registry(), c, *spec);
         },
-        py::arg("config"), py::arg("input") = py::none(),
-        "Raises ValueError for what a run would refuse in the configuration; with `input`, "
-        "what it refuses against that input too.");
+        py::arg("config"), py::arg("spec") = py::none(),
+        "Raises ValueError for what a run would refuse in the configuration; with `spec`, "
+        "what it refuses against that spec too.");
     m.def(
         "_config_resolve",
         [](const py::dict& config, const ccd::DataSpec& spec)
@@ -468,8 +468,8 @@ void bind_config(py::module_& m)
             return resolved_to_python(
                 ccd::config::resolve(registry(), config_from_python(config), spec));
         },
-        py::arg("config"), py::arg("input"),
-        "The configuration resolved against `input`: {\"stages\", \"shared\", \"digest\"}.");
+        py::arg("config"), py::arg("spec"),
+        "The configuration resolved against `spec`: {\"stages\", \"shared\", \"digest\"}.");
     m.def(
         "_strategies",
         []()

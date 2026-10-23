@@ -18,7 +18,7 @@ namespace py = pybind11;
 namespace
 {
 
-// Every field of ccd::Input, by its Python keyword, and how a value sets it.
+// Every field of ccd::DataSpec, by its Python keyword, and how a value sets it.
 using Setter = void (*)(ccd::DataSpec&, const py::handle&);
 
 template<class T, T ccd::DataSpec::*Member>
@@ -32,7 +32,7 @@ void set_qa_table(ccd::DataSpec& spec, const py::handle& value)
     spec.qa_table = value.is_none() ? nullptr : value.cast<std::shared_ptr<ccd::QaTable>>();
 }
 
-const std::vector<std::pair<const char*, Setter>>& input_fields()
+const std::vector<std::pair<const char*, Setter>>& spec_fields()
 {
     using ccd::DataSpec;
     using ccd::scalar_t;
@@ -60,14 +60,14 @@ const std::vector<std::pair<const char*, Setter>>& input_fields()
     return fields;
 }
 
-// `input` with the keyword `fields` set; TypeError, naming `where` and the
+// `spec` with the keyword `fields` set; TypeError, naming `where` and the
 // fields, for another keyword or a value of the wrong type.
 ccd::DataSpec with_fields(ccd::DataSpec spec, const py::kwargs& fields, const char* where)
 {
     for (const auto& [key, value] : fields)
     {
         const std::string name = py::str(key);
-        const auto& known = input_fields();
+        const auto& known = spec_fields();
         const auto it = std::find_if(known.begin(), known.end(),
                                      [&](const auto& f) { return name == f.first; });
         if (it == known.end())
@@ -95,7 +95,7 @@ ccd::DataSpec with_fields(ccd::DataSpec spec, const py::kwargs& fields, const ch
 } // namespace
 
 
-void bind_input(py::module_& m)
+void bind_data_spec(py::module_& m)
 {
     // A band index that names no band.
     m.attr("NO_BAND") = ccd::NO_BAND;
@@ -124,30 +124,32 @@ void bind_input(py::module_& m)
 
     py::class_<ccd::DataSpec>(
         m,
-        "Input",
+        "DataSpec",
         "What the caller's data is: its QA codes and the table that decodes "
         "its raw QA, a role per row of the spectral array, and its units. It "
-        "holds no algorithm parameter: those are the configuration's, "
-        "resolved against the Input when a run is built. The defaults are "
-        "Landsat Collection-1 DN as pyccd consumes it, QA as codes. "
-        "ccdcpp.SensorProfile.input() builds one for a sensor.\n\n"
-        "The input says only how to read the data. The configuration says "
+        "holds none of the arrays and no algorithm parameter: those are the "
+        "configuration's, resolved against the DataSpec when a run is built. "
+        "The defaults are Landsat Collection-1 DN as pyccd consumes it, QA as "
+        "codes. "
+        "ccdcpp.SensorProfile.spec() builds one for a sensor.\n\n"
+        "The data spec says only how to read the data. The configuration says "
         "what to do with it, in physical units. The run translates once: 0–1 "
         "reflectance × 10000 is the 0–10000 DN check. docs/units.md states "
         "the boundary: the data, its codes (fill, "
         "saturation, compared on the raw stored values) and the outputs are "
-        "in the input's storage encoding; the configuration is physical.\n\n"
-        "Immutable: Input(**fields) takes every field by keyword, each "
+        "in the data's storage encoding; the configuration is physical.\n\n"
+        "Immutable: DataSpec(**fields) takes every field by keyword, each "
         "defaulting as below, and replace(**fields) returns a copy with those "
         "fields changed. Equal and hashed by value.\n\n"
-        "Example: ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, "
+        "Example: ccdcpp.DataSpec(reflectance_scale=1.0, thermal_scale=1.0, "
         "thermal_offset=0.0, thermal_at_100c=1.0)  # reflectance, Celsius / 100"
     )
-    .def(py::init([](const py::kwargs& fields) { return with_fields(ccd::DataSpec{}, fields, "Input()"); }))
+    .def(py::init([](const py::kwargs& fields)
+                  { return with_fields(ccd::DataSpec{}, fields, "DataSpec()"); }))
     .def("replace",
          [](const ccd::DataSpec& self, const py::kwargs& fields)
-         { return with_fields(self, fields, "Input.replace()"); },
-         "A copy of this input with the fields given by keyword changed.")
+         { return with_fields(self, fields, "DataSpec.replace()"); },
+         "A copy of this spec with the fields given by keyword changed.")
 
     //--------------------------------------------------------------------------
     // Band layout
@@ -162,19 +164,19 @@ void bind_input(py::module_& m)
     )
     .def("bands", &ccd::DataSpec::bands, "The band count: one row per role.")
     .def("index", &ccd::DataSpec::index, py::arg("role"),
-         "The row of `role`, or ccdcpp.NO_BAND when the input has none.")
+         "The row of `role`, or ccdcpp.NO_BAND when the spec has none.")
 
     //--------------------------------------------------------------------------
     // Units
     //
-    // The physical-unit input is one divisor, 10000, on the data, with
+    // The physical-unit data is one divisor, 10000, on the data, with
     // reflectance its unit:
     //
     //     spectral[:6] = dn[:6] / 1e4             # reflectance 0..1
     //     spectral[6]  = (k10 * 10 - 27315) / 1e4 # degrees Celsius / 100
     //
-    //     i = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0,
-    //                      thermal_offset=0.0, thermal_at_100c=1.0)
+    //     spec = ccdcpp.DataSpec(reflectance_scale=1.0, thermal_scale=1.0,
+    //                            thermal_offset=0.0, thermal_at_100c=1.0)
     //
     // See docs/units.md for the measured equivalence and why plain Celsius
     // is not the physical unit.
@@ -210,9 +212,9 @@ void bind_input(py::module_& m)
         "saturation_code", &ccd::DataSpec::saturation_code,
         "The value a saturated observation holds in the reflective rows, as "
         "the data stores it (before any transform; 20000 in Collection-1 DN), "
-        "or None (the default) when the input does not declare one. Codes are "
+        "or None (the default) when the spec does not declare one. Codes are "
         "compared on the raw stored values. A step or strategy that reads it "
-        "refuses an input without one."
+        "refuses a spec without one."
     )
     .def_readonly(
         "thermal_saturation_code", &ccd::DataSpec::thermal_saturation_code,
@@ -226,7 +228,7 @@ void bind_input(py::module_& m)
     //
     // The codes the procedures compare `qas` against: the caller's uint8
     // codes, or a QaTable's output, which ccdcpp.qa_tables builds from these
-    // fields. See input.hpp for what reads each one.
+    // fields. See data_spec.hpp for what reads each one.
     //--------------------------------------------------------------------------
     .def_readonly("qa_fill", &ccd::DataSpec::qa_fill,
         "Fill: not a valid observation (default 255).")
@@ -252,7 +254,7 @@ void bind_input(py::module_& m)
         [](const ccd::DataSpec& self)
         { return std::const_pointer_cast<ccd::QaTable>(self.qa_table); },
         "The ccdcpp.QaTable that decodes raw uint8 or uint16 qas into the "
-        "qa_* codes (ccdcpp.qa_tables builds one with this input's codes), "
+        "qa_* codes (ccdcpp.qa_tables builds one with this spec's codes), "
         "or None (the default): qas are the codes, uint8."
     )
 
@@ -262,6 +264,6 @@ void bind_input(py::module_& m)
          py::is_operator())
     .def("__hash__", [](const ccd::DataSpec& self) { return ccd::digest(self); })
     .def("digest", [](const ccd::DataSpec& self) { return ccd::digest(self); },
-         "A digest of every field: equal for equal inputs, on any platform.")
+         "A digest of every field: equal for equal specs, on any platform.")
 ;
 }

@@ -129,7 +129,7 @@ def preset_input(preset: str, pixel: str, apply_offset: bool = True) -> tuple[
 def run(preset: str, pixel: str, apply_offset: bool = True) -> PixelResult:
     dates, spectral, qa, names = preset_input(preset, pixel, apply_offset)
     return ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                         input=getattr(presets, preset)(), band_names=names)
+                         spec=getattr(presets, preset)(), band_names=names)
 
 
 def as_stored(out: PixelResult) -> dict[str, Any]:
@@ -296,16 +296,16 @@ class Findings(unittest.TestCase):
                     others = others[:-1]  # B10, thermal bounds
                 coastal_only = ((spectral[names.index("B01")] <= 0)
                                 & ((others > 0) & (others < 1)).all(axis=0)
-                                & np.isin(getattr(presets, preset)().input().qa_table.codes[qa],
-                                          (ccdcpp.Input().qa_clear,
-                                           ccdcpp.Input().qa_water)))
+                                & np.isin(getattr(presets, preset)().spec().qa_table.codes[qa],
+                                          (ccdcpp.DataSpec().qa_clear,
+                                           ccdcpp.DataSpec().qa_water)))
                 self.assertEqual(int(coastal_only.sum()), count)
                 self.assertTrue(out["processing_mask"][coastal_only].all())
                 profile = getattr(presets, preset)()
                 screened = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=[
                     r for r in profile.roles if r not in ("thermal", "other")])
                 other = ccdcpp.detect(dates, np.ascontiguousarray(spectral), qa,
-                                      input=profile, config=screened, band_names=names)
+                                      spec=profile, config=screened, band_names=names)
                 self.assertFalse(other["processing_mask"][coastal_only].any())
                 self.assertNotEqual(as_stored(other), as_stored(out))
 

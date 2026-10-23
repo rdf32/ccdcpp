@@ -24,7 +24,7 @@ namespace pp = ccd::preprocess;
 // Preprocessing plans: ccd::preprocess (input/mask/chain.hpp) as Python
 // classes, for inspection.
 //
-// A plan is a configuration's preprocess section resolved against an input:
+// A plan is a configuration's preprocess section resolved against a data spec:
 // plan_of() returns it. The classes are read-only copies; plans
 // compare with == field by field; describe() and repr() print them one step
 // a line.
@@ -262,7 +262,7 @@ void bind_preprocess(py::module_& m)
     py::class_<pp::Step>(
         m,
         "Step",
-        "One filter of a resolved preprocessing chain, in the input's units, "
+        "One filter of a resolved preprocessing chain, in the spec's units, "
         "rows and codes; `kind` says which fields it reads: codes (KeepQa, "
         "AddQa), band, min, max, inclusive (ThermalRange), bands, min, max, "
         "inclusive (BandRange), band, green_offset, max_date, scope "
@@ -316,7 +316,7 @@ void bind_preprocess(py::module_& m)
         m,
         "Affine",
         "The transform of one band of the per-pixel copy, before the chain "
-        "runs: value <- value * scale + offset (the input's thermal "
+        "runs: value <- value * scale + offset (the spec's thermal "
         "transform). The caller's array is never written."
     )
     .def_readonly("band", &pp::Affine::band)
@@ -352,7 +352,7 @@ void bind_preprocess(py::module_& m)
     py::class_<pp::PreprocessPlan>(
         m,
         "PreprocessPlan",
-        "A configuration's preprocessing resolved against an input "
+        "A configuration's preprocessing resolved against a data spec "
         "(plan_of()): a ProcedurePlan per procedure, standard, insufficient_clear "
         "and snow (PermanentSnow). A run runs the one of the "
         "procedure each pixel selects."
@@ -373,11 +373,11 @@ void bind_preprocess(py::module_& m)
         [](std::shared_ptr<ccd::Algorithm> config, const ccd::DataSpec& spec)
         { return algorithm_or_ccdc(std::move(config))->for_spec(spec)->plan; },
         py::arg("config"),
-        py::arg("input"),
+        py::arg("spec"),
         "The PreprocessPlan `config` (an Algorithm, None for the \"ccdc\" "
-        "preset's) runs on `input`: its preprocess section resolved against the input, the "
+        "preset's) runs on `spec`: its preprocess section resolved against the spec, the "
         "QA code names as its codes, the bands by role as its rows, the "
-        "bounds in its units; a thermal_range step is left out of an input "
+        "bounds in its units; a thermal_range step is left out of a spec "
         "without a thermal row."
     );
 }

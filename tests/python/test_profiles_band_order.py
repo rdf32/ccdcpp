@@ -47,15 +47,15 @@ class Permutation(unittest.TestCase):
         for base, (dates, cube, qa), order in runs:
             with self.subTest(profile=base.name):
                 profile = permuted(base, order)
-                h = profile.input()
+                h = profile.spec()
                 for row, role in enumerate(base.roles):
                     self.assertEqual(h.index(role), order.index(row), role)
-                detection = ccdcpp.config("ccdc").resolve(base.input())["shared"]["detection_bands"]
+                detection = ccdcpp.config("ccdc").resolve(base.spec())["shared"]["detection_bands"]
                 self.assertEqual(ccdcpp.config("ccdc").resolve(h)["shared"]["detection_bands"],
                                  [order.index(i) for i in detection])
-                expected = every_entry(dates, cube, qa, threads=2, input=base)
+                expected = every_entry(dates, cube, qa, threads=2, spec=base)
                 got = every_entry(dates, np.ascontiguousarray(cube[:, :, order]), qa, threads=2,
-                                  input=profile)
+                                  spec=profile)
                 assert_same(self, unpermute(got, order), expected)
 
 
@@ -76,10 +76,10 @@ class BandNamesCheck(unittest.TestCase):
         for preset, (dates, cube, qa) in runs:
             with self.subTest(preset=preset.__name__):
                 profile = preset()
-                expected = every_entry(dates, cube, qa, threads=2, input=profile)
+                expected = every_entry(dates, cube, qa, threads=2, spec=profile)
                 for names in (profile.band_names, list(profile.band_names),
                               np.array(profile.band_names)):
-                    assert_same(self, every_entry(dates, cube, qa, threads=2, input=profile,
+                    assert_same(self, every_entry(dates, cube, qa, threads=2, spec=profile,
                                                   band_names=names), expected)
 
     def test_refuses_a_misordered_sentinel2_stack(self):
@@ -87,7 +87,7 @@ class BandNamesCheck(unittest.TestCase):
         dates, cube, scl = preset_inputs("sentinel2_l2a")
         store = [profile.band_names.index(b) for b in S2_STORE_ORDER]
         stacked = np.ascontiguousarray(cube[:, :, store])
-        for name, call in self.entries(dates, stacked, scl, input=profile,
+        for name, call in self.entries(dates, stacked, scl, spec=profile,
                                        band_names=S2_STORE_ORDER).items():
             with self.subTest(entry=name):
                 with self.assertRaises(ValueError) as caught:
@@ -99,15 +99,15 @@ class BandNamesCheck(unittest.TestCase):
                 self.assertIn("reorder the band axis of spectral to B02, B03, B04, B05", message)
         # What the check prevents: without band_names the same stack runs,
         # B08 read as red edge 1, and gives another result.
-        silent = ccdcpp.detect_cube(dates, stacked, scl, threads=2, input=profile)
-        right = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile)
+        silent = ccdcpp.detect_cube(dates, stacked, scl, threads=2, spec=profile)
+        right = ccdcpp.detect_cube(dates, cube, scl, threads=2, spec=profile)
         self.assertEqual(silent["failures"], [])
         self.assertNotEqual(str(without(silent, "threads")), str(without(right, "threads")))
         # Reordered by the names, it is the right run.
         order = [S2_STORE_ORDER.index(b) for b in profile.band_names]
         assert_same(self, ccdcpp.detect_cube(
             dates, np.ascontiguousarray(stacked[:, :, order]), scl, threads=2,
-            input=profile, band_names=tuple(np.array(S2_STORE_ORDER)[order])), right)
+            spec=profile, band_names=tuple(np.array(S2_STORE_ORDER)[order])), right)
 
     def test_other_names_raise(self):
         profile = presets.hls_l30()
@@ -123,25 +123,25 @@ class BandNamesCheck(unittest.TestCase):
         for given, text in cases:
             with self.subTest(given=given):
                 with self.assertRaises(ValueError) as caught:
-                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], input=profile,
+                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], spec=profile,
                                   band_names=given)
                 self.assertIn(text, str(caught.exception))
                 self.assertIn("the profile has B01, B02", str(caught.exception))
         for given in ("B01B02B03B04B05B06B07B10", b"B01", ("B01",) * 7 + (10,)):
             with self.subTest(given=given):
                 with self.assertRaises(TypeError):
-                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], input=profile,
+                    ccdcpp.detect(dates, cube[0, 0], fmask[0, 0], spec=profile,
                                   band_names=given)  # pyright: ignore[reportArgumentType]  # not names, refused
 
     def test_needs_a_profile(self):
-        h = ccdcpp.Input()
+        h = ccdcpp.DataSpec()
         names = presets.landsat_c1_dn().band_names
-        for name, call in self.entries(DATES, CUBE_DN, CODES, input=h,
+        for name, call in self.entries(DATES, CUBE_DN, CODES, spec=h,
                                        band_names=names).items():
             with self.subTest(entry=name):
                 with self.assertRaises(TypeError) as caught:
                     call()
-                self.assertIn("pass input= a ccdcpp.SensorProfile", str(caught.exception))
+                self.assertIn("pass spec= a ccdcpp.SensorProfile", str(caught.exception))
 
     def test_check_takes_band_names(self):
         profile = presets.sentinel2_l2a()

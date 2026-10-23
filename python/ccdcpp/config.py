@@ -13,8 +13,8 @@ A value is a bool, an int, a float, a str, or a list of names (band roles, QA co
 ints (band rows, QA codes), of numbers (a range's [min, max]) or of bools (its ends'). Pass it
 as ``config=`` to ``ccdcpp.detect`` and ``ccdcpp.detect_cube``: it is checked when it is built
 (unknown stages, strategies, steps, parameters or shared values, values out of range, what a
-strategy needs from another) and resolved against each input it runs on once (band roles
-against the input's rows). A resume record of a configured run continues only under the same
+strategy needs from another) and resolved against each data spec it runs on once (band roles
+against the spec's rows). A resume record of a configured run continues only under the same
 configuration.
 
     import ccdcpp
@@ -23,11 +23,11 @@ configuration.
     cfg = cfg.replace(shared__change_probability=0.95,
                       refit__factor=2.0)                 # shared__value=, stage__parameter=
     print(cfg)                                          # every shared value, stage and parameter
-    out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), config=cfg)
+    out = ccdcpp.detect(dates, spectral, qas, spec=ccdcpp.presets.landsat_c2(), config=cfg)
 
-A configuration is written in physical terms, so it means the same on every input: the shared
+A configuration is written in physical terms, so it means the same on every data spec: the shared
 ``lasso.alpha`` and ``lasso.coef_floor`` and the preprocessing's ranges and offsets in
-reflectance (the run multiplies them by the input's ``reflectance_scale``), the thermal range
+reflectance (the run multiplies them by the spec's ``reflectance_scale``), the thermal range
 in degrees Celsius, the change and outlier thresholds as probabilities (the run takes their
 chi-squared quantiles for the number of detection bands), bands by role, QA codes by name. The
 values several stages read are written once, in ``shared`` (``ccdcpp.shared_values()`` lists
@@ -152,7 +152,7 @@ def _set_step(tree: dict[str, Any], procedures: Sequence[str], step: str, param:
 _UNIT_NOTES = {"observations": "observations", "days": "days", "reflectance": "reflectance",
                "reflectance_delta": "reflectance", "celsius": "degrees Celsius",
                "date": 'a date "YYYY-MM-DD", an ordinal day, or "none"'}
-_THERMAL_NOTES = {"celsius": "through the input's thermal transform (degrees Celsius)",
+_THERMAL_NOTES = {"celsius": "through the spec's thermal transform (degrees Celsius)",
                   "stored": "as stored; the range still compares in degrees Celsius"}
 # The column a preset file's comments start at, and its section banners' width.
 _NOTE_COLUMN = 33
@@ -227,16 +227,16 @@ def _paths(shared: dict[str, Any]) -> list[tuple[str, Any]]:
 
 class Config:
     """An algorithm configuration (see the module's documentation). Building one checks it
-    (ValueError for what a run would refuse on any input) and compiles it once: every call
-    that runs it reuses the compilation, and its resolution against each input it meets. It
+    (ValueError for what a run would refuse on any data spec) and compiles it once: every call
+    that runs it reuses the compilation, and its resolution against each data spec it meets. It
     holds the configuration in full, as the extension writes it out: every shared value and
     every stage's and step's parameters spelled out, a whole number given for a real as the
     real, so equal configurations compare and hash equal.
 
-    What the input says and what the configuration says: ``ccdcpp.Input``'s documentation.
+    What the data spec says and what the configuration says: ``ccdcpp.DataSpec``'s documentation.
     docs/units.md states the boundary: a configuration is in the physical domain
     (reflectance levels and differences, degrees Celsius), and a run converts it once into
-    the input's storage encoding (on Collection-1 DN, band_range 0–1 is 0–10000, -93.2–70.7
+    the data's storage encoding (on Collection-1 DN, band_range 0–1 is 0–10000, -93.2–70.7
     degrees Celsius is -9320–7070, alpha 1e-4 is 1.0, the green offset 0.04 is 400).
 
     Example: ``cfg = ccdcpp.config("ccdc").replace(shared__change_probability=0.995)``
@@ -355,16 +355,16 @@ class Config:
             tree[stage][param.replace("__", ".")] = value
         return Config(tree)
 
-    def check(self, input: _extension.Input | None = None) -> None:
-        """Raises ValueError for what a run would refuse; with ``input`` (a ccdcpp.Input),
-        what it refuses against that input too (a role it lacks, a row off its bands)."""
-        _extension._config_check(self._tree, input)
+    def check(self, spec: _extension.DataSpec | None = None) -> None:
+        """Raises ValueError for what a run would refuse; with ``spec`` (a ccdcpp.DataSpec),
+        what it refuses against that spec too (a role it lacks, a row off its bands)."""
+        _extension._config_check(self._tree, spec)
 
-    def resolve(self, input: _extension.Input) -> dict[str, Any]:
-        """The configuration resolved against ``input`` (a ccdcpp.Input), as the run runs
+    def resolve(self, spec: _extension.DataSpec) -> dict[str, Any]:
+        """The configuration resolved against ``spec`` (a ccdcpp.DataSpec), as the run runs
         it, laid out as the configuration (shared, each stage, preprocess) with its "digest",
-        every value in the input's units, rows and codes."""
-        return self._algorithm.resolve(input)
+        every value in the spec's units, rows and codes."""
+        return self._algorithm.resolve(spec)
 
     def hash(self) -> int:
         """The configuration's digest: equal for equal configurations, on any platform."""

@@ -36,7 +36,7 @@ class TenBand(unittest.TestCase):
     def test_both_entry_points_run_ten_bands(self):
         profile = ten_band_profile()
         dates, cube, scl = ten_band_inputs()
-        out = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile,
+        out = ccdcpp.detect_cube(dates, cube, scl, threads=2, spec=profile,
                                  config=TEN_BAND_CONFIG)
         self.assertEqual(out["failures"], [])
         self.assertEqual(out["num_bands"], 10)
@@ -48,7 +48,7 @@ class TenBand(unittest.TestCase):
         self.assertEqual(out["coefficients"].shape, (n, 10, 7))
         self.assertTrue(np.isfinite(out["rmse"]).all())
 
-        one = ccdcpp.detect(dates, cube[1, 0], scl[1, 0], input=profile, config=TEN_BAND_CONFIG)
+        one = ccdcpp.detect(dates, cube[1, 0], scl[1, 0], spec=profile, config=TEN_BAND_CONFIG)
         assert "band_names" in one
         self.assertEqual(one["band_names"], profile.band_names)
         self.assertTrue(all(len(m["bands"]) == 10 for m in one["models"]))
@@ -56,16 +56,16 @@ class TenBand(unittest.TestCase):
     def test_is_the_hand_built_run(self):
         profile = ten_band_profile()
         dates, cube, scl = ten_band_inputs()
-        h = ccdcpp.Input(roles=["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
-                                "nir_broad", "nir", "swir1", "swir2"],
-                         reflectance_scale=1.0)
+        h = ccdcpp.DataSpec(roles=["blue", "green", "red", "red_edge_1", "red_edge_2", "red_edge_3",
+                                   "nir_broad", "nir", "swir1", "swir2"],
+                            reflectance_scale=1.0)
         cfg = ccdcpp.config("ccdc").replace(
             change_test__peek_reference_days=10.0,
             shared__detection_bands=["green", "red", "red_edge_2", "nir", "swir1", "swir2"],
             shared__statistics_end="none",
         )
         self.assertEqual(TEN_BAND_CONFIG, cfg)
-        self.assertEqual(profile.input(), with_table(h, ccdcpp.qa_tables.sentinel2_scl(h)))
+        self.assertEqual(profile.spec(), with_table(h, ccdcpp.qa_tables.sentinel2_scl(h)))
         r = cfg.resolve(h)
         self.assertEqual(r["shared"]["detection_bands"], [1, 2, 4, 7, 8, 9])
         self.assertEqual(r["window_screen"]["bands"], [1, 8])
@@ -73,8 +73,8 @@ class TenBand(unittest.TestCase):
                          {ccdcpp.chi2_quantile(0.99, 6)})
         table = ccdcpp.qa_tables.sentinel2_scl(h)
         assert_same(self,
-                    strip_band_names(every_entry(dates, cube, scl, input=profile, config=cfg)),
-                    every_entry(dates, cube, scl, input=with_table(h, table), config=cfg))
+                    strip_band_names(every_entry(dates, cube, scl, spec=profile, config=cfg)),
+                    every_entry(dates, cube, scl, spec=with_table(h, table), config=cfg))
 
     def test_documented_example_runs(self):
         # The profile in ccdcpp.profiles' docstring, which is not shipped.
@@ -85,18 +85,18 @@ class TenBand(unittest.TestCase):
         exec(compile(inspect.cleandoc("\n" + code), "<profiles docstring>", "exec"), namespace)
         profile = namespace["landsat_oli_c2"]()
         self.assertFalse(hasattr(presets, "landsat_oli_c2"))
-        h = profile.input()
+        h = profile.spec()
         self.assertEqual((h.bands(), h.index("green"), h.index("thermal")), (8, 2, 7))
         shared = ccdcpp.config("ccdc").resolve(h)["shared"]
         self.assertEqual(shared["detection_bands"], [2, 3, 4, 5, 6])
         self.assertEqual(shared["statistics_end"], "none")
-        np.testing.assert_array_equal(profile.input().qa_table.codes,
+        np.testing.assert_array_equal(profile.spec().qa_table.codes,
                                       ccdcpp.qa_tables.landsat_c2_qa_pixel(h).codes)
 
     def test_statistics_end_matters_after_2017(self):
         dates, cube, scl = ten_band_inputs()
         landsat = TEN_BAND_CONFIG.replace(shared__statistics_end=736694)
-        out = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=ten_band_profile(),
+        out = ccdcpp.detect_cube(dates, cube, scl, threads=2, spec=ten_band_profile(),
                                  config=landsat)
         self.assertNotEqual(set(out["curve_qa"].tolist()), {8})
 
@@ -107,7 +107,7 @@ class SensorPresets(unittest.TestCase):
         for preset in HLS_AND_SENTINEL2:
             name = preset.__name__
             with self.subTest(preset=name):
-                h, cfg = preset().input(), defaults
+                h, cfg = preset().spec(), defaults
                 expected, table = hand_built(name)
                 self.assertEqual(fields(h), fields(with_table(expected, table)))
                 r = cfg.resolve(h)
@@ -121,7 +121,7 @@ class SensorPresets(unittest.TestCase):
                 self.assertEqual(preset().qa_table_options,
                                  dict(sentinel2_l2a=()).get(
                                      name, (("exclude_high_aerosol", False),)))
-                np.testing.assert_array_equal(qa_table_of(preset().input()).codes, table.codes)
+                np.testing.assert_array_equal(qa_table_of(preset().spec()).codes, table.codes)
 
     def test_band_range_tests_blue_to_swir2(self):
         # "ccdc"'s band_range tests the rows of blue, green, red, nir, swir1
@@ -143,7 +143,7 @@ class SensorPresets(unittest.TestCase):
         for preset in (presets.hls_s30, presets.sentinel2_l2a):
             with self.subTest(preset=preset.__name__):
                 p = preset()
-                h = p.input()
+                h = p.spec()
                 detection = ccdcpp.config("ccdc").resolve(h)["shared"]["detection_bands"]
                 for role in ("red_edge_1", "red_edge_2", "red_edge_3", "nir_broad"):
                     self.assertNotIn(p.index(role), detection)
@@ -157,10 +157,10 @@ class SensorPresets(unittest.TestCase):
             with self.subTest(preset=name):
                 dates, cube, qa = preset_inputs(name)
                 h, table = hand_built(name)
-                profiled = every_entry(dates, cube, qa, threads=2, input=preset())
+                profiled = every_entry(dates, cube, qa, threads=2, spec=preset())
                 assert_same(self, strip_band_names(profiled),
                             every_entry(dates, cube, qa, threads=2,
-                                        input=with_table(h, table), config="ccdc"))
+                                        spec=with_table(h, table), config="ccdc"))
                 cols = profiled["detect_cube"]
                 self.assertEqual(cols["failures"], [])
                 self.assertEqual(cols["band_names"], BAND_NAMES[name])
@@ -176,14 +176,14 @@ class HlsInput(unittest.TestCase):
                   keep: NDArray[np.intp] | None = None) -> PixelResult:
         if keep is not None:
             dates, cube, fmask = dates[keep], cube[..., keep], fmask[..., keep]
-        return ccdcpp.detect(dates, np.ascontiguousarray(cube), fmask, input=profile)
+        return ccdcpp.detect(dates, np.ascontiguousarray(cube), fmask, spec=profile)
 
     def test_every_layer_is_the_stored_int16_times_0_0001(self):
         dates, cube, _, raw = hls_inputs(8, thermal=True)
         self.assertEqual(raw.dtype, np.int16)
         np.testing.assert_array_equal(cube, raw * 1e-4)
         # Thermal B10 is degrees Celsius x 100; times 0.0001 it is degrees
-        # Celsius / 100, inside "ccdc"'s -93.2..70.7 degrees as the input resolves it.
+        # Celsius / 100, inside "ccdc"'s -93.2..70.7 degrees as the spec resolves it.
         therm = ccdcpp.plan_of("ccdc", presets.hls_l30()).standard.chain[1]
         self.assertTrue(((cube[:, :, 7] > therm.min) & (cube[:, :, 7] < therm.max)).all())
 
@@ -219,7 +219,7 @@ class HlsInput(unittest.TestCase):
         listed = ccdcpp.config("ccdc").replace(preprocess__band_range__bands=[
             "coastal", "blue", "green", "red", "nir", "swir1", "swir2"])
         out = ccdcpp.detect(dates, np.ascontiguousarray(raw * 1e-4), fmask[0, 0],
-                            input=presets.hls_l30(), config=listed)
+                            spec=presets.hls_l30(), config=listed)
         self.assertFalse(out["processing_mask"][high].any())
         self.assertTrue(out["processing_mask"][edge].all())
 
@@ -259,7 +259,7 @@ class Sentinel2Input(unittest.TestCase):
         offset = np.where(dates >= S2_OFFSET_DATE, -1000, 0)
         np.testing.assert_array_equal(cube, (dn + offset) / 10000.0)
         out = ccdcpp.detect_cube(dates, cube, scl, threads=2,
-                                         input=presets.sentinel2_l2a())
+                                         spec=presets.sentinel2_l2a())
         self.assertEqual(out["failures"], [])
         self.assertGreater(len(out["row"]), 4)
 
@@ -267,8 +267,8 @@ class Sentinel2Input(unittest.TestCase):
         # dn / 10000 without the offset: 0.1 too bright from 2022-01-25.
         dates, cube, scl, dn = s2_inputs(breaks=False)
         profile = presets.sentinel2_l2a()
-        corrected = ccdcpp.detect_cube(dates, cube, scl, threads=2, input=profile)
-        raw = ccdcpp.detect_cube(dates, dn / 10000.0, scl, threads=2, input=profile)
+        corrected = ccdcpp.detect_cube(dates, cube, scl, threads=2, spec=profile)
+        raw = ccdcpp.detect_cube(dates, dn / 10000.0, scl, threads=2, spec=profile)
         # One segment per pixel without the jump; a break at the baseline
         # change with it.
         self.assertEqual(len(corrected["row"]), 4)
@@ -286,7 +286,7 @@ class Sentinel2Input(unittest.TestCase):
         dn[2, after] = 0
         offset = np.where(dates >= S2_OFFSET_DATE, -1000, 0)
         out = ccdcpp.detect(dates, (dn + offset) / 10000.0, scl[0, 0],
-                            input=presets.sentinel2_l2a())
+                            spec=presets.sentinel2_l2a())
         self.assertFalse(out["processing_mask"][before].any())
         self.assertFalse(out["processing_mask"][after].any())
         self.assertTrue(out["processing_mask"][clear[1::30]].all())
