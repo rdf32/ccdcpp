@@ -2,10 +2,11 @@
 
 Copies the `ccd` package of lcmap-pyccd 2021.7.19 to <out dir>/ccd and applies the corrections
 README.md lists under "Differences from pyccd" (all but the coefficient counts, the same at the
-defaults), each changed line marked
+defaults, and the thermal range outside Standard), each changed line marked
 "# ccdcpp intent patch", so that bench_pyccd.py can time PyCCD and ccdcpp on the same algorithm:
-on the synthetic corpus the patched copy and ccdcpp's defaults give the same segments on every
-pixel. Fails if any patch does not apply exactly once.
+on bench_pyccd.py's 404 pixels the patched copy and ccdcpp's defaults give the same segments on
+394; the other 10 are InsufficientClear pixels that ccdcpp's degrees-Celsius thermal check
+rejects. Fails if any patch does not apply exactly once.
 """
 import argparse
 import os

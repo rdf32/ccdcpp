@@ -40,11 +40,16 @@ Every bench prints its peak memory (the process's peak resident set size, in MB 
 next to its time, and how far it is above the peak once the input is held; a comparison runs each
 side (implementation, call form or phase) in its own process, so each peak is its own.
 
-1. Synthetic. Run `bash tools/bench/bench.sh <python> <build dir> c16.bin` three times back to
-   back, with nothing else of yours running. The default configs are `f64 t1` (best of 2) and
-   `f64 t8` (best of 3). Note `sysctl vm.loadavg` before each run.
-   Report the per-run numbers and the median. Rerun if the spread is above 3%, or if the
-   1-minute load is far above about 10.
+Two builds compared run in the same session, in rounds whose order alternates (A B, B A, ...);
+a ratio is the median of the per-round ratios. Start a block of runs on a quiet machine (the
+1-minute load below 1.5, or other processes under 100% CPU for 60 s), note `sysctl
+vm.loadavg` before each run, and run the block again once if other processes pass 200% CPU
+during it.
+
+1. Synthetic. Run `bash tools/bench/bench.sh <python> <build dir> c16.bin` three times, with
+   nothing else of yours running. The default configs are `f64 t1` (best of 2) and `f64 t8`
+   (best of 3); a config is `"dtype threads reps"`, e.g. `"u16 8 3"` for uint16 input.
+   Report the per-run numbers and the median. Rerun if the spread is above 3%.
 2. Cell. Run three times:
 
    ```
@@ -53,8 +58,10 @@ side (implementation, call form or phase) in its own process, so each peak is it
 
    Report the median detect time, the peak memory and the fingerprint; the peak above the one
    once the cell is read is what detection adds to the input. A build that prints the
-   baseline's fingerprint gave byte-identical results on all 250,000 pixels. With `8 5
-   --size 20` (a 20 x 20 corner in strips of 5) it only checks that the script runs.
+   baseline's fingerprint gave byte-identical results on all 250,000 pixels. A third number
+   after the strip, `8 50 736694`, sets `ccdc`'s `statistics_end` (pyccd's 2017-12-31), the
+   cutoff 0.10.0 ran at. With `8 5 --size 20` (a 20 x 20 corner in strips of 5) it only checks
+   that the script runs. For thread scaling, run it once per thread count.
 3. Measure the baseline build again in the same session whenever the load differs much from
    its last run.
 4. PyCCD. With an interpreter that has lcmap-pyccd 2021.7.19's dependencies (numpy, scipy,
@@ -68,5 +75,14 @@ side (implementation, call form or phase) in its own process, so each peak is it
 
    Run it twice and report the medians, totals and ratios of the last lines. For the same
    algorithm on both sides, run it again with `<pyccd dir>` a copy made by
-   `python3 -I tools/bench/patch_pyccd.py <pyccd dir>/ccd <out dir>` (every pixel then has the
-   same segments). Each implementation's line gives its peak memory.
+   `python3 -I tools/bench/patch_pyccd.py <pyccd dir>/ccd <out dir>` (394 of the 404 pixels then
+   have the same segments; the other 10 are InsufficientClear pixels that ccdcpp's
+   degrees-Celsius thermal check rejects, which the copy does not patch). Each implementation's
+   line gives its peak memory.
+5. Per pixel. `<python> -I tools/bench/bench_pixel.py <package dir> c16.bin 500 3` times the
+   first 500 corpus pixels, best of 3, for each call form in its own process; run it five
+   times, alternating with the baseline.
+6. Annual update. `<python with zarr 3> -I -W ignore tools/bench/bench_resume.py <package dir>
+   <cube.zarr> 8 50` runs the stored run, the update and the full run each in its own process,
+   and exits non-zero if the update differs from the full run on any pixel. Run it twice and
+   report each phase's time and peak and the update / full ratio.

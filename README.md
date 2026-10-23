@@ -23,7 +23,7 @@ A run is two things: an **input**, which says how to read the data (`ccdcpp.Inpu
 # Features
 
 - **PyCCD's algorithm as it intends**, every difference from its code listed and checked against Zhu's MATLAB reference ([Differences from pyccd](#differences-from-pyccd)).
-- **Fast**: about 200 times PyCCD's speed per pixel in about half its process memory; a 500 x 500 Landsat cell over 40 years in 23 s on 18 threads ([Performance](#performance)).
+- **Fast**: about 200 times PyCCD's speed per pixel in about half its process memory; a 500 x 500 Landsat cell over 40 years in 21 s on 18 threads ([Performance](#performance)).
 - **Two calls**: `detect` for a pixel, `detect_cube` for an image cube in parallel, returning columns (OpenMP, the GIL released), reading float64, float32 or uint16 cubes in any layout without copying them.
 - **Inputs and sensor profiles**: band roles, units and QA decoding of an input in one object, with presets for Landsat Collection 1 and 2, HLS v2.0 and Sentinel-2 L2A (`ccdcpp.presets`).
 - **Raw QA input**: Landsat `QA_PIXEL` and `pixel_qa`, HLS `Fmask` and Sentinel-2 `SCL` decoded through lookup tables per pixel.
@@ -895,30 +895,30 @@ The start window is the shared `min_observations` (pyccd's `meow_size`). The pha
 
 # Performance
 
-Measured for ccdcpp 0.10.0 on an Apple M5 Max (18 cores: 6 performance, 12 efficiency; 64 GB; macOS 26.7), Release build, Python 3.11, numpy 1.26.4, Collection-1 DN at pyccd's statistics cutoff (`presets.landsat_c2()` for the real cell), on a machine that was not otherwise idle. 1.0 runs a pixel in the same time as 0.10.0 (0.403 ms against 0.404 ms per pixel, 129 MB against 128 MB peak; [docs/benchmarks.md](docs/benchmarks.md#10-against-0100)). Memory is the peak resident set size of the process, including the interpreter and the input it holds. [docs/benchmarks.md](docs/benchmarks.md) has every table, the load during each run, and how to measure again.
+Measured for ccdcpp 1.0 on an Apple M5 Max (18 cores: 6 performance, 12 efficiency; 64 GB; macOS 26.7), Release build (Apple clang 21, libomp 23.1.1), Python 3.11.16, numpy 1.26.4, the default input and the `ccdc` configuration (`presets.landsat_c2()` for the real cell), each side of a comparison in its own process. Per pixel 1.0 runs at 0.10.0's speed or below (0.3908 ms against 0.3910 ms with `Input()`, 131 MB against 128 MB peak; [docs/benchmarks.md](docs/benchmarks.md#per-pixel-10-and-0100)). Memory is the peak resident set size of the process, including the interpreter and the input it holds. [docs/benchmarks.md](docs/benchmarks.md) has every table, the method, the load during each run, and how to measure again.
 
-**Against PyCCD**, one pixel at a time on one thread, 404 pixels (the synthetic corpus and PyCCD's own test pixels), two rounds:
+**Against PyCCD**, one pixel at a time on one thread, 404 pixels (the synthetic corpus and PyCCD's own test pixels), ccdcpp at pyccd's statistics cutoff, each side in its own process, two rounds:
 
 | | PyCCD with ccdcpp's corrections | PyCCD as released | ccdcpp |
 |---|---|---|---|
-| median per pixel | 54.6, 52.4 ms | 51.8, 52.5 ms | 0.27 ms |
-| total, 404 pixels | 27.4, 27.1 s | 26.7, 26.9 s | 0.15 s |
-| same segments as ccdcpp | 404 of 404 | 155 of 404 | |
-| peak memory (own process) | 243 MB | | 131 MB |
+| median per pixel | 53.0, 56.0 ms | 51.3, 53.3 ms | 0.261-0.266 ms |
+| total, 404 pixels | 27.1, 28.4 s | 26.4, 27.0 s | 0.151-0.152 s |
+| same segments as ccdcpp | 394 of 404 | 145 of 404 | |
+| peak memory (own process) | 241 MB | 240-241 MB | 134 MB |
 
-About 200 times faster per pixel (median), 174-178 times on the total, and 68-73 times on PyCCD's 443-observation reference pixel (192-205 ms against 2.8 ms). Both memory figures are almost all the interpreter, the libraries and the loaded corpus: after the first pixel, the other 403 raise the peak by under 3 MB in either.
+About 200 times faster per pixel (median: 195-211 times), 175-188 times on the total, and 69-73 times on PyCCD's 443-observation reference pixel (192-196 ms against 2.7 ms). The 10 pixels that differ from the corrected PyCCD are synthetic InsufficientClear pixels that ccdcpp's degrees-Celsius thermal check rejects ([below](#differences-from-pyccd)). Both memory figures are almost all the interpreter, the libraries and the loaded corpus: after the first pixel, the other 403 raise the peak by under 3 MB in either.
 
-**A real cell**: a 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 250,000 pixels, 455,231 segments) through `detect_cube` in strips of 50 rows:
+**A real cell**: a 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 250,000 pixels, 458,018 segments) through `detect_cube` in strips of 50 rows:
 
 | Threads | Detect | ms per pixel | Speed-up | Peak memory |
 |---|---|---|---|---|
-| 1 | 292.4 s | 1.170 | 1.00 | 17.6 GB |
-| 8 | 42.4 s | 0.169 | 6.90 | 19.8 GB |
-| 18 | 22.8 s | 0.091 | 12.8 | 19.9 GB |
+| 1 | 284.4 s | 1.137 | 1.00 | 19.9 GB |
+| 8 | 42.8 s | 0.171 | 6.64 | 19.9 GB |
+| 18 | 20.6 s | 0.082 | 13.8 | 20.0 GB |
 
-The memory is mostly the input as the bench holds it: the cell read whole (9.9 GB of uint16), plus each strip converted to float64 (3.5 GB); it barely moves with the thread count, and a caller that reads per strip needs less.
+The memory is mostly the input as the bench holds it: the cell read whole (9.9 GB of uint16), plus each strip converted to float64; it barely moves with the thread count, and a caller that reads per strip needs less. At pyccd's statistics cutoff (`statistics_end=736694`) the cell's output is byte-identical to 0.10.0's.
 
-**The annual update** of that cell (recorded to 2022-12-31, 89 dates of 2023 added, 8 threads, two rounds): `detect_cube(resume=...)` 14.6 s and 13.9 s against a full run's 40.1 s and 38.7 s, 0.36 of the time, equal to the full run on all 250,000 pixels; 19.9 GB peak for the whole bench (stored run, update and full run in one process).
+**The annual update** of that cell (recorded to 2022-12-31, 89 dates of 2023 added, 8 threads, each phase in its own process, two rounds): `detect_cube(resume=...)` 14.2 s in both against a full run's 40.7 s and 40.9 s, 0.35 of the time, equal to the full run on all 250,000 pixels; 19.9-20.0 GB peak in each phase.
 
 # Differences from pyccd
 
