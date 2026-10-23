@@ -28,7 +28,7 @@ A run is two things: an **input**, which says how to read the data (`ccdcpp.Inpu
 - **Inputs and sensor profiles**: band roles, units and QA decoding of an input in one object, with presets for Landsat Collection 1 and 2, HLS v2.0 and Sentinel-2 L2A (`ccdcpp.presets`).
 - **Raw QA input**: Landsat `QA_PIXEL` and `pixel_qa`, HLS `Fmask` and Sentinel-2 `SCL` decoded through lookup tables per pixel.
 - **One configuration for every input**: the algorithm in physical units (reflectance, degrees Celsius, probabilities, bands by role), its decisions as stages decided by named strategies, its preprocessing as a chain of steps; immutable values, TOML presets, part of a run's record ([Configurations and presets](#configurations-and-presets)).
-- **Resume**: a stored run continued on new observations, equal bit for bit to a full rerun, at about a third of its time ([Resuming a run](#resuming-a-run)).
+- **Resume**: a stored run continued on new observations, equal bit for bit to the full run with its statistics capped at the stored run's end, at about a third of its time ([Resuming a run](#resuming-a-run)).
 - **Diagnostics**: every transition, change test, dropped observation and segment of the pixels you name, as rows for pandas, without changing the output ([Diagnostics](#diagnostics)).
 - **Typed**: the Python package ships its types (PEP 561); the results are `TypedDict`s.
 - **A C++ API** of the same two calls, `ccd::detect` and `ccd::detect_cube`, and a CMake build ([The C++ API](#the-c-api)).
@@ -168,10 +168,11 @@ void a_cube(const std::vector<std::int64_t>& dates, const std::vector<double>& c
 
 ```text
 ccdcpp.detect(dates, spectral, qas, *, input, config="ccdc", record=False, resume=None,
-              band_names=None, trace=False, reasons=False, diagnostics=False)
+              freeze_statistics=False, band_names=None, trace=False, reasons=False,
+              diagnostics=False)
 ccdcpp.detect_cube(dates, spectral, qas, *, input, config="ccdc", threads=0, record=False,
-                   resume=None, band_names=None, trace_pixels=None, masks=False, reasons=False,
-                   diagnostics=False)
+                   resume=None, freeze_statistics=False, band_names=None, trace_pixels=None,
+                   masks=False, reasons=False, diagnostics=False)
 ccdcpp.to_pixels(cols)
 ```
 
@@ -181,6 +182,7 @@ ccdcpp.to_pixels(cols)
 | `config=` | what to do with it: a `ccdcpp.Config` or a preset's name, `"ccdc"` by default ([Configurations and presets](#configurations-and-presets)) |
 | `record=` | also return the run's resume record (`"resume"`, `"resume_header"`) |
 | `resume=` | an earlier call's output made with `record=True`: continue that run on this longer series ([Resuming a run](#resuming-a-run)) |
+| `freeze_statistics=` | with `resume=`, resume a configuration whose statistics cutoff is after the stored run's end, or none (`ccdc`'s), its statistics kept at that end; refused (`ValueError`) without it ([Resuming a run](#resuming-a-run)) |
 | `masks=` | `detect_cube` only: also return `"processing_mask"`, every pixel's processing mask in one `(H, W, T)` uint8 array (`detect` always returns its pixel's) |
 | `band_names=` | with a profile, the names of the rows as the caller holds them, checked against the profile's before anything runs |
 | `trace=`, `trace_pixels=` | the run step by step, for one pixel or the cube pixels named ([Diagnostics](#diagnostics)) |
@@ -681,7 +683,8 @@ first = ccdcpp.detect_cube(dates[:n], cube[..., :n], cube_qa[..., :n],
 SEGMENT_COLUMNS = ("row", "col", "start_day", "end_day", "break_day", "curve_qa",
                    "observation_count", "change_probability", "intercept", "coefficients",
                    "rmse", "magnitude")
-update = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, threads=4, resume=first)
+update = ccdcpp.detect_cube(dates, cube, cube_qa, input=c2, threads=4, resume=first,
+                            freeze_statistics=True)
 
 print(update["counts"])
 capped = ccdcpp.config("ccdc").replace(shared__statistics_end=int(dates[n - 1]))
@@ -694,25 +697,32 @@ print(all(np.array_equal(update[k], full[k]) for k in SEGMENT_COLUMNS))
 True
 ```
 
-- **The result is the full run's, bit for bit**: `detect_cube(resume=...)` gives what `detect_cube` gives on the whole series with the statistics cutoff (the shared `statistics_end`) capped at the first run's series end. With `ccdc`'s no cutoff, the statistics (the procedure choice, the cadence, the variogram, the green median) stay those of the first run until a full rerun re-baselines them; with a cutoff before the first run's end (PyCCD's 2017-12-31), the update is the plain full rerun.
+- **The result is the capped full run's, bit for bit**: `detect_cube(resume=...)` gives what `detect_cube` gives on the whole series with the statistics cutoff (the shared `statistics_end`) capped at the first run's series end, so that the decisions it keeps and the ones it makes rest on the same statistics.
+- **Capping is never silent**: when it would change the configuration's cutoff (one after the stored run's end, or none, `ccdc`'s default), the statistics (the procedure choice, the cadence, the variogram, the green median) stay those of the first run until a full rerun re-baselines them, and the call refuses (`ValueError`, naming both dates) unless it passes `freeze_statistics=True`, as above (the refusal is in the pixel example below). With a cutoff at or before the stored run's end (PyCCD's 2017-12-31, for a run stored past 2017), nothing is capped: the update is the plain full rerun and needs no flag (passing it changes nothing).
 - **What it saves is compute**: each pixel the machine was running continues from where its stored run stopped, its earlier segments kept as stored and its open segment refitted once. The pixels with nothing to continue (PermanentSnow, InsufficientClear and the early exits) are rerun whole and count as resumed, since their result is the rerun's. On a 500 x 500 Landsat cell the annual update takes 0.36 of a full run's time ([Performance](#performance)).
 - **A pixel whose stored observations changed** (a reprocessed value, a back-filled scene) is rerun in full, and its status says so (`update["resume"]["status"]`: 0 resumed, 1 rerun because its input changed, 2 failed). A scene the pixel's QA marks fill does not count as a change.
-- **A record that does not match the call is refused** (`ValueError`): another record format (`ccdcpp.RESUME_FORMAT`, 2; it changes with the record's layout or meaning) or results version (`ccdcpp.RESULTS_VERSION`, 3; it changes whenever a release changes an output for the same input and configuration, or the default configuration's outputs), another input (its QA table included) or configuration (`resume_header["digest"]` covers both), a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
+- **A record that does not match the call is refused** (`ValueError`), before any pixel runs: another record format (`ccdcpp.RESUME_FORMAT`, 2; it changes with the record's layout or meaning) or results version (`ccdcpp.RESULTS_VERSION`, 3; it changes whenever a release changes an output for the same input and configuration, or the default configuration's outputs), another input (its QA table included) or configuration (`resume_header["digest"]` covers both), a series that ends before the stored one, columns that do not fit. Nothing falls back to a full rerun silently.
 - The record is plain columns (`ccdcpp.resume_schema()` gives their dtypes); the caller stores them beside its segments.
 
 One pixel is the same with `detect`:
 
 ```python
 stored = ccdcpp.detect(dates[:n], spectral[:, :n], qas[:n], input=c2, record=True)
-more = ccdcpp.detect(dates, spectral, qas, input=c2, resume=stored)
+try:
+    ccdcpp.detect(dates, spectral, qas, input=c2, resume=stored)
+except ValueError as e:
+    print(e)
+more = ccdcpp.detect(dates, spectral, qas, input=c2, resume=stored, freeze_statistics=True)
 print(more["status"], more["models"] == ccdcpp.detect(dates, spectral, qas, input=c2, config=capped)["models"])
 try:
-    ccdcpp.detect(dates, spectral, qas, input=c2, config=stricter, resume=stored)
+    ccdcpp.detect(dates, spectral, qas, input=c2, config=stricter, resume=stored,
+                  freeze_statistics=True)
 except ValueError as e:
     print(e)
 ```
 
 ```text
+this configuration's statistics cover the whole series; a resume keeps them at the stored run's end (2018-12-20). Pass freeze_statistics=True to resume that way, or rerun in full to use the new dates in the statistics
 resumed True
 the resume record was made with another input or configuration
 ```
@@ -840,7 +850,7 @@ ccd::RunSpec a_spec(const ccd::Input& input)
 }
 ```
 
-**Resume.** A stored run is the call's last argument, a `ccd::Resume{header, records, segments}` (`include/ccd/results/record.hpp`): the stored call's header and each pixel's record and segments, in raster order. `detect(spec, dates, spectral, qas, ccd::Resume{header, {record}, {segments}})` resumes a pixel, `detect_cube(spec, dates, cube, qas, threads, &from)` a cube from H × W of each. A resume is refused unless its header's digest is that of the call's input and configuration.
+**Resume.** A stored run is the call's last argument, a `ccd::Resume{header, records, segments, freeze_statistics}` (`include/ccd/results/record.hpp`): the stored call's header and each pixel's record and segments, in raster order, and whether to resume a configuration whose statistics cutoff the resume would cap (Python's `freeze_statistics=True`; `false` by default). `detect(spec, dates, spectral, qas, ccd::Resume{header, {record}, {segments}, true})` resumes a pixel, `detect_cube(spec, dates, cube, qas, threads, &from)` a cube from H × W of each. A resume is refused unless its header's digest is that of the call's input and configuration, and, without `freeze_statistics`, when the configuration's `statistics_end` is after the header's (or none).
 
 **Extensions.** A new decision rule is a strategy class for its stage's interface (`include/ccd/strategies/stages.hpp`), and a new preprocessing step a step type (`Registry::add_step()`), each registered by name in `ccd::strategies::library_registry()` through a build extension (CMake's `CCD_EXTENSIONS`). [docs/writing-a-strategy.md](docs/writing-a-strategy.md) adds one end to end, and [docs/architecture.md](docs/architecture.md) shows where each stage sits.
 
@@ -918,7 +928,7 @@ About 200 times faster per pixel (median: 195-211 times), 175-188 times on the t
 
 The memory is mostly the input as the bench holds it: the cell read whole (9.9 GB of uint16), plus each strip converted to float64; it barely moves with the thread count, and a caller that reads per strip needs less. At pyccd's statistics cutoff (`statistics_end=736694`) the cell's output is byte-identical to 0.10.0's.
 
-**The annual update** of that cell (recorded to 2022-12-31, 89 dates of 2023 added, 8 threads, each phase in its own process, two rounds): `detect_cube(resume=...)` 14.2 s in both against a full run's 40.7 s and 40.9 s, 0.35 of the time, equal to the full run on all 250,000 pixels; 19.9-20.0 GB peak in each phase.
+**The annual update** of that cell (recorded to 2022-12-31, 89 dates of 2023 added, 8 threads, each phase in its own process, two rounds): `detect_cube(resume=..., freeze_statistics=True)` 14.2 s in both against a full run's 40.7 s and 40.9 s, 0.35 of the time, identical to the full run with statistics capped at the stored run's end on all 250,000 pixels; 19.9-20.0 GB peak in each phase.
 
 # Differences from pyccd
 

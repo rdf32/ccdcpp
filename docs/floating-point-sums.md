@@ -171,7 +171,8 @@ ccdcpp uses.
 
 K is fixed, not a setting. It decides where the sums round, so two values give two slightly
 different outputs. A per-machine choice would make results depend on where they were computed,
-and would break resume's promise that a resumed run equals a full one.
+and would break resume's promise that a resumed run equals a full one (with its statistics
+capped at the stored run's end).
 
 ## 5. Where else this applies
 

@@ -381,3 +381,18 @@ A record carries the digest of the input (its QA table included) and the resolve
 (`ResumeHeader::digest`, `resume_header["digest"]` in Python): it continues only under the same
 ones, and a resume under another input or configuration raises `ValueError`
 (`std::invalid_argument` in C++) before any pixel runs.
+
+A resume keeps every statistics cutoff at the stored run's end (the header's `statistics_end`,
+the first run's series end), so that the decisions it keeps and the ones it makes rest on the
+same statistics: its result is the full run's with `shared.statistics_end` capped there. When
+that capping would change the configuration's cutoff (one after the stored end, or `"none"`,
+`ccdc`'s), the call refuses before any pixel runs, naming both dates:
+
+```text
+ValueError: this configuration's statistics cover the whole series; a resume keeps them at the stored run's end (2022-12-31). Pass freeze_statistics=True to resume that way, or rerun in full to use the new dates in the statistics
+```
+
+`freeze_statistics=True` (`detect` and `detect_cube`; C++ `Resume::freeze_statistics`) resumes
+that way; a full rerun is how the new dates enter the statistics. A cutoff at or before the
+stored end (`statistics_end=736694` for a run stored past 2017) is not capped: the resume needs
+no flag and equals the plain full rerun.

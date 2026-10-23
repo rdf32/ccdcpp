@@ -472,8 +472,10 @@ returns it inside a `PixelRecord`, with the pixel's input fingerprint and the da
 `State::carried` counts the stored final segments, which come before the new ones, so
 StartCatch stays the first segment's. A resume (`detect()` or `detect_cube()` with the stored
 run) keeps the stored final segments as given
-and returns the complete result, equal bit for bit to the run on the whole series
-(`ResumeEqualsTheFullRun.*`, `tests/ccd/golden/test_resume.cpp`). A pixel whose stored input
+and returns the complete result, equal bit for bit to the run on the whole series with its
+statistics capped at the stored run's end (`ResumeEqualsTheFullRun.*`,
+`tests/ccd/golden/test_resume.cpp`); a configuration whose cutoff that capping would change is
+refused unless the call freezes the statistics (`Resume::freeze_statistics`). A pixel whose stored input
 changed, the pixels that take no machine and the early exits are rerun instead. The run's side
 of a resume (the refusals, the capped cutoffs, the choice between continuing and rerunning, and
 the record) is `src/ccd/run/resume.cpp`.

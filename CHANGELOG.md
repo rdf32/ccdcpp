@@ -12,7 +12,8 @@ deliberate changes of defaults: `ccdc` has no statistics cutoff, and the Permane
 InsufficientClear chains test their thermal range in degrees Celsius on every input, the snow
 chain over its snow observations too. 0.10.0
 resume records are refused: rerun once
-with `record=True`. [docs/migration-1.0.md](docs/migration-1.0.md) maps every 0.10.0 name to
+with `record=True`. A resume that would cap the statistics cutoff (under `ccdc`, which has none)
+is refused unless it passes `freeze_statistics=True`. [docs/migration-1.0.md](docs/migration-1.0.md) maps every 0.10.0 name to
 its replacement.
 
 ### Changed
@@ -51,9 +52,10 @@ its replacement.
   derived from probabilities. It is checked and compiled when built (`ccd::Algorithm`) and
   resolved once per input.
 - **Python: two calls.** `detect(dates, spectral, qas, *, input, config="ccdc", record=False,
-  resume=None, band_names=None, trace=False, reasons=False, diagnostics=False)` and
-  `detect_cube(..., *, input, config="ccdc", threads=0, record=False, resume=None,
-  band_names=None, trace_pixels=None, masks=False, reasons=False, diagnostics=False)`, which
+  resume=None, freeze_statistics=False, band_names=None, trace=False, reasons=False,
+  diagnostics=False)` and `detect_cube(..., *, input, config="ccdc", threads=0, record=False,
+  resume=None, freeze_statistics=False, band_names=None, trace_pixels=None, masks=False,
+  reasons=False, diagnostics=False)`, which
   returns 0.10.0's `detect_cube_columns` columns, names and dtypes unchanged; `resume=` is an
   earlier call's output.
 - **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{input,
@@ -73,6 +75,16 @@ its replacement.
   resolved configuration: `RESUME_FORMAT` is 2, and a 0.10.0 record is refused by its format
   (`the resume record's format is 1; this ccdcpp reads 2`). `RESULTS_VERSION` is 3: the
   default outputs changed.
+- **A resume never caps the statistics cutoff silently.** It keeps every cutoff at the stored
+  run's end, as 0.10.0's did; under 0.10.0's 2017-12-31 cutoff that changed nothing for a run
+  stored past 2017, so a resume equalled a plain rerun. Under `ccdc`, which has no cutoff, it
+  changes the statistics, so `detect` and `detect_cube` with `resume=` raise `ValueError`
+  naming both dates (`this configuration's statistics cover the whole series; a resume keeps
+  them at the stored run's end (2022-12-31). Pass freeze_statistics=True to resume that way, or
+  rerun in full to use the new dates in the statistics`) unless they pass
+  `freeze_statistics=True` (C++: `Resume::freeze_statistics`), the run then equal to the full
+  run with its statistics capped at the stored end. A cutoff at or before the stored end needs
+  no flag.
 - **The source layout**: `include/ccd/` and `src/ccd/` in `core/`, `input/`, `regression/`,
   `config/`, `strategies/`, `machine/`, `results/` and `run/`; `ccd/ccd.hpp` includes every
   public header. The run (`Run`, `Worker`) and the machine (`ccd::machine`,

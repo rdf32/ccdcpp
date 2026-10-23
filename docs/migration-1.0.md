@@ -45,8 +45,9 @@ it ignores the years since. 1.0's `ccdc` uses the whole series (`shared.statisti
 `ccdcpp.config("ccdc").replace(shared__statistics_end=736694)`, bit for bit as 0.10.0. On the
 Atlanta cell (Landsat Collection 2 ARD h024v013, 1984-2023, 250,000 pixels) the change makes
 57.1% of the pixels differ and changes the segment count of 6.5% of them (32,751 breaks new,
-30,370 gone); on the 1,500 Collection-1 DN pixels above, 55.6% and 6.1%. A resumed run still
-freezes its statistics at the first run's series end ([README](../README.md#resuming-a-run)).
+30,370 gone); on the 1,500 Collection-1 DN pixels above, 55.6% and 6.1%. A resume keeps its
+statistics at the first run's series end, which under `ccdc` changes them, so it is refused
+unless it passes `freeze_statistics=True` ([Resume records](#resume-records)).
 
 ```python
 # 0.10.0
@@ -102,6 +103,15 @@ differ, so `RESULTS_VERSION` is 3 (0.10.0's was 2). A 0.10.0 record is refused b
 runs, with `ValueError: the resume record's format is 1; this ccdcpp reads 2`. Rerun the
 detection once with `record=True` and store its records; they continue from then on.
 
+A resume keeps every statistics cutoff at the stored run's end, in 0.10.0 as in 1.0. Under
+0.10.0's 2017-12-31 cutoff that changed nothing for a run stored past 2017, so a resume equalled
+a plain rerun. 1.0's `ccdc` has no cutoff, so the capping changes its statistics, and 1.0 says
+so: `detect` and `detect_cube` with `resume=` raise `ValueError` naming both dates (`this
+configuration's statistics cover the whole series; a resume keeps them at the stored run's end
+(...)`) unless they pass `freeze_statistics=True`, which resumes with the statistics kept at the
+stored end; a full rerun is how the new dates enter them. With pyccd's cutoff, as below, nothing
+is capped and no flag is needed.
+
 ```python
 # 0.10.0
 first = ccdcpp.detect(dates[:2400], dn[:, :2400], codes[:2400],
@@ -140,8 +150,8 @@ resumed ['digest', 'format', 'results_version', 'series_end', 'statistics_end']
 | `keep_masks` (the dicts held each pixel's mask) | `detect_cube(..., masks=True)`: `"processing_mask"`, `(H, W, T)` uint8; `to_pixels` gives each pixel its row |
 | `processing_mask` (1 kept, 0 not) | unchanged; `reasons=True` also returns `"mask_reasons"`, why each observation is where the run left it, and `processing_mask == (mask_reasons < ccdcpp.FIRST_DROP)` ([diagnostics.md](diagnostics.md#reason-codes)) |
 | `resume_record=True` | `record=True` |
-| `resume(d, s, q, h, lo, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, input=h, resume=out)`, `out` the earlier `detect(..., record=True)` |
-| `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)` |
+| `resume(d, s, q, h, lo, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, input=h, resume=out)`, `out` the earlier `detect(..., record=True)`; with `freeze_statistics=True` under a cutoff after the stored end, or none ([Resume records](#resume-records)) |
+| `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)`; `freeze_statistics=True` as `detect`'s |
 | `qa_table=t` | the input's `qa_table`: `h.replace(qa_table=t)` (a profile's `input()` carries its table) |
 | `preprocess=plan` | the configuration's `preprocess` section ([below](#preprocessing)) |
 | `ccdcpp.default_plan(h)` | `ccdcpp.plan_of(config, input)` |
@@ -449,10 +459,10 @@ window_screen 'tmask' parameter 'bands' is empty
 | `LassoOptions` in a call | the shared `lasso.alpha`, `lasso.coef_floor`, `lasso.max_iter`, `lasso.tolerance` (`LassoOptions` remains the solver's own options type, inside the `lasso` strategies) |
 | `detect(d, s, q, h, l, table, plan)` (8 overloads) | `detect(spec, d, s, q).result`; `spec.input` holds its `qa_table`, the configuration its preprocessing |
 | `detect_recorded(...)` | `detect` with `RunSpec::record = true` |
-| `resume(d, s, q, h, l, header, record, segments)` | `detect(spec, d, s, q, Resume{header, {record}, {segments}})` |
+| `resume(d, s, q, h, l, header, record, segments)` | `detect(spec, d, s, q, Resume{header, {record}, {segments}})`; `Resume::freeze_statistics` as Python's `freeze_statistics=True` |
 | `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `detect_cube(spec, d, s, q, threads)` |
 | `keep_masks = true` (the default) | `RunSpec::masks = false` (the default): ask for the masks; they are `CubeOutput::masks`, one (H, W, T) array, `mask_of(row, col)` per pixel, and `detect`'s `result.mask` |
-| `resume_cube(..., from, ...)`, `CubeResumeFrom{header, pixels, segments}` | `detect_cube(spec, d, s, q, threads, &from)`, `Resume{header, records, segments}` |
+| `resume_cube(..., from, ...)`, `CubeResumeFrom{header, pixels, segments}` | `detect_cube(spec, d, s, q, threads, &from)`, `Resume{header, records, segments, freeze_statistics}` |
 | `Recorded`, `Resumed`; `CubeResult`; `PixelResult`; `DetectScratch` | `PixelOutput`; `CubeOutput`; `CubePixel` (one pixel of a `CubeOutput`); none (the run's per-thread buffers are internal) |
 | `options_digest()`, `ResumeHeader::options_digest` | `ResumeHeader::digest`, the resolution's |
 | `default_plan(h)`, `PreprocessPlanPtr`, the `preprocess` argument | `plan_of(config, input)` (`ccd/run/algorithm.hpp`), the plan the configuration resolves to |
