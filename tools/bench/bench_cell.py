@@ -1,6 +1,6 @@
 """The real-cell timing of one build.
 
-A 500 x 500 cell of a Landsat C2 ARD cube, through detect_cube with input=presets.landsat_c2()
+A 500 x 500 cell of a Landsat C2 ARD cube, through detect_cube with spec=presets.landsat_c2()
 (raw QA_PIXEL decoded by the Landsat C2 table) and the "ccdc" configuration (with its shared
 statistics_end set to the argument `statistics_end`, an ordinal day, when given: 736694 is
 pyccd's 2017-12-31), `threads` threads, in strips of `strip` rows as the nlcd plugin runs it.
@@ -70,7 +70,7 @@ def main(argv: list[str]) -> int:
         t_conv = time.perf_counter()
         sp, qa = _common.c2_strip(cell, r0, r1)
         tic = time.perf_counter()
-        out = ccdcpp.detect_cube(cell.dates, sp, qa, input=profile, config=config,
+        out = ccdcpp.detect_cube(cell.dates, sp, qa, spec=profile, config=config,
                                  threads=args.threads)
         toc = time.perf_counter()
         t_det += toc - tic

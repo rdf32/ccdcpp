@@ -15,13 +15,13 @@ otherwise (the rules in section 7); see the README's
 
 `Run::pixel` (`src/ccd/run/run.cpp`) is a straight pipeline, not a machine: `Run::prepare`
 makes steps 1 to 4, `Run::fresh` or `Run::resumed` steps 5 and 6. A `Run` is built
-once per call (`src/ccd/run/run_pixel.hpp`, internal): it checks the input, dates and QA, takes the
-configuration resolved for the input (its strategies and preprocessing plan) and holds
+once per call (`src/ccd/run/run_pixel.hpp`, internal): it checks the data spec, dates and QA, takes the
+configuration resolved for the data spec (its strategies and preprocessing plan) and holds
 what every pixel shares. `detect_cube` runs a cube's pixels on OpenMP threads
 (`src/ccd/run/cube.cpp`), each thread holding a `Worker` with the buffers and the change
 detector it reuses from pixel to pixel. The steps of one pixel:
 
-1. decode the QA (through the input's `QaTable` when it has one);
+1. decode the QA (through the data spec's `QaTable` when it has one);
 2. compute the QA statistics of the observations dated up to the shared `statistics_end`
    (`qa_statistics()`, `include/ccd/input/qa_statistics.hpp`);
 3. choose the pixel's procedure: the run's `mode` stage (`ModeRule::choose`,
@@ -166,7 +166,7 @@ that fits holds its own. The catch segments (StartCatch, EndCatch) fit with edge
 Initialize with the stability fit's and Extend with the monitoring model's (the `edge_segments`,
 `stability_fit` and `model` stages' parameters), and Lookback reads the stability fit. A direct
 caller of `machine::Detector` takes the strategies of a configuration resolved against its
-input (`config::resolve(strategies::library_registry(), config, input).strategies`), as `Run` does.
+data spec (`config::resolve(strategies::library_registry(), config, spec).strategies`), as `Run` does.
 
 **`machine::State`** is one pixel's record:
 
@@ -202,9 +202,9 @@ strategy is another. `machine::Detector` owns one record, and a `Worker`
 The machine's phases and routes are fixed; what a phase decides is a **stage**, decided by the
 **strategy** the run's configuration names for it (`include/ccd/strategies/stages.hpp`). A
 strategy returns its decision and the machine routes on it; a strategy never steers the machine.
-The run's `ccd::Algorithm` builds its strategies once per input (`config::resolve()`, `include/ccd/config/resolve.hpp`), by
+The run's `ccd::Algorithm` builds its strategies once per data spec (`config::resolve()`, `include/ccd/config/resolve.hpp`), by
 name in the registry (`include/ccd/config/registry.hpp`, `ccd::strategies::library_registry()`), from a configuration
-of shared values and one `{strategy, parameters}` per stage resolved against the input, and the
+of shared values and one `{strategy, parameters}` per stage resolved against the data spec, and the
 run hands them to the machine in `Context::strategies`. Each strategy declares its parameters
 once, as a schema (`include/ccd/config/params.hpp`), which checks a configuration's values
 (unknown names, types, ranges) when the `Algorithm` is built, and says where each value comes
@@ -348,7 +348,7 @@ config.shared["outlier_probability"] = config::real(0.99999);
 // Refit less often: once the window spans twice the last fit's span.
 config.stages["refit"].params["factor"] = config::real(2.0);
 
-// A run under it: checked when the Algorithm is built, resolved against the input (units,
+// A run under it: checked when the Algorithm is built, resolved against the data spec (units,
 // rows, thresholds, the preprocessing plan) once, and part of its resume records' digest.
 RunSpec spec;
 spec.algorithm = std::make_shared<const Algorithm>(config);

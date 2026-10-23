@@ -3,9 +3,9 @@
 The first `pixels` pixels of the corpus of `golden_driver gen` (c16.bin), one ccdcpp.detect call
 each, single-threaded, best of `reps` passes, in three forms:
 
-  input      detect(d, s, q, input=h): an Input, the "ccdc" configuration by default
-  profile    detect(d, s, q, input=landsat_c1_dn()): a profile, the "ccdc" configuration
-  config     detect(d, s, q, input=h, config=cfg), cfg = ccdcpp.config("ccdc") taken once
+  spec       detect(d, s, q, spec=h): a DataSpec, the "ccdc" configuration by default
+  profile    detect(d, s, q, spec=landsat_c1_dn()): a profile, the "ccdc" configuration
+  config     detect(d, s, q, spec=h, config=cfg), cfg = ccdcpp.config("ccdc") taken once
 
 The first two are the default paths, what a caller writes without thinking about the
 configuration; the third names the configuration. Each form runs in its own process (`--only
@@ -26,7 +26,7 @@ from numpy.typing import NDArray
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common  # noqa: E402
 
-FORMS = ("input", "profile", "config")
+FORMS = ("spec", "profile", "config")
 
 
 def main(argv: list[str]) -> int:
@@ -55,13 +55,13 @@ def main(argv: list[str]) -> int:
           for i in range(min(args.pixels, H * W))]
     del corpus, spec, qas
 
-    h = ccdcpp.Input()
+    h = ccdcpp.DataSpec()
     profile = presets.landsat_c1_dn()
     cfg = ccdcpp.config("ccdc")
     forms: dict[str, Callable[[NDArray[np.float64], NDArray[np.uint8]], object]] = {
-        "input": lambda s, q: ccdcpp.detect(dates, s, q, input=h),
-        "profile": lambda s, q: ccdcpp.detect(dates, s, q, input=profile),
-        "config": lambda s, q: ccdcpp.detect(dates, s, q, input=h, config=cfg),
+        "spec": lambda s, q: ccdcpp.detect(dates, s, q, spec=h),
+        "profile": lambda s, q: ccdcpp.detect(dates, s, q, spec=profile),
+        "config": lambda s, q: ccdcpp.detect(dates, s, q, spec=h, config=cfg),
     }
 
     call = forms[args.only]

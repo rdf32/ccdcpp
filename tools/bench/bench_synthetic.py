@@ -1,7 +1,7 @@
 """The synthetic timing of one build.
 
 The corpus of `golden_driver gen` (c16.bin) tiled 2x2 (8000 pixels), through ccdcpp.detect_cube
-with the default input, `threads` threads, best of `reps` calls. Prints the best wall time of
+with the default DataSpec, `threads` threads, best of `reps` calls. Prints the best wall time of
 the call and its time per pixel, the process's peak memory, also above the peak with the input
 built, and the file `import ccdcpp` loaded.
 
@@ -43,14 +43,14 @@ def main(argv: list[str]) -> int:
                     casting="unsafe")
     del corpus
 
-    h = ccdcpp.Input()
+    h = ccdcpp.DataSpec()
     base = _common.peak_mb()
     best = float("inf")
     for _ in range(args.reps):
         # A fresh float64 input per call, as a caller's buffer would be.
         s = src.copy() if (args.reps > 1 and args.dtype == "f64") else src
         t0 = time.perf_counter()
-        r = ccdcpp.detect_cube(dates, s, qas, input=h, threads=args.threads)
+        r = ccdcpp.detect_cube(dates, s, qas, spec=h, threads=args.threads)
         best = min(best, time.perf_counter() - t0)
         del r, s
 

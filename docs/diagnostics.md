@@ -37,7 +37,7 @@ back). The README's [quick-start pixel](../README.md#one-pixel) (its arrays and 
 clouds, and the last peek after the curve that reaches the series end, which no segment holds:
 
 ```python
-out = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), reasons=True)
+out = ccdcpp.detect(dates, spectral, qas, spec=presets.landsat_c2(), reasons=True)
 codes = out["mask_reasons"]
 names, counts = np.unique(np.array(ccdcpp.REASONS)[codes], return_counts=True)
 print(dict(zip(names.tolist(), counts.tolist())))
@@ -91,7 +91,7 @@ stable window after the last curve. On the quick-start pixel:
 ```python
 import pandas as pd
 
-out = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), diagnostics=True)
+out = ccdcpp.detect(dates, spectral, qas, spec=presets.landsat_c2(), diagnostics=True)
 px = out["pixel_diagnostics"]
 print(px, ccdcpp.EXITS[px["exit"]])
 print(pd.DataFrame(out["segment_diagnostics"]).to_string())
@@ -119,7 +119,7 @@ The example is the README's [quick-start pixel](../README.md#one-pixel):
 import pandas as pd
 import ccdcpp
 
-out = ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2(), trace=True)
+out = ccdcpp.detect(dates, spectral, qas, spec=ccdcpp.presets.landsat_c2(), trace=True)
 trace = pd.DataFrame(out["trace"])
 print(trace[["kind", "phase", "next", "window_start", "window_stop"]].head(3).to_string())
 
@@ -129,7 +129,7 @@ print(change.day.tolist(), [round(v, 1) for v in change["values"].iloc[0]])
 
 # The segments, as the run wrote them:
 print(trace[trace.kind == "segment"][["day", "day_to", "observations"]].to_string())
-print(out["models"] == ccdcpp.detect(dates, spectral, qas, input=ccdcpp.presets.landsat_c2())["models"])
+print(out["models"] == ccdcpp.detect(dates, spectral, qas, spec=ccdcpp.presets.landsat_c2())["models"])
 ```
 
 ```text
@@ -147,7 +147,7 @@ True
 For a cube, name the pixels; `"traces"` holds each one's events:
 
 ```python
-cols = ccdcpp.detect_cube(dates, cube, cube_qa, input=ccdcpp.presets.landsat_c2(), threads=4,
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, spec=ccdcpp.presets.landsat_c2(), threads=4,
                           trace_pixels=[(1, 2), (2, 3)])
 print(sorted(cols["traces"]), pd.DataFrame(cols["traces"][(2, 3)]).kind.iloc[-1])
 ```
@@ -183,12 +183,12 @@ default, observes every pixel); `detect` observes its one pixel whatever it hold
 #include "ccd/results/diagnostics.hpp"
 #include "ccd/run/run.hpp"
 
-void observed(const ccd::Input& input, ccd::ArrayView<const std::int64_t, 1> dates,
+void observed(const ccd::DataSpec& data, ccd::ArrayView<const std::int64_t, 1> dates,
               ccd::ArrayView<const double, 2> spectral, ccd::ArrayView<const std::uint8_t, 1> qas,
               ccd::ArrayView<const double, 4> cube, ccd::ArrayView<const std::uint8_t, 3> cube_qa)
 {
     ccd::RunSpec spec;
-    spec.input = input;                // ccd::Input, how to read the data
+    spec.spec = data;                  // the data spec: how to read the data
     spec.observer = std::make_shared<ccd::TextObserver>(std::cerr);
     ccd::detect(spec, dates, spectral, qas);
 

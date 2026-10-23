@@ -118,13 +118,13 @@ the unit conversion, the digest, `ccdcpp.strategies()` and the messages.
          "outlier", config::Source::Own, nullptr, config::real(0.2)},
 ```
 
-- **Units.** A configuration is physical; the run converts each value to the input's units
-  once. `ReflectanceDelta` is a difference of reflectance, times the input's
+- **Units.** A configuration is physical; the run converts each value to the data's units
+  once. `ReflectanceDelta` is a difference of reflectance, times the data spec's
   `reflectance_scale`: `limit` 0.2 is 2000 on Collection-1 DN and 0.2 on reflectance. The
   other units are `None`, `Observations`, `Days`, `Reflectance` (a level, with the offset),
   `Date`, `Celsius`, `Bands` (roles to rows) and `QaCodes` (names to codes); `params.hpp` says
   how each converts, and [units.md](units.md) where the boundary is.
-- **Defaults.** A member's default is its value on the default input (Collection-1 DN, the
+- **Defaults.** A member's default is its value on the default DataSpec (Collection-1 DN, the
   Landsat rows): what a strategy built from `Params{}` runs with. Where that is not the
   physical value, the field's `default_value` is (`config::real(0.2)` here).
 - **Bounds.** `any()`, `at_least()`, `greater_than()`, `between()`, `open_interval()`. A
@@ -276,10 +276,10 @@ From Python, the strategy is a name like any other. The example continues from t
 print(sorted(ccdcpp.strategies()["outlier"]))
 cfg = ccdcpp.config("ccdc").replace(outlier="residual-cap", outlier__limit=0.02)
 print(cfg.params("outlier"))
-print(cfg.resolve(ccdcpp.Input())["outlier"], cfg.resolve(presets.landsat_c2().input())["outlier"])
+print(cfg.resolve(ccdcpp.DataSpec())["outlier"], cfg.resolve(presets.landsat_c2().spec())["outlier"])
 
-plain = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2())
-capped = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), config=cfg)
+plain = ccdcpp.detect(dates, spectral, qas, spec=presets.landsat_c2())
+capped = ccdcpp.detect(dates, spectral, qas, spec=presets.landsat_c2(), config=cfg)
 print(plain["processing_mask"].sum(), capped["processing_mask"].sum(), len(capped["models"]))
 ```
 
@@ -336,7 +336,7 @@ The helpers in `tests/ccd/support` (namespace `golden`, a test's include directo
   `with_shared()`, `with_step()` to edit them; `spec_of()`, a `RunSpec` with masks;
   `parameter<T>()`, a resolved value;
 - `synthetic.hpp`: `make_cube()`, synthetic pixels and cubes of several regimes;
-- `units.hpp`: `physical_spec()`, the reflectance input, and `to_physical()`;
+- `units.hpp`: `physical_spec()`, the reflectance data spec, and `to_physical()`;
 - `dump.hpp`: `dump()`, a result as hexfloat text, equal exactly when every value is
   bit-equal.
 
@@ -355,7 +355,7 @@ directories.
 
 A step type is a struct with `Params`, a schema and a static `make()`, registered with
 `Registry::add_step<Step>(name)`; the configuration's chains name it. `make()` gets the
-parameters resolved against the input, the input, and where the step is (its procedure, how
+parameters resolved against the data spec, the data spec, and where the step is (its procedure, how
 that procedure reads the thermal row, its position: `config::StepContext`), and returns the
 step, or none where it does not apply. A step beyond the built-in kinds is a
 `preprocess::CustomStep` (`include/ccd/input/mask/chain.hpp`): `apply()` clears the mask bits

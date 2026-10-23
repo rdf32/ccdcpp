@@ -2,8 +2,8 @@
 
 ccdcpp runs one machine, the CCDC family's phases and routes. Every decision the machine
 makes is a **stage**, decided by the **strategy** the configuration names for it. A run is
-an **input** (how to read the data) and a **configuration** (what to do with it, in physical
-units); the run translates the configuration to the input once and then runs every pixel
+a **data spec** (how to read the data) and a **configuration** (what to do with it, in physical
+units); the run translates the configuration to the data spec once and then runs every pixel
 through the same steps. This page is the map: what happens, in which order, and in which
 file. [ccdc-state-machine.md](ccdc-state-machine.md) has the machine in detail,
 [config.md](config.md) the configuration, [writing-a-strategy.md](writing-a-strategy.md) how
@@ -14,10 +14,10 @@ to add a strategy. Paths are relative to the repository root.
 ```
  Python (python/ccdcpp)                     C++ (include/ccd, src/ccd)
  ──────────────────────                     ──────────────────────────
- input=  Input | SensorProfile ──────────► RunSpec::input            how to read the data
+ spec=   DataSpec | SensorProfile ───────► RunSpec::spec             how to read the data
  config= Config | preset name  ──────────► RunSpec::algorithm        what to do with it
          (Config compiles an Algorithm)     ccd::Algorithm            checked once, immutable
-                                                │ for_input(input), once per input
+                                                │ for_spec(spec), once per data spec
                                                 ▼
                                             config::Resolved          strategies, plan, shared, digest
  detect / detect_cube ───────────────────► ccd::detect / ccd::detect_cube
@@ -33,23 +33,23 @@ to add a strategy. Paths are relative to the repository root.
  dicts / columns (results.py) ◄──────────── PixelOutput / CubeOutput  segments, masks, records
 ```
 
-1. **Input and configuration.** `ccd::Input` (`include/ccd/input/input.hpp`) is the band
+1. **Data spec and configuration.** `ccd::DataSpec` (`include/ccd/input/data_spec.hpp`) is the band
    roles, units, thermal transform and QA table. `config::Config`
    (`include/ccd/config/config.hpp`) is the shared values, one `{strategy, parameters}` per
    stage and one preprocessing chain per procedure, all in physical terms. In Python they are
-   `ccdcpp.Input` (or a `SensorProfile`, `python/ccdcpp/profiles.py`) and `ccdcpp.Config`
+   `ccdcpp.DataSpec` (or a `SensorProfile`, `python/ccdcpp/profiles.py`) and `ccdcpp.Config`
    (`python/ccdcpp/config.py`).
 2. **Algorithm.** `ccd::Algorithm` (`include/ccd/run/algorithm.hpp`) checks a configuration
    once (`config::check()`) and keeps it in full (`config::canonical()`). A Python `Config`
    compiles one as it is built (`bindings/config.cpp`).
-3. **Resolve.** `Algorithm::for_input()` calls `config::resolve()`
-   (`include/ccd/config/resolve.hpp`) the first time it sees an input, and caches the result:
-   reflectance and degrees Celsius in the input's units, roles as rows, QA names as codes,
+3. **Resolve.** `Algorithm::for_spec()` calls `config::resolve()`
+   (`include/ccd/config/resolve.hpp`) the first time it sees a data spec, and caches the result:
+   reflectance and degrees Celsius in the data's units, roles as rows, QA names as codes,
    probabilities as chi-squared thresholds, then one strategy object per stage and the
    preprocessing plan, built by name from the registry. The `Resolved` also holds the digest a
    resume record is checked against.
 4. **Detect.** `ccd::detect` and `ccd::detect_cube` (`include/ccd/run/run.hpp`) build one `Run`
-   per call (`src/ccd/run/run_pixel.hpp`): the input, dates, QA and resume header checked
+   per call (`src/ccd/run/run_pixel.hpp`): the data spec, dates, QA and resume header checked
    before any pixel. `detect_cube` dispatches on the value and QA types once and runs one
    OpenMP loop (`src/ccd/run/cube.cpp`); each thread holds a `Worker`, the buffers and the
    `Detector` it reuses from pixel to pixel.
@@ -135,7 +135,7 @@ Three pieces, each with one job:
 | registry | `include/ccd/config/registry.hpp` | the catalogue: each stage's strategy types by name, the preprocessing step types by name, the presets. `Registry::add<Interface, Strategy>(name)`, `add_step<Step>(name)`, `add_preset(name, config)` |
 | configuration | `include/ccd/config/config.hpp`, `shared.hpp`, `preprocess.hpp` | a value: the shared values, the stages, the preprocessing, in physical terms. Nothing in it is resolved |
 | schema | `include/ccd/config/params.hpp` | each strategy's and step's parameters, written once (`Field`): name, member, unit, bounds, doc, and where the value comes from (its own, a shared value, a chi-squared quantile) |
-| resolve | `include/ccd/config/resolve.hpp`, `src/ccd/config/convert.cpp` | a configuration against an input: values converted, shared values filled in, strategies and plan built, the digest |
+| resolve | `include/ccd/config/resolve.hpp`, `src/ccd/config/convert.cpp` | a configuration against a data spec: values converted, shared values filled in, strategies and plan built, the digest |
 
 `ccd::strategies::library_registry()` (`include/ccd/strategies/library.hpp`) is the registry
 every `Algorithm` uses by default: `register_core_strategies()`
@@ -153,17 +153,17 @@ step type by name with its parameters. The step types are `keep_qa`, `add_qa`,
 (`include/ccd/input/mask/steps.hpp`); a registry may add more (`Registry::add_step()`, a
 `preprocess::CustomStep`). Resolved, the chains are a `preprocess::PreprocessPlan`
 (`include/ccd/input/mask/chain.hpp`): per procedure its thermal transform and its steps in the
-input's rows, codes and units. `Run::prepare` applies the pixel's chain, then the mode's extra
+data spec's rows, codes and units. `Run::prepare` applies the pixel's chain, then the mode's extra
 steps, into the processing mask (`include/ccd/input/processing_mask.hpp`).
-`ccdcpp.plan_of(config, input)` shows a plan; the README's
+`ccdcpp.plan_of(config, spec)` shows a plan; the README's
 [default plan](../README.md#the-default-plan) is `ccdc`'s.
 
 ## The storage and physical boundary
 
-The input describes how the data is stored; the configuration is physical. The run converts
-the configuration's values to the input's units once, at resolve, and never touches the data
+The data spec describes how the data is stored; the configuration is physical. The run converts
+the configuration's values to the data's units once, at resolve, and never touches the data
 except for the Standard procedure's thermal transform on a private copy.
-[units.md](units.md) has the boundary, the Input's fields and the guards.
+[units.md](units.md) has the boundary, the DataSpec's fields and the guards.
 
 ## Diagnostics
 
@@ -185,7 +185,7 @@ bit for bit. The observer is in
 include/ccd/                 the public headers (src/ccd/ mirrors them)
   ccd.hpp                    every public header
   core/                      types, ArrayView, BandList, Window, constants, maths
-  input/                     Input, QA tables and statistics, PixelSeries, MaskedSeries,
+  input/                     DataSpec, QA tables and statistics, PixelSeries, MaskedSeries,
                              ProcessingMask, procedures
     mask/                    the preprocessing: Chain, Step, PreprocessPlan, the step types
   regression/                the harmonic basis, the Lasso and robust solvers, CoefficientRule
@@ -200,7 +200,7 @@ include/ccd/                 the public headers (src/ccd/ mirrors them)
   run/                       Algorithm, RunSpec, detect, detect_cube
 src/ccd/machine/             the machine (ccd::machine: detector.hpp, detector.cpp; internal)
 src/ccd/run/                 Run and Worker (run_pixel.hpp; internal), the cube loop, resume
-bindings/                    the Python module: config, input, QA tables, preprocess, detect,
+bindings/                    the Python module: config, data spec, QA tables, preprocess, detect,
                              results
 python/ccdcpp/               the package: detect, detect_cube, Config, profiles, presets,
                              results, configs/ccdc.toml, the .pyi stubs

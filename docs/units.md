@@ -2,19 +2,19 @@
 
 | | Example |
 |---|---|
-| The input says only how to read the data. | `presets.landsat_c1_physical().input()`: reflectance 0..1 (`reflectance_scale` 1) and thermal in degrees Celsius / 100 (`thermal_at_100c` 1), with the identity thermal transform. |
-| The configuration says what to do with it, in physical units. | `ccdc`'s `thermal_range` keeps -93.2 to 70.7 °C, whatever the input. |
-| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check. | On `ccdcpp.Input()` that range is `-9320 < x < 7070` and `band_range` `0 < x < 10000`; on the physical-unit input `-0.932 < x < 0.707` and `0 < x < 1`. |
+| The data spec says only how to read the data. | `presets.landsat_c1_physical().spec()`: reflectance 0..1 (`reflectance_scale` 1) and thermal in degrees Celsius / 100 (`thermal_at_100c` 1), with the identity thermal transform. |
+| The configuration says what to do with it, in physical units. | `ccdc`'s `thermal_range` keeps -93.2 to 70.7 °C, whatever the data spec. |
+| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check. | On `ccdcpp.DataSpec()` that range is `-9320 < x < 7070` and `band_range` `0 < x < 10000`; on the physical-unit input `-0.932 < x < 0.707` and `0 < x < 1`. |
 
 ```python
 import ccdcpp
 from ccdcpp import presets
 
-physical = presets.landsat_c1_physical().input()
+physical = presets.landsat_c1_physical().spec()
 print(physical.reflectance_scale, physical.thermal_at_100c, physical.thermal_scale, physical.thermal_offset)
 print(ccdcpp.config("ccdc").preprocess("standard")["steps"][1])
-for input in (ccdcpp.Input(), physical):
-    standard = ccdcpp.plan_of("ccdc", input).standard
+for spec in (ccdcpp.DataSpec(), physical):
+    standard = ccdcpp.plan_of("ccdc", spec).standard
     print(standard.chain[1], standard.chain[2])
 ```
 
@@ -27,23 +27,23 @@ for input in (ccdcpp.Input(), physical):
 
 ## The boundary
 
-- **The storage domain** is the data as given: `spectral` in the input's encoding, its QA, and
+- **The storage domain** is the data as given: `spectral` in the encoding its data spec states, its QA, and
   its codes. Fill and saturation codes (`qa_fill`, `saturation_code`,
   `thermal_saturation_code`) belong here and are compared on the raw stored values, before any
   transform. The outputs are in it too: coefficients, intercepts, RMSEs and magnitudes are in
-  the input's units (DN in, DN out).
+  the data's units (DN in, DN out).
 - **The physical domain** is the configuration only: reflectance levels (0–1), reflectance
   differences (`lasso.alpha`, `lasso.coef_floor`, the green median's offset), degrees Celsius, days,
   observations, probabilities, bands by role and QA codes by name.
 - **The conversion.** The run converts the configuration into the storage domain once, when
-  it resolves it against the input: levels as `r * reflectance_scale + reflectance_offset`,
+  it resolves it against the data spec: levels as `r * reflectance_scale + reflectance_offset`,
   differences as `r * reflectance_scale`, degrees Celsius as `c * 100 * thermal_at_100c /
   10000`. The one conversion of the data is the thermal transform, `thermal * thermal_scale +
   thermal_offset`, applied to the thermal row of the procedures whose chain reads
   `thermal = "celsius"`, with its output unit stated by `thermal_at_100c` (the value 100 °C has
   after it).
 
-On Collection-1 DN (`ccdcpp.Input()`: `reflectance_scale` 10000, `reflectance_offset` 0, the
+On Collection-1 DN (`ccdcpp.DataSpec()`: `reflectance_scale` 10000, `reflectance_offset` 0, the
 transform (10, -27315) to Celsius x 100, `thermal_at_100c` 10000), "ccdc" resolves to:
 
 | Configuration (physical) | Resolved (storage) | Conversion |
@@ -53,12 +53,12 @@ transform (10, -27315) to Celsius x 100, `thermal_at_100c` 10000), "ccdc" resolv
 | `lasso.alpha` 1e-4 | 1.0 | difference: `r * 10000` |
 | `green_median` offset +0.04 | +400 | difference: `r * 10000` |
 
-`ccdcpp.plan_of(config, input)` shows the resolved preprocessing and `Config.resolve(input)`
+`ccdcpp.plan_of(config, spec)` shows the resolved preprocessing and `Config.resolve(spec)`
 every resolved value:
 
 ```python
-r = ccdcpp.config("ccdc").resolve(ccdcpp.Input())
-green = ccdcpp.plan_of("ccdc", ccdcpp.Input()).insufficient_clear.chain[4]
+r = ccdcpp.config("ccdc").resolve(ccdcpp.DataSpec())
+green = ccdcpp.plan_of("ccdc", ccdcpp.DataSpec()).insufficient_clear.chain[4]
 print(r["model"]["lasso.alpha"], r["model"]["lasso.coef_floor"])
 print(green)
 ```
@@ -68,9 +68,9 @@ print(green)
 <Step GreenMedian band 1, drop x >= median(every date) + 400, scope StatWindow>
 ```
 
-## The input
+## The data spec
 
-`ccd::Input` (`include/ccd/input/input.hpp`, `ccdcpp.Input`) says how to read the data:
+`ccd::DataSpec` (`include/ccd/input/data_spec.hpp`, `ccdcpp.DataSpec`) says how to read the data:
 
 - reflectance `r` is held as `r * reflectance_scale + reflectance_offset` (Collection-1 DN:
   10000 and 0, the defaults; reflectance: 1 and 0);
@@ -103,7 +103,7 @@ the reflective rows and in the thermal row, as stored. Which products store one 
 A shipped profile declares a code only when its stored encoding is the product's own: only `presets.landsat_c1_dn()`, 20000 and 20000. The codes do not survive conversion to
 reflectance: once the data is scaled (and offset), the code is a value like any other, so a
 profile of converted data, `landsat_c1_physical()` and the reflectance profiles of the other
-products, declares none. An input in a product's stored encoding (Collection-2 ARD DN, say)
+products, declares none. A data spec of a product's stored encoding (Collection-2 ARD DN, say)
 declares the product's code itself; Collection-2 ARD's differs between Landsat 4-7 and 8-9, so
 a stack of both holds no single code.
 
@@ -148,7 +148,7 @@ change-detection archive already stores.
 
 `band_range` under `ccdc` keeps reflectance in (0, 1): (0, 10000) in Collection-1 DN and
 7273..43636 in Collection-2 DN, one predicate, since Collection-2 surface reflectance is
-`DN * 2.75e-5 - 0.2`. An input in
+`DN * 2.75e-5 - 0.2`. A data spec of
 Collection-2 DN says so with `reflectance_scale = 1 / 2.75e-5` and `reflectance_offset = 0.2 /
 2.75e-5`, and `band_range` 0..1 resolves to (7272.7..., 43636.3...), which keeps DN 7273 to
 43636 (`tests/ccd/machine/test_units.cpp`, `Collection2DnResolvesReflectanceZeroToOne`). In
@@ -157,9 +157,9 @@ physical units there is no collection branch.
 ## The thermal range
 
 `thermal_range`'s bounds are degrees Celsius, and `ccdc` tests them in every procedure's chain,
-on every input, over every observation the procedure's fit uses. The Standard procedure applies the thermal transform first and tests the
+whatever the data spec, over every observation the procedure's fit uses. The Standard procedure applies the thermal transform first and tests the
 transformed row against the bounds in the transformed unit (`-9320 < x < 7070` on Collection-1
-DN). The PermanentSnow and InsufficientClear chains read the thermal row as the input holds it,
+DN). The PermanentSnow and InsufficientClear chains read the thermal row as the data holds it,
 so their step tests the stored row against the same bounds taken back through the inverse of
 the transform: each end is the first or last stored value whose transform passes it (the
 transform is non-decreasing; `ccd::preprocess::stored_range()`), so the stored test keeps
@@ -172,8 +172,8 @@ observation, and again after it adds the snow observations back and keeps one pe
 observations are tested too (pyccd tests only the clear and water ones).
 
 ```python
-for input in (ccdcpp.Input(), physical):
-    print(ccdcpp.plan_of("ccdc", input).snow.chain[6])
+for spec in (ccdcpp.DataSpec(), physical):
+    print(ccdcpp.plan_of("ccdc", spec).snow.chain[6])
 ```
 
 ```text
@@ -184,7 +184,7 @@ for input in (ccdcpp.Input(), physical):
 pyccd tests those two procedures' untransformed thermal band against the Celsius bounds
 (`snow_procedure_filter()` applies `filter_thermal_celsius()` to values nothing converted): on
 Collection-1 DN it compares Kelvin x 10 with -9320 and 7070, so it drops saturated (20000) and
-NaN values but keeps any temperature below 7070 (707 K), and on any other input it tests the
+NaN values but keeps any temperature below 7070 (707 K), and on any other data it tests the
 wrong unit. ccdcpp 0.10.0 did the same. Against 0.10.0, `ccdc` drops besides those the
 implausible temperatures, at or below 179.95 K or at or above 343.85 K, which 0.10.0 kept in
 those two procedures' fits: on the 1,500 reference Collection-1 pixels nothing changes; on the

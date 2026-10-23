@@ -83,14 +83,14 @@ def run_phase(args: argparse.Namespace) -> int:
         sp, qa = _common.c2_strip(cell, r0, r1)
         tic = time.perf_counter()
         if args.only == "full":
-            out = ccdcpp.detect_cube(dates, sp, qa, input=profile, config=capped,
+            out = ccdcpp.detect_cube(dates, sp, qa, spec=profile, config=capped,
                                      threads=args.threads)
         else:
-            out = ccdcpp.detect_cube(dates[:n], sp[..., :n], qa[..., :n], input=profile,
+            out = ccdcpp.detect_cube(dates[:n], sp[..., :n], qa[..., :n], spec=profile,
                                      threads=args.threads, record=True)
             if args.only == "update":
                 tic = time.perf_counter()
-                out = ccdcpp.detect_cube(dates, sp, qa, input=profile, threads=args.threads,
+                out = ccdcpp.detect_cube(dates, sp, qa, spec=profile, threads=args.threads,
                                          resume=out, freeze_statistics=True)
                 resumed = out.get("counts")
                 assert resumed is not None   # a resume's output holds its counts

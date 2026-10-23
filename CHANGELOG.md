@@ -2,14 +2,14 @@
 
 ## 1.0.0 - 2026-10-23
 
-The input says only how to read the data; the configuration says what to do with it, in
+The data spec says only how to read the data; the configuration says what to do with it, in
 physical units; the run translates once (0–1 reflectance × 10000 = the 0–10000 DN check, as in
-0.10.0). Two calls, `detect` and `detect_cube`, take the input (`input=`, how to read the data) and a
+0.10.0). Two calls, `detect` and `detect_cube`, take a data spec (`spec=`, how to read the data) and a
 configuration (`config=`, the `ccdc` preset by default) in Python and C++. One state machine runs
 the CCDC phases, and each of its decisions is a stage decided by a named strategy. Outputs are
-0.10.0's bit for bit for the same input, configuration and statistics cutoff, except for two
+0.10.0's bit for bit for the same data, configuration and statistics cutoff, except for two
 deliberate changes of defaults: `ccdc` has no statistics cutoff, and the PermanentSnow and
-InsufficientClear chains test their thermal range in degrees Celsius on every input, the snow
+InsufficientClear chains test their thermal range in degrees Celsius whatever the data spec, the snow
 chain over its snow observations too. 0.10.0
 resume records are refused: rerun once
 with `record=True`. A resume that would cap the statistics cutoff (under `ccdc`, which has none)
@@ -19,7 +19,7 @@ its replacement.
 ### Changed
 
 - **`ccdc`'s `band_range` lists its bands**: blue, green, red, nir, swir1 and swir2. A band list
-  is roles or rows. On HLS and Sentinel-2 inputs coastal, the red edges and B08 are not
+  is roles or rows. On HLS and Sentinel-2 data coastal, the red edges and B08 are not
   range-checked unless a configuration lists them; Landsat outputs do not change.
 - **No statistics cutoff by default.** `ccdc`'s `shared.statistics_end` is `"none"`:
   the QA statistics, the cadence, the variogram and the green median read the whole series.
@@ -31,7 +31,7 @@ its replacement.
   fit uses.** pyccd's PermanentSnow and InsufficientClear filters test the untransformed
   thermal band against the Celsius bounds, and the snow filter tests only the clear and water
   observations. `ccdc`'s `snow` and `insufficient_clear` chains test the stored band against
-  the bounds taken back through the input's thermal transform
+  the bounds taken back through the data spec's thermal transform
   (`ccd::preprocess::stored_range()`: 1799.5 to 3438.5 on Collection-1 DN, 179.95 to 343.85 K),
   so they keep exactly the values whose transform Standard's range keeps, and the snow chain
   tests it again as its last step, after adding the snow observations back. On Collection-1
@@ -39,39 +39,39 @@ its replacement.
   temperatures 0.10.0 kept, and a saturated or NaN snow observation no longer reaches a snow
   fit: no change on the 1,500 reference Collection-1 pixels, 218 of the synthetic corpus's
   2,900 pixels, none of the Atlanta cell's 250,000 (Collection 2). Physical-unit outputs are
-  0.10.0's. An input's `thermal_scale` must be a positive number and its `thermal_offset` a
+  0.10.0's. A data spec's `thermal_scale` must be a positive number and its `thermal_offset` a
   finite one.
-- **`ccd::Input` (`ccdcpp.Input`) replaces `HarmonicOptions`** and says only how to read the data: QA
+- **`ccd::DataSpec` (`ccd/input/data_spec.hpp`, `ccdcpp.DataSpec`) replaces `HarmonicOptions`** and says only how to read the data: QA
   codes and `qa_table`, `roles`, `reflectance_scale`/`reflectance_offset`,
   `thermal_scale`/`thermal_offset` with `thermal_at_100c`, `saturation_code` and
-  `thermal_saturation_code`. Immutable in Python (`Input(**fields)`, `replace()`).
+  `thermal_saturation_code`. Immutable in Python (`DataSpec(**fields)`, `replace()`).
 - **The algorithm is a configuration** (`config::Config`, `ccdcpp.Config`): `shared` values,
   13 stages each with a strategy and its parameters, and a preprocessing chain per procedure, in
   physical units (reflectance, degrees Celsius, probabilities, bands by role, QA codes by name).
   Every 0.10.0 algorithm field and `LassoOptions`' constants are values of it; thresholds are
   derived from probabilities. It is checked and compiled when built (`ccd::Algorithm`) and
-  resolved once per input.
-- **Python: two calls.** `detect(dates, spectral, qas, *, input, config="ccdc", record=False,
+  resolved once per data spec (`Algorithm::for_spec()`).
+- **Python: two calls.** `detect(dates, spectral, qas, *, spec, config="ccdc", record=False,
   resume=None, freeze_statistics=False, band_names=None, trace=False, reasons=False,
-  diagnostics=False)` and `detect_cube(..., *, input, config="ccdc", threads=0, record=False,
+  diagnostics=False)` and `detect_cube(..., *, spec, config="ccdc", threads=0, record=False,
   resume=None, freeze_statistics=False, band_names=None, trace_pixels=None, masks=False,
   reasons=False, diagnostics=False)`, which
   returns 0.10.0's `detect_cube_columns` columns, names and dtypes unchanged; `resume=` is an
   earlier call's output.
-- **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{input,
+- **C++: two calls.** `ccd::detect` and `ccd::detect_cube` run a `ccd::RunSpec{spec,
   algorithm, record, masks, reasons, diagnostics, observer, observe}` on views of float64,
   float32 or uint16 values, replacing the 20 `detect`, `detect_recorded`, `resume`,
   `detect_cube` and `resume_cube` overloads. `RunSpec::masks` is off by default (0.10.0's `keep_masks` was on).
 - **Profiles describe the data only**: `SensorProfile(name, band_names, roles, units, thermal,
   saturation_code, thermal_saturation_code, qa_table_builder, qa_table_options)`, with
-  `Units(scale, offset)` and `Thermal(scale, offset, at_100c)`; `profile.input()` replaces
+  `Units(scale, offset)` and `Thermal(scale, offset, at_100c)`; `profile.spec()` replaces
   `options()` and `qa_table()`. `CELSIUS_HUNDREDTHS` is `CELSIUS_OVER_100`.
 - **Error messages** name the stage, strategy and parameter (`change_test 'chi2' parameter
   'peek_size' is 1; it must be at least 2`), or `shared` for a shared value.
 - **`ccdcpp.PROCEDURES` is in code order**, `("standard", "insufficient_clear", "snow")`
   (0.10.0's listed snow second), so `PROCEDURES[code]` names a record's or the diagnostics'
   `procedure`; a configuration file lists its preprocess sections in that order.
-- **Resume**: the header's digest (`digest`, was `options_digest`) covers the input and the
+- **Resume**: the header's digest (`digest`, was `options_digest`) covers the data spec and the
   resolved configuration: `RESUME_FORMAT` is 2, and a 0.10.0 record is refused by its format
   (`the resume record's format is 1; this ccdcpp reads 2`). `RESULTS_VERSION` is 3: the
   default outputs changed.
@@ -106,7 +106,7 @@ its replacement.
   registration functions in `strategies/library.hpp`. A configuration is `config::Config` (`config/config.hpp`); the registry
   (`config/registry.hpp`) is the catalogue of strategies, steps and presets, and
   `config::check()`, `config::resolve()` and `config::build_strategies()` (`config/resolve.hpp`)
-  check a configuration and resolve it against an input. The mask filters are named for their preprocess steps:
+  check a configuration and resolve it against a data spec. The mask filters are named for their preprocess steps:
   `filter::apply_one_per_date`, `apply_thermal_range`, `apply_band_range` and `apply_green_median`
   (its `green_offset`) replace `remove_duplicate_dates`, `apply_thermal_filter`,
   `apply_saturation_filter` and `apply_green_median_filter` (`filter_range`).
@@ -160,7 +160,7 @@ its replacement.
   preprocessing and the fit kept, the peek; `(H, W)` arrays for a cube) and
   `"segment_diagnostics"` (per segment: Initialize and Lookback steps, change tests, refits,
   dropped observations), `ccd::PixelDiagnostics` in C++. Off by default.
-- `Input.saturation_code` and `thermal_saturation_code`, declared by `landsat_c1_dn()` (20000);
+- `DataSpec.saturation_code` and `thermal_saturation_code`, declared by `landsat_c1_dn()` (20000);
   [docs/units.md](docs/units.md) lists which products store one.
 - Types: `py.typed`, `ccdcpp.pyi`, `qa_tables.pyi`, and the results as `TypedDict`s in
   `ccdcpp.results`.

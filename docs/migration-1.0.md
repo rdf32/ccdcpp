@@ -4,13 +4,13 @@
 
 | | Example |
 |---|---|
-| The input says only how to read the data. | `HarmonicOptions` is gone; `ccdcpp.Input()` says only how to read the data: `reflectance_scale` 10000, the thermal transform (10, -27315), the QA codes. |
+| The data spec says only how to read the data. | `HarmonicOptions` is gone; `ccdcpp.DataSpec()` says only how to read the data: `reflectance_scale` 10000, the thermal transform (10, -27315), the QA codes. |
 | The configuration says what to do with it, in physical units. | `HarmonicOptions.REFL_MAX = 10000` is `band_range`'s `reflectance = [0.0, 1.0]` in `ccdcpp.config("ccdc")`. |
-| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check, as in 0.10.0. | `ccdcpp.plan_of("ccdc", ccdcpp.Input())` tests `0 < x < 10000`, 0.10.0's `REFL_MIN < x < REFL_MAX`. |
+| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check, as in 0.10.0. | `ccdcpp.plan_of("ccdc", ccdcpp.DataSpec())` tests `0 < x < 10000`, 0.10.0's `REFL_MIN < x < REFL_MAX`. |
 
 What to do:
 
-1. Pass how to read the data as `input=` (a `ccdcpp.Input` or a sensor profile) and the
+1. Pass how to read the data as `spec=` (a `ccdcpp.DataSpec` or a sensor profile) and the
    algorithm as `config=` (a `ccdcpp.Config` or a preset's name); `hoptions`, `loptions`,
    `profile=`, `qa_table=` and `preprocess=` are gone.
 2. Move every algorithm field you set on `HarmonicOptions` or `LassoOptions` to the
@@ -23,8 +23,8 @@ What to do:
 Everything else gives 0.10.0's outputs bit for bit. Measured on 1,500 real Landsat Collection-1
 DN pixels (2,473 dates each) with `statistics_end=736694`: every segment, coefficient, intercept,
 RMSE, magnitude and processing mask is bit-identical between 0.10.0 and 1.0 through the default
-input, `presets.landsat_c1_dn()`, `presets.landsat_c1_physical()` and an explicit physical-unit
-input, and with changed options (the [example below](#harmonicoptions-and-lassooptions)); a
+data spec, `presets.landsat_c1_dn()`, `presets.landsat_c1_physical()` and an explicit physical-unit
+spec, and with changed options (the [example below](#harmonicoptions-and-lassooptions)); a
 3 x 4 cube's columns are equal to 0.10.0's `detect_cube_columns`, and `to_pixels` of them to
 0.10.0's `detect_cube`.
 
@@ -61,10 +61,10 @@ print([m["break_day"] for m in out["models"]], out["models"][0]["bands"][3]["rms
 
 ```python
 pyccd = ccdcpp.config("ccdc").replace(shared__statistics_end=736694)
-same = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=pyccd)
+same = ccdcpp.detect(dates, dn, codes, spec=ccdcpp.DataSpec(), config=pyccd)
 print([m["break_day"] for m in same["models"]], same["models"][0]["bands"][3]["rmse"])
 
-whole = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input())    # "ccdc": the whole series
+whole = ccdcpp.detect(dates, dn, codes, spec=ccdcpp.DataSpec())    # "ccdc": the whole series
 print([m["break_day"] for m in whole["models"]])
 ```
 
@@ -77,8 +77,8 @@ print([m["break_day"] for m in whole["models"]])
 its fit uses.** pyccd's PermanentSnow and InsufficientClear filters, and 0.10.0's default plan with
 them, test the thermal band against the Celsius bounds without converting it. On Collection-1
 DN that compares Kelvin x 10 with -9320 to 7070: it drops saturated (20000) and NaN values and
-keeps every temperature below 707 K; on any other input it is a test of the wrong unit. `ccdc`
-tests those two chains' stored thermal band against the bounds taken back through the input's
+keeps every temperature below 707 K; on any other data it is a test of the wrong unit. `ccdc`
+tests those two chains' stored thermal band against the bounds taken back through the data spec's
 thermal transform, 1799.5 to 3438.5 on Collection-1 DN (179.95 to 343.85 K), so every
 procedure keeps -93.2 to 70.7 °C, the values whose transform Standard's range keeps. The snow
 chain tests the range on its clear and water observations, as pyccd does, and again after it
@@ -90,14 +90,14 @@ corpus's 2,900 pixels change (snow and insufficient-clear pixels, and 8 without 
 whose thermal values range far beyond the bounds. Physical-unit outputs are 0.10.0's, and the
 DN run segments as the physical-unit run does. On the Atlanta cell (Collection 2) no pixel changes.
 
-On HLS and Sentinel-2 inputs `ccdc`'s `band_range` tests blue, green, red, nir, swir1 and swir2,
+On HLS and Sentinel-2 data `ccdc`'s `band_range` tests blue, green, red, nir, swir1 and swir2,
 where 0.10.0's profiles listed every row but thermal: coastal, the red edges and B08 are not
 range-checked unless a configuration lists them. Landsat outputs do not change.
 
 ## Resume records
 
 A 0.10.0 record does not continue: its header has `options_digest` where 1.0's has `digest`, and
-1.0's digest covers the input (its QA table included) and the resolved configuration (its
+1.0's digest covers the data spec (its QA table included) and the resolved configuration (its
 preprocessing included), so `RESUME_FORMAT` is 2 (0.10.0's was 1); 1.0's default outputs
 differ, so `RESULTS_VERSION` is 3 (0.10.0's was 2). A 0.10.0 record is refused before any pixel
 runs, with `ValueError: the resume record's format is 1; this ccdcpp reads 2`. Rerun the
@@ -127,9 +127,9 @@ resumed ['format', 'options_digest', 'results_version', 'series_end', 'statistic
 ```
 
 ```python
-first = ccdcpp.detect(dates[:2400], dn[:, :2400], codes[:2400], input=ccdcpp.Input(),
+first = ccdcpp.detect(dates[:2400], dn[:, :2400], codes[:2400], spec=ccdcpp.DataSpec(),
                       config=pyccd, record=True)
-more = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=pyccd, resume=first)
+more = ccdcpp.detect(dates, dn, codes, spec=ccdcpp.DataSpec(), config=pyccd, resume=first)
 print(more["status"], sorted(first["resume_header"]))
 ```
 
@@ -143,18 +143,18 @@ resumed ['digest', 'format', 'results_version', 'series_end', 'statistics_end']
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `detect(d, s, q, h, lo)` | `detect(d, s, q, input=h, config=cfg)` |
-| `detect(..., profile=p)` | `detect(..., input=p)` |
-| `detect_cube_columns(d, s, q, h, lo, threads)` | `detect_cube(d, s, q, input=h, threads=threads)`: the same columns, names and dtypes |
+| `detect(d, s, q, h, lo)` | `detect(d, s, q, spec=h, config=cfg)` |
+| `detect(..., profile=p)` | `detect(..., spec=p)` |
+| `detect_cube_columns(d, s, q, h, lo, threads)` | `detect_cube(d, s, q, spec=h, threads=threads)`: the same columns, names and dtypes |
 | `detect_cube(d, s, q, h, lo, threads)` (a dict per pixel) | `ccdcpp.to_pixels(detect_cube(..., masks=True))` |
 | `keep_masks` (the dicts held each pixel's mask) | `detect_cube(..., masks=True)`: `"processing_mask"`, `(H, W, T)` uint8; `to_pixels` gives each pixel its row |
 | `processing_mask` (1 kept, 0 not) | unchanged; `reasons=True` also returns `"mask_reasons"`, why each observation is where the run left it, and `processing_mask == (mask_reasons < ccdcpp.FIRST_DROP)` ([diagnostics.md](diagnostics.md#reason-codes)) |
 | `resume_record=True` | `record=True` |
-| `resume(d, s, q, h, lo, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, input=h, resume=out)`, `out` the earlier `detect(..., record=True)`; with `freeze_statistics=True` under a cutoff after the stored end, or none ([Resume records](#resume-records)) |
+| `resume(d, s, q, h, lo, resume=r, resume_header=hd, models=m)` | `detect(d, s, q, spec=h, resume=out)`, `out` the earlier `detect(..., record=True)`; with `freeze_statistics=True` under a cutoff after the stored end, or none ([Resume records](#resume-records)) |
 | `resume_cube_columns(..., resume=r, resume_header=hd, segments=cols)` | `detect_cube(..., resume=out)`, `out` the earlier `detect_cube(..., record=True)`; `freeze_statistics=True` as `detect`'s |
-| `qa_table=t` | the input's `qa_table`: `h.replace(qa_table=t)` (a profile's `input()` carries its table) |
+| `qa_table=t` | the data spec's `qa_table`: `h.replace(qa_table=t)` (a profile's `spec()` carries its table) |
 | `preprocess=plan` | the configuration's `preprocess` section ([below](#preprocessing)) |
-| `ccdcpp.default_plan(h)` | `ccdcpp.plan_of(config, input)` |
+| `ccdcpp.default_plan(h)` | `ccdcpp.plan_of(config, spec)` |
 | `ccdcpp.validate_plan(plan, bands)` | the configuration is checked when it is built and resolved |
 | `resume_header["options_digest"]` | `resume_header["digest"]` |
 
@@ -175,7 +175,7 @@ print(len(cols["row"]), cols["coefficients"].dtype, rows[5]["models"][0]["bands"
 ```
 
 ```python
-cols = ccdcpp.detect_cube(dates, cube, cube_codes, input=ccdcpp.Input(), config=pyccd,
+cols = ccdcpp.detect_cube(dates, cube, cube_codes, spec=ccdcpp.DataSpec(), config=pyccd,
                           threads=4, masks=True)
 rows = ccdcpp.to_pixels(cols)
 print(len(cols["row"]), cols["coefficients"].dtype, rows[5]["models"][0]["bands"][3]["rmse"])
@@ -189,11 +189,11 @@ print(cols["processing_mask"].shape, rows[5]["processing_mask"].sum())
 
 ### `HarmonicOptions` and `LassoOptions`
 
-`ccdcpp.HarmonicOptions` is `ccdcpp.Input`, which keeps only how to read the data, its fields
+`ccdcpp.HarmonicOptions` is `ccdcpp.DataSpec`, which keeps only how to read the data, its fields
 in snake case; every algorithm field moved to the configuration, and so did `LassoOptions`'
 `alpha`, `coef_floor`, `max_iter` and `tolerance` (the shared `lasso` table). `LassoOptions`' `fit_intercept`,
-`unbiased_rmse` and `warm_start` are fixed at their defaults (true, true, false). The `Input`
-is immutable: `ccdcpp.Input(**fields)` by keyword, `replace(**fields)` for a changed copy, where
+`unbiased_rmse` and `warm_start` are fixed at their defaults (true, true, false). The `DataSpec`
+is immutable: `ccdcpp.DataSpec(**fields)` by keyword, `replace(**fields)` for a changed copy, where
 `HarmonicOptions` set attributes.
 
 ```python
@@ -221,7 +221,7 @@ cfg = ccdcpp.config("ccdc").replace(
     shared__min_observations=16,             # the start window and a whole-series curve's least
     window_screen__bands=["green", "red", "swir1"],
     shared__lasso__max_iter=500)
-out = ccdcpp.detect(dates, dn, codes, input=ccdcpp.Input(), config=cfg)
+out = ccdcpp.detect(dates, dn, codes, spec=ccdcpp.DataSpec(), config=cfg)
 print(len(out["models"]), out["models"][-1]["bands"][3]["rmse"])
 ```
 
@@ -229,8 +229,8 @@ print(len(out["models"]), out["models"][-1]["bands"][3]["rmse"])
 2 319.50556559382443
 ```
 
-A physical-unit input set the bounds, the green filter and the Lasso constants itself; in 1.0
-the configuration is the same for every input, and the input says the unit:
+A physical-unit run set the bounds, the green filter and the Lasso constants itself; in 1.0
+the configuration is the same for every data spec, and the data spec says the unit:
 
 ```python
 # 0.10.0
@@ -251,11 +251,11 @@ print(out["models"][0]["bands"][3]["rmse"])
 ```
 
 ```python
-h = ccdcpp.Input(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0, thermal_at_100c=1.0)
+h = ccdcpp.DataSpec(reflectance_scale=1.0, thermal_scale=1.0, thermal_offset=0.0, thermal_at_100c=1.0)
 physical = dn / 10000.0
 physical[6] = (dn[6] * 10 - 27315) / 10000.0
-out = ccdcpp.detect(dates, physical, codes, input=h, config=pyccd)
-print(out["models"][0]["bands"][3]["rmse"], h == presets.landsat_c1_physical().input())
+out = ccdcpp.detect(dates, physical, codes, spec=h, config=pyccd)
+print(out["models"][0]["bands"][3]["rmse"], h == presets.landsat_c1_physical().spec())
 ```
 
 ```text
@@ -272,9 +272,9 @@ that needs it, set nowhere else), and `preprocess` a step of a procedure's chain
 
 | 0.10.0 field | 0.10.0 default | 1.0 |
 |---|---|---|
-| `QA_FILL`, `QA_CLEAR`, `QA_WATER`, `QA_SHADOW`, `QA_SNOW`, `QA_CLOUD`, `QA_CIRRUS1`, `QA_CIRRUS2`, `QA_OCCLUSION` | 255, 0, 1, 2, 3, 4, 8, 9, 10 | `Input.qa_fill` ... `Input.qa_occlusion` |
-| `THERMAL_SCALE`, `THERMAL_OFFSET` | 10, -27315 | `Input.thermal_scale`, `Input.thermal_offset`, with `Input.thermal_at_100c` (10000 for this transform) |
-| `NUM_BANDS`, `BLUE_IDX` ... `THERMAL_IDX` | 7, 0 ... 6 | `Input.roles`, one role per row (`Input.bands()`, `Input.index(role)`) |
+| `QA_FILL`, `QA_CLEAR`, `QA_WATER`, `QA_SHADOW`, `QA_SNOW`, `QA_CLOUD`, `QA_CIRRUS1`, `QA_CIRRUS2`, `QA_OCCLUSION` | 255, 0, 1, 2, 3, 4, 8, 9, 10 | `DataSpec.qa_fill` ... `DataSpec.qa_occlusion` |
+| `THERMAL_SCALE`, `THERMAL_OFFSET` | 10, -27315 | `DataSpec.thermal_scale`, `DataSpec.thermal_offset`, with `DataSpec.thermal_at_100c` (10000 for this transform) |
+| `NUM_BANDS`, `BLUE_IDX` ... `THERMAL_IDX` | 7, 0 ... 6 | `DataSpec.roles`, one role per row (`DataSpec.bands()`, `DataSpec.index(role)`) |
 | `QA_IDX` | | none (nothing read it) |
 | `CLEAR_OBSERVATION_THRESHOLD` | | none (nothing read it) |
 | `SATURATION_BANDS` | [0, 1, 2, 3, 4, 5] | `preprocess` `band_range`'s `bands`: roles (blue, green, red, nir, swir1 and swir2 in `ccdc`) |
@@ -316,8 +316,8 @@ the configuration's, the same for every profile.
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `profile.options()` (`(HarmonicOptions, LassoOptions)`) | `profile.input()` (the `ccdcpp.Input`, its QA table included) |
-| `profile.qa_table(h)` | `profile.input().qa_table` |
+| `profile.options()` (`(HarmonicOptions, LassoOptions)`) | `profile.spec()` (the `ccdcpp.DataSpec`, its QA table included) |
+| `profile.qa_table(h)` | `profile.spec().qa_table` |
 | `detection`, `tmask` | `shared__detection_bands`, `window_screen__bands` |
 | `saturation` | `band_range`'s `bands` (blue to swir2 in `ccdc`) |
 | `alpha`, `coef_floor` | `shared__lasso__alpha`, `shared__lasso__coef_floor`, in reflectance for every profile |
@@ -342,8 +342,8 @@ print(out["band_names"], h.STAT_ORD, lo.alpha)
 ```
 
 ```python
-out = ccdcpp.detect(dates, dn, codes, input=presets.landsat_c1_dn(), config=pyccd)
-h = presets.landsat_c1_dn().input()
+out = ccdcpp.detect(dates, dn, codes, spec=presets.landsat_c1_dn(), config=pyccd)
+h = presets.landsat_c1_dn().spec()
 print(out["band_names"], h.saturation_code, pyccd.resolve(h)["shared"]["lasso"]["alpha"])
 ```
 
@@ -360,13 +360,13 @@ The chain is part of the configuration. `preprocess=`, the profile's `preprocess
 | 0.10.0 | 1.0 |
 |---|---|
 | `detect(..., preprocess=plan)` | `config=cfg.replace(preprocess__<procedure>=ProcedureChain(...))`, or `preprocess__<procedure>__<step>__<param>=` |
-| `ProcedureChain(steps, transform="default")` / `transform=None` | `ProcedureChain(steps, thermal="celsius")` (through the input's transform) / `thermal="stored"` |
-| `Transform(role, scale, offset)` | the input's `thermal_scale`, `thermal_offset` |
+| `ProcedureChain(steps, transform="default")` / `transform=None` | `ProcedureChain(steps, thermal="celsius")` (through the data spec's transform) / `thermal="stored"` |
+| `Transform(role, scale, offset)` | the data spec's `thermal_scale`, `thermal_offset` |
 | `ThermalRange(min, max, inclusive)` | `ThermalRange(celsius, inclusive)`: `celsius = (-93.2, 70.7)` |
 | `BandRange(roles, min, max, inclusive)` | `BandRange(bands, reflectance, inclusive)`: `bands` roles or rows, `reflectance = (0.0, 1.0)` |
 | `Dedupe()`, `StepKind.Dedupe` (C++ `preprocess::Step::dedupe()`, `StepKind::Dedupe`) | `OnePerDate()`, `StepKind.OnePerDate` (`Step::one_per_date()`, `StepKind::OnePerDate`): the step `one_per_date` |
 | `GreenMedian(offset, scope, max_date, role)` | `GreenMedian(offset, scope)`; its date is the shared `statistics_end`, its band the green role |
-| the bounds in the input's units | the bounds in physical units: reflectance, degrees Celsius |
+| the bounds in the data's units | the bounds in physical units: reflectance, degrees Celsius |
 | `default_plan(h)` | `plan_of("ccdc", h)` |
 
 ```python
@@ -380,7 +380,7 @@ print(plan.standard.chain[2], plan.snow.chain[1])
 ```
 
 ```python
-plan = ccdcpp.plan_of(pyccd, ccdcpp.Input())
+plan = ccdcpp.plan_of(pyccd, ccdcpp.DataSpec())
 print(plan.standard.chain[2], plan.snow.chain[1])
 ```
 
@@ -402,7 +402,7 @@ back ([change (b)](#what-changes-in-the-outputs)).
 | `ccdcpp.QA_CODE_FIELDS` | `ccdcpp.QA_CODE_NAMES` (the names a configuration's `codes` take) |
 | `ccdcpp.GREEN_FILTER_SCOPES` | the names `green_median`'s `scope` takes: `"all"`, `"stat_window"`, `"off"` |
 | `ccdcpp.PROCEDURES`, `("standard", "snow", "insufficient_clear")` | `("standard", "insufficient_clear", "snow")`, in code order: `PROCEDURES[code]` names a record's or the diagnostics' `procedure` |
-| `qa_tables.<builder>(options)` | `qa_tables.<builder>(input)`, an `Input` |
+| `qa_tables.<builder>(options)` | `qa_tables.<builder>(spec)`, a `DataSpec` |
 
 ## Newly refused values
 
@@ -423,7 +423,7 @@ configuration is built, before any pixel runs:
 0.10.0 named a field; 1.0 names the stage, the strategy and the parameter, or `shared` for a
 shared value outside its own bounds. Which stage is named depends on which parameters are set:
 a shared value's own bounds are checked as `shared`, a rule over several values by the first
-stage that reads them, and a role against the input when the configuration is resolved.
+stage that reads them, and a role against the data spec when the configuration is resolved.
 
 | 0.10.0 | 1.0 |
 |---|---|
@@ -431,8 +431,8 @@ stage that reads them, and a role against the input when the configuration is re
 | `COEFFICIENT_MAX is 9; the harmonic basis has at most 8` | `shared coefficients max is 9; the harmonic basis has at most 8` |
 | `COEFFICIENT_MIN` above `COEFFICIENT_MID` | `shared coefficients min, mid, max are 7, 6, 8; they must not decrease` |
 | `TMASK_BANDS is empty` | `window_screen 'tmask' parameter 'bands' is empty` |
-| a band past the input in `TMASK_BANDS` | `window_screen 'tmask' parameter 'bands' holds band 12; the input has 7 bands` |
-| a detection band the input lacks | `shared value 'detection_bands' holds 'coastal', which the input does not have; its rows are blue, green, red, nir, swir1, swir2, thermal` |
+| a band past the last row in `TMASK_BANDS` | `window_screen 'tmask' parameter 'bands' holds band 12; the data spec has 7 bands` |
+| a detection band the data spec lacks | `shared value 'detection_bands' holds 'coastal', which the data spec does not have; its rows are blue, green, red, nir, swir1, swir2, thermal` |
 | (none: one field held it) | `start_search 'pyccd' parameter 'min_observations' is the shared value 'min_observations'; set shared 'min_observations' instead` |
 | `RuntimeError: qas length must match dates length`, `spectral time dimension must match dates` | `ValueError: qas has 39 timesteps; spectral has 40`, `dates has 39 timesteps; spectral has 40` |
 
@@ -455,9 +455,9 @@ window_screen 'tmask' parameter 'bands' is empty
 
 | 0.10.0 | 1.0 |
 |---|---|
-| `HarmonicOptions` (`ccd/harmonic/harmonic.hpp`) | `ccd::Input` (`ccd/input/input.hpp`, how to read the data) and `config::Config` (`ccd/config/config.hpp`, the algorithm) |
+| `HarmonicOptions` (`ccd/harmonic/harmonic.hpp`) | `ccd::DataSpec` (`ccd/input/data_spec.hpp`, how to read the data) and `config::Config` (`ccd/config/config.hpp`, the algorithm) |
 | `LassoOptions` in a call | the shared `lasso.alpha`, `lasso.coef_floor`, `lasso.max_iter`, `lasso.tolerance` (`LassoOptions` remains the solver's own options type, inside the `lasso` strategies) |
-| `detect(d, s, q, h, l, table, plan)` (8 overloads) | `detect(spec, d, s, q).result`; `spec.input` holds its `qa_table`, the configuration its preprocessing |
+| `detect(d, s, q, h, l, table, plan)` (8 overloads) | `detect(spec, d, s, q).result`; `spec.spec` holds its `qa_table`, the configuration its preprocessing |
 | `detect_recorded(...)` | `detect` with `RunSpec::record = true` |
 | `resume(d, s, q, h, l, header, record, segments)` | `detect(spec, d, s, q, Resume{header, {record}, {segments}})`; `Resume::freeze_statistics` as Python's `freeze_statistics=True` |
 | `detect_cube(d, s, q, h, l, threads, keep_masks, table, plan, record)` | `detect_cube(spec, d, s, q, threads)` |
@@ -465,7 +465,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `resume_cube(..., from, ...)`, `CubeResumeFrom{header, pixels, segments}` | `detect_cube(spec, d, s, q, threads, &from)`, `Resume{header, records, segments, freeze_statistics}` |
 | `Recorded`, `Resumed`; `CubeResult`; `PixelResult`; `DetectScratch` | `PixelOutput`; `CubeOutput`; `CubePixel` (one pixel of a `CubeOutput`); none (the run's per-thread buffers are internal) |
 | `options_digest()`, `ResumeHeader::options_digest` | `ResumeHeader::digest`, the resolution's |
-| `default_plan(h)`, `PreprocessPlanPtr`, the `preprocess` argument | `plan_of(config, input)` (`ccd/run/algorithm.hpp`), the plan the configuration resolves to |
+| `default_plan(h)`, `PreprocessPlanPtr`, the `preprocess` argument | `plan_of(config, spec)` (`ccd/run/algorithm.hpp`), the plan the configuration resolves to |
 | `select_procedure()`, `standard::measure_cadence()` | the `mode` stage's `choose()`, the change test's `prepare()` |
 | `HarmonicWorkspace` | `PixelSeries` (`ccd/input/pixel_series.hpp`): views of the pixel's dates, values and QA codes; `MaskedData` and `apply_mask()` are in `ccd/input/masked_series.hpp`, with `MaskedSeries` |
 | `standard::coefficient_count()` | the model strategy's `coefficients()`, a `CoefficientRule` (`ccd/regression/coefficients.hpp`) |
@@ -477,7 +477,7 @@ window_screen 'tmask' parameter 'bands' is empty
 | `ccd/procedure/pixel_procedure.hpp` | `ccd/input/procedure.hpp` (`PixelProcedure`, with `PROCEDURES` and `name()`; `PreprocessPlan::of()` is a procedure's plan); `fit_whole_series` is in `ccd/strategies/edge_segments/lasso.hpp`, the `mode` stage's `PixelMode` in `ccd/strategies/stages.hpp` |
 | `ccd/procedure/fit.hpp`, `ccd/procedure/kernels.hpp` | the header of each function's owner: `ccd/results/segment.hpp` (`ChangeModel`, `BandFit`, `FitResult`, `CurveQA`), `ccd/core/window.hpp` (`Window`, `span`), `ccd/strategies/stages.hpp` (`Variogram` is `BandNoise`, the `noise` stage's output), `ccd/strategies/model.hpp` (`KeepResiduals`), `ccd/strategies/model/lasso.hpp` (`fit_bands`, `peek_residuals`, `band_fit`), `ccd/strategies/edge_segments/lasso.hpp` (`catch_segment`, `fit_whole_series`), `ccd/strategies/noise/variogram.hpp` (`adjusted_variogram`), `ccd/strategies/window_screen/tmask.hpp` (`tmask`), `ccd/strategies/pyccd/peek_statistics.hpp` (`adjust_peek`, `adjust_change_threshold`, `change_magnitude`, `SeasonalOrder`, `seasonal_rmse`), `ccd/core/maths.hpp` (`chi2_quantile`); `find_closest_doy`, `calculate_variogram`, `check_variogram`, `enough_time` and `enough_samples` are internal or gone |
 
-`RunSpec` is `{input, algorithm, record, masks, reasons, diagnostics, observer, observe}`;
+`RunSpec` is `{spec, algorithm, record, masks, reasons, diagnostics, observer, observe}`;
 `algorithm` is a compiled configuration (`ccd::Algorithm`, `run/algorithm.hpp`), the `ccdc`
 preset's (`Algorithm::preset("ccdc")`) unless set. The values and QA are views of any supported element
 type (`PixelSpectral`, `PixelQa`, `CubeSpectral`, `CubeQa`).
@@ -499,7 +499,7 @@ ccd::config::Config config = ccd::strategies::library_registry().preset("ccdc");
 config.shared["statistics_end"] = ccd::config::integer(736694);    // 0.10.0's cutoff
 config.shared["change_probability"] = ccd::config::real(0.995);
 config.stages["refit"].params["factor"] = ccd::config::real(2.0);
-ccd::RunSpec spec;                                                   // spec.input: Collection-1 DN
+ccd::RunSpec spec;                                                   // spec.spec: Collection-1 DN
 spec.algorithm = std::make_shared<const ccd::Algorithm>(config);
 spec.masks = true;                                                   // 0.10.0 kept them
 ccd::FitResult r = ccd::detect(spec, dates, spectral, qas).result;

@@ -9,7 +9,7 @@ segment reports. Each stage is decided by a **strategy** chosen by name, with pa
 stage its strategy and that strategy's parameters, and for every procedure its
 **preprocessing**: the steps that build the processing mask. A run without one uses the `ccdc`
 preset: pyccd's algorithm with ccdcpp's corrections, each strategy and step at its defaults,
-with no statistics cutoff, on any input. The stages and their strategies are in
+with no statistics cutoff, on any data spec. The stages and their strategies are in
 [ccdc-state-machine.md](ccdc-state-machine.md#stages-and-strategies), and where each sits in a run
 in [architecture.md](architecture.md).
 
@@ -20,23 +20,23 @@ The examples use `dates`, `spectral`, `qas`, `cube` and `cube_qa` from the READM
 
 | | Example |
 |---|---|
-| The input says only how to read the data. | `presets.landsat_c2().input()` holds reflectance 0..1 (`reflectance_scale` 1), thermal in degrees Celsius / 100, and the decoder of `QA_PIXEL`. |
+| The data spec says only how to read the data. | `presets.landsat_c2().spec()` holds reflectance 0..1 (`reflectance_scale` 1), thermal in degrees Celsius / 100, and the decoder of `QA_PIXEL`. |
 | The configuration says what to do with it, in physical units. | `ccdc`'s `green_median` drops observations 0.04 reflectance above the median green; its `lasso.alpha` is 1e-4 reflectance. |
-| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check. | On `ccdcpp.Input()` the `green_median` offset resolves to 400 DN, `lasso.alpha` to 1.0 and `band_range` to `0 < x < 10000`. |
+| The run translates once: 0–1 reflectance × 10000 is the 0–10000 DN check. | On `ccdcpp.DataSpec()` the `green_median` offset resolves to 400 DN, `lasso.alpha` to 1.0 and `band_range` to `0 < x < 10000`. |
 
 ```python
 import ccdcpp
 from ccdcpp import presets
 
-c2 = presets.landsat_c2().input()
+c2 = presets.landsat_c2().spec()
 print(c2.reflectance_scale, c2.thermal_at_100c, c2.qa_table is not None)
 
 cfg = ccdcpp.config("ccdc")
 print(cfg.preprocess("insufficient_clear")["steps"][4], cfg.shared()["lasso"]["alpha"])
 
-plan = ccdcpp.plan_of(cfg, ccdcpp.Input())
+plan = ccdcpp.plan_of(cfg, ccdcpp.DataSpec())
 print(plan.insufficient_clear.chain[4])
-print(cfg.resolve(ccdcpp.Input())["model"]["lasso.alpha"], plan.standard.chain[2])
+print(cfg.resolve(ccdcpp.DataSpec())["model"]["lasso.alpha"], plan.standard.chain[2])
 ```
 
 ```text
@@ -46,9 +46,9 @@ print(cfg.resolve(ccdcpp.Input())["model"]["lasso.alpha"], plan.standard.chain[2
 1.0 <Step BandRange bands [0, 1, 2, 3, 4, 5], 0 < x < 10000>
 ```
 
-The input is a `ccdcpp.Input`, or a `SensorProfile` that builds one ([units.md](units.md) has the
-Input's fields and the boundary between the data and the configuration). A run resolves its
-configuration against its input once:
+The data spec is a `ccdcpp.DataSpec`, or a `SensorProfile` that builds one ([units.md](units.md) has the
+DataSpec's fields and the boundary between the data and the configuration). A run resolves its
+configuration against its data spec once:
 
 - a reflectance level (unit `reflectance`: `band_range`'s `reflectance` range) as
   `r * reflectance_scale + reflectance_offset`;
@@ -57,9 +57,9 @@ configuration against its input once:
 - degrees Celsius `c` (`thermal_range`'s `celsius` range) as `c * 100 * thermal_at_100c / 10000`;
 - a date `"YYYY-MM-DD"` (`statistics_end`) as its ordinal day;
 - a probability to its chi-squared quantile for the detection-band count;
-- roles to rows and QA code names to the input's codes.
+- roles to rows and QA code names to the spec's codes.
 
-`cfg.resolve(input)` shows every resolved value, `ccdcpp.plan_of(cfg, input)` the
+`cfg.resolve(spec)` shows every resolved value, `ccdcpp.plan_of(cfg, spec)` the
 preprocessing plan.
 
 ## From Python
@@ -78,8 +78,8 @@ cfg2 = cfg.replace(shared__change_probability=0.95, refit__factor=2.0)
 cfg3 = cfg.replace(refit="span-factor")
 
 # Run with it: detect and detect_cube take config= (a Config or a preset's name).
-pixel = ccdcpp.detect(dates, spectral, qas, input=presets.landsat_c2(), config=cfg2)
-cols = ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), config=cfg2,
+pixel = ccdcpp.detect(dates, spectral, qas, spec=presets.landsat_c2(), config=cfg2)
+cols = ccdcpp.detect_cube(dates, cube, cube_qa, spec=presets.landsat_c2(), config=cfg2,
                           threads=4)
 print(len(pixel["models"]), cols["pixels_with_segments"], cfg3 == cfg)
 ```
@@ -93,7 +93,7 @@ print(len(pixel["models"]), cols["pixels_with_segments"], cfg3 == cfg)
 Mistakes are refused by name with `ValueError`, before any pixel runs. A parameter outside its
 own bounds names its stage, strategy and parameter, or `shared` for a shared value; a
 combination a strategy refuses names the first stage that reads it; a role is checked against
-the input when the configuration is resolved (`check(input)`, or the run):
+the data spec when the configuration is resolved (`check(spec)`, or the run):
 
 ```python
 for bad in (lambda: cfg.replace(refit__fctor=2.0),
@@ -101,7 +101,7 @@ for bad in (lambda: cfg.replace(refit__fctor=2.0),
             lambda: cfg.replace(shared__lasso__alpha=-1.0),
             lambda: cfg.replace(shared__coefficients__min=7),
             lambda: cfg.replace(start_search__min_observations=16),
-            lambda: cfg.replace(window_screen__bands=["green", "coastal"]).check(ccdcpp.Input())):
+            lambda: cfg.replace(window_screen__bands=["green", "coastal"]).check(ccdcpp.DataSpec())):
     try:
         bad()
     except ValueError as e:
@@ -114,7 +114,7 @@ refit 'span-factor' parameter 'factor' is 0; it must be greater than 0
 shared lasso parameter 'alpha' is -1; it must be at least 0
 shared coefficients min, mid, max are 7, 6, 8; they must not decrease
 start_search 'pyccd' parameter 'min_observations' is the shared value 'min_observations'; set shared 'min_observations' instead
-window_screen 'tmask' parameter 'bands' holds 'coastal', which the input does not have; its rows are blue, green, red, nir, swir1, swir2, thermal
+window_screen 'tmask' parameter 'bands' holds 'coastal', which the data spec does not have; its rows are blue, green, red, nir, swir1, swir2, thermal
 ```
 
 What exists and what it takes:
@@ -171,8 +171,8 @@ keeps_snow = cfg.replace(preprocess__standard=ProcedureChain(
     thermal="celsius",
 ))
 colder = cfg.replace(preprocess__thermal_range__celsius=[-80.0, 70.7])   # every thermal_range step
-print(ccdcpp.plan_of(keeps_snow, ccdcpp.Input()).standard.chain[0])
-print(ccdcpp.plan_of(colder, ccdcpp.Input()).standard.chain[1])  # the plan, in the input's units
+print(ccdcpp.plan_of(keeps_snow, ccdcpp.DataSpec()).standard.chain[0])
+print(ccdcpp.plan_of(colder, ccdcpp.DataSpec()).standard.chain[1])  # the plan, in the spec's units
 ```
 
 ```text
@@ -212,7 +212,7 @@ tolerance = 0.0001               # a sweep's relative update at which it checks 
 # --- Preprocessing: which observations each procedure keeps -------------------------------
 
 [preprocess.standard]
-thermal = "celsius"              # through the input's thermal transform (degrees Celsius)
+thermal = "celsius"              # through the spec's thermal transform (degrees Celsius)
 steps = [
     { step = "keep_qa", codes = ["clear", "water"] },
     { step = "thermal_range", celsius = [-93.2, 70.7] },                                                           # degrees Celsius
@@ -246,7 +246,7 @@ factor = 1.33
   underscores, `replace(shared__lasso__alpha=1e-5)`; C++ by its path,
   `config.shared["lasso.alpha"]`.
 - **Each procedure's chain** is `[preprocess.<procedure>]`: `thermal` (`"celsius"`, through the
-  input's thermal transform, or `"stored"`, as the input holds it) and its `steps` in order,
+  data spec's thermal transform, or `"stored"`, as the data holds it) and its `steps` in order,
   each written out in full: nothing is looked up elsewhere.
 - **Named values** stand where a number would mean something particular: `statistics_end =
   "none"` (or a date `"2017-12-31"`, or an ordinal), `peek = "change_test"` (or a number of
@@ -315,9 +315,9 @@ PixelOutput run_variant(ArrayView<const std::int64_t, 1> dates,
     config.shared["lasso.alpha"] = config::real(2e-4);            // [shared.lasso] alpha
     config.stages["refit"].params["factor"] = config::real(2.0);
 
-    RunSpec spec;                        // spec.input is Collection-1 DN, spec.algorithm "ccdc"
+    RunSpec spec;                        // spec.spec is Collection-1 DN, spec.algorithm "ccdc"
     spec.algorithm = std::make_shared<const Algorithm>(config);   // checked here
-    preprocess::PreprocessPlan plan = plan_of(config, spec.input);   // for inspection
+    preprocess::PreprocessPlan plan = plan_of(config, spec.spec);   // for inspection
     return detect(spec, dates, spectral, qas);
 }
 ```
@@ -325,10 +325,10 @@ PixelOutput run_variant(ArrayView<const std::int64_t, 1> dates,
 Three types hold a configuration. `config::Config` (`include/ccd/config/config.hpp`) is the
 data: the `shared` values (a table's by its path, `"lasso.alpha"`), the `stages` and the
 `preprocess` chains, as written, a value you edit; `config::canonical()` writes it out in
-full, and `config::resolve()` (`include/ccd/config/resolve.hpp`) against an input. `ccd::Algorithm` is its
+full, and `config::resolve()` (`include/ccd/config/resolve.hpp`) against a data spec. `ccd::Algorithm` is its
 compiled form: built once from a `Config` (checked by the schemas then), immutable, shared by
-every call and thread, and caching its resolution per input (`for_input()`: resolved and built
-the first time it meets an input, reused for every equal one; the 16 inputs used last are
+every call and thread, and caching its resolution per data spec (`for_spec()`: resolved and built
+the first time it meets a data spec, reused for every equal one; the 16 specs used last are
 kept). `RunSpec::algorithm` takes an `Algorithm`, so a call resolves nothing it has resolved
 before. The Python `ccdcpp.Config` holds both: the data (`params()`, `shared()`, `to_toml()`,
 `replace()`) and the `Algorithm` compiled from it when it is built, which every `detect` and
@@ -359,7 +359,7 @@ your own registered and named.
 | a new preprocessing step | a C++ step type, registered by name (`Registry::add_step()`, `include/ccd/input/mask/steps.hpp`); its `make()` is handed each step's context (`config::StepContext`: the procedure, how it reads the thermal row, the position) |
 
 ```python
-sweep = {f: ccdcpp.detect_cube(dates, cube, cube_qa, input=presets.landsat_c2(), threads=4,
+sweep = {f: ccdcpp.detect_cube(dates, cube, cube_qa, spec=presets.landsat_c2(), threads=4,
                                config=cfg.replace(refit__factor=f))["pixels_with_segments"]
          for f in (1.2, 1.33, 1.5, 2.0)}
 print(sweep)
@@ -377,9 +377,9 @@ schema, registered by name in a build extension (CMake's `CCD_EXTENSIONS`); then
 
 ## Resume records
 
-A record carries the digest of the input (its QA table included) and the resolved configuration
+A record carries the digest of the data spec (its QA table included) and the resolved configuration
 (`ResumeHeader::digest`, `resume_header["digest"]` in Python): it continues only under the same
-ones, and a resume under another input or configuration raises `ValueError`
+ones, and a resume under another data spec or configuration raises `ValueError`
 (`std::invalid_argument` in C++) before any pixel runs.
 
 A resume keeps every statistics cutoff at the stored run's end (the header's `statistics_end`,

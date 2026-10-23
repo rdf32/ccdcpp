@@ -8,8 +8,8 @@ The numbers are for ccdcpp 1.0, against PyCCD and against 0.10.0, on one machine
 - Apple M5 Max, 18 cores (6 performance, 12 efficiency), 64 GB, macOS 26.7, on AC power.
 - Release build (`-O3 -DNDEBUG`, Apple clang 21, Homebrew libomp 23.1.1), Python 3.11.16,
   numpy 1.26.4 (zarr 3.1.5 for the cell).
-- The default input and configuration (`ccdcpp.Input()` and the `ccdc` preset, which has no
-  statistics cutoff), or `input=presets.landsat_c2()` for the real cell; where a run is at
+- The default data spec and configuration (`ccdcpp.DataSpec()` and the `ccdc` preset, which has no
+  statistics cutoff), or `spec=presets.landsat_c2()` for the real cell; where a run is at
   pyccd's statistics cutoff, `statistics_end=736694` (2017-12-31), the table says so.
 - Memory is the peak resident set size of the process (MB of 10^6 bytes), as each bench prints
   it (the number `/usr/bin/time -l` reports), which includes the interpreter and the input it
@@ -34,7 +34,7 @@ The numbers are for ccdcpp 1.0, against PyCCD and against 0.10.0, on one machine
 | Name | What it is |
 |---|---|
 | Synthetic | The golden corpus's `c16` cube (`golden_driver gen`), 2000 pixels at a 16-day cadence, tiled 2 x 2 (8000 pixels), through `detect_cube`, float64 or uint16 input. Small and repeatable: the per-change bench. |
-| Atlanta cell | A real 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 7 bands, uint16), through `detect_cube` with `input=presets.landsat_c2()` in strips of 50 rows, as a production plugin runs it. 250,000 pixels: 458,018 segments under `ccdc`, 455,231 at `statistics_end=736694`. Read whole before timing (9.89 GB in 3 s); only detection is timed. |
+| Atlanta cell | A real 500 x 500 Landsat Collection 2 ARD cell (h024v013, 1984-2023, 2473 dates, 7 bands, uint16), through `detect_cube` with `spec=presets.landsat_c2()` in strips of 50 rows, as a production plugin runs it. 250,000 pixels: 458,018 segments under `ccdc`, 455,231 at `statistics_end=736694`. Read whole before timing (9.89 GB in 3 s); only detection is timed. |
 | Annual update | The same cell recorded up to 2022-12-31, then resumed to 2023 with `detect_cube(resume=..., freeze_statistics=True)`, against a full run to 2023 with statistics capped at 2022-12-31. |
 | PyCCD pixels | Pixels run one at a time through PyCCD's `ccd.detect` and `ccdcpp.detect`. |
 | Corpus pixels | The first 500 pixels of the synthetic corpus, one `ccdcpp.detect` call each, single-threaded (`bench_pixel.py`). |
@@ -83,8 +83,8 @@ the rounds (their range in brackets), the ratio the median of the paired rounds:
 
 | Form | 0.10.0 | 1.0 | Ratio | Peak memory, 0.10.0 / 1.0 |
 |---|---|---|---|---|
-| `input=ccdcpp.Input()` (0.10.0: `HarmonicOptions()`, `LassoOptions()`) | 0.3910 ms (0.3850-0.3935) | 0.3908 ms (0.3880-0.3923) | 0.998 | 128 / 131 MB |
-| `input=presets.landsat_c1_dn()` (0.10.0: `profile=`) | 0.4033 ms (0.3913-0.4093) | 0.3931 ms (0.3918-0.4071) | 0.973 | 128 / 131 MB |
+| `spec=ccdcpp.DataSpec()` (0.10.0: `HarmonicOptions()`, `LassoOptions()`) | 0.3910 ms (0.3850-0.3935) | 0.3908 ms (0.3880-0.3923) | 0.998 | 128 / 131 MB |
+| `spec=presets.landsat_c1_dn()` (0.10.0: `profile=`) | 0.4033 ms (0.3913-0.4093) | 0.3931 ms (0.3918-0.4071) | 0.973 | 128 / 131 MB |
 | `config=` a `Config` built once (0.10.0: none) | | 0.3979 ms (0.3902-0.4149) | | 131 MB |
 
 The fixed cost of a call, on one all-fill pixel (the corpus's dates, every QA code fill, no
@@ -92,12 +92,12 @@ segment), 20,000 calls, best of 5, three rounds:
 
 | Form | 0.10.0 | 1.0 | Peak memory, 0.10.0 / 1.0 |
 |---|---|---|---|
-| `Input()` (0.10.0: `HarmonicOptions()`) | 7.2 us | 6.3 us | 126 / 127 MB |
+| `DataSpec()` (0.10.0: `HarmonicOptions()`) | 7.2 us | 6.3 us | 126 / 127 MB |
 | a profile | 11.5 us | 6.5 us | 126 / 127 MB |
 | `config=` | | 6.3 us | 127 MB |
 
 A call resolves and builds nothing it has before: a `Config` compiles its `ccd::Algorithm` once,
-when it is built, and the `Algorithm` resolves the configuration once per input it meets. The
+when it is built, and the `Algorithm` resolves the configuration once per data spec it meets. The
 memory is almost all the interpreter, numpy and the loaded corpus.
 
 ## Synthetic cube: 1.0 and 0.10.0

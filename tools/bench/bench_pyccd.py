@@ -3,7 +3,7 @@
 Takes `pixels` pixels spread evenly over the corpus of `golden_driver gen` (c16.bin), plus any
 PyCCD-format CSV pixels given (day, the seven bands, the QA code per line, e.g.
 tests/ccd/data/test_3657_3610_observations.csv). Each pixel runs once through PyCCD's
-ccd.detect and best of 5 through ccdcpp.detect with the default input and the "ccdc"
+ccd.detect and best of 5 through ccdcpp.detect with the default DataSpec and the "ccdc"
 configuration at PyCCD's statistics cutoff. Prints per-pixel times, the median and total of
 each and their ratio, and how many pixels gave the same segments (start, end and break days)
 in both: not all, since the 0.8.0 fixes move some pixels on purpose (see CHANGELOG.md).
@@ -82,12 +82,12 @@ def ccdcpp_side(module_dir: str) -> tuple[Detect, str]:
     """ccdcpp's Detect and the file it loaded from."""
     _common.import_build(module_dir)
     import ccdcpp
-    h = ccdcpp.Input()
+    h = ccdcpp.DataSpec()
     config = ccdcpp.config("ccdc").replace(shared__statistics_end=_common.PYCCD_STATISTICS_END)
 
     def detect(d: NDArray[np.int64], s64: NDArray[np.float64],
                q8: NDArray[np.uint8]) -> list[tuple[int, int, int]]:
-        r = ccdcpp.detect(d, s64, q8, input=h, config=config)
+        r = ccdcpp.detect(d, s64, q8, spec=h, config=config)
         return [(m["start_day"], m["end_day"], m["break_day"]) for m in r["models"]]
 
     return detect, str(ccdcpp.__file__)
