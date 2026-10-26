@@ -2,6 +2,19 @@
 
 ## 1.1.0 - Unreleased
 
+Outputs are 1.0.0's bit for bit, and the Python and C++ APIs are 1.0.0's: there is nothing to
+migrate. The build needs a C++20 compiler.
+
+### Changed
+
+- **C++20 is required**: GCC 11, clang 14 (13 with libstdc++) or MSVC 19.29 (Visual Studio 2019
+  16.10) or later. ccdcpp uses no `std::format` and nothing of C++23, so GCC 11 builds it. A
+  strategy extension builds as C++20 with the library.
+- Internally: concepts state what `Registry::add()` and `add_step()` take (`StrategyFor`,
+  `PreprocessingStep`: a type that lacks part of it fails to compile with a message naming
+  what), designated initializers, defaulted `operator==`, `contains()`, `std::numbers::pi`,
+  `std::bit_cast` and `std::erase_if`.
+
 ### Added
 
 - **`ccdcpp.build_info()`** and **`ccd::build_info()`** (`include/ccd/core/build_info.hpp`): the

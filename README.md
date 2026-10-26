@@ -37,7 +37,7 @@ A run is two things: a **data spec**, which says how to read the data (`ccdcpp.D
 
 ## Install
 
-ccdcpp builds with CMake through scikit-build-core. It needs Python 3.11 or later, numpy, a C++20 compiler, Boost, Eigen 3 and pybind11; OpenMP is optional (without it a cube runs on one thread). `environment.yml` is the conda environment it is developed in (a Windows export; elsewhere install the same packages from conda-forge).
+ccdcpp builds with CMake through scikit-build-core. It needs Python 3.11 or later, numpy, a C++20 compiler (GCC 11, clang 14 or MSVC 19.29 or later), Boost, Eigen 3 and pybind11; OpenMP is optional (without it a cube runs on one thread). `environment.yml` is the conda environment it is developed in (a Windows export; elsewhere install the same packages from conda-forge).
 
 ```bash
 conda env create -f environment.yml
