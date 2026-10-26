@@ -170,6 +170,7 @@ configure_file(
 add_library(
     ccd_core
 
+    src/ccd/core/build_info.cpp
     src/ccd/core/maths.cpp
     src/ccd/core/window.cpp
 
@@ -232,6 +233,31 @@ target_compile_definitions(
         CCD_OBSERVE=$<BOOL:${CCD_OBSERVE}>
 )
 
+# ccd::build_info() (core/build_info.hpp): the version, the source tree's
+# commit at configure time, the compiler and the build type.
+find_package(Git QUIET)
+set(CCD_COMMIT "unknown")
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} describe --always --dirty
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        OUTPUT_VARIABLE commit
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE described
+        ERROR_QUIET
+    )
+    if(described EQUAL 0 AND NOT commit STREQUAL "")
+        set(CCD_COMMIT ${commit})
+    endif()
+endif()
+set_source_files_properties(
+    src/ccd/core/build_info.cpp
+
+    PROPERTIES
+        COMPILE_DEFINITIONS
+            "CCD_VERSION=\"${PROJECT_VERSION}\";CCD_COMMIT=\"${CCD_COMMIT}\";CCD_COMPILER=\"${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}\";CCD_BUILD_TYPE=\"$<CONFIG>\""
+)
+
 target_include_directories(
     ccd_core
 
@@ -287,7 +313,11 @@ if(CCD_ENABLE_OPENMP)
 
     else()
 
-        message(STATUS "CCD: OpenMP requested but not found")
+        message(WARNING
+            "CCD: OpenMP requested but not found: the library builds without it, and "
+            "detect_cube runs on one thread. Install an OpenMP runtime and point CMake at it "
+            "(macOS: brew install libomp, then -DCMAKE_PREFIX_PATH=$(brew --prefix libomp)), "
+            "or pass -DCCD_ENABLE_OPENMP=OFF to build without it on purpose.")
 
     endif()
 
@@ -360,6 +390,10 @@ if(CCD_BUILD_TESTS)
 
     # The ArrayView printer, a development toolkit, on its own.
     ccd_add_gtest(test_array_print SOURCES tests/ccd/core/test_array_print.cpp)
+
+    # ccd::build_info() against the project version and the library's flags.
+    ccd_add_gtest(test_build_info SOURCES tests/ccd/core/test_build_info.cpp)
+    target_compile_definitions(test_build_info PRIVATE CCD_PROJECT_VERSION="${PROJECT_VERSION}")
 
     # The regression solvers against scikit-learn.
     ccd_add_gtest(test_lasso SOURCES tests/ccd/regression/test_lasso.cpp)
@@ -619,15 +653,6 @@ if(CCD_BUILD_PYTHON)
 
         PRIVATE
             ${PROJECT_SOURCE_DIR}/include
-    )
-
-    # ccdcpp.__version__. pyproject.toml carries the same number; the
-    # python_bindings test checks that they agree.
-    target_compile_definitions(
-        ccd_python
-
-        PRIVATE
-            CCD_VERSION="${PROJECT_VERSION}"
     )
 
     target_compile_features(

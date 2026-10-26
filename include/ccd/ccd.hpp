@@ -7,6 +7,7 @@
 
 #include "ccd/core/array_view.hpp"
 #include "ccd/core/band_list.hpp"
+#include "ccd/core/build_info.hpp"
 #include "ccd/core/constants.hpp"
 #include "ccd/core/maths.hpp"
 #include "ccd/core/types.hpp"

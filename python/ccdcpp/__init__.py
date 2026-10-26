@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os as _os
 import sys
+import warnings as _warnings
 from collections.abc import Mapping as _Mapping, Sequence as _Sequence
 from typing import Any as _Any
 
@@ -31,6 +32,7 @@ from .ccdcpp import (
     Step,
     StepKind,
     __version__,
+    build_info,
     chi2_quantile,
     resume_schema,
 )
@@ -225,7 +227,9 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     spec, config, band_names, freeze_statistics
         As detect().
     threads
-        OpenMP threads; 0 for the library's default.
+        OpenMP threads; 0 for the library's default. A build without OpenMP
+        (build_info()["openmp"] False) runs on one thread, and warns
+        (RuntimeWarning) when asked for more or for the default.
     record
         True to also return "resume", every pixel's resume record as columns
         over the H x W pixels in raster order (see resume_schema(); each
@@ -274,6 +278,9 @@ def detect_cube(dates: _ArrayLike, spectral: _ArrayLike, qas: _ArrayLike, *,
     """
     h, profile = _spec("detect_cube", spec, spectral, band_names)
     cfg = _configuration("detect_cube", config)
+    if (threads > 1 or threads == 0) and not build_info()["openmp"]:
+        _warnings.warn("this ccdcpp build has no OpenMP; running on one thread", RuntimeWarning,
+                       stacklevel=2)
     out = _extension.detect_cube(dates, spectral, qas, spec=h, config=cfg._algorithm,
                                  threads=threads, record=record, resume=resume,
                                  freeze_statistics=freeze_statistics, trace_pixels=trace_pixels, masks=masks, reasons=reasons,

@@ -20,7 +20,8 @@ has the results.
 ## Setup
 
 Build the tree under test Release with the Python extension, with the same configure line for
-every build you compare. A build directory holds the bare extension (`ccdcpp.cpython-*.so`),
+every build you compare, and check it with `ccdcpp.build_info()`: `build_type` `Release`, and
+`openmp` `True` (a build without OpenMP runs `detect_cube` on one thread, and warns). A build directory holds the bare extension (`ccdcpp.cpython-*.so`),
 which is enough for the synthetic bench. The cell bench needs the package: copy
 `python/ccdcpp/*.py` of the tree and the built extension into `<dir>/ccdcpp/`.
 

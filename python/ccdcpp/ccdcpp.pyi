@@ -10,7 +10,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from . import qa_tables as qa_tables
-from .results import CubeColumns, PixelResult
+from .results import BuildInfo, CubeColumns, PixelResult
 
 __version__: str
 
@@ -237,6 +237,8 @@ class Algorithm:
     def config(self) -> dict[str, Any]: ...
     def resolve(self, spec: DataSpec) -> dict[str, Any]: ...
 
+
+def build_info() -> BuildInfo: ...
 
 def chi2_quantile(p: float, df: int) -> float: ...
 

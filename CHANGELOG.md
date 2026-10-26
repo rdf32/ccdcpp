@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 - Unreleased
+
+### Added
+
+- **`ccdcpp.build_info()`** and **`ccd::build_info()`** (`include/ccd/core/build_info.hpp`): the
+  version, the commit the build was configured from (`git describe --always --dirty`, or
+  `"unknown"`), whether OpenMP is in and its `_OPENMP`, the compiler, `__cplusplus`,
+  `CCD_OBSERVE` and the build type. In Python a `ccdcpp.results.BuildInfo` dict.
+- **`detect_cube` warns on a build without OpenMP** (`RuntimeWarning`, "this ccdcpp build has
+  no OpenMP; running on one thread") when asked for more than one thread or the default
+  (`threads=0`). `threads` in its output, and `CubeOutput::threads` in C++, is the count that
+  ran.
+- **CMake warns** when `CCD_ENABLE_OPENMP` is on and OpenMP is not found, and says how to fix it
+  (macOS: `brew install libomp`, then `-DCMAKE_PREFIX_PATH=$(brew --prefix libomp)`).
+
 ## 1.0.0 - 2026-10-23
 
 The data spec says only how to read the data; the configuration says what to do with it, in

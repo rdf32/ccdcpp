@@ -191,7 +191,8 @@ The commands, the rounds and the tolerances are in
 [`tools/bench/README.md`](../tools/bench/README.md#method). In short:
 
 - Build Release with the same configure line for every build compared, and run them in the
-  same session, alternating the order of the rounds.
+  same session, alternating the order of the rounds. `ccdcpp.build_info()` says what a build
+  is: its `build_type` is `Release` and `openmp` is `True` for a threaded timing.
 - Run each side in its own process; report its time and its peak memory.
 - Start a block on a quiet machine and note the load (`sysctl vm.loadavg`) before each run;
   rerun if other processes load the machine during it, or if the spread passes 3%.

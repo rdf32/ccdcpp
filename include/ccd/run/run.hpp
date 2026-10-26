@@ -138,7 +138,8 @@ struct CubeFailure
 // member costs nothing.
 //
 // `threads` is the thread count actually used, which is not necessarily the
-// one requested -- the OpenMP runtime may cap it. Recording what ran, rather
+// one requested -- the OpenMP runtime may cap it, and a build without OpenMP
+// runs one. Recording what ran, rather
 // than what was asked for, is what makes a timing comparable later.
 //
 // `pixels` and `failures` are in raster order (row-major over H x W),
@@ -274,8 +275,9 @@ inline PixelOutput detect(
 // omp_get_max_threads() is fixed from OMP_NUM_THREADS at library load, so a
 // caller embedding this in a scheduler cannot otherwise honour its own
 // allocation without setting an environment variable before the shared
-// library is imported. A build without OpenMP runs one thread whatever the
-// count, and CubeOutput::threads says 1.
+// library is imported. A build without OpenMP (build_info().openmp false,
+// core/build_info.hpp) runs one thread whatever the count, and
+// CubeOutput::threads says 1: it is what ran, not what was asked for.
 //
 // This never throws on account of a pixel; see CubeOutput::failures. It
 // throws std::invalid_argument, before any pixel runs, on a QA cube that is

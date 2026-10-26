@@ -7,7 +7,7 @@ A run is two things: a **data spec**, which says how to read the data (`ccdcpp.D
 ## Contents
 
 - [Features](#features)
-- [Quick start](#quick-start): [Python](#one-pixel), [a cube](#a-cube), [C++](#from-c)
+- [Quick start](#quick-start): [checking your build](#checking-your-build), [Python](#one-pixel), [a cube](#a-cube), [C++](#from-c)
 - [The two calls](#the-two-calls)
 - [Data specs and profiles](#data-specs-and-profiles): [the data spec](#the-data-spec), [band layout](#band-layout), [QA](#qa-input), [sensor profiles](#sensor-profiles), [presets](#presets), [adding a sensor](#adding-a-sensor)
 - [Configurations and presets](#configurations-and-presets): [the rule](#the-rule), [changing a configuration](#changing-a-configuration), [shared values](#shared-values), [stages](#stages-and-strategies), [TOML presets](#toml-presets), [cadence](#cadence-parameters), [preprocessing](#preprocessing)
@@ -44,6 +44,19 @@ conda env create -f environment.yml
 conda activate geo
 pip install .
 ```
+
+## Checking your build
+
+`ccdcpp.build_info()` says what was built: the version, the commit it was configured from, whether OpenMP is in, the compiler, the C++ standard, whether the diagnostics hooks are compiled in (`CCD_OBSERVE`) and the build type. `ccd::build_info()` (`include/ccd/core/build_info.hpp`) is the same in C++.
+
+```python
+>>> ccdcpp.build_info()
+{'version': '1.1.0', 'commit': 'v1.1.0', 'openmp': True, 'openmp_version': 202011,
+ 'compiler': 'AppleClang 17.0.0.17000013', 'cxx_standard': 202002, 'observe': True,
+ 'build_type': 'Release'}
+```
+
+A build without OpenMP runs a cube on one thread: `detect_cube` warns (`RuntimeWarning`) when it is asked for more threads or the default, and CMake warns at configure time when OpenMP is requested but not found. On macOS, `brew install libomp` and configure with `-DCMAKE_PREFIX_PATH=$(brew --prefix libomp)`.
 
 ## One pixel
 
@@ -777,7 +790,7 @@ cmake --build build --config Release -j8
 pip install .                          # the Python package
 ```
 
-CMake options: `CCD_ENABLE_OPENMP` (ON), `CCD_BUILD_PYTHON` (ON), `CCD_BUILD_TESTS` (ON), `CCD_OBSERVE` (ON; the diagnostics hooks), `CCD_EXTENSIONS` (strategy extension directories; none by default) and `CCD_INSTALL_CPP` (OFF; installs `ccd_core` and the headers). On macOS with Apple clang, CMake finds Homebrew's libomp only when told where it is: add `-DOpenMP_CXX_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_LIB_NAMES=libomp -DOpenMP_CXX_INCLUDE_DIR=$(brew --prefix libomp)/include -DOpenMP_libomp_LIBRARY=$(brew --prefix libomp)/lib/libomp.dylib` to the configure line.
+CMake options: `CCD_ENABLE_OPENMP` (ON), `CCD_BUILD_PYTHON` (ON), `CCD_BUILD_TESTS` (ON), `CCD_OBSERVE` (ON; the diagnostics hooks), `CCD_EXTENSIONS` (strategy extension directories; none by default) and `CCD_INSTALL_CPP` (OFF; installs `ccd_core` and the headers). On macOS with Apple clang, CMake finds Homebrew's libomp only when told where it is: add `-DOpenMP_CXX_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_LIB_NAMES=libomp -DOpenMP_CXX_INCLUDE_DIR=$(brew --prefix libomp)/include -DOpenMP_libomp_LIBRARY=$(brew --prefix libomp)/lib/libomp.dylib` to the configure line. With `CCD_ENABLE_OPENMP` on and no OpenMP found, CMake warns and builds without it; `ccdcpp.build_info()["openmp"]` says which a build is.
 
 The tests run in three tiers, from the cheapest:
 

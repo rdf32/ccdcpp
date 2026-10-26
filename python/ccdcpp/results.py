@@ -1,5 +1,5 @@
-"""The types of what ``ccdcpp.detect``, ``ccdcpp.detect_cube`` and ``ccdcpp.to_pixels``
-return: dicts of a fixed shape, as ``TypedDict``s for type checkers. At run time each is a
+"""The types of what ``ccdcpp.detect``, ``ccdcpp.detect_cube``, ``ccdcpp.to_pixels`` and
+``ccdcpp.build_info`` return: dicts of a fixed shape, as ``TypedDict``s for type checkers. At run time each is a
 plain ``dict``.
 
 A key marked ``NotRequired`` is present only when the call asks for it: ``band_names`` with a
@@ -15,7 +15,7 @@ from typing import Literal, NotRequired, TypedDict
 import numpy as np
 from numpy.typing import NDArray
 
-__all__ = ["BandFit", "CubeColumns", "CubePixelDiagnostics", "CubeRecord", "Model", "Pixel",
+__all__ = ["BandFit", "BuildInfo", "CubeColumns", "CubePixelDiagnostics", "CubeRecord", "Model", "Pixel",
            "PixelDiagnostics", "PixelRecord", "PixelResult", "ResumeCounts", "ResumeHeader",
            "SegmentDiagnostics", "TraceEvent"]
 
@@ -92,6 +92,26 @@ class CubeRecord(TypedDict):
     excluded_days: NDArray[np.int64]
     #: with resume=: 0 resumed, 1 rerun because its input changed, 2 failed
     status: NotRequired[NDArray[np.uint8]]
+
+
+class BuildInfo(TypedDict):
+    """What this build of ccdcpp is (``ccdcpp.build_info()``)."""
+
+    version: str
+    #: ``git describe --always --dirty`` of the source tree at configure time, or "unknown"
+    commit: str
+    #: False: the build has no OpenMP, and detect_cube runs on one thread
+    openmp: bool
+    #: ``_OPENMP`` (yyyymm of the OpenMP spec), 0 without OpenMP
+    openmp_version: int
+    #: the compiler's id and version, "AppleClang 17.0.0"
+    compiler: str
+    #: ``__cplusplus``, 202002 for C++20
+    cxx_standard: int
+    #: CCD_OBSERVE: the diagnostics hooks compiled in (trace= and trace_pixels= return events)
+    observe: bool
+    #: the CMake build type, "Release"; empty for none
+    build_type: str
 
 
 class ResumeCounts(TypedDict):
