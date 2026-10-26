@@ -157,8 +157,11 @@ struct {cls} final : {interface.struct}
 
 {declarations}
 
+    // The parameters, for the methods to read.
+    const Params& params() const {{ return p_; }}
+
 private:
-    [[maybe_unused]] Params p_;   // drop [[maybe_unused]] once a method reads it
+    Params p_;
 }};
 
 // Registers {cls} as {interface.stage} "{name}".
