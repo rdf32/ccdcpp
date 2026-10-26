@@ -1,4 +1,4 @@
-"""What the bench scripts share: the build under test, their inputs, the timing and the peak memory.
+"""What the bench scripts share: the build under test (and how they print it), their inputs, the timing and the peak memory.
 
 Each script puts its own directory first on sys.path before `import _common`, since `python -I`
 leaves it off.
@@ -38,6 +38,14 @@ def import_build(module_dir: str) -> None:
     import ccdcpp
     if not os.path.realpath(ccdcpp.__file__).startswith(os.path.realpath(module_dir) + os.sep):
         sys.exit(f"{sys.argv[0]}: ccdcpp loaded from {ccdcpp.__file__}, not from {module_dir}")
+
+
+def build_of() -> str:
+    """The build under test as the benches print it after "ccdcpp": its version and commit
+    (ccdcpp.build_info()) and the file it loaded from."""
+    import ccdcpp
+    info = ccdcpp.build_info()
+    return f"{info['version']} {info['commit']} {ccdcpp.__file__}"
 
 
 @dataclass

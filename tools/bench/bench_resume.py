@@ -60,7 +60,7 @@ def run_phase(args: argparse.Namespace) -> int:
 
     N = args.size
     cut = dt.date.fromisoformat(args.cut).toordinal()
-    print("ccdcpp", ccdcpp.__version__, ccdcpp.__file__, "numpy", np.__version__,
+    print("ccdcpp", _common.build_of(), "numpy", np.__version__,
           "zarr", zarr.__version__)
     cell = _common.read_cell(args.cube, N)
     dates = cell.dates

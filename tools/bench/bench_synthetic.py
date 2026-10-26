@@ -58,7 +58,7 @@ def main(argv: list[str]) -> int:
     print(_common.report(f"cube {args.dtype} t{args.threads}",
                          f"{best * 1e3:.0f} ms, {best / npx * 1e3:.4f} ms/px, "
                          f"input {src.nbytes / 1e6:.0f} MB", _common.peak_mb(), base))
-    print(f"ccdcpp {ccdcpp.__file__}")
+    print(f"ccdcpp {_common.build_of()}")
     return 0
 
 

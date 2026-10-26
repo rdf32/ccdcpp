@@ -77,7 +77,7 @@ def main(argv: list[str]) -> int:
                          f"{best / len(px) * 1e3:.4f} ms/px over {len(px)} px",
                          _common.peak_mb(), base, "the pixels"))
     _common.emit({"ms_per_px": best / len(px) * 1e3, "peak_mb": _common.peak_mb(),
-                  "ccdcpp": ccdcpp.__file__})
+                  "ccdcpp": _common.build_of()})
     return 0
 
 

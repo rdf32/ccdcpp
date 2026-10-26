@@ -79,7 +79,7 @@ def pyccd_side(pyccd_dir: str) -> tuple[Detect, str]:
 
 
 def ccdcpp_side(module_dir: str) -> tuple[Detect, str]:
-    """ccdcpp's Detect and the file it loaded from."""
+    """ccdcpp's Detect, and its version, commit and the file it loaded from."""
     _common.import_build(module_dir)
     import ccdcpp
     h = ccdcpp.DataSpec()
@@ -90,7 +90,7 @@ def ccdcpp_side(module_dir: str) -> tuple[Detect, str]:
         r = ccdcpp.detect(d, s64, q8, spec=h, config=config)
         return [(m["start_day"], m["end_day"], m["break_day"]) for m in r["models"]]
 
-    return detect, str(ccdcpp.__file__)
+    return detect, _common.build_of()
 
 
 def main(argv: list[str]) -> int:

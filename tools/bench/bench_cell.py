@@ -53,7 +53,7 @@ def main(argv: list[str]) -> int:
         config = config.replace(shared__statistics_end=args.statistics_end)
     N = args.size
 
-    print("ccdcpp", ccdcpp.__version__, ccdcpp.__file__, "numpy", np.__version__,
+    print("ccdcpp", _common.build_of(), "numpy", np.__version__,
           "zarr", zarr.__version__)
     t0 = time.perf_counter()
     cell = _common.read_cell(args.cube, N)
