@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 - Unreleased
+## 1.1.0 - 2026-10-26
 
 Outputs are 1.0.0's bit for bit, and the Python and C++ APIs are 1.0.0's: there is nothing to
 migrate. The build needs a C++20 compiler.
