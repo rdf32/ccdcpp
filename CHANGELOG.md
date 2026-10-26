@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.1 - 2026-10-26
+
+Outputs are 1.1.0's bit for bit, and the APIs are 1.1.0's with one more `build_info()` field.
+
+### Added
+
+- **`build_info()["describe"]`** (`ccd::BuildInfo::describe`, `ccdcpp.results.BuildInfo`):
+  `git describe --always --dirty --tags` of the source tree at configure time
+  (`"v1.1.0"`, `"v1.1.0-3-gabc1234"`), or `"unknown"` outside git.
+
+### Fixed
+
+- **`build_info()["commit"]` is the commit's hash, not a tag name**: the full 40-character hash
+  of the source tree's `HEAD` at configure time, `-dirty` appended when a tracked file differs
+  from it, or `"unknown"` outside git. It was `git describe --always --dirty`, which at a tagged
+  commit is the tag name (`"v1.1.0"`), so a build from a tag could not be pinned. The same in
+  `ccd::build_info().commit`.
+
 ## 1.1.0 - 2026-10-26
 
 Outputs are 1.0.0's bit for bit, and the Python and C++ APIs are 1.0.0's: there is nothing to
