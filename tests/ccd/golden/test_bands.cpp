@@ -30,9 +30,9 @@
 //==============================================================================
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <limits>
 #include <string>
 #include <utility>
@@ -520,9 +520,8 @@ namespace
 // neighbours. Both finite and of one sign.
 std::uint64_t ulp_distance(double a, double b)
 {
-    std::uint64_t ia, ib;
-    std::memcpy(&ia, &a, sizeof a);
-    std::memcpy(&ib, &b, sizeof b);
+    const auto ia = std::bit_cast<std::uint64_t>(a);
+    const auto ib = std::bit_cast<std::uint64_t>(b);
     return ia > ib ? ia - ib : ib - ia;
 }
 

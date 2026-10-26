@@ -1,8 +1,8 @@
 #include "ccd/input/mask/chain.hpp"
 
+#include <bit>
 #include <cassert>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -48,8 +48,7 @@ namespace
 // a < b, -0 and +0 both 0, -inf and +inf the ends.
 std::int64_t key_of(scalar_t value)
 {
-    std::uint64_t bits;
-    std::memcpy(&bits, &value, sizeof bits);
+    const auto bits = std::bit_cast<std::uint64_t>(value);
     const auto magnitude = static_cast<std::int64_t>(bits & ~(std::uint64_t(1) << 63));
     return (bits >> 63) ? -magnitude : magnitude;
 }
@@ -58,9 +57,7 @@ scalar_t value_of(std::int64_t key)
 {
     std::uint64_t bits = key < 0 ? static_cast<std::uint64_t>(-key) | (std::uint64_t(1) << 63)
                                  : static_cast<std::uint64_t>(key);
-    scalar_t value;
-    std::memcpy(&value, &bits, sizeof value);
-    return value;
+    return std::bit_cast<scalar_t>(bits);
 }
 
 // The first double (-inf to +inf) at which `holds`, false and then true

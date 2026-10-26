@@ -218,10 +218,8 @@ TEST_P(ResumeEqualsTheFullRun, APlanThatKeepsDuplicateDates)
         // The Standard chain without its one_per_date: the same date kept twice.
         ccd::config::Config given = s.config;
         auto& steps = given.preprocess.at("standard").steps;
-        steps.erase(std::remove_if(steps.begin(), steps.end(),
-                                   [](const ccd::config::StepConfig& step)
-                                   { return step.step == "one_per_date"; }),
-                    steps.end());
+        std::erase_if(steps, [](const ccd::config::StepConfig& step)
+                      { return step.step == "one_per_date"; });
 
         const bool more_cuts = s.name.rfind("dup:", 0) != 0;
         for (const std::size_t last :

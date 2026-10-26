@@ -1,5 +1,7 @@
 #pragma once
 
+#include <numbers>
+
 #include "ccd/core/types.hpp"
 
 
@@ -24,10 +26,7 @@ constexpr index_t CCD_MAX_COEFS = 7;
 // Mathematical Constants
 //==============================================================================
 
-constexpr scalar_t PI =
-    static_cast<scalar_t>(
-        3.141592653589793238462643383279502884L
-    );
+constexpr scalar_t PI = std::numbers::pi_v<scalar_t>;
 
 
 //==============================================================================

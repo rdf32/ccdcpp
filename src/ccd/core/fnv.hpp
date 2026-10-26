@@ -4,8 +4,8 @@
 // configurations, resolutions) and the input fingerprints of the resume
 // records.
 
+#include <bit>
 #include <cstdint>
-#include <cstring>
 #include <string>
 
 #include "ccd/core/array_view.hpp"
@@ -40,10 +40,7 @@ public:
 
     void real(scalar_t v)
     {
-        std::uint64_t bits;
-        static_assert(sizeof(bits) == sizeof(v));
-        std::memcpy(&bits, &v, sizeof(bits));
-        integer(static_cast<std::int64_t>(bits));
+        integer(static_cast<std::int64_t>(std::bit_cast<std::uint64_t>(v)));
     }
 
     void flag(bool v)

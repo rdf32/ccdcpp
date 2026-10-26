@@ -113,7 +113,7 @@ public:
     void add(const std::string& name)
     {
         auto& types = strategies_[Interface::stage];
-        if (types.count(name))
+        if (types.contains(name))
             throw std::logic_error(std::string(Interface::stage) + " strategy '" + name +
                                    "' registered twice");
         const std::string where = std::string(Interface::stage) + " '" + name + "'";
@@ -142,7 +142,7 @@ public:
     template<PreprocessingStep S>
     void add_step(const std::string& name)
     {
-        if (steps_.count(name))
+        if (steps_.contains(name))
             throw std::logic_error("preprocessing step '" + name + "' registered twice");
         steps_[name] = StepType{
             info_of(S::schema()),

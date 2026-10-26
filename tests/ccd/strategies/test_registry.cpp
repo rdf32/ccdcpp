@@ -64,40 +64,40 @@ using registry_test::expect_refused;
 TEST(Registry, ListsTheCoreStrategies)
 {
     const auto names = golden::core_registry().names();
-    ASSERT_EQ(names.count("noise"), 1u);
+    ASSERT_TRUE(names.contains("noise"));
     EXPECT_EQ(names.at("noise"), (std::vector<std::string>{"variogram"}));
     // The library's registry holds every core strategy (and its extensions').
     const auto library = ccd::strategies::library_registry().names();
     for (const auto& [stage, strategies] : names)
         for (const auto& strategy : strategies)
         {
-            ASSERT_EQ(library.count(stage), 1u) << stage;
+            ASSERT_TRUE(library.contains(stage)) << stage;
             const auto& in = library.at(stage);
             EXPECT_NE(std::find(in.begin(), in.end(), strategy), in.end()) << stage << " " << strategy;
         }
-    ASSERT_EQ(names.count("mode"), 1u);
+    ASSERT_TRUE(names.contains("mode"));
     EXPECT_EQ(names.at("mode"), (std::vector<std::string>{"pyccd"}));
-    ASSERT_EQ(names.count("segment_report"), 1u);
+    ASSERT_TRUE(names.contains("segment_report"));
     EXPECT_EQ(names.at("segment_report"), (std::vector<std::string>{"model-fit"}));
-    ASSERT_EQ(names.count("edge_segments"), 1u);
+    ASSERT_TRUE(names.contains("edge_segments"));
     EXPECT_EQ(names.at("edge_segments"), (std::vector<std::string>{"lasso"}));
-    ASSERT_EQ(names.count("start_search"), 1u);
+    ASSERT_TRUE(names.contains("start_search"));
     EXPECT_EQ(names.at("start_search"), (std::vector<std::string>{"pyccd"}));
-    ASSERT_EQ(names.count("window_screen"), 1u);
+    ASSERT_TRUE(names.contains("window_screen"));
     EXPECT_EQ(names.at("window_screen"), (std::vector<std::string>{"tmask"}));
-    ASSERT_EQ(names.count("stability_fit"), 1u);
+    ASSERT_TRUE(names.contains("stability_fit"));
     EXPECT_EQ(names.at("stability_fit"), (std::vector<std::string>{"lasso"}));
-    ASSERT_EQ(names.count("stability_rule"), 1u);
+    ASSERT_TRUE(names.contains("stability_rule"));
     EXPECT_EQ(names.at("stability_rule"), (std::vector<std::string>{"pyccd"}));
-    ASSERT_EQ(names.count("lookback"), 1u);
+    ASSERT_TRUE(names.contains("lookback"));
     EXPECT_EQ(names.at("lookback"), (std::vector<std::string>{"pyccd"}));
-    ASSERT_EQ(names.count("model"), 1u);
+    ASSERT_TRUE(names.contains("model"));
     EXPECT_EQ(names.at("model"), (std::vector<std::string>{"lasso"}));
-    ASSERT_EQ(names.count("refit"), 1u);
+    ASSERT_TRUE(names.contains("refit"));
     EXPECT_EQ(names.at("refit"), (std::vector<std::string>{"span-factor"}));
-    ASSERT_EQ(names.count("change_test"), 1u);
+    ASSERT_TRUE(names.contains("change_test"));
     EXPECT_EQ(names.at("change_test"), (std::vector<std::string>{"chi2"}));
-    ASSERT_EQ(names.count("outlier"), 1u);
+    ASSERT_TRUE(names.contains("outlier"));
     EXPECT_EQ(names.at("outlier"), (std::vector<std::string>{"floored"}));
 }
 
@@ -195,8 +195,8 @@ TEST(Registry, CcdcOnTheDefaultSpecIsPyccdsTree)
               ccd::config::roles({"green", "red", "nir", "swir1", "swir2"}));
     EXPECT_EQ(preset.stages.at("window_screen").params.at("bands"),
               ccd::config::roles({"green", "swir1"}));
-    EXPECT_EQ(preset.stages.at("model").params.count("lasso.alpha"), 0u);
-    EXPECT_EQ(preset.stages.at("change_test").params.count("change_threshold"), 0u);
+    EXPECT_FALSE(preset.stages.at("model").params.contains("lasso.alpha"));
+    EXPECT_FALSE(preset.stages.at("change_test").params.contains("change_threshold"));
 
     // The tree the preset was in Collection-1 DN, every parameter.
     const ccd::config::ConfigTree want = {
@@ -252,7 +252,7 @@ TEST(Registry, CcdcOnTheDefaultSpecIsPyccdsTree)
     ASSERT_EQ(got.stages.size(), want.size());
     for (const auto& [stage, chosen] : want)
     {
-        ASSERT_EQ(got.stages.count(stage), 1u) << stage;
+        ASSERT_TRUE(got.stages.contains(stage)) << stage;
         EXPECT_EQ(got.stages.at(stage).strategy, chosen.strategy) << stage;
         for (const auto& [name, value] : chosen.params)
             EXPECT_EQ(got.stages.at(stage).params.at(name), value) << stage << " " << name;

@@ -46,7 +46,7 @@ TEST(Scaffold, EveryStagesScaffoldRegistersAndBuilds)
     {
         std::string name = std::string("scaffold-") + stage.name;
         std::replace(name.begin(), name.end(), '_', '-');
-        ASSERT_EQ(names.count(stage.name), 1u) << stage.name;
+        ASSERT_TRUE(names.contains(stage.name)) << stage.name;
         EXPECT_EQ(names.at(stage.name), std::vector<std::string>{name});
         EXPECT_TRUE(r.strategy(stage.name, name).make({})) << name;
         EXPECT_TRUE(r.defaults(stage.name, name).empty()) << name;

@@ -518,7 +518,7 @@ TEST(Reasons, ARegistrysStepAndStrategiesGiveTheirCodes)
     EXPECT_TRUE(unfitted.result.models.empty());
     const auto unfit = counts(unfitted.reasons);
     EXPECT_GT(unfit.at(Reason::NoFit), 0u);
-    EXPECT_EQ(unfit.count(Reason::InSegment), 0u);
+    EXPECT_FALSE(unfit.contains(Reason::InSegment));
     expect_consistent(unfitted, s);
 }
 
@@ -807,7 +807,7 @@ TEST(Diagnostics, ARestoringSearchUncountsWhatItRestoresAndAForcedStartCountsIts
     ASSERT_EQ(plain.out.result.models.size(), 2u);
     ASSERT_EQ(restored.out.result.models.size(), 2u);
     EXPECT_EQ(counts(plain.out.reasons)[Reason::WindowScreen], 4u);
-    EXPECT_EQ(counts(restored.out.reasons).count(Reason::WindowScreen), 0u);
+    EXPECT_FALSE(counts(restored.out.reasons).contains(Reason::WindowScreen));
     EXPECT_EQ(plain.counted, 12u);
     EXPECT_EQ(restored.counted, 8u);
     EXPECT_EQ(restored.counted, restored.machine);
