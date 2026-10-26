@@ -1,6 +1,6 @@
 # ccdcpp
 
-ccdcpp is a C++17 implementation of the Continuous Change Detection and Classification (CCDC) algorithm, with Python bindings through pybind11. It reproduces the USGS LCMAP PyCCD algorithm and its outputs, doing what PyCCD's code intends where the code does otherwise (every such difference is listed under [Differences from pyccd](#differences-from-pyccd)), and runs one pixel about 200 times faster than PyCCD in about half the process memory. A run takes one pixel or a whole image cube, in parallel with OpenMP, and can be continued when new observations arrive instead of rerun.
+ccdcpp is a C++20 implementation of the Continuous Change Detection and Classification (CCDC) algorithm, with Python bindings through pybind11. It reproduces the USGS LCMAP PyCCD algorithm and its outputs, doing what PyCCD's code intends where the code does otherwise (every such difference is listed under [Differences from pyccd](#differences-from-pyccd)), and runs one pixel about 200 times faster than PyCCD in about half the process memory. A run takes one pixel or a whole image cube, in parallel with OpenMP, and can be continued when new observations arrive instead of rerun.
 
 A run is two things: a **data spec**, which says how to read the data (`ccdcpp.DataSpec`, or a sensor profile that builds one), and a **configuration**, which says what to do with it, in physical units (`ccdcpp.Config`; the `ccdc` preset by default). Upgrading from 0.10? See [docs/migration-1.0.md](docs/migration-1.0.md).
 
@@ -37,7 +37,7 @@ A run is two things: a **data spec**, which says how to read the data (`ccdcpp.D
 
 ## Install
 
-ccdcpp builds with CMake through scikit-build-core. It needs Python 3.11 or later, numpy, a C++17 compiler, Boost, Eigen 3 and pybind11; OpenMP is optional (without it a cube runs on one thread). `environment.yml` is the conda environment it is developed in (a Windows export; elsewhere install the same packages from conda-forge).
+ccdcpp builds with CMake through scikit-build-core. It needs Python 3.11 or later, numpy, a C++20 compiler, Boost, Eigen 3 and pybind11; OpenMP is optional (without it a cube runs on one thread). `environment.yml` is the conda environment it is developed in (a Windows export; elsewhere install the same packages from conda-forge).
 
 ```bash
 conda env create -f environment.yml
@@ -962,7 +962,7 @@ The measured agreement with PyCCD, as released and with exactly these correction
 
 `ccdcpp` is released into the public domain under the **Unlicense**.
 
-This project is a C++17 translation of the USGS LCMAP PyCCD software.
+This project is a C++20 translation of the USGS LCMAP PyCCD software.
 The original PyCCD implementation was also released into the public domain.
 
 The goals of this project are to:

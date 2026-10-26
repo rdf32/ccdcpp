@@ -10,7 +10,7 @@ name = "ccdcpp"
 version = "1.0.0"
 description = "High-performance C++/Python implementation of Continuous Change Detection algorithm for Landsat."
 readme = "README.md"
-# 3.11, not 3.12. The extension is pybind11 over C++17 and uses no 3.12 API;
+# 3.11, not 3.12. The extension is pybind11 over C++20 and uses no 3.12 API;
 # the previous floor described the machine it was developed on rather than a
 # requirement, and it locked the package out of environments that have the
 # geospatial stack (zarr, pyarrow) pinned to 3.11.

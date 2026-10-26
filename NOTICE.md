@@ -1,7 +1,7 @@
 ccdcpp NOTICE
 ==============
 
-ccdcpp is a C++17 translation of the U.S. Geological Survey (USGS)
+ccdcpp is a C++20 translation of the U.S. Geological Survey (USGS)
 LCMAP PyCCD implementation.
 
 Original software:
@@ -13,7 +13,7 @@ the Unlicense. https://code.usgs.gov/lcmap/pyccd
 
 This project provides a C++ implementation of the PyCCD algorithm with:
 
-- C++17 native implementation
+- C++20 native implementation
 - pybind11 Python bindings
 - optimized numerical routines
 - additional testing infrastructure

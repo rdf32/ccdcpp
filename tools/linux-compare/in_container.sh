@@ -64,7 +64,7 @@ for t in "${labels[@]}"; do
   [ -f "$G/test_transitions.cpp" ] && targets="$targets test_transitions"
   cmake --build "/b-$t" -j"$N" --target $targets > "$O/build.log" 2>&1 \
     || { tail -30 "$O/build.log"; exit 1; }
-  "$CXX" -std=c++17 -O3 -DNDEBUG -I"/work-$t/include" -I"$I" -I/opt/env/include \
+  "$CXX" -std=c++20 -O3 -DNDEBUG -I"/work-$t/include" -I"$I" -I/opt/env/include \
     -I/opt/env/include/eigen3 -fopenmp /tool/golden_driver.cpp "/b-$t/libccd_core.a" \
     -o "/b-$t/golden_driver"
   D=/work-$t/tests/ccd/data; [ -d "$D" ] || D=/work-$t/tests/ccd/machine

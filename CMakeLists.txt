@@ -92,7 +92,7 @@ option(
 # C++ configuration
 # --------------------------------------------------
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -245,7 +245,7 @@ target_compile_features(
     ccd_core
 
     PUBLIC
-        cxx_std_17
+        cxx_std_20
 )
 
 
@@ -346,7 +346,7 @@ if(CCD_BUILD_TESTS)
         cmake_parse_arguments(PARSE_ARGV 1 test "INTERNAL;NO_DISCOVER" "" "SOURCES;DEFINES")
         add_executable(${name} ${test_SOURCES})
         target_link_libraries(${name} PRIVATE ccd_core GTest::gtest_main)
-        target_compile_features(${name} PRIVATE cxx_std_17)
+        target_compile_features(${name} PRIVATE cxx_std_20)
         target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/support)
         target_compile_definitions(
             ${name} PRIVATE CCD_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/data" ${test_DEFINES})
@@ -440,7 +440,7 @@ if(CCD_BUILD_TESTS)
     if(UNIX)
         add_executable(bench_preprocess tools/bench/bench_preprocess.cpp)
         target_link_libraries(bench_preprocess PRIVATE ccd_core)
-        target_compile_features(bench_preprocess PRIVATE cxx_std_17)
+        target_compile_features(bench_preprocess PRIVATE cxx_std_20)
         target_include_directories(bench_preprocess PRIVATE ${PROJECT_SOURCE_DIR}/tests/ccd/support)
         target_compile_definitions(
             bench_preprocess PRIVATE CCD_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/ccd/data")
@@ -565,7 +565,7 @@ if(CCD_BUILD_GOLDEN_DRIVER)
         golden_driver
 
         PRIVATE
-            cxx_std_17
+            cxx_std_20
     )
 
 endif()
@@ -634,7 +634,7 @@ if(CCD_BUILD_PYTHON)
         ccd_python
 
         PRIVATE
-            cxx_std_17
+            cxx_std_20
     )
 
     # The Python entry points, against the module just built: tests/python/
