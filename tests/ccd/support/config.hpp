@@ -173,12 +173,8 @@ inline ccd::RunSpec spec_of(const ccd::DataSpec& spec,
                             ccd::AlgorithmPtr algorithm = pyccd_algorithm(),
                             bool record = false)
 {
-    ccd::RunSpec out;
-    out.spec = spec;
-    out.algorithm = std::move(algorithm);
-    out.record = record;
-    out.masks = true;
-    return out;
+    return ccd::RunSpec{
+        .spec = spec, .algorithm = std::move(algorithm), .record = record, .masks = true};
 }
 
 // The same, of a configuration (compiled here, once per call).

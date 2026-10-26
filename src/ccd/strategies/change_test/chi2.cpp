@@ -105,7 +105,7 @@ PeekPlan Chi2::prepare(ArrayView<const std::int64_t, 1> statistics_dates,
             p_.change_probability
         );
 
-    return PeekPlan{peek, true, 0, p_.peek_size};
+    return PeekPlan{.peek = peek, .reference = p_.peek_size};
 }
 
 TestOutcome Chi2::test(const Peek& peek, Scratch& scratch, PeekResult& result) const

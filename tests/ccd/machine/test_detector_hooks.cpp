@@ -107,7 +107,7 @@ void with_hooks(Record& r, index_t start, index_t stop, Hooks hooks)
     hooks(*test);
     r.strategies.change_test = test;
     in_extend(r, start, stop);
-    r.state.peek_plan = ccd::PeekPlan{6, test->full, test->min};
+    r.state.peek_plan = ccd::PeekPlan{.peek = 6, .full = test->full, .min_window = test->min};
 }
 
 TEST(MachineHooks, ShortenedPeeksGrowTheCurveToTheLastObservation)
@@ -278,7 +278,7 @@ TEST(MachineHooks, AForcedStartTheSeriesEndsBeforeAFitReportsItsOwnFit)
     r.strategies.start_search =
         std::make_shared<Forcing>(r.strategies.start_search, ccd::Exhaustion::Force);
     r.at(58, 70, 58);   // exhausted: 70 + 12 >= 80
-    r.state.peek_plan = ccd::PeekPlan{6, false, 30};
+    r.state.peek_plan = ccd::PeekPlan{.peek = 6, .full = false, .min_window = 30};
     EXPECT_EQ(ccd::machine::begin_search(r.context, r.state), Phase::Initialize);
     r.state.phase = Phase::Initialize;
 

@@ -636,8 +636,7 @@ ccd::FitResult run_detect_dates(const std::vector<std::int64_t>& dates)
     const auto T = static_cast<ccd::index_t>(dates.size());
     const auto spectral = make_spectral<double>(7, T);
     const std::vector<std::uint8_t> qas(T, 0);
-    ccd::RunSpec spec;
-    spec.masks = true;
+    const ccd::RunSpec spec{.masks = true};
 
     return ccd::detect(
         spec,

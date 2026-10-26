@@ -55,14 +55,14 @@ ccd::RunSpec run_spec(
     bool diagnostics
 )
 {
-    ccd::RunSpec out;
-    out.spec = spec;
-    out.algorithm = algorithm_or_ccdc(std::move(config));
-    out.record = record;
-    out.masks = masks;
-    out.reasons = reasons;
-    out.diagnostics = diagnostics;
-    return out;
+    return ccd::RunSpec{
+        .spec = spec,
+        .algorithm = algorithm_or_ccdc(std::move(config)),
+        .record = record,
+        .masks = masks,
+        .reasons = reasons,
+        .diagnostics = diagnostics,
+    };
 }
 
 // T bytes as a new (T,) uint8 array.

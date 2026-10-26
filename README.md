@@ -842,11 +842,9 @@ ccd::RunSpec a_run_spec(const ccd::DataSpec& spec)
     config.stages["refit"].params["factor"] = cfg::real(2.0);
     config.preprocess["standard"].steps[0].params["codes"] = cfg::names({"clear", "water", "snow"});
 
-    ccd::RunSpec out;
-    out.spec = spec;
-    out.algorithm = std::make_shared<const ccd::Algorithm>(config);   // checked here
-    out.record = true;
-    return out;
+    return ccd::RunSpec{.spec = spec,
+                        .algorithm = std::make_shared<const ccd::Algorithm>(config),   // checked here
+                        .record = true};
 }
 ```
 

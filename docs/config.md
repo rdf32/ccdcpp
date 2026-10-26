@@ -315,8 +315,8 @@ PixelOutput run_variant(ArrayView<const std::int64_t, 1> dates,
     config.shared["lasso.alpha"] = config::real(2e-4);            // [shared.lasso] alpha
     config.stages["refit"].params["factor"] = config::real(2.0);
 
-    RunSpec spec;                        // spec.spec is Collection-1 DN, spec.algorithm "ccdc"
-    spec.algorithm = std::make_shared<const Algorithm>(config);   // checked here
+    // spec.spec is Collection-1 DN; the Algorithm is checked here
+    const RunSpec spec{.algorithm = std::make_shared<const Algorithm>(config)};
     preprocess::PreprocessPlan plan = plan_of(config, spec.spec);   // for inspection
     return detect(spec, dates, spectral, qas);
 }

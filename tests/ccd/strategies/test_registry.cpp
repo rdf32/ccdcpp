@@ -519,7 +519,7 @@ TEST(Registry, AnEditedPresetBuildsItsStrategies)
 
     // The schema gives the parameters back as set.
     const auto values = ccd::config::to_values(ccd::strategies::SpanFactor::schema(),
-                                               ccd::strategies::SpanFactor::Params{30, 1.5});
+                                               ccd::strategies::SpanFactor::Params{.min_obs = 30, .factor = 1.5});
     EXPECT_EQ(std::get<std::int64_t>(values.at("min_obs")), 30);
     EXPECT_EQ(std::get<double>(values.at("factor")), 1.5);
 

@@ -258,7 +258,7 @@ struct Silent final : ccd::ChangeTest
     ccd::PeekPlan prepare(ccd::ArrayView<const std::int64_t, 1>, ccd::index_t,
                           ccd::Scratch&) const override
     {
-        return ccd::PeekPlan{6};
+        return ccd::PeekPlan{.peek = 6};
     }
     ccd::TestOutcome test(const ccd::Peek&, ccd::Scratch&, ccd::PeekResult&) const override
     {
@@ -390,7 +390,7 @@ TEST(StabilityRule, PyccdIsTheSumOfSquaresBelowTheThreshold)
     const ccd::BandList detection = ccd::config::Shared{}.detection_bands;
 
     const auto scratch = s.stability_rule->make_scratch();
-    s.stability_rule->prepare(ccd::PeekPlan{peek_size, true, 0, peek_size}, detection.size(),
+    s.stability_rule->prepare(ccd::PeekPlan{.peek = peek_size, .reference = peek_size}, detection.size(),
                               *scratch);
     const auto fit = s.stability_fit->make_model();
 
@@ -599,11 +599,11 @@ TEST(Lookback, PyccdsThresholdIsAdjustedForALongerPeek)
     Flat fit(std::sqrt(61.25 / statistic));
     const ccd::Window window(15, 27);
 
-    lookback.prepare(ccd::PeekPlan{6, true, 0, 6}, bands, *scratch);
+    lookback.prepare(ccd::PeekPlan{.peek = 6, .reference = 6}, bands, *scratch);
     // Below 15.09 and below the outlier threshold: the observation joins.
     EXPECT_EQ(lookback.judge(fit, d, x, window, 0, variogram, detection, *scratch).verdict,
               ccd::LookbackVerdict::Include);
-    lookback.prepare(ccd::PeekPlan{10, true, 0, 6}, bands, *scratch);
+    lookback.prepare(ccd::PeekPlan{.peek = 10, .reference = 6}, bands, *scratch);
     const auto judged = lookback.judge(fit, d, x, window, 0, variogram, detection, *scratch);
     EXPECT_EQ(judged.verdict, ccd::LookbackVerdict::Change);
     EXPECT_EQ(judged.observation, 14u);

@@ -86,7 +86,7 @@ struct Record
     void at(index_t start, index_t stop, index_t prev_break, index_t peek = 6)
     {
         state.cursor = ccd::machine::Cursor{ccd::Window(start, stop), prev_break};
-        state.peek_plan = ccd::PeekPlan{peek, true, 0};   // chi2: full peeks only
+        state.peek_plan = ccd::PeekPlan{.peek = peek, .full = true};   // chi2: full peeks only
         state.stability_coefficients = strategies.stability_fit->coefficients();
         state.coefficients = strategies.model->coefficients();
 
@@ -100,15 +100,17 @@ struct Record
         // The stability rule's threshold, change_threshold (a peek of the
         // change test's peek_size), whatever peek the record has.
         const index_t peek_size = count("change_test", "peek_size");
-        const ccd::PeekPlan plan{peek_size, true, 0, peek_size};
+        const ccd::PeekPlan plan{.peek = peek_size, .reference = peek_size};
         strategies.stability_rule->prepare(
             plan, shared.detection_bands.size(), *state.stability);
         // Lookback over `peek` observations against its change_threshold:
         // pyccd's at a peek of its own, so its threshold is unadjusted.
         strategies.lookback = std::make_shared<const ccd::strategies::PyccdLookback>(
-            ccd::strategies::PyccdLookback::Params{real("lookback", "change_threshold"),
-                                                   real("lookback", "change_probability"),
-                                                   real("lookback", "outlier_threshold"), peek});
+            ccd::strategies::PyccdLookback::Params{
+                .change_threshold = real("lookback", "change_threshold"),
+                .change_probability = real("lookback", "change_probability"),
+                .outlier_threshold = real("lookback", "outlier_threshold"),
+                .peek = peek});
         state.bind(strategies);
         strategies.lookback->prepare(plan, shared.detection_bands.size(), *state.lookback);
     }

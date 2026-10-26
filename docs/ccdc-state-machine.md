@@ -350,8 +350,7 @@ config.stages["refit"].params["factor"] = config::real(2.0);
 
 // A run under it: checked when the Algorithm is built, resolved against the data spec (units,
 // rows, thresholds, the preprocessing plan) once, and part of its resume records' digest.
-RunSpec spec;
-spec.algorithm = std::make_shared<const Algorithm>(config);
+const RunSpec spec{.algorithm = std::make_shared<const Algorithm>(config)};
 PixelOutput run = detect(spec, dates, spectral, qas);
 
 // A value out of range is refused when the Algorithm is built:
