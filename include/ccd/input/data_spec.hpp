@@ -172,7 +172,6 @@ struct DataSpec
 };
 
 bool operator==(const DataSpec& a, const DataSpec& b);
-inline bool operator!=(const DataSpec& a, const DataSpec& b) { return !(a == b); }
 
 // A digest of every field of `spec`, its QA table's codes included: equal
 // for equal specs, on any platform.

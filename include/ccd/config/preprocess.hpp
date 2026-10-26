@@ -35,17 +35,9 @@ struct StepConfig
 {
     std::string step;
     Values params;
+
+    bool operator==(const StepConfig&) const = default;
 };
-
-inline bool operator==(const StepConfig& a, const StepConfig& b)
-{
-    return a.step == b.step && a.params == b.params;
-}
-
-inline bool operator!=(const StepConfig& a, const StepConfig& b)
-{
-    return !(a == b);
-}
 
 // How a procedure reads the thermal row, as a configuration names it:
 //
@@ -73,17 +65,9 @@ struct ProcedureConfig
 {
     Thermal thermal = Thermal::Stored;
     std::vector<StepConfig> steps;
+
+    bool operator==(const ProcedureConfig&) const = default;
 };
-
-inline bool operator==(const ProcedureConfig& a, const ProcedureConfig& b)
-{
-    return a.thermal == b.thermal && a.steps == b.steps;
-}
-
-inline bool operator!=(const ProcedureConfig& a, const ProcedureConfig& b)
-{
-    return !(a == b);
-}
 
 // The procedures, by name.
 using PreprocessConfig = std::map<std::string, ProcedureConfig>;

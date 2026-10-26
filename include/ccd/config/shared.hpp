@@ -82,7 +82,6 @@ struct Shared
 };
 
 bool operator==(const Shared& a, const Shared& b);
-inline bool operator!=(const Shared& a, const Shared& b) { return !(a == b); }
 
 // The schemas of the values outside the tables and of each table's, with
 // their physical defaults ("ccdc"'s).

@@ -138,11 +138,6 @@ inline bool operator==(const BandList& a, const BandList& b)
     return true;
 }
 
-inline bool operator!=(const BandList& a, const BandList& b)
-{
-    return !(a == b);
-}
-
 // Every row of a spectral array of `bands` rows: 0 to bands - 1, in order.
 inline BandList every_band(index_t bands)
 {

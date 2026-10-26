@@ -35,17 +35,9 @@ struct StageConfig
 {
     std::string strategy;
     Values params;
+
+    bool operator==(const StageConfig&) const = default;
 };
-
-inline bool operator==(const StageConfig& a, const StageConfig& b)
-{
-    return a.strategy == b.strategy && a.params == b.params;
-}
-
-inline bool operator!=(const StageConfig& a, const StageConfig& b)
-{
-    return !(a == b);
-}
 
 // The stages, by name.
 using ConfigTree = std::map<std::string, StageConfig>;
@@ -59,17 +51,9 @@ struct Config
     Values shared;
     ConfigTree stages;
     PreprocessConfig preprocess;
+
+    bool operator==(const Config&) const = default;
 };
-
-inline bool operator==(const Config& a, const Config& b)
-{
-    return a.shared == b.shared && a.stages == b.stages && a.preprocess == b.preprocess;
-}
-
-inline bool operator!=(const Config& a, const Config& b)
-{
-    return !(a == b);
-}
 
 // A digest of a configuration: equal for equal ones (every shared value by
 // name, every stage, strategy name and parameter, every procedure, step name
