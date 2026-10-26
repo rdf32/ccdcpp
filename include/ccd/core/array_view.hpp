@@ -78,13 +78,8 @@ public:
     //===============================================================
     
     // Constructors //
-    template<
-        typename U,
-        typename = std::enable_if_t<
-            std::is_const_v<T> &&
-            std::is_same_v<T, const U>
-        >
-    >
+    template<typename U>
+        requires(std::is_const_v<T> && std::is_same_v<T, const U>)
     ArrayView(const ArrayView<U, Rank>& other)
         :
         _data(other.data()),

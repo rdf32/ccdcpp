@@ -6,8 +6,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
-#include <utility>
 #include <vector>
 
 #include "ccd/config/config.hpp"
@@ -55,19 +53,6 @@ namespace config
 // shared by every thread.
 //
 //==============================================================================
-
-// Whether step type S has `static void validate(const S::Params&)`.
-template<class S, class = void>
-struct has_step_validate : std::false_type
-{
-};
-
-template<class S>
-struct has_step_validate<
-    S, std::void_t<decltype(S::validate(std::declval<const typename S::Params&>()))>>
-    : std::true_type
-{
-};
 
 // The parameters `values` give a registered type, back by name as its Params
 // holds them: std::invalid_argument, naming `where`, for what apply() or the
@@ -145,7 +130,8 @@ public:
             {
                 typename S::Params params;
                 apply(S::schema(), values, params, where);
-                if constexpr (has_step_validate<S>::value)
+                // A step type may have `static void validate(const Params&)`.
+                if constexpr (requires(const typename S::Params& p) { S::validate(p); })
                 {
                     try
                     {
