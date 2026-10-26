@@ -11,8 +11,12 @@ namespace ccd
 struct BuildInfo
 {
     std::string version;        // the project version, "1.1.0"
-    std::string commit;         // `git describe --always --dirty` of the source
-                                // tree at configure time; "unknown" outside git
+    std::string commit;         // the source tree's commit at configure time:
+                                // the 40-character hash, "-dirty" appended when
+                                // a tracked file differs from it; "unknown"
+                                // outside git
+    std::string describe;       // `git describe --always --dirty --tags` then,
+                                // "v1.1.0-3-gabc1234"; "unknown" outside git
     bool openmp = false;        // compiled with OpenMP
     long openmp_version = 0;    // _OPENMP (yyyymm of the OpenMP spec), 0 without
     std::string compiler;       // the compiler's id and version, "AppleClang 17.0.0"

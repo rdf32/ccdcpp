@@ -98,8 +98,12 @@ class BuildInfo(TypedDict):
     """What this build of ccdcpp is (``ccdcpp.build_info()``)."""
 
     version: str
-    #: ``git describe --always --dirty`` of the source tree at configure time, or "unknown"
+    #: the source tree's commit at configure time: the 40-character hash, "-dirty" appended when a
+    #: tracked file differs from it; "unknown" outside git
     commit: str
+    #: ``git describe --always --dirty --tags`` of the source tree then, "v1.1.0-3-gabc1234"; "unknown"
+    #: outside git
+    describe: str
     #: False: the build has no OpenMP, and detect_cube runs on one thread
     openmp: bool
     #: ``_OPENMP`` (yyyymm of the OpenMP spec), 0 without OpenMP

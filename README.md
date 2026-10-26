@@ -47,14 +47,17 @@ pip install .
 
 ## Checking your build
 
-`ccdcpp.build_info()` says what was built: the version, the commit it was configured from, whether OpenMP is in, the compiler, the C++ standard, whether the diagnostics hooks are compiled in (`CCD_OBSERVE`) and the build type. `ccd::build_info()` (`include/ccd/core/build_info.hpp`) is the same in C++.
+`ccdcpp.build_info()` says what was built: the version, the commit it was configured from and its `git describe`, whether OpenMP is in, the compiler, the C++ standard, whether the diagnostics hooks are compiled in (`CCD_OBSERVE`) and the build type. `ccd::build_info()` (`include/ccd/core/build_info.hpp`) is the same in C++.
 
 ```python
 >>> ccdcpp.build_info()
-{'version': '1.1.0', 'commit': 'v1.1.0', 'openmp': True, 'openmp_version': 202011,
+{'version': '1.1.0', 'commit': '3f2c9a1e8b47d05c6a9e2f1b7d3c8e0a4b5f6d71',
+ 'describe': 'v1.1.0-3-g3f2c9a1', 'openmp': True, 'openmp_version': 202011,
  'compiler': 'AppleClang 17.0.0.17000013', 'cxx_standard': 202002, 'observe': True,
  'build_type': 'Release'}
 ```
+
+`commit` is the full hash, with `-dirty` appended when a tracked file differed from it; `describe` is `git describe --always --dirty --tags`, the tag name at a tagged commit. Both come from the source tree when CMake configures it, so `pip install .` in a clone and `pip install git+https://…` both have them; a build from a source archive (no `.git`) says `"unknown"` for both.
 
 A build without OpenMP runs a cube on one thread: `detect_cube` warns (`RuntimeWarning`) when it is asked for more threads or the default, and CMake warns at configure time when OpenMP is requested but not found. On macOS, `brew install libomp` and configure with `-DCMAKE_PREFIX_PATH=$(brew --prefix libomp)`.
 

@@ -1,7 +1,8 @@
 #include "ccd/core/build_info.hpp"
 
-// CCD_VERSION, CCD_COMMIT, CCD_COMPILER and CCD_BUILD_TYPE are this file's
-// compile definitions (CMakeLists.txt); CCD_OBSERVE is the library's.
+// CCD_VERSION, CCD_COMMIT, CCD_DESCRIBE, CCD_COMPILER and CCD_BUILD_TYPE are
+// this file's compile definitions (CMakeLists.txt); CCD_OBSERVE is the
+// library's.
 
 namespace ccd
 {
@@ -11,6 +12,7 @@ BuildInfo build_info()
     BuildInfo info;
     info.version = CCD_VERSION;
     info.commit = CCD_COMMIT;
+    info.describe = CCD_DESCRIBE;
 #ifdef _OPENMP
     info.openmp = true;
     info.openmp_version = _OPENMP;

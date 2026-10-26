@@ -234,20 +234,50 @@ target_compile_definitions(
 )
 
 # ccd::build_info() (core/build_info.hpp): the version, the source tree's
-# commit at configure time, the compiler and the build type.
+# commit and its git describe at configure time, the compiler and the build
+# type. Both are "unknown" when the source tree is not a git work tree's top
+# (a source archive, also one unpacked inside another repository).
 find_package(Git QUIET)
 set(CCD_COMMIT "unknown")
+set(CCD_DESCRIBE "unknown")
 if(GIT_FOUND)
+    # The source tree's path below the work tree's top: empty at the top.
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --always --dirty
+        COMMAND ${GIT_EXECUTABLE} rev-parse --show-prefix
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-        OUTPUT_VARIABLE commit
+        OUTPUT_VARIABLE prefix
         OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE described
+        RESULT_VARIABLE in_work_tree
         ERROR_QUIET
     )
-    if(described EQUAL 0 AND NOT commit STREQUAL "")
-        set(CCD_COMMIT ${commit})
+    if(in_work_tree EQUAL 0 AND prefix STREQUAL "")
+        # describe --dirty runs first: it refreshes the index, so the diff below
+        # compares contents, not timestamps.
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} describe --always --dirty --tags
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            OUTPUT_VARIABLE CCD_DESCRIBE
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            OUTPUT_VARIABLE CCD_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        # Differs from HEAD in a tracked file; untracked files don't count.
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} diff --quiet HEAD
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            RESULT_VARIABLE differs
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if(NOT differs EQUAL 0)
+            string(APPEND CCD_COMMIT "-dirty")
+        endif()
     endif()
 endif()
 set_source_files_properties(
@@ -255,7 +285,7 @@ set_source_files_properties(
 
     PROPERTIES
         COMPILE_DEFINITIONS
-            "CCD_VERSION=\"${PROJECT_VERSION}\";CCD_COMMIT=\"${CCD_COMMIT}\";CCD_COMPILER=\"${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}\";CCD_BUILD_TYPE=\"$<CONFIG>\""
+            "CCD_VERSION=\"${PROJECT_VERSION}\";CCD_COMMIT=\"${CCD_COMMIT}\";CCD_DESCRIBE=\"${CCD_DESCRIBE}\";CCD_COMPILER=\"${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}\";CCD_BUILD_TYPE=\"$<CONFIG>\""
 )
 
 target_include_directories(

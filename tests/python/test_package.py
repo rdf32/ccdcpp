@@ -48,13 +48,16 @@ class Package(unittest.TestCase):
 
     def test_build_info_says_what_this_build_is(self):
         info = ccdcpp.build_info()
-        types = {"version": str, "commit": str, "openmp": bool, "openmp_version": int,
-                 "compiler": str, "cxx_standard": int, "observe": bool, "build_type": str}
+        types = {"version": str, "commit": str, "describe": str, "openmp": bool,
+                 "openmp_version": int, "compiler": str, "cxx_standard": int, "observe": bool,
+                 "build_type": str}
         self.assertEqual(sorted(info), sorted(types))
         for key, kind in types.items():
             with self.subTest(key=key):
                 self.assertIs(type(info[key]), kind)
         self.assertEqual(info["version"], ccdcpp.__version__)
+        self.assertRegex(info["commit"], r"^([0-9a-f]{40}(-dirty)?|unknown)$")
+        self.assertNotEqual(info["describe"], "")
         self.assertGreaterEqual(info["cxx_standard"], 202002)
         self.assertEqual(info["openmp_version"] > 0, info["openmp"])
 

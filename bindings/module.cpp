@@ -35,6 +35,7 @@ PYBIND11_MODULE(ccdcpp, m)
             py::dict d;
             d["version"] = info.version;
             d["commit"] = info.commit;
+            d["describe"] = info.describe;
             d["openmp"] = info.openmp;
             d["openmp_version"] = info.openmp_version;
             d["compiler"] = info.compiler;
@@ -43,9 +44,11 @@ PYBIND11_MODULE(ccdcpp, m)
             d["build_type"] = info.build_type;
             return d;
         },
-        "What this build of ccdcpp is: version, commit (git describe at configure time, or "
-        "'unknown'), openmp (False: detect_cube runs on one thread), openmp_version (_OPENMP, "
-        "or 0), compiler, cxx_standard (__cplusplus), observe (CCD_OBSERVE) and build_type.");
+        "What this build of ccdcpp is: version, commit (the hash at configure time, '-dirty' "
+        "appended for changed tracked files, or 'unknown'), describe (git describe --always "
+        "--dirty --tags then, or 'unknown'), openmp (False: detect_cube runs on one thread), "
+        "openmp_version (_OPENMP, or 0), compiler, cxx_standard (__cplusplus), observe "
+        "(CCD_OBSERVE) and build_type.");
 
     bind_data_spec(m);
     bind_qa_tables(m);

@@ -41,11 +41,12 @@ def import_build(module_dir: str) -> None:
 
 
 def build_of() -> str:
-    """The build under test as the benches print it after "ccdcpp": its version and commit
-    (ccdcpp.build_info()) and the file it loaded from."""
+    """The build under test as the benches print it after "ccdcpp": its version, commit and
+    describe (ccdcpp.build_info()) and the file it loaded from, "version commit (describe)
+    file"."""
     import ccdcpp
     info = ccdcpp.build_info()
-    return f"{info['version']} {info['commit']} {ccdcpp.__file__}"
+    return f"{info['version']} {info['commit']} ({info['describe']}) {ccdcpp.__file__}"
 
 
 @dataclass

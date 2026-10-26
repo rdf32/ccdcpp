@@ -5,11 +5,16 @@
 
 #include <gtest/gtest.h>
 
+#include <regex>
+
 TEST(BuildInfo, SaysWhatThisBuildIs)
 {
     const ccd::BuildInfo info = ccd::build_info();
     EXPECT_EQ(info.version, CCD_PROJECT_VERSION);
-    EXPECT_FALSE(info.commit.empty());
+    // The hash, not a tag name: what a downstream build pins.
+    EXPECT_TRUE(std::regex_match(info.commit, std::regex("[0-9a-f]{40}(-dirty)?|unknown")))
+        << info.commit;
+    EXPECT_FALSE(info.describe.empty());
 #ifdef _OPENMP
     EXPECT_TRUE(info.openmp);
     EXPECT_EQ(info.openmp_version, _OPENMP);
