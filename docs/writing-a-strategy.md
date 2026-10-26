@@ -199,8 +199,10 @@ void register_outlier_residual_cap(config::Registry& registry)
 `Registry::add<Interface, Strategy>(name)` (`include/ccd/config/registry.hpp`) registers a
 strategy type by name for its interface's stage, and refuses a name the stage already has.
 `Registry::add_step<Step>(name)` registers a preprocessing step type (section 9), and
-`add_preset(name, config)` a named configuration. Where the registration runs decides who
-sees the strategy:
+`add_preset(name, config)` a named configuration. The concepts `StrategyFor` and
+`PreprocessingStep` in the same header constrain the two, so a type without its `Params`,
+schema, constructor or `make()` fails to compile with a message naming what it lacks.
+Where the registration runs decides who sees the strategy:
 
 - **An extension.** A directory, absolute or relative to the source directory, whose
   `extension.cmake` appends its sources, include directories and registration functions;

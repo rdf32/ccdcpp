@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <functional>
 #include <map>
 #include <memory>
@@ -54,6 +55,25 @@ namespace config
 //
 //==============================================================================
 
+// What add<Interface, S>() requires of a strategy type S: an Interface with
+// default-constructible Params, their schema, and a constructor from them.
+template<class S, class Interface>
+concept StrategyFor =
+    std::derived_from<S, Interface> && std::default_initializable<typename S::Params> &&
+    std::constructible_from<S, const typename S::Params&> && requires {
+        { S::schema() } -> std::same_as<const std::vector<Field<typename S::Params>>&>;
+    };
+
+// What add_step<S>() requires of a preprocessing step type S: default-
+// constructible Params, their schema, and make() (input/mask/steps.hpp).
+template<class S>
+concept PreprocessingStep =
+    std::default_initializable<typename S::Params> &&
+    requires(const typename S::Params& params, const DataSpec& spec, const StepContext& context) {
+        { S::schema() } -> std::same_as<const std::vector<Field<typename S::Params>>&>;
+        { S::make(params, spec, context) } -> std::convertible_to<std::optional<preprocess::Step>>;
+    };
+
 // The parameters `values` give a registered type, back by name as its Params
 // holds them: std::invalid_argument, naming `where`, for what apply() or the
 // type's validate() refuses, and against `spec` (null: none) for a band list
@@ -89,7 +109,7 @@ public:
 
     // Registers the strategy type Strategy of Interface's stage as `name`;
     // std::logic_error for a name the stage already has.
-    template<class Interface, class Strategy>
+    template<class Interface, StrategyFor<Interface> Strategy>
     void add(const std::string& name)
     {
         auto& types = strategies_[Interface::stage];
@@ -119,7 +139,7 @@ public:
     // Registers the preprocessing step type S (input/mask/steps.hpp) as
     // `name`, the name a configuration's chains give it; std::logic_error
     // for a name already registered.
-    template<class S>
+    template<PreprocessingStep S>
     void add_step(const std::string& name)
     {
         if (steps_.count(name))
